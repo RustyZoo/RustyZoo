@@ -1,7 +1,7 @@
 //! The goals of animals: the ladder's need rungs, the keeper food goal, the drink goal and the
 //! surface goal (goals 10.1, 11.8, 11.9; tank fauna 10.2).
 
-use super::{BUILDING, Cx, GO_BUILDING, NONE, RANDOM};
+use super::{BUILDING, Cx, GO_BUILDING, NONE, RANDOM, SHOWTRICK};
 use crate::animal::{NEED, food, tank};
 use crate::behaviour::Target;
 use crate::path;
@@ -61,11 +61,16 @@ impl Cx<'_, '_> {
             return false;
         };
         let target = a.building;
-        let serves = self.building(target).is_some_and(|b| b.1.satisfies(NEED));
+        let serves = (self.building(target))
+            .is_some_and(|b| [NEED, "fun", SHOWTRICK].iter().any(|n| b.1.satisfies(n)));
         if done || !serves {
             return false;
         }
         if !self.set_out(target) {
+            // The tiles of a toy cannot be worked out: its trick is aborted (shows 23.4 point 5).
+            if self.toy_need() {
+                self.tell_trick(crate::show::event::FAILED);
+            }
             self.reset();
         }
         true

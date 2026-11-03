@@ -328,6 +328,8 @@ keys! {
     bite: "cKeeperFoodUnitsEaten" = 20,
     food_value: "cFoodUnitValue" = 1,
     keep_moving: "cKeepMoving" = 0,
+    skip_happiness: "cSkipTrickHappiness" = -100,
+    skip_chance: "cSkipTrickChance" = 0,
     energy_increment: "cEnergyIncrement" = 15,
     dirty_increment: "cDirtyIncrement" = 15,
     dirty_threshold: "cDirtyThreshold" = 70,
@@ -537,6 +539,8 @@ pub(crate) struct Animal {
     pub building: u32,
     pub slot: usize,
     pub entrance: crate::building::Point,
+    /// The need served at that building is `showtrick`, not `animalrest`: it is a toy (shows 23.4).
+    pub toy: bool,
 }
 
 impl Animal {
@@ -1180,7 +1184,7 @@ fn shelter(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, ou
     }
     let n = env.shelter.nearest.len() as u32;
     if n > 0 {
-        a.building = env.shelter.nearest[rng.pick(n) as usize];
+        (a.building, a.toy) = (env.shelter.nearest[rng.pick(n) as usize], false);
         out.shelter = Some(a.building);
     }
 }

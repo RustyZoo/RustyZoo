@@ -268,7 +268,12 @@ impl<'c> Cx<'_, 'c> {
 
     /// One of the eight tiles round the gate's inside tile that is in the exhibit and open to the
     /// keeper, drawn at random, else that tile itself.
-    fn gate_side(&mut self, x: u32, inside: usize, mover: &path::Mover) -> usize {
+    pub(in crate::goal) fn gate_side(
+        &mut self,
+        x: u32,
+        inside: usize,
+        mover: &path::Mover,
+    ) -> usize {
         let w = self.world.zoo.width as usize;
         let (gx, gy) = ((inside % w) as i32, (inside / w) as i32);
         let mut around = Vec::new();

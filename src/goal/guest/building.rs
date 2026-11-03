@@ -8,7 +8,9 @@
 //! income are the building's ([`crate::building::Live`]). The thoughts and the notes left on a
 //! tile are the thoughts issue's; the log lines are `building use` and `building buy`.
 
-use super::super::{Cx, ENTER_BUILDING, ENTRANCE, EXIT_BUILDING, GO_BUILDING as GO, USE};
+use super::super::{
+    Cx, ENTER_BUILDING, ENTRANCE, EXIT_BUILDING, GO_BUILDING as GO, SHOWTRICK, USE,
+};
 use super::IN_BUILDING;
 use crate::building::items::{Item, LITTER};
 use crate::building::{self, Kind, Live, Mood, Point};
@@ -193,6 +195,9 @@ impl Cx<'_, '_> {
         if let Some(g) = self.guest() {
             g.need = None;
         }
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.toy = false;
+        }
         if let Some((b, s, _)) = self.aim() {
             (*b, *s) = (0, 0);
         }
@@ -213,11 +218,15 @@ impl Cx<'_, '_> {
         self.aim().map_or((0, 0), |(b, s, _)| (*b, *s))
     }
 
-    /// The need being served: a guest's, `animalrest` for an animal with a shelter.
+    /// The need being served: a guest's, `animalrest` for an animal with a shelter, `showtrick` for
+    /// one at a toy.
     fn need(&mut self) -> Option<&'static str> {
         match &self.unit.part {
             Part::Guest(g) => g.need,
-            Part::Animal(a) => (a.building != 0).then_some(crate::animal::NEED),
+            Part::Animal(a) => (a.building != 0).then_some(match a.toy {
+                true => SHOWTRICK,
+                false => crate::animal::NEED,
+            }),
             _ => None,
         }
     }
@@ -259,7 +268,7 @@ impl Cx<'_, '_> {
             self.think(CROWDED, Some(id));
         }
         self.saw(id);
-        self.reset();
+        self.clear_goal();
     }
 
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
@@ -290,7 +299,7 @@ impl Cx<'_, '_> {
             return;
         };
         let Some((_, kind)) = self.building(id) else {
-            return self.reset();
+            return self.clear_goal();
         };
         let Some((slot, _)) = self.open_slot(id) else {
             return self.crowded(id);
@@ -314,7 +323,7 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn enter_decide(&mut self) {
         let (id, slot) = self.target();
         let Some((e, kind)) = self.building(id) else {
-            return self.reset();
+            return self.clear_goal();
         };
         let own = self.tile();
         if kind.outside || kind.teleports {
@@ -322,13 +331,13 @@ impl Cx<'_, '_> {
         }
         let to = kind.slots.get(slot).map(|s| building::place(&e, s.at));
         let Some(t) = to.and_then(|p| self.tile_at(p)) else {
-            return self.reset();
+            return self.clear_goal();
         };
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
         self.unit.through_building = true;
         if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
             self.unit.through_building = false;
-            return self.reset();
+            return self.clear_goal();
         }
         self.unit.goal.record.target.set_tile(self.world, Some(t));
     }
@@ -362,7 +371,12 @@ impl Cx<'_, '_> {
         let set = self.building(id).filter(|(_, k)| self.uses_set(k));
         let started = match set {
             Some((e, _)) if self.may_add(id, slot) => {
+                // A trick's use set names the trick, not the need (guest buildings 6.4.1).
                 let need = self.need().unwrap_or_default();
+                let need = self
+                    .trick_name()
+                    .filter(|_| need == SHOWTRICK)
+                    .unwrap_or(need.into());
                 let name = format!("b{}{need}{slot}", e.subtype);
                 self.start_with(&name, false, true);
                 true
@@ -373,7 +387,7 @@ impl Cx<'_, '_> {
         match started {
             true => self.set_task(USE, 0, id, None),
             false if self.building(id).is_some() => self.crowded(id),
-            false => self.reset(),
+            false => self.clear_goal(),
         }
     }
 
@@ -394,6 +408,10 @@ impl Cx<'_, '_> {
             .need()
             .is_some_and(|n| self.building(id).is_some_and(|(_, k)| k.satisfies(n)));
         if self.record().task == USE && !(serves && self.add_user(id, slot)) {
+            // A toy that cannot take the animal aborts its trick (shows 23.4 point 3).
+            if self.toy_need() {
+                self.tell_trick(crate::show::event::FAILED);
+            }
             let runner = &self.unit.runner;
             let pending = runner
                 .queued()
@@ -413,6 +431,10 @@ impl Cx<'_, '_> {
         }
         let id = self.target().0;
         let uses_exit = self.building(id).is_some_and(|(_, k)| k.uses_exit);
+        // Leaving a toy ends the trick (shows 23.4 point 4).
+        if self.toy_need() && self.building(id).is_some() {
+            self.tell_trick(crate::show::event::FINISHED);
+        }
         self.saw(id);
         self.remove_user();
         if uses_exit {
@@ -579,7 +601,7 @@ impl Cx<'_, '_> {
             return;
         }
         let (Some(entered), Some(kind)) = (entered, kind) else {
-            self.reset();
+            self.clear_goal();
             self.unit.goal.wandered = true;
             return;
         };

@@ -1,6 +1,5 @@
-//! The animal side of a show (shows 18 to 25): its calls and its release. The tricks are Shows
-//! 2d's, a stub until then: no item ever finishes, so a show that starts ends only by abort. Each
-//! function is the place the cycle calls the animal at.
+//! The animal side of a show (shows 18 to 25): the events it reads, its validation and its release.
+//! The trick it starts is `goal::start_trick`. Each function is the place the cycle calls the animal at.
 
 use super::event;
 use crate::entity::Catalogue;
@@ -15,9 +14,9 @@ pub(super) fn validate_item(_world: &World, _species: u32, _item: i16) -> i32 {
     0
 }
 
-/// Reads the events addressed to `animal` and sets the flags of its item state (shows 24): the
-/// call raises its called flag and lowers its return flag; its arrival resets its goal and sets
-/// it finished and ready. The other rows are Shows 2d's.
+/// Reads the events addressed to `animal` and sets the flags of its item state (shows 24), in
+/// order, each row's effects in its own order: the call raises its called flag and lowers its
+/// return flag; its arrival resets its goal and sets it finished and ready.
 pub(super) fn read_events(
     world: &mut World,
     cat: &Catalogue,
@@ -41,14 +40,16 @@ pub(super) fn read_events(
                 reset_unit(world, cat, animal);
                 (state.finished, state.ready) = (true, true);
             }
+            event::CUE => state.ready = true,
+            event::FINISHED => {
+                state.finished = true;
+                reset_unit(world, cat, animal);
+            }
+            event::FAILED => (state.finished, state.aborted) = (true, true),
+            event::ITEM_ABORTED => reset_unit(world, cat, animal),
             _ => {}
         }
     }
-}
-
-/// Asks `animal` to start the trick of item `item` of show `show` (shows 23.2); 0 when it did.
-pub(super) fn start_trick(_world: &mut World, _animal: u32, _item: u16, _show: u16) -> i32 {
-    0
 }
 
 /// The show is over for `animal`: its goal is reset and it is sent home (shows 5.6 `reinit`).

@@ -40,7 +40,7 @@ pub(super) fn with_unit<R>(
 }
 
 /// Runs `f` on the unit `id` outside a step: nothing it does can ask for a removal.
-fn run(
+pub(super) fn run(
     world: &mut World,
     cat: &Catalogue,
     rng: &mut Rng,

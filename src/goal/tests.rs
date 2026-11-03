@@ -24,6 +24,7 @@ mod heli;
 mod shelter;
 mod show;
 mod surface;
+mod trick;
 
 /// A 10 by 10 map with one unit of this class and id 1 at tile (5, 5).
 fn map(class: &str) -> World {

@@ -282,11 +282,13 @@ impl World {
             .collect();
         block.b7 = u8::from(u.held);
         (block.b5, block.b6) = (u8::from(u.called), u8::from(u.back));
-        // The show id is read only when its flag is exactly 1; a block that reads as the live
-        // value is left as it is (shows 26 point 2).
+        // The trick id and the show id are read only when their flag is exactly 1; a block that
+        // reads as the live value is left as it is (shows 26 point 2).
         let stored = |f: (u8, u16)| if f.0 == 1 { f.1 } else { 0 };
-        if stored(block.flags[1]) != u.show {
-            block.flags[1] = (u8::from(u.show != 0), u.show);
+        for (flag, live) in block.flags.iter_mut().zip([u.trick, u.show]) {
+            if stored(*flag) != live {
+                *flag = (u8::from(live != 0), live);
+            }
         }
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         (block.b1, block.w1) = (u8::from(u.frightened), u.predator);

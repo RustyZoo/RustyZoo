@@ -47,7 +47,7 @@ pub(crate) fn stop_use(unit: &mut Unit) {
     unit.animation = Default::default();
     match &mut unit.part {
         Part::Guest(g) => (g.need, g.building, g.stand) = (None, 0, false),
-        Part::Animal(a) => a.building = 0,
+        Part::Animal(a) => (a.building, a.toy) = (0, false),
         _ => {}
     }
 }

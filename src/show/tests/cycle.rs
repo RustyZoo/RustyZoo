@@ -1,20 +1,22 @@
 //! The show cycle: announce, start, items, stop and abort.
 
 use super::*;
+use crate::behaviour::NoData;
 use crate::exhibit::{Exhibit, Tank};
 use crate::show::cycle::abort;
-use crate::sim::{Event, KEEPER_CHANNEL, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
+use crate::sim::{Event, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::zoo::{Item, ItemState, Script, TypeRecord};
 
 pub(super) const SEAL: u32 = 5400;
 
-pub(super) fn item(kind: u32, satisfaction: i32, current: i32) -> Item {
+/// An item for seals of trick type `marker` (0 behaviour, 3 food).
+pub(super) fn item(marker: u32, satisfaction: i32, current: i32) -> Item {
     Item {
         available: 1,
         visible: 1,
         id: 11200,
-        kind,
-        marker: 0,
+        kind: SEAL,
+        marker,
         names: Default::default(),
         building: 0,
         complexity: 1,
@@ -90,7 +92,7 @@ pub(super) fn info_mut(w: &mut World) -> &mut ShowInfo {
 /// One step of the show manager at AI tick `now`, then the end of the AI manager's update, which
 /// makes the events posted by it the ones read.
 pub(super) fn tick(w: &mut World, cat: &Catalogue, events: &mut Events, now: u32) {
-    update(w, cat, events, now);
+    update(w, cat, (events, &mut Rng::default(), &NoData), now);
     events.age();
 }
 
@@ -355,7 +357,12 @@ fn an_animal_already_in_a_running_show_gets_no_item_state_in_another() {
     w.zoo.shows.infos.push(Some(other));
     w.units.get_mut(21).unwrap().show = 1000;
     let mut events = Events::default();
-    update(&mut w, &cat, &mut events, 90);
+    update(
+        &mut w,
+        &cat,
+        (&mut events, &mut Rng::default(), &NoData),
+        90,
+    );
     let states: Vec<u32> = info_of_show(&w)
         .show
         .items
@@ -407,9 +414,9 @@ fn an_animal_with_a_finished_item_scores_it_and_the_next_item_begins() {
 
 #[test]
 fn an_item_that_scores_nothing_or_was_aborted_is_not_scored() {
-    // A food item (kind 3) is not scored; an aborted one is passed over without a reaction.
-    for (kind, aborted) in [(3, false), (0, true)] {
-        let (mut w, cat, mut events) = started(vec![item(kind, 4, 5), item(0, 4, 5)]);
+    // A food item (type 3) is not scored; an aborted one is passed over without a reaction.
+    for (marker, aborted) in [(3, false), (0, true)] {
+        let (mut w, cat, mut events) = started(vec![item(marker, 4, 5), item(0, 4, 5)]);
         tick(&mut w, &cat, &mut events, 91);
         let state = &mut info_mut(&mut w).show.items[0];
         (state.item, state.finished, state.aborted) = (0, true, aborted);
@@ -635,7 +642,12 @@ fn a_show_info_reads_its_stop_and_its_abort() {
             events.post(note);
         }
         events.age();
-        update(&mut w, &cat, &mut events, 91);
+        update(
+            &mut w,
+            &cat,
+            (&mut events, &mut Rng::default(), &NoData),
+            91,
+        );
         events.age();
         // Target 7 is another show's: only the two for this one are read, so the end shows twice.
         let sent: Vec<u16> = kinds(&events)

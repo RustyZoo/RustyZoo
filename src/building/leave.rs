@@ -7,6 +7,7 @@ use crate::entity::Catalogue;
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE};
 use crate::guest::{BATHROOM, ENERGY, HAPPINESS, HUNGER, THIRST};
 use crate::render::order::ground_height;
+use crate::show::event::FAILED;
 use crate::sim::{Event, UNIT_CHANNEL};
 use crate::unit::{Part, Unit};
 use crate::world::World;
@@ -123,12 +124,17 @@ pub(crate) fn pay(
 /// Guest buildings 6.6 point 4: the unit's own abort of a forced leave posts one event to itself
 /// (type 0x2722, channel 0x55, delay 1), whatever the unit class.
 fn post_abort(world: &mut World, unit: u32) {
+    post_own(world, unit, FAILED);
+}
+
+/// An event of `kind` from the unit to itself, on its channel, read in the next step.
+pub(crate) fn post_own(world: &mut World, unit: u32, kind: u16) {
     world.units.posts.push(Event {
         sender: unit,
         target: unit,
         data: 0,
         extra: 0,
-        kind: 0x2722,
+        kind,
         delay: 1,
         sender_channel: UNIT_CHANNEL,
         channel: UNIT_CHANNEL,

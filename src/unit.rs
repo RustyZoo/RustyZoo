@@ -264,6 +264,9 @@ pub struct Unit {
     /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Saved as
     /// the second flag field after the trick id, from version 97, and not for guests (shows 26).
     pub show: u16,
+    /// The trick an animal was told to do, never cleared (shows 18.2); 0 for none. Saved in the unit
+    /// block's first flag.
+    pub trick: u16,
     /// An animal called to its show (it swims to the show tank) and one sent home from it (shows
     /// 18.2); both are saved in the unit block.
     pub called: bool,
@@ -321,6 +324,7 @@ impl Unit {
             predator: 0,
             afraid: false,
             show: 0,
+            trick: 0,
             called: false,
             back: false,
         }
@@ -926,6 +930,9 @@ impl Hooks for Standard<'_> {
         }
         if unit.runner.take_hatch() {
             crate::animal::breed::hatch(unit, world, at, self.data);
+        }
+        if unit.runner.take_end_trick() {
+            crate::building::leave::post_own(world, unit.id, crate::show::event::FINISHED);
         }
         self.tell(unit, world, at);
     }
