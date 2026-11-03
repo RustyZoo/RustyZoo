@@ -72,10 +72,10 @@ pub fn react(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data:
             }
             _ => continue,
         }
-        if let Part::Guest(g) = &mut unit.part {
-            if changes {
-                update(g, max_energy);
-            }
+        if let Part::Guest(g) = &mut unit.part
+            && changes
+        {
+            update(g, max_energy);
         }
         if let Some(text) = match ev.kind {
             event::BAD => Some(10610),
