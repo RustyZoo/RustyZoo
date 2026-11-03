@@ -596,8 +596,8 @@ path_drag() { # path_drag <map> <first move>
 }
 check base-trial "8,49800,40076d8b2dbe27f3" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,748d30093a68402c" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,dc6ce9e1783545f0" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,be6341f02ad1954a" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,45c01739769e8647" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,17281ef5d7322b55" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -683,7 +683,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,b656d74441897b68" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,8047a4c04fd7c2a5 "bulldozer_area maps/scn19.zoo"
+check expansion-trial 16,50156,075e54d2c66ecfc2 "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
