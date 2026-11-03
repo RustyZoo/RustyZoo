@@ -290,7 +290,7 @@ impl App<'_> {
                     self.bulldoze_remove(id);
                     // A removal that makes a tank with objects in it asks about them: the rest
                     // of the removal is dropped.
-                    if let Some(game) = self.game.as_mut().filter(|g| g.refused.is_some()) {
+                    if let Some(game) = self.game.as_mut().filter(|g| g.naming.refused.is_some()) {
                         game.sweep = None;
                         return;
                     }

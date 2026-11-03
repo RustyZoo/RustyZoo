@@ -47,7 +47,7 @@ impl App<'_> {
         if let Some(saving) = self.saving.take() {
             return self.save_answered(code, saving);
         }
-        if self.game.as_ref().is_some_and(|g| g.naming_open) {
+        if self.game.as_ref().is_some_and(|g| g.naming.open) {
             return self.named();
         }
         let Some(kind) = self.asked.take() else {
@@ -98,7 +98,11 @@ impl App<'_> {
             if let Some(game) = &mut self.game {
                 game.sweep = None;
             }
-            if self.game.as_ref().is_some_and(|g| g.refused.is_some()) {
+            if self
+                .game
+                .as_ref()
+                .is_some_and(|g| g.naming.refused.is_some())
+            {
                 self.tank_no();
             }
             self.named();

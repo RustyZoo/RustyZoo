@@ -323,7 +323,7 @@ impl App<'_> {
                     }
                     first = first.or(Some(p.ty));
                     if !game.world.waiting().is_empty() {
-                        game.rest = pieces[n + 1..].to_vec();
+                        game.naming.rest = pieces[n + 1..].to_vec();
                         break;
                     }
                 }

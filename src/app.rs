@@ -150,13 +150,8 @@ struct Game {
     /// What the bulldozer would remove now and the removal that is under way.
     dozer: bulldozer::Dozer,
     sweep: Option<bulldozer::Sweep>,
-    /// The new exhibits that wait for a name, the first one's dialog being open or not.
-    naming: Vec<u32>,
-    naming_open: bool,
-    /// The new tank whose objects the player is asked about (the question is open).
-    refused: Option<u32>,
-    /// The pieces of the drag after the one that closed an exhibit, bought once it is named.
-    rest: Vec<Pending>,
+    /// The new exhibits that wait for a name, and what the player is asked about them.
+    naming: exhibits::Naming,
     /// The exhibit panel and the recommendations plaque.
     panel: crate::panel::exhibit::Panel,
     /// The animal panel and the animal selected.
