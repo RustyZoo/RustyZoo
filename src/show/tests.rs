@@ -81,7 +81,7 @@ fn info(id: u16) -> ShowInfo {
 }
 
 /// A map `width` tiles wide and 5 high whose columns from 5 on are an exhibit with a show of id
-/// 1001, behind a fence of type `wall`. The stands are given as (id, tile, rotation); guests 1 to 3
+/// 1001, behind a fence of type `wall`; from column 7 on, a second exhibit with no show info. The stands are given as (id, tile, rotation); guests 1 to 3
 /// stand at the top left.
 fn world(width: i32, wall: &str, stands: &[(u32, (i32, i32), u32)]) -> (World, Catalogue) {
     world_in(width, wall, stands, true)
@@ -101,6 +101,9 @@ fn world_in(
                 let at = (5 * 64, y * 64 + 32);
                 z.entities
                     .push(entity("fences", wall, 500 + y as u32, at, 6));
+                let second = (7 * 64, y * 64 + 32);
+                z.entities
+                    .push(entity("fences", wall, 600 + y as u32, second, 6));
             }
         };
         if walls_first {
@@ -117,15 +120,16 @@ fn world_in(
             z.entities
                 .push(entity("guests", "man", id, centre((id as i32, 0)), 0));
         }
-        z.habitat_tiles = vec![(5, 0)];
-        z.habitat_gates = vec![((5, 0), 0)];
-        z.habitat_info = vec![HabitatInfo {
+        z.habitat_tiles = vec![(5, 0), (7, 0)];
+        z.habitat_gates = vec![((5, 0), 0), ((7, 0), 0)];
+        let habitat = || HabitatInfo {
             name: String::new(),
             stats: [0; 9],
             created: 0,
             viewing: 0,
             serviced: 0,
-        }];
+        };
+        z.habitat_info = vec![habitat(), habitat()];
         z.shows.infos = vec![Some(info(1001))];
     });
     let mut w = w;

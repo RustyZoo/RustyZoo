@@ -1,7 +1,7 @@
 //! Whether the first animal can do an item of the script: the start removes the ones it cannot,
 //! the cue aborts them, and a toy item draws once each time (shows 23.6, 27 points 1 and 2).
 
-use super::cycle::{info_mut, info_of_show, item, show_tank, staged, tank_mut, tick};
+use super::cycle::{info_mut, info_of_show, item, record, show_tank, staged, tank_mut, tick};
 use super::*;
 use crate::behaviour::NoData;
 use crate::sim::Rng;
@@ -25,7 +25,7 @@ fn toy_world(mut items: Vec<Item>) -> (World, Catalogue) {
     });
     w.zoo
         .entities
-        .push(entity("building", "toy", 40, centre((7, 2)), 4));
+        .push(entity("building", "toy", 40, centre((6, 2)), 4));
     let all = w.zoo.entities.clone();
     w.units.sync(&all);
     (w, cat)
@@ -112,6 +112,21 @@ fn the_depth_is_that_of_the_show_tank_not_of_the_tank_the_animal_stands_in() {
         // A dry tank refuses the start whatever the depth: the level 0 row tests the depth alone.
         let ok = start(&mut w, &cat, &mut seeded());
         assert_eq!(ok, runs && level > 0, "level {level}");
+    }
+}
+
+#[test]
+fn a_keeper_in_another_show_tank_fails_the_validation_with_code_9() {
+    // Seal 21 stands in the second tank, whose show has a keeper or not (shows 23.6 point 4).
+    for (keepers, runs) in [(&[][..], false), (&[30][..], true)] {
+        let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+        place(&mut w, 21, (7, 1));
+        let mut other = info_of_show(&w).clone();
+        other.id = 1002;
+        other.records = vec![record(KEEPER, 0, keepers)];
+        w.zoo.shows.infos.push(Some(other));
+        assert_eq!(start(&mut w, &cat, &mut seeded()), runs, "{keepers:?}");
+        assert_eq!(w.zoo.shows.scripts[0].items.len(), usize::from(runs));
     }
 }
 
