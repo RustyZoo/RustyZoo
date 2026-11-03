@@ -13,16 +13,18 @@ use std::collections::BTreeMap;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
-use crate::render::order::{Held, Kind, Object, Scene, ground_height};
+use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::strings::Language;
 use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
+use held::Shift;
 
 mod amphibious;
 mod areas;
 mod edges;
 mod exhibit;
 mod filter;
+mod held;
 mod save;
 mod tank;
 mod water;
@@ -542,49 +544,6 @@ impl World {
         self.dirty = true;
     }
 
-    /// Takes the unit at position `at` of the entity list off the map, as the pick-up does (unit
-    /// placing 8.2): it stays in the list, stands on no tile and is not drawn, until
-    /// [`World::place_unit`] puts it down.
-    pub fn lift_unit(&mut self, at: usize) {
-        if let Ok(o) = self.owner.binary_search(&at) {
-            self.scene.lift_unit(o);
-            self.dirty = true;
-        }
-    }
-
-    /// Stops painting the unit at position `at` of the entity list; it stays on its tile's unit
-    /// list (a user hidden in a building, guest buildings 6.7.1).
-    pub fn hide_unit(&mut self, at: usize) {
-        if let Ok(o) = self.owner.binary_search(&at) {
-            self.scene.hide_unit(o);
-            self.dirty = true;
-        }
-    }
-
-    /// Takes the unit at position `at` of the entity list off its tile's unit list only (guest
-    /// buildings 6.7.1): it keeps its place, is drawn as before and joins a list again at its
-    /// first change of tile.
-    pub fn unlist_unit(&mut self, at: usize) {
-        if let Ok(o) = self.owner.binary_search(&at) {
-            self.scene.unlist_unit(o);
-            self.dirty = true;
-        }
-    }
-
-    /// Whether the entity at position `at` is painted.
-    #[cfg(test)]
-    pub fn is_drawn(&self, at: usize) -> bool {
-        self.fits(at)
-    }
-
-    /// Paints the unit at position `at` where it stands, on no tile list.
-    pub fn paint_unit(&mut self, at: usize) {
-        if let Ok(o) = self.owner.binary_search(&at) {
-            self.scene.paint_unit(o);
-            self.dirty = true;
-        }
-    }
-
     /// The tiles whose exhibits an entity placed or removed at position `at` changes (habitat
     /// rating 4): its own, and the one across for a piece on an edge; none for a guest, a staff
     /// member or an ambient creature, which the rating does not see.
@@ -771,7 +730,7 @@ impl World {
         (self.zoo.id_counter, common.id) = (id, id);
         self.zoo.entities.push(entity);
         self.shapes.push(shape);
-        self.changed();
+        self.changed(None);
         let mut notes = Vec::new();
         let tiles = self.rated_tiles(self.zoo.entities.len() - 1);
         if shape.is_some_and(|s| s.fence) {
@@ -812,7 +771,7 @@ impl World {
     pub fn retype(&mut self, at: usize, subtype: &str, shape: Shape) {
         self.zoo.entities[at].subtype = subtype.into();
         self.shapes[at] = Some(shape);
-        self.changed();
+        self.changed(None);
     }
 
     /// Removes the entity with this id; whether there was one. A fence piece that opens its line
@@ -859,7 +818,7 @@ impl World {
         if let Some(c) = &entity.common {
             self.filter_view.remove(&c.id);
         }
-        self.changed();
+        self.changed(Some(Shift::Removed(at)));
         if fence {
             self.settle(slot, false);
         }
@@ -882,7 +841,7 @@ impl World {
         let at = at.min(self.zoo.entities.len());
         self.zoo.entities.insert(at, entity);
         self.shapes.insert(at, shape);
-        self.changed();
+        self.changed(Some(Shift::Inserted(at)));
         self.rated_tiles(at)
             .into_iter()
             .for_each(|t| self.mark_rating(t));
@@ -936,7 +895,7 @@ impl World {
         if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
             e.gate = gate.then_some(new);
         }
-        self.changed();
+        self.changed(None);
         if fence.0 || fence.1 {
             self.settle(slot, false);
         }
@@ -975,7 +934,7 @@ impl World {
         if let Some(t) = self.tile_index(tx, ty) {
             self.zoo.tiles[t].terrain = terrain;
             self.edges_around(t);
-            self.changed();
+            self.changed(None);
         }
     }
 
@@ -1015,7 +974,7 @@ impl World {
             self.reheight(t);
         }
         self.edges_around(t);
-        self.changed();
+        self.changed(None);
         self.mark_rating(t);
         self.escape_check(t);
     }
@@ -1103,7 +1062,7 @@ impl World {
                         let spot = self.spot(at);
                         self.zoo.entities.remove(at);
                         self.shapes.remove(at);
-                        self.changed();
+                        self.changed(Some(Shift::Removed(at)));
                         stale = true;
                         done.steps.push(Step::Removed(spot, price));
                     }
@@ -1113,7 +1072,7 @@ impl World {
                         let spot = self.spot(at);
                         let entity = self.zoo.entities.remove(at);
                         self.shapes.remove(at);
-                        self.changed();
+                        self.changed(Some(Shift::Removed(at)));
                         stale = true;
                         done.steps.push(Step::Copied(spot, Box::new(entity)));
                     }
@@ -1134,11 +1093,11 @@ impl World {
                     // moved to its old position in the list.
                     self.zoo.entities.push(entity.clone());
                     self.shapes.push(shape);
-                    self.changed();
+                    self.changed(None);
                     if !self.fits(self.zoo.entities.len() - 1) {
                         self.zoo.entities.pop();
                         self.shapes.pop();
-                        self.changed();
+                        self.changed(None);
                         if several {
                             done.steps.push(Step::Skipped(self.spot_of(&entity)));
                             continue;
@@ -1158,7 +1117,7 @@ impl World {
                         self.zoo.entities.insert(at, entity);
                         self.shapes.insert(at, shape);
                     }
-                    self.changed();
+                    self.changed(Some(Shift::Inserted(at)));
                     stale = true;
                     if self.is_door(at) {
                         doors.extend(self.zoo.entities[at].common.as_ref().map(|c| c.id));
@@ -1179,7 +1138,7 @@ impl World {
                         if let Some(e) = exhibit.and_then(|x| self.exhibits.get_mut(x)) {
                             e.gate = Some(old_id);
                         }
-                        self.changed();
+                        self.changed(None);
                         stale = true;
                         done.steps.push(Step::Retyped(self.spot(at), price));
                     }
@@ -1190,7 +1149,7 @@ impl World {
                         .and_then(|i| self.zoo.entities[i].common.as_mut());
                     if let Some(c) = c {
                         (c.x, c.y, c.z, c.rotation) = (at.0, at.1, at.2, rotation);
-                        self.changed();
+                        self.changed(None);
                         stale = true;
                     }
                 }
@@ -1204,7 +1163,7 @@ impl World {
                         }
                         self.edges_around(t);
                     }
-                    self.changed();
+                    self.changed(None);
                     stale = true;
                     done.steps.push(Step::Tiles(tiles.len(), price));
                 }
@@ -1412,31 +1371,13 @@ impl World {
         self.undo.push(action);
     }
 
-    fn changed(&mut self) {
-        // The units held off the map keep how they are held across the rebuild: a carried unit is
-        // on no list and not painted (simulation 6.2), a hidden user is not painted but stays on
-        // its list (guest buildings 6.4 point 6), a unit off its list stays off it (6.7.1).
-        let held: Vec<(u32, Held)> = self
-            .scene
-            .held()
-            .filter_map(|(o, held)| {
-                let id = self.zoo.entities[self.owner[o]].common.as_ref()?.id;
-                Some((id, held))
-            })
-            .collect();
+    /// The world was edited; `shift` tells how the entity list moved since the last rebuild.
+    fn changed(&mut self, shift: Option<Shift>) {
+        let held = self.held_units(shift);
         let paths = self.path_tiles();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
         self.follow_paths(&paths);
-        for (id, held) in held {
-            let Some(at) = self.find(id) else {
-                continue;
-            };
-            match held {
-                Held::Unlisted => self.unlist_unit(at),
-                Held::Hidden => self.hide_unit(at),
-                Held::Lifted => self.lift_unit(at),
-            }
-        }
+        self.hold_again(held);
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
         self.edits += 1;

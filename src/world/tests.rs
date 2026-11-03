@@ -2,6 +2,7 @@
 
 use super::edges::edge_states;
 use super::*;
+use crate::render::order::Held;
 use crate::zoo::{Common, View};
 
 fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
@@ -118,6 +119,10 @@ fn shape(e: &Entity) -> Option<Shape> {
         "path" => Some(Shape {
             kind: Kind::Path,
             footprint: (2, 2),
+            ..NOTHING
+        }),
+        "unit" => Some(Shape {
+            kind: Kind::Unit,
             ..NOTHING
         }),
         "tent" => Some(Shape {
@@ -391,7 +396,7 @@ fn block(world: &mut World, e: Entity) {
     let shape = shape(&e);
     world.zoo.entities.push(e);
     world.shapes.push(shape);
-    world.changed();
+    world.changed(None);
 }
 
 #[test]
@@ -416,7 +421,7 @@ fn a_removed_object_that_cannot_be_put_back_stops_the_undo_or_is_passed_over() {
     let last = world.zoo.entities.len() - 1;
     world.zoo.entities.remove(last);
     world.shapes.remove(last);
-    world.changed();
+    world.changed(None);
     let done = world.undo();
     assert!(matches!(done.steps[..], [Step::Back(_, p)] if p == 5.0));
     assert!(!world.can_undo());
@@ -705,4 +710,37 @@ fn the_names_a_load_sets_again_on_the_exhibits_are_given_only_in_the_install_lan
         names(1033, 1036).is_empty(),
         "another language: none is set"
     );
+}
+
+#[test]
+fn a_removal_keeps_the_held_state_of_the_other_units() {
+    let unit = |tx: i32, row: i32| entity("unit", tx * 64 + 32, row * 64 + 32, 0);
+    let mut world = walled(&[]);
+    let ids: Vec<u32> = [(0, 6), (2, 6), (5, 6), (0, 2)]
+        .map(|(tx, row)| world.add(unit(tx, row), shape(&unit(tx, row))).unwrap())
+        .into();
+    let held = |w: &World| {
+        let mut held = w.held_units(None);
+        held.sort_by_key(|h| h.0);
+        held
+    };
+    let [a, b, c, d] = ids[..] else { panic!() };
+    for (id, how) in [(a, Held::Hidden), (c, Held::Lifted), (d, Held::Hidden)] {
+        let at = world.find(id).unwrap();
+        match how {
+            Held::Lifted => world.lift_unit(at),
+            _ => world.hide_unit(at),
+        }
+    }
+    let rest = [(c, Held::Lifted), (d, Held::Hidden)];
+    // A held unit goes while others are held after it, the last of the list included.
+    world.begin();
+    assert!(world.remove(a));
+    assert_eq!(held(&world), rest);
+    // Undoing puts it back in the list before them: they stay as they are.
+    assert!(!world.undo().is_empty());
+    assert_eq!(held(&world), rest);
+    // A unit that is not held goes: nothing moves.
+    assert!(world.remove(b));
+    assert_eq!(held(&world), rest);
 }

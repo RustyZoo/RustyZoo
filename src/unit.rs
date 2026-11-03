@@ -760,7 +760,7 @@ pub trait Hooks {
     fn typed(&mut self, _: &mut Unit, _: &mut World, _at: usize) {}
     /// The unit's first turn, before anything else (simulation 8.2: the creation of its state).
     fn start(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
-    /// The events of the unit's channel, just read (simulation 6.1); runs whatever the unit's state.
+    /// The events read at the start of the turn (`Unit::events`), before the move.
     fn events(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The move by the step (movement 3); not run while suspended.
     fn movement(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
@@ -831,10 +831,6 @@ impl Standard<'_> {
 }
 
 impl Hooks for Standard<'_> {
-    fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-        crate::show::cue(unit, world, ctx, at, self.data);
-    }
-
     fn movement(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         lower_walk(unit);
         let before = movement::here(world, at);
@@ -923,6 +919,10 @@ impl Hooks for Standard<'_> {
 
     fn typed(&mut self, unit: &mut Unit, world: &mut World, at: usize) {
         movement::read_type(unit, self.data, &world.zoo.entities[at]);
+    }
+    fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::guest::reaction::react(unit, world, ctx, at, self.data);
+        crate::show::cue(unit, world, ctx, at, self.data);
     }
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);

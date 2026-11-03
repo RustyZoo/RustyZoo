@@ -36,7 +36,7 @@ const KEEPER: u32 = 9552;
 pub const CONDUCT: u8 = 19;
 
 /// The event types of a show (shows 6.1).
-mod event {
+pub(crate) mod event {
     pub const ANNOUNCE: u16 = 0x2711;
     pub const START_NOTE: u16 = 0x2712;
     pub const STARTED: u16 = 0x2713;
