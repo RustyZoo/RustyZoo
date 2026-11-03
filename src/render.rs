@@ -671,6 +671,7 @@ impl<'a> MapRenderer<'a> {
                 crate::build::number(ty, "walkable") == Some(1.0),
                 crate::build::number(ty, "walkableByTall") == Some(1.0),
             ),
+            forms: (entity.class == "animals").then(|| ty.forms()),
         })
     }
 
