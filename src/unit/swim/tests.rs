@@ -360,3 +360,32 @@ fn a_3d_move_call_goes_on_with_one_path_entry() {
     let u = w.units.get(1).unwrap();
     assert!(u.walking && !u.path.is_empty());
 }
+
+#[test]
+fn a_swimmer_standing_in_water_chooses_from_the_water_table() {
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 0), (2, (8, 6), 0), (3, (3, 3), 0)]);
+    w.set_water(vec![false, true]);
+    w.zoo.tiles[tile((3, 3))].terrain = 1;
+    // A polar bear: it swims, but does not dive. The third is one that does not swim.
+    for id in [1, 2] {
+        let u = w.units.get_mut(id).unwrap();
+        (u.typed, u.mover.swims) = (true, true);
+    }
+    let place = |w: &World, id| {
+        let unit = w.units.get(id).unwrap();
+        place(unit, w, w.find(id).unwrap())
+    };
+    assert_eq!(place(&w, 1), Place::Water);
+    assert_eq!(
+        crate::behaviour::TABLES[Place::Water as usize],
+        "AmbientAnimsWater"
+    );
+    assert_eq!(place(&w, 2), Place::Land, "on dry ground");
+    assert_eq!(place(&w, 3), Place::Land, "a land animal in the water");
+    // An egg swims not.
+    let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part else {
+        panic!("not an animal");
+    };
+    a.egg = true;
+    assert_eq!(place(&w, 1), Place::Land);
+}
