@@ -250,6 +250,8 @@ macro_rules! keys {
             pub amphibious: bool,
             /// `cSwims`, `cUnderwater` and `cOnlyUnderwater` of the type.
             pub swims: bool,
+            /// `cHeliRecovery` is 1: the helicopter and the scientist recover the species.
+            pub heli_recovery: bool,
             pub underwater: bool,
             pub only_underwater: bool,
             /// The species prefers salt water: its value for terrain 10 is at least that of
@@ -271,6 +273,7 @@ macro_rules! keys {
                     death_chance: int("cDeathChance", class.death_chance),
                     amphibious,
                     swims: int("cSwims", 0) == 1,
+                    heli_recovery: int("cHeliRecovery", 0) == 1,
                     underwater: int("cUnderwater", 0) == 1,
                     only_underwater: int("cOnlyUnderwater", 0) == 1,
                     salt: false,
@@ -497,6 +500,11 @@ pub struct Animal {
     /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
     /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
+    /// The keeper's dart put it to sleep: it has no goals and chooses no ambient set until the
+    /// sleep check wakes it or it is crated (animals 9.1, 11.6).
+    pub tranq: bool,
+    /// The id of the staff member who has taken it as his capture job, 0 for none (animals 11.6).
+    pub claim: u32,
     /// The escape walk (animals 11.3): its record while the flag is up.
     pub walk: Option<crate::zoo::Escape>,
     /// The crossing animation the escape walk forces (11.3), for the turn to play.
@@ -589,6 +597,7 @@ impl Animal {
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
         self.escaped = r.escaped;
+        (self.claim, self.tranq) = (r.claim, r.tranq);
         // The flags are rebuilt from their words (animals 11.3).
         self.walk = r.escape.map(|e| crate::zoo::Escape {
             reached: u32::from(e.reached == 1),
@@ -630,6 +639,8 @@ impl Animal {
             dying: self.dying,
             crated: self.crated,
             boxed: self.crate_count,
+            claim: self.claim,
+            tranq: self.tranq,
             egg: self.egg,
             thirsty: self.thirsty,
             rampaging: self.rampaging,
@@ -721,10 +732,9 @@ pub struct Census {
     /// amphibious neighbours.
     pub adults: u32,
     pub all_adults: u32,
-    /// The other animals of its exhibit that are very unhappy.
+    /// The very unhappy animals of its exhibit at its last rating pass, itself included when it
+    /// was one then.
     pub unhappy: u32,
-    /// The sick animals of its exhibit and its amphibious neighbours.
-    pub sick: u32,
 }
 
 /// Where the animal stands and what the checks read of it.
@@ -1016,7 +1026,7 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
             out.log.push("escape");
         }
     } else {
-        a.escaped = false;
+        (a.escaped, a.claim) = (false, 0);
     }
 }
 
@@ -1277,14 +1287,34 @@ fn read_exhibit(
     }
     match read {
         Read::Mates => env.candidates = breed::candidates(world, at, x, a),
-        Read::Food | Read::Emptied | Read::Pile | Read::Trample => {}
+        Read::Food => {
+            // The food of its kind at the last rating pass, the tick's bites taken (4.1).
+            let kind = usize::try_from(keys(world, cat, at).food_kind).ok();
+            let sums = regions.iter().filter_map(|&n| world.exhibits().get(n));
+            env.food_total = (sums.filter_map(|e| e.rating.food.get(kind?).copied()))
+                .fold(0, i32::saturating_add);
+        }
+        Read::Emptied | Read::Pile | Read::Trample => {}
         Read::Keeper => env.keeper_working = life::keeper_at_work(world, x),
         Read::Sick => {
-            let sick = census(world, x, &regions, key).sick;
+            // The counters of the last rating pass, not the animals now (animals needs 9.5).
+            let sick: u32 = (regions.iter().filter_map(|&n| world.exhibits().get(n)))
+                .fold(0, |sum, e| sum.saturating_add(e.rating.sick));
             env.sick_near = sick.saturating_sub(u32::from(a.at_minimum_health));
         }
         Read::Exhibit => {
             env.census = census(world, x, &regions, key);
+            // The counters of the exhibit and its amphibious neighbours at the last rating pass,
+            // capped at their animal counts (animals 5.2).
+            let seen = regions.iter().filter_map(|&n| world.exhibits().get(n));
+            let (unhappy, animals) = seen.fold((0u32, 0usize), |(u, n), e| {
+                (
+                    u.saturating_add(e.rating.unhappy),
+                    n + e.rating.animals.len(),
+                )
+            });
+            let capped = unhappy.min(u32::try_from(animals).unwrap_or(u32::MAX));
+            env.census.unhappy = capped.saturating_sub(u32::from(a.very_unhappy));
             let own = records(world, cat, x, rng)
                 .into_iter()
                 .find(|r| r.key == key);
@@ -1302,8 +1332,7 @@ fn read_exhibit(
 
 /// Counts the animals of the regions `near` (an exhibit and its amphibious neighbours) for an
 /// animal of species `key`, from their stored animal lists (habitat rating 5.1; a reader
-/// refreshes a dirty exhibit first); the species and the very unhappy ones only in the exhibit
-/// `x`.
+/// refreshes a dirty exhibit first); the species only in the exhibit `x`.
 fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
     let mut c = Census::default();
     let listed = near
@@ -1311,21 +1340,15 @@ fn census(world: &World, x: u32, near: &[u32], key: &str) -> Census {
         .flat_map(|&r| exhibit_animals(world, r).into_iter().map(move |at| (r, at)));
     for (region, at) in listed {
         let e = &world.zoo.entities[at];
-        let Some(com) = e.common.as_ref() else {
+        if e.common.is_none() {
             continue;
-        };
+        }
         let adult = matches!(e.subtype.as_str(), "m" | "f");
         let same = e.type_name == key;
-        let state = world.units.get(com.id).and_then(|u| match &u.part {
-            Part::Animal(a) => Some(a),
-            _ => None,
-        });
-        c.sick += u32::from(state.is_some_and(|a| a.at_minimum_health));
         c.adults += u32::from(same && adult);
         c.all_adults += u32::from(adult);
         if region == x {
             c.species += u32::from(same);
-            c.unhappy += u32::from(state.is_some_and(|a| a.very_unhappy));
         }
     }
     c
@@ -1433,6 +1456,14 @@ pub fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
         unit.part = Part::Animal(animal);
         unit.started = true;
     }
+    // A loose animal joins the escaped list in file order (animals 11.1).
+    if world
+        .units
+        .get(id)
+        .is_some_and(|u| matches!(&u.part, Part::Animal(a) if a.escaped))
+    {
+        world.units.escapes.push(id);
+    }
 }
 
 /// The first turn of an animal that was not on the map at its load (adopted, born): its values
@@ -1536,9 +1567,6 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
             .filter_map(|&n| world.exhibits().get(n))
             .map(|e| e.tiles)
             .sum();
-        let regions = food::near(world, x, &k);
-        let pieces = food::pieces(world, ctx.cat, &regions, k.food_kind);
-        env.food_total = pieces.iter().map(|p| p.left).fold(0, i32::saturating_add);
     }
     if a.counters[SHELTER] == 0 && k.building_use > 0 {
         let who = crate::building::Species::of(ctx.cat, &world.zoo.entities[at], a.egg);
@@ -1585,6 +1613,10 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         world.units.cheat.breeding_boost = false;
     }
     for word in &out.log {
+        if *word == "escape" {
+            world.units.escapes.retain(|&e| e != id);
+            world.units.escapes.push(id);
+        }
         world.units.tell(format!("{word} {id}"));
     }
     if let Some(change) = out.terrain {

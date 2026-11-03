@@ -135,6 +135,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: fence,
         // A rock: walkable by tall units only.
         walkable: (false, kind == Kind::Fixed),
+        forms: (e.type_name == "gnu").then_some([(3, 3), (4, 4)]),
         tank: TankKind {
             wall: e.class == "tankwall",
             ..TankKind::NONE
@@ -325,6 +326,25 @@ fn another_unit_on_the_tile_is_in_the_way_and_a_neighbour_is_not() {
         (Verdict::Invalid, Some(super::super::IN_THE_WAY))
     );
     assert_eq!(over.blocking, [4]);
+}
+
+#[test]
+fn a_crate_in_the_way_of_a_new_animal_overlaps_with_its_crate_footprint() {
+    // The units the new animal meets on its tile: the half sides of the gnu's rectangle.
+    let sides = |egg: bool, crated: bool| {
+        let gnu = entity_at("animals", "gnu", "m", 2 * 64 + 50, 2 * 64 + 16, 0);
+        let mut w = world(vec![gnu]);
+        let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(1).map(|u| &mut u.part) else {
+            panic!("not an animal");
+        };
+        (a.egg, a.crated) = (egg, crated);
+        let found = units_on(&w, &[w.tile_index(2, 2).unwrap()]);
+        found[0].3
+    };
+    assert_eq!(sides(false, false), (16, 16));
+    assert_eq!(sides(false, true), (64, 64));
+    assert_eq!(sides(true, false), (48, 48));
+    assert_eq!(sides(true, true), (48, 48));
 }
 
 #[test]

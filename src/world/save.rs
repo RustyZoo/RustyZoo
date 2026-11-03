@@ -104,8 +104,9 @@ impl World {
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
     /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
-    /// gets the record of a new one (the building with the users it has now), a guest's record takes the live guest's fields, and a staff
-    /// member's record takes its live state.
+    /// gets the record of a new one, a guest's record takes the live guest's fields, a guest
+    /// building's record takes its live users and figures (zoo format 6.9), and a staff member's
+    /// record takes its live state.
     pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         // A save writes the install language, whatever the file loaded said (localisation 10).
         zoo.locale = self.language.number;
@@ -151,15 +152,16 @@ impl World {
                     }
                     self.live_guest(c);
                 }
-                "building" if c.raw.is_new() => {
-                    let price = Kind::of(ty, self.units.prices.default).price;
-                    let b = (c.building).get_or_insert_with(|| fresh::building_new(price, now));
-                    // The users it has now, in entering order (guest buildings 4).
+                "building" => {
+                    let kind = Kind::of(ty, self.units.prices.default);
+                    if c.raw.is_new() {
+                        c.building
+                            .get_or_insert_with(|| fresh::building_new(kind.price, now));
+                    }
+                    // The users, figures and price it has now (zoo format 6.9).
                     if let Some(live) = self.units.buildings.get(&c.id) {
-                        b.users = (live.users.iter())
-                            .map(|&(u, s, _)| (u, s as u32))
-                            .collect();
-                        b.users_now = (b.users.len() as u32).saturating_add(live.extra);
+                        let trash = kind.satisfies("trash");
+                        c.building = (c.building.take()).map(|b| live.record(b, trash));
                     }
                 }
                 _ => {}
@@ -227,16 +229,21 @@ impl World {
             live_goal(u, &mut block.target);
             block.move_kind = 2;
             if guest.is_some() {
-                block.w4 = u.mover.non_path_cost;
+                let m = &u.mover;
+                block.w4 = if m.emergency {
+                    m.emergency_cost
+                } else {
+                    m.non_path_cost
+                };
             }
         }
         c.unit = Some(Box::new(block));
     }
 
     /// A started unit writes its live path (with its levels, -1 for none), destination, pending set
-    /// name and behaviour set (the chain of calls it runs), and, once it has a goal object, its live
-    /// goal record, not the ones its block was read with (behaviours 4.7, goals 3.4, zoo format 6.14),
-    /// and its held flag (staff 7.7).
+    /// name and behaviour set (the chain of calls it runs), its frightened flag and kept predator,
+    /// and, once it has a goal object, its live goal record, not the ones its block was read with
+    /// (behaviours 4.7, goals 3.4, zoo format 6.14), and its held flag (staff 7.7).
     fn live_way(&self, c: &mut Common, cat: &Catalogue, ty: &EntityType) {
         let Some(u) = self.units.get(c.id).filter(|u| u.started) else {
             return;
@@ -258,6 +265,7 @@ impl World {
             .collect();
         block.b7 = u8::from(u.held);
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
+        (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
         block.pending = u.runner.queued().unwrap_or_default().to_string();
         if u.runner.queued().is_some() {
             block.pending_flag = u8::from(u.runner.queued_flag());
@@ -274,11 +282,11 @@ impl World {
     fn live_guest(&self, c: &mut Common) {
         let unit = self.units.get(c.id);
         let live = unit.and_then(|u| match &u.part {
-            Part::Guest(g) if g.arrived.is_some() => Some((g, u.goal.wandered)),
+            Part::Guest(g) if g.arrived.is_some() => Some((g, u.goal.wandered, u.afraid)),
             _ => None,
         });
-        if let (Some(base), Some((g, wandered))) = (c.guest.as_deref().copied(), live) {
-            c.guest = Some(Box::new(g.record(&base, wandered)));
+        if let (Some(base), Some((g, wandered, afraid))) = (c.guest.as_deref().copied(), live) {
+            c.guest = Some(Box::new(g.record(&base, wandered, afraid)));
         }
     }
 }

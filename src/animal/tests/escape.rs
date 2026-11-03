@@ -104,6 +104,32 @@ fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
     }
     assert_eq!(set(|u| change(u, |a| a.rampaging = true)), (None, None));
     assert_eq!(set(|u| change(u, |a| a.escaped = false)), (None, None));
+    assert_eq!(set(|u| change(u, |a| a.tranq = true)), (None, None));
+}
+
+#[test]
+fn a_darted_animal_does_not_run_the_sleep_check_of_the_ambient_choice() {
+    let data = Life::new().with("bSleep", "fPlay(idle)");
+    let cat = zebras();
+    let choice = |tranq: bool| {
+        let mut world = pens();
+        let at = world.find(500).unwrap();
+        let mut unit = world.units.get(500).unwrap().clone();
+        if let Part::Animal(a) = &mut unit.part {
+            (a.energy, a.tranq) = (100, tranq);
+        }
+        let (mut rng, events, mut removals) =
+            (Rng::default(), crate::sim::Events::default(), Vec::new());
+        let mut ctx = Ctx {
+            rng: &mut rng,
+            events: &events,
+            removals: &mut removals,
+            step: 67,
+            cat: &cat,
+        };
+        crate::animal::life::ambient_sleep(&mut unit, &mut world, &mut ctx, at, &data)
+    };
+    assert!(choice(false) && !choice(true));
 }
 
 #[test]
@@ -317,6 +343,8 @@ fn a_loose_animal_is_found_on_the_grounds_and_the_pick_up_catches_it() {
         log.extend(world.units.take_animal_lines());
     }
     assert_eq!(log.iter().filter(|l| *l == "escape 700").count(), 1);
+    // It is on the escaped list, in the order of escape.
+    assert_eq!(world.units.escapes, [700]);
     assert!(!crate::guest::occupied(&world, &cat), "no guest arrives");
     let sums = crate::status::zoo::Sums::of(&world, &cat, 0.0, 0);
     assert_eq!(sums.loose, 1);
@@ -334,6 +362,27 @@ fn a_loose_animal_is_found_on_the_grounds_and_the_pick_up_catches_it() {
     crate::place::unit::pick_up(&mut world, &cat, 700, 0).unwrap();
     assert!(crate::guest::occupied(&world, &cat));
     assert_eq!(crate::status::zoo::Sums::of(&world, &cat, 0.0, 0).loose, 0);
+}
+
+#[test]
+fn a_loaded_loose_animal_joins_the_escaped_list() {
+    let cat = zebras();
+    let mut world = pens_with(|n, _| match n {
+        0 => vec![entity("animals", "f", (4, 6), 0, 700)],
+        _ => vec![entity("animals", "f", (6, 2), 0, 710)],
+    });
+    for e in &mut world.zoo.entities {
+        if let Some(c) = e.common.as_mut().filter(|c| c.id == 710) {
+            c.animal = Some(Box::new(AnimalRecord {
+                escaped: true,
+                ..record()
+            }));
+        }
+    }
+    let mut sim = Sim::new(b"");
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    assert_eq!(world.units.escapes, [710]);
 }
 
 /// The thirst of animal 500, and with `escaped` its escape too, which its escape check in the pen
@@ -365,4 +414,51 @@ fn an_escaped_animal_at_the_water_does_not_drink() {
     };
     assert_eq!(drink(|w| thirsty(w, false)), (true, false, false));
     assert_eq!(drink(|w| thirsty(w, true)), (false, false, false));
+}
+
+#[test]
+fn a_darted_escaped_animal_falls_asleep_and_wakes_up_undarted() {
+    let k = keys();
+    let sleepy = Env {
+        sets: Sets {
+            has_sleep: true,
+            ..Sets::default()
+        },
+        now: 9,
+        ..grounds()
+    };
+    let darted = Animal {
+        escaped: true,
+        tranq: true,
+        energy: k.energy_threshold,
+        ..animal()
+    };
+    let (mut a, out, _) = tick(darted, ENERGY, &k, &sleepy);
+    assert!(a.sleeping && a.tranq && out.sets == ["bSleep"]);
+    // It stays down while the set runs, then wakes with the flag lowered.
+    let running = Env {
+        sets: Sets {
+            sleep_now: true,
+            ..sleepy.sets
+        },
+        ..sleepy.clone()
+    };
+    crate::animal::run(&mut a, &k, &Class::default(), &running, &mut Rng::default());
+    assert!(a.sleeping && a.tranq);
+    crate::animal::run(&mut a, &k, &Class::default(), &sleepy, &mut Rng::default());
+    assert_eq!((a.sleeping, a.tranq, a.energy), (false, false, 0));
+}
+
+#[test]
+fn an_animal_found_in_an_exhibit_loses_the_keepers_claim_and_one_on_the_grounds_keeps_it() {
+    let k = keys();
+    let held = || Animal {
+        escaped: true,
+        claim: 40,
+        ..animal()
+    };
+    let (a, ..) = tick(held(), ESCAPE, &k, &in_exhibit());
+    assert_eq!((a.escaped, a.claim), (false, 0));
+    let (a, ..) = tick(held(), ESCAPE, &k, &grounds());
+    assert_eq!((a.escaped, a.claim), (true, 40));
 }

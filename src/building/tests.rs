@@ -667,12 +667,8 @@ fn a_built_date_past_30827_is_the_start_of_the_calendar() {
 }
 
 #[test]
-fn a_building_without_a_record_or_a_guest_building_or_a_known_type_keeps_no_live_state() {
-    let w = loaded(&[
-        ("stand", 7, None),
-        ("compost", 8, Some(record(0, START))),
-        ("unknown", 9, Some(record(0, START))),
-    ]);
+fn a_building_without_a_record_or_a_known_type_keeps_no_live_state() {
+    let w = loaded(&[("stand", 7, None), ("unknown", 9, Some(record(0, START)))]);
     assert!(w.units.buildings.is_empty());
 }
 
@@ -1169,24 +1165,39 @@ fn grandstand(cap: i32, order: usize) -> String {
 }
 
 #[test]
-fn a_slot_names_its_draw_places_and_the_first_order_list_counts_them() {
+fn a_slot_names_its_draw_places_and_the_values_alone_size_the_table() {
     let places = |text: &str| Kind::of(&ty(text), 3.0).slots[0].places.clone();
-    let (a, b, c) = ((-13, -102, 50), (13, -102, 50), (0, 58, 2));
-    assert_eq!(places(&grandstand(3, 3)), Some(vec![a, b, c]));
-    // Fewer places in the list than triples: the list counts; more: the triples do.
-    assert_eq!(places(&grandstand(3, 2)), Some(vec![a, b]));
-    assert_eq!(places(&grandstand(3, 9)), Some(vec![a, b, c]));
-    // A flag with no list, and a flag whose section is missing, has no place; no flag has none.
-    assert_eq!(places(&grandstand(3, 0)), Some(vec![]));
+    let (a, b, c, z) = ((-13, -102, 50), (13, -102, 50), (0, 58, 2), (0, 0, 0));
+    // Nine values: four places, the first three from the values, the fourth empty.
+    assert_eq!(places(&grandstand(3, 3)), Some(vec![a, b, c, z]));
+    // The order lists play no part: none, a short one or a long one change nothing.
+    for order in [0, 1, 2, 9] {
+        assert_eq!(
+            places(&grandstand(3, order)),
+            Some(vec![a, b, c, z]),
+            "{order}"
+        );
+    }
+    // A flag whose section is missing has no place; no flag has none.
     let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "cHasDrawSlots=nowhere");
     assert_eq!(places(&text), Some(vec![]));
     let text = grandstand(3, 3).replace("cHasDrawSlots=seats", "");
     assert_eq!(places(&text), None);
-    // A half triple is dropped; a word reads 0.
+    // A slot of capacity 0, a negative one or none has no flag.
+    for cap in ["capacity=0", "capacity=-4", "capacity=x"] {
+        let text = grandstand(3, 3).replace("capacity=3", cap);
+        assert_eq!(places(&text), None, "{cap}");
+    }
+    let text = grandstand(3, 3).replace("capacity=3\n", "");
+    assert_eq!(places(&text), None);
+    // A word reads 0; two more values (11 / 2).
     let text = grandstand(3, 3)
         .replace("p=2\n", "p=x\n")
-        .replace("[second]", "p=7\n[second]");
-    assert_eq!(places(&text).map(|p| p.len()), Some(3));
+        .replace("order=first", "p=7\np=8\norder=first");
+    assert_eq!(places(&text).map(|p| p.len()), Some(5));
+    // Ten values give five places, the fourth and fifth empty.
+    let text = grandstand(3, 3).replace("order=first", "p=7\norder=first");
+    assert_eq!(places(&text).map(|p| p.len()), Some(5));
 }
 
 /// Seats unit `unit` of a live state with the draws `picks`, in turn.
@@ -1225,22 +1236,22 @@ fn a_slot_with_no_free_place_draws_nothing_and_a_leaving_user_frees_its_place() 
     };
     sit(&mut live, 1, &places, &[0]).unwrap();
     sit(&mut live, 2, &places, &[1]).unwrap();
+    // The seat table has `capacity` seats, not one per place: the third sits at (0, 0, 0).
+    assert_eq!(sit(&mut live, 3, &places, &[2]), Some((2, (0, 0, 0))));
+    live.users.push((4, 0, 0));
     let mut never = |_: u32| -> u32 { panic!("a draw on a full slot") };
-    assert_eq!(live.seat(0, 3, &places, 3, &mut never), None);
-    // A capacity of 0 or below seats nobody either, and a huge one is cut to the places.
-    assert_eq!(live.seat(0, 0, &places, 3, &mut never), None);
-    assert_eq!(live.seat(0, -5, &places, 3, &mut never), None);
+    assert_eq!(live.seat(0, 3, &places, 4, &mut never), None);
+    // A capacity of 0 or below seats nobody either.
+    assert_eq!(live.seat(0, 0, &places, 4, &mut never), None);
+    assert_eq!(live.seat(0, -5, &places, 4, &mut never), None);
     live.users.remove(0);
-    assert_eq!(sit(&mut live, 3, &places, &[0]), Some((0, (1, 2, 3))));
-    // A draw past the places is a place that is taken.
+    assert_eq!(sit(&mut live, 4, &places, &[0]), Some((0, (1, 2, 3))));
+    // A draw past the place table is a free seat at (0, 0, 0).
     let mut one = Live {
         users: vec![(2, 0, 0)],
         ..Live::default()
     };
-    assert_eq!(
-        sit(&mut one, 2, &[(1, 2, 3)], &[7, 0]).map(|s| s.0),
-        Some(0)
-    );
+    assert_eq!(sit(&mut one, 2, &[(1, 2, 3)], &[7]), Some((1, (0, 0, 0))));
     // A unit seated again takes a new place.
     one.users.push((3, 0, 0));
     sit(&mut one, 2, &[(1, 2, 3), (4, 5, 6)], &[0]).unwrap();
@@ -1339,4 +1350,100 @@ fn a_building_made_in_play_is_saved_with_the_users_it_has_now() {
     // A huge count saturates, nothing wraps; no live state writes the record of a new one.
     assert_eq!(saved(vec![(1, 0, 0)], u32::MAX, true).1, u32::MAX);
     assert_eq!(saved(vec![(5, 1, 9)], 0, false), (Vec::new(), 0));
+}
+
+/// A live state with figures none of the stored records has.
+fn busy() -> Live {
+    Live {
+        users: vec![(5, 1, 9), (6, 0, 3)],
+        extra: 1,
+        price: 8.25,
+        fill: 17,
+        guests: [4, 6, 21],
+        income: [1.5, 2.5, 99.0],
+        upkeep: 40.0,
+        built: 86_400_000,
+        ..Live::default()
+    }
+}
+
+#[test]
+fn a_loaded_building_is_saved_with_its_live_users_and_figures() {
+    let cat = types();
+    let mut w = loaded(&[
+        ("stand", 7, Some(record(0, START))),
+        ("can", 8, Some(record(0, START))),
+    ]);
+    for id in [7, 8] {
+        w.zoo.entities[id as usize - 7].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+        w.units.buildings.insert(id, busy());
+    }
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let at = |i: usize| zoo.entities[i].common.as_ref().unwrap().building.clone();
+    let b = at(0).unwrap();
+    assert_eq!((b.users.clone(), b.users_now), (vec![(5, 1), (6, 0)], 3));
+    assert_eq!((b.guests, b.price), ([4, 6, 21], 8.25f32.to_bits()));
+    assert_eq!(b.income.map(f32::from_bits), [1.5, 2.5, 99.0]);
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(40.0));
+    assert_eq!(b.built, START + 86_400_000 * 10_000);
+    // Only a trash can has a live fill; the word of another type is the record's.
+    assert_eq!((b.fill, at(1).unwrap().fill), (0, 17));
+}
+
+#[test]
+fn a_building_made_in_play_is_saved_with_its_live_figures_and_its_own_date() {
+    let cat = types();
+    let mut w = loaded(&[("can", 7, None), ("compost", 8, None)]);
+    w.zoo.clocks.calendar = 86_400_000 * 40;
+    w.units.buildings.insert(7, busy());
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let b = zoo.entities[0].common.as_ref().unwrap().building.clone();
+    let b = b.unwrap();
+    assert_eq!(
+        (b.guests, b.price, b.fill),
+        ([4, 6, 21], 8.25f32.to_bits(), 17)
+    );
+    assert_eq!(b.income.map(f32::from_bits), [1.5, 2.5, 99.0]);
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(40.0));
+    // Built on day 1 of the game, not on the day of the save (day 40).
+    assert_eq!(b.built, START + 86_400_000 * 10_000);
+    // A building with no live state is a new one's record.
+    let c = zoo.entities[1].common.as_ref().unwrap().building.clone();
+    let c = c.unwrap();
+    assert_eq!((c.guests, c.fill, c.upkeep), ([0; 3], 0, Some(0)));
+    assert_eq!(c.built, START + 86_400_000 * 40 * 10_000);
+}
+
+#[test]
+fn a_compost_that_earned_is_saved_with_its_stored_figures_and_date() {
+    let cat = types();
+    let day = crate::timing::DAY_MS * 10_000;
+    let mut w = loaded(&[("compost", 8, Some(record(0, START + 7 * day)))]);
+    w.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+    // Placed in play: a compost starts its figures with the placing date.
+    let mut placed = world_with((12, 4), |_| {});
+    built(
+        &mut placed,
+        &named("compost", COMPOST),
+        9,
+        3 * crate::timing::DAY_MS as i64,
+    );
+    assert_eq!(
+        placed.units.buildings[&9].built,
+        3 * crate::timing::DAY_MS as i64
+    );
+    crate::staff::chores::recycle(&mut w, &cat, 0, false);
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let b = zoo.entities[0].common.as_ref().unwrap().building.clone();
+    let b = b.unwrap();
+    // The stored price, date and figures, grown by the payment (price x factor 1).
+    assert_eq!(
+        (b.guests, b.price, b.built),
+        ([3, 2, 9], 5.5f32.to_bits(), START + 7 * day)
+    );
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(75.0));
+    assert_eq!(b.income.map(f32::from_bits), [16.0, 20.0, 36.0]);
 }

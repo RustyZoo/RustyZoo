@@ -866,6 +866,55 @@ fn a_deleted_trash_can_pushes_out_its_user_and_spills_its_pieces() {
 }
 
 #[test]
+fn a_forced_leave_posts_the_abort_event_of_the_unit_to_itself() {
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    run(&mut game(), &cat, &mut w, &mut money, 1500, "use");
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    let e = &w.units.posts[..];
+    assert_eq!(e.len(), 1);
+    assert_eq!(
+        (e[0].sender, e[0].target, e[0].kind, e[0].delay),
+        (1, 1, 0x2722, 1)
+    );
+    assert_eq!(
+        (e[0].data, e[0].extra, e[0].sender_channel, e[0].channel),
+        (0, 0, 0x55, 0x55)
+    );
+}
+
+#[test]
+fn a_forced_leave_puts_the_abort_event_in_the_saved_queue() {
+    use crate::sim::drive::{Command, Run};
+    let (cat, mut w, mut money) = (types(), zoo_with(true), Money::default());
+    holding(&mut w);
+    let mut s = game();
+    run(&mut s, &cat, &mut w, &mut money, 1500, "use");
+    let mut run = Run::new((b"", b""), (cat, Default::default()), w, money, 1);
+    run.sim = s;
+    let held = |run: &Run| {
+        let q = run.sim.clocks().queue;
+        [q.first, q.second]
+            .concat()
+            .iter()
+            .filter(|e| e.kind == 0x2722 && e.target == 1)
+            .count()
+    };
+    let before = held(&run);
+    assert!(run.apply(&Command::Bulldoze(9)));
+    assert_eq!(held(&run), before + 1);
+    assert!(run.world.units.posts.is_empty());
+}
+
+#[test]
+fn a_building_with_no_user_posts_no_abort_event() {
+    let (cat, mut w) = (types(), zoo_with(true));
+    crate::building::leave::push_out(&mut w, &cat, 9);
+    assert!(w.units.posts.is_empty());
+}
+
+#[test]
 fn a_user_of_a_building_with_no_exit_on_the_map_is_taken_off_it_and_stays_hidden() {
     let (cat, mut w) = (types(), zoo());
     // The stand at the last row has its entrances below the map: nobody could enter it.
@@ -2039,4 +2088,20 @@ fn a_guest_entering_a_grandstand_is_put_on_the_draw_place_the_first_draw_gives()
     assert_eq!((c.x, c.y, c.z), (352 + want.0, 224 + want.1, want.2));
     let seats = &w.units.buildings[&9].seats;
     assert_eq!((seats.len(), seats[0].unit), (1, 1));
+}
+
+#[test]
+fn a_user_of_a_type_that_stays_outside_is_seated_all_the_same() {
+    // The seating is done for every type with the flag, before the hide and stay-outside tests.
+    for key in ["cUserStaysOutside=1", "cHideUser=1\ncUserStaysOutside=0"] {
+        let mut cat = types();
+        let text = GRANDSTAND.replace("cUserStaysOutside=0", key);
+        cat.push(ty("building", "gstand", &text));
+        let mut w = zoo_of(Some("gstand"));
+        let mut fresh = Rng::default();
+        assert!(with_cx(&cat, &mut w, |cx| cx.add_user(9, 0)), "{key}");
+        let seats = &w.units.buildings[&9].seats;
+        assert_eq!(seats.len(), 1, "{key}");
+        assert_eq!(seats[0].place, fresh.pick(3) as usize, "{key}");
+    }
 }

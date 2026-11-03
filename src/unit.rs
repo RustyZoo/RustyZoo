@@ -58,6 +58,7 @@ pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec
 
 pub mod gate;
 pub mod movement;
+pub mod predator;
 pub mod resume;
 pub mod swim;
 #[cfg(test)]
@@ -156,6 +157,8 @@ pub struct Staff {
     /// A keeper's duties found nothing left to do: the goal's own flag, which the next check done
     /// turns into the record's done (staff 7.5).
     pub duties_done: bool,
+    /// The animal the member has taken as his capture job, 0 for none (staff 7.11).
+    pub captured: u32,
 }
 
 /// The kind-specific part of a unit.
@@ -245,6 +248,15 @@ pub struct Unit {
     /// The contagion byte of a guest named by one of the guest-name cheats (cheats 4.2 E); not
     /// saved, not part of the state hash.
     pub spreads: u8,
+    /// Frightened: the look for a predator found one, the ladder starts the avoid task (guests 6.2,
+    /// staff 4.2); and the kept predator, 0 for none (animals 11.8).
+    pub frightened: bool,
+    pub predator: u32,
+    /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
+    pub afraid: bool,
+    /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Not saved
+    /// until Shows 2 stores the unit blocks' show fields.
+    pub show: u16,
 }
 
 impl Unit {
@@ -294,6 +306,10 @@ impl Unit {
             sex: None,
             boxed: false,
             spreads: 0,
+            frightened: false,
+            predator: 0,
+            afraid: false,
+            show: 0,
         }
     }
 
@@ -414,6 +430,9 @@ pub struct Units {
     pub reactions: Vec<(u32, bool, u32)>,
     /// The exhibit sounds the changes asked for (`smile`, `frown`), which the interface plays.
     cheers: Vec<&'static str>,
+    /// The escaped list (animals 11.1): the animals loose at the load in file order, then those
+    /// that escaped in play in the order they did; see [`predator::escaped`].
+    pub escapes: Vec<u32>,
 }
 
 impl Default for Units {
@@ -464,6 +483,7 @@ impl Default for Units {
             world_lines: Vec::new(),
             reactions: Vec::new(),
             cheers: Vec::new(),
+            escapes: Vec::new(),
         }
     }
 }
@@ -772,8 +792,12 @@ impl Units {
                         u32::from(a.egg)
                             | u32::from(a.dying) << 1
                             | u32::from(a.escaped) << 2
-                            | u32::from(a.rampaging) << 3,
+                            | u32::from(a.rampaging) << 3
+                            | u32::from(a.tranq) << 4,
                     );
+                    if a.claim != 0 {
+                        h.word(a.claim);
+                    }
                 }
                 Part::Staff(s) => {
                     h.word(s.work as u32);
@@ -793,6 +817,9 @@ impl Units {
                     h.word(u32::from(s.leg));
                     h.word(s.task);
                     h.word(s.clear as u32);
+                    if s.captured != 0 {
+                        h.word(s.captured);
+                    }
                 }
                 Part::Guest(g) => {
                     g.values.iter().for_each(|&v| h.word(v as u32));
@@ -964,9 +991,9 @@ impl Hooks for Standard<'_> {
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         let took = unit.kind == Kind::Animal
             && crate::animal::life::ambient_sleep(unit, world, ctx, at, self.data);
-        // An egg or a crate chooses nothing (behaviours 6.4): only the set that hatches the egg or
-        // shakes the crate runs.
-        let held = matches!(&unit.part, Part::Animal(a) if a.egg || a.crated);
+        // An egg, a crate or a darted animal chooses nothing (behaviours 6.4): only the set that
+        // hatches the egg or shakes the crate runs.
+        let held = matches!(&unit.part, Part::Animal(a) if a.egg || a.crated || a.tranq);
         let key = (!took && !held).then(|| ambient_key(unit));
         unit.runner.place = swim::place(unit, world, at);
         swim::nesting(unit, world, at);
@@ -1044,9 +1071,10 @@ impl Hooks for Standard<'_> {
         crate::animal::checks(unit, world, ctx, at, self.data);
         crate::guest::checks(unit, world, ctx, at, self.data);
         crate::staff::checks(unit, world, ctx, at, self.data);
-        // The checks end with the ambient choice, with the happiness of that moment.
+        // The checks end with the ambient choice, with the happiness of that moment; a darted
+        // animal chooses nothing (behaviours 6.4).
         let asked = match &mut unit.part {
-            Part::Animal(a) => std::mem::take(&mut a.ambient),
+            Part::Animal(a) => std::mem::take(&mut a.ambient) && !a.tranq,
             _ => false,
         };
         if asked {

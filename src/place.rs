@@ -747,7 +747,7 @@ fn check(
         .filter_map(|(i, e)| {
             let (c, shape) = (e.common.as_ref()?, world.shape(i)?);
             let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
-            let (fx, fy) = shape.footprint;
+            let (fx, fy) = world.unit_footprint(i)?;
             let rect = match c.rotation % 4 {
                 0 => (fx, fy),
                 _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),
@@ -891,7 +891,7 @@ fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
     let of = |e: &Entity| cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype));
     let counted =
         |x: i32, y: i32| near(x, y) && world.tile_index(x, y).is_some_and(|u| world.in_zoo(u));
-    let units = world.zoo.entities.iter().any(|e| {
+    let units = world.zoo.entities.iter().enumerate().any(|(i, e)| {
         let Some(c) = e
             .common
             .as_ref()
@@ -900,7 +900,11 @@ fn smarter(p: &Pending, world: &World, cat: &Catalogue) -> bool {
             return false;
         };
         let (ux, uy) = (c.x.div_euclid(64), c.y.div_euclid(64));
-        let [fx, fy, _] = of(e).map_or([0; 3], |t| t.footprint);
+        // The unit's own footprint, egg or crate included, turned with its facing (placing 5.2).
+        let (mut fx, mut fy) = world.unit_footprint(i).unwrap_or_default();
+        if c.rotation % 4 != 0 {
+            (fx, fy) = (fy, fx);
+        }
         counted(ux, uy)
             && (fx > 2 || fy > 2)
             && fx / 2 >= 2 * (ux - tx).abs()

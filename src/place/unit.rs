@@ -262,7 +262,7 @@ fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))
         if world.is_carried(c.id) {
             continue;
         }
-        let (fx, fy) = shape.footprint;
+        let (fx, fy) = world.unit_footprint(i).unwrap_or(shape.footprint);
         let rect = match c.rotation % 4 {
             0 => (fx, fy),
             _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),

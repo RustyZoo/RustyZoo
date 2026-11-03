@@ -88,6 +88,15 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The egg and the crate footprints of an animal type, in that order (see
+    /// [`EntityType::form_footprint`]).
+    pub fn forms(&self) -> [(i32, i32); 2] {
+        [true, false].map(|egg| {
+            let [x, y] = self.form_footprint(egg);
+            (x, y)
+        })
+    }
+
     /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
     /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
     pub fn form_footprint(&self, egg: bool) -> [i32; 2] {
@@ -250,6 +259,8 @@ pub struct Catalogue {
     /// `cNonPathCost` of the unit class file `ztunit.ai` (pathfinding 6.5): the guests' cost off the
     /// paths; `None` when the file or the key is missing.
     pub guest_non_path_cost: Option<u32>,
+    /// `cPredatorRadius` of the same file (animals 11.8), in tiles; `None` when missing.
+    pub predator_radius: Option<i32>,
     /// The award definitions (`award*.cfg`), read with the types.
     pub awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
@@ -561,12 +572,15 @@ impl Catalogue {
         }
         let (items, warnings) = crate::building::items::load(vfs);
         catalogue.items = items;
-        catalogue.guest_non_path_cost = vfs
+        let unit = vfs
             .read("ztunit.ai")
             .ok()
-            .and_then(|b| Config::parse(&b).ok())
-            .and_then(|c| crate::timing::ini_whole(&c, "Characteristics/Integers", "cNonPathCost"))
-            .map(|v| v.max(0) as u32);
+            .and_then(|b| Config::parse(&b).ok());
+        let key = |k| {
+            (unit.as_ref()).and_then(|c| crate::timing::ini_whole(c, "Characteristics/Integers", k))
+        };
+        catalogue.guest_non_path_cost = key("cNonPathCost").map(|v| v.max(0) as u32);
+        catalogue.predator_radius = key("cPredatorRadius");
         catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {

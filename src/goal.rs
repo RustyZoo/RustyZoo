@@ -22,6 +22,7 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 mod animal;
+mod avoid;
 mod guest;
 mod staff;
 #[cfg(test)]
@@ -39,6 +40,8 @@ pub const SITE: u8 = 100;
 pub const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
 pub const DUTIES: u8 = 110;
+/// A keeper darts and crates an escaped animal (staff 7.11).
+pub const CAPTURE: u8 = 111;
 pub const GAWK: u8 = 112;
 /// A guest walks to a scenery object and gawks at it (goals 11.12).
 pub const SCENERY: u8 = 128;
@@ -207,6 +210,8 @@ pub enum Goal {
     Duties,
     /// 0x78 of a maintenance worker: take a task of the pool and do its jobs (staff 8.3).
     Maint,
+    /// The capture task of a keeper: dart and crate an escaped animal (staff 7.11).
+    Capture,
     /// 0x7e and 0x7f of a keeper: enter a tank and leave it by the ladders (tank staff 4).
     EnterTank,
     ExitTank,
@@ -244,6 +249,8 @@ pub enum Goal {
     Eating,
     /// 0x79 of a guest: be sick on the spot (11.10).
     Sick,
+    /// 0x75 of a guest or a staff member: run from a predator (11.11).
+    Avoid,
 }
 
 impl Goal {
@@ -255,6 +262,7 @@ impl Goal {
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
             (DUTIES, Kind::Keeper) => Some(Goal::Duties),
+            (CAPTURE, Kind::Keeper) => Some(Goal::Capture),
             (MAINT, Kind::Worker) => Some(Goal::Maint),
             (ENTER_TANK, Kind::Keeper) => Some(Goal::EnterTank),
             (EXIT_TANK, Kind::Keeper) => Some(Goal::ExitTank),
@@ -279,6 +287,8 @@ impl Goal {
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             (SICK, Kind::Guest) => Some(Goal::Sick),
+            (AVOID, Kind::Animal) => None,
+            (AVOID, _) => Some(Goal::Avoid),
             _ => None,
         }
     }
@@ -288,6 +298,7 @@ impl Goal {
             Goal::Base => RANDOM,
             Goal::Habitat | Goal::Exhibit => HABITAT,
             Goal::Duties => DUTIES,
+            Goal::Capture => CAPTURE,
             Goal::Maint => MAINT,
             Goal::EnterTank => ENTER_TANK,
             Goal::ExitTank => EXIT_TANK,
@@ -310,6 +321,7 @@ impl Goal {
             Goal::EatStand => EAT_STANDING,
             Goal::Eating => EATING_STANDING,
             Goal::Sick => SICK,
+            Goal::Avoid => AVOID,
         }
     }
 
@@ -323,17 +335,23 @@ impl Goal {
                 cx.duties_init();
                 true
             }
+            Goal::Capture => cx.capture_init(),
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
             Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
+            Goal::Leave => cx.leave_init(),
             Goal::ExitTank => cx.exit_init(),
             _ => true,
         }
     }
 
     /// Called when a stale object is removed.
-    fn abort(self, _: &mut Cx) {}
+    fn abort(self, cx: &mut Cx) {
+        if self == Goal::Capture {
+            cx.done_capture();
+        }
+    }
 
     /// 4.3: one update of the object.
     fn update(self, cx: &mut Cx) {
@@ -355,6 +373,7 @@ impl Goal {
     fn check_done(self, cx: &mut Cx) {
         match self {
             Goal::Leave => return cx.leave_check_done(),
+            Goal::Avoid => return cx.avoid_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Scenery => return cx.scenery_check_done(),
             Goal::DoScenery => return cx.do_scenery_check_done(),
@@ -362,6 +381,7 @@ impl Goal {
             Goal::Talk => return cx.talk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
+            Goal::Capture => return cx.capture_check_done(),
             // It never completes by itself (staff 8.1).
             Goal::Maint => return,
             Goal::EnterTank | Goal::ExitTank => return cx.ladder_task_check_done(),
@@ -390,6 +410,7 @@ impl Goal {
             Goal::Duties => cx.duties_decide(),
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
+            Goal::Avoid => cx.avoid_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
             Goal::Site => cx.site_decide(),
@@ -410,6 +431,7 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Exhibit => cx.exhibit_complete(),
             Goal::Duties => cx.duties_complete(),
+            Goal::Capture => cx.capture_complete(),
             Goal::EnterTank | Goal::ExitTank => cx.ladder_task_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
@@ -429,12 +451,13 @@ impl Goal {
             Goal::EatStand => cx.set_task(EATING_STANDING, 1, 0, None),
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
+            Goal::Avoid => cx.avoid_exit(),
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
 }
 
-/// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the worker's jobs 7 to
+/// The sub-goal object of a job: the keeper's jobs 1 to 6 and 13 to 15 (staff 7.6 to 7.8, 7.11), the worker's jobs 7 to
 /// 10, 16, 17, 26 and 27 (staff 8.4 to 8.7, tank staff 8), the base one (9.2) for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sub {
@@ -446,7 +469,7 @@ pub enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Keeper, 1..=6 | 13..=15 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
@@ -584,6 +607,22 @@ pub fn lose_task(unit: &mut Unit) {
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
     crate::unit::movement::stop(unit);
     unit.destination = None;
+}
+
+/// A unit stops everything with the goal reset (staff 7.11, unit placing 9.1): its record and its
+/// need flags go, its walk and its set stop, and its hold is lowered.
+pub fn stop_all(unit: &mut Unit) {
+    unit.goal.record = Record::default();
+    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
+    unit.goal.wants_to_decide = false;
+    crate::unit::movement::stop(unit);
+    unit.destination = None;
+    unit.runner = Default::default();
+    unit.mover.emergency = false;
+    unit.wait = 0;
+    if let Part::Animal(a) = &mut unit.part {
+        (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
+    }
 }
 
 /// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
@@ -782,6 +821,8 @@ impl Cx<'_, '_> {
         self.unit.goal.wants_to_decide = false;
         // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
         self.clear_target();
+        // A guest pays its own cost off the paths again (pathfinding 6.5).
+        self.unit.mover.emergency = false;
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
             // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
@@ -804,9 +845,9 @@ impl Cx<'_, '_> {
         self.record().job_target.clear();
     }
 
-    /// A dying, crated or egg animal runs no goal update (10.1 point 1).
+    /// A dying, darted, crated or egg animal runs no goal update (10.1 point 1).
     fn halted(&self) -> bool {
-        matches!(&self.unit.part, Part::Animal(a) if a.dying || a.crated || a.egg)
+        matches!(&self.unit.part, Part::Animal(a) if a.dying || a.tranq || a.crated || a.egg)
     }
 
     /// 7.3: whether an idle unit wanders: it is not in the building chain and not chased (M7).
@@ -880,12 +921,13 @@ impl Cx<'_, '_> {
 
     /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
     /// else it picks again: the sites to see, else the seen count goes and it may decide to leave.
-    /// Point 1 (a guest in an exhibit or a tank leaves it) and point 2 (a guest that is to leave
-    /// takes the leave task) come first.
+    /// Point 1 (a guest in an exhibit or a tank leaves it), point 2 (a guest that is to leave
+    /// takes the leave task) and point 3 (a frightened guest avoids its predator) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
         self.spread();
         if self.exit_ladder()
             || self.leave_ladder()
+            || self.fright_ladder(task)
             || self.sick_ladder()
             || self.stand_ladder(task)
         {

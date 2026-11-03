@@ -279,6 +279,7 @@ impl Run {
                 let (world, money, cat) = (&mut self.world, &mut self.money, &self.cat);
                 let removed =
                     crate::place::bulldozer::remove(world, money, cat, id, &mut self.sim.rng);
+                self.sim.absorb(world);
                 let members = removed
                     .as_ref()
                     .map_or_else(Vec::new, |r| r.members.clone());
@@ -402,6 +403,7 @@ impl Run {
             gated: false,
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
+            forms: None,
         };
         let Some(id) = self.world.add(entity, Some(shape)) else {
             return false;

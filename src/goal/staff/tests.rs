@@ -464,6 +464,7 @@ fn bush_shape() -> crate::world::Shape {
         gated: false,
         tank: crate::world::TankKind::NONE,
         walkable: (false, false),
+        forms: None,
     }
 }
 

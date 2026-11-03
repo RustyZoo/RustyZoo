@@ -1814,8 +1814,10 @@ fn new_animal() -> AnimalRecord {
         interval: 1600,
         mate_delay: Some(2),
         boxed: 1,
+        claim: 21,
+        tranq: true,
         home: [30, 40],
-        spare: (1..=73).collect(),
+        spare: (1..=68).collect(),
     }
 }
 
@@ -2850,8 +2852,8 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
         (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
-    let ones: Vec<usize> = (0..73).filter(|&i| back.spare[i] != 0).collect();
-    assert_eq!((back.spare.len(), ones), (73, vec![1, 6, 10, 14, 18, 22]));
+    let ones: Vec<usize> = (0..68).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (68, vec![1, 6, 10, 14, 18, 22]));
     assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
 }
 
@@ -2877,12 +2879,12 @@ fn an_animal_record_of_any_size_is_written_whole() {
     );
     assert_eq!(back.breath, Some(i32::MAX));
     assert_eq!(back.spare[..3], [9, 1, 0]);
-    assert_eq!(back.spare.len(), 73);
+    assert_eq!(back.spare.len(), 68);
     let long = AnimalRecord {
         spare: vec![1; 500],
         ..full
     };
-    assert_eq!(animal_back(&long).spare, vec![1; 73]);
+    assert_eq!(animal_back(&long).spare, vec![1; 68]);
     // An escape record is kept only with the flag 1.
     let none = AnimalRecord {
         escape: None,
@@ -3091,6 +3093,43 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
     assert!(z.entities.is_empty());
 }
 
+#[test]
+fn a_loaded_building_is_written_from_its_record() {
+    for v in [70, 74, 75, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(0).u32(0);
+        b.u32(2).u32(77).u32(2).u32(78).u32(1);
+        b.u32(14).z(16).z(8).u32(100);
+        if v >= 74 {
+            b.u32(5);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let bytes = file(v, 1, 1, &[], &[("building", "building", "shop", b.0)]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        let record = zoo.entities[0].common.as_mut().unwrap().building.as_mut();
+        let b = record.unwrap();
+        *b = BuildingRecord {
+            guests: [1, 2, 3],
+            income: [4, 5, 6],
+            upkeep: Some(7),
+            price: 8,
+            users: vec![(9, 1)],
+            users_now: 10,
+            fill: 11,
+            built: 12,
+            ..b.clone()
+        };
+        let want = b.clone();
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        let got = back.entities[0].common.as_ref().unwrap().building.clone();
+        assert_eq!(got, Some(want), "version {v}");
+    }
+}
+
 /// A show info of version 106 with a different number in every field.
 fn marked_show_info() -> Vec<u8> {
     let mut w = W::default();
@@ -3297,6 +3336,43 @@ fn the_scripts_and_the_two_counters_are_fields() {
         .read_section(&mut r)
         .unwrap_or_else(|e| panic!("{}", e.0));
     assert_eq!((shows.next_script, shows.next_show), (2000, 1000));
+}
+
+#[test]
+fn a_show_in_the_middle_of_its_cycle_is_written_back_as_it_is_and_its_unit_lists_are_not_saved() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let info = zoo.shows.infos[0]
+        .as_mut()
+        .expect("the habitat holds a show");
+    let state = |animal, item| ItemState {
+        script: 0,
+        animal,
+        item,
+        finished: item == 2,
+        aborted: false,
+        cue_sent: true,
+        ready: item == 2,
+        started: false,
+        done: item == 3,
+    };
+    info.schedule = vec![5400, 5401];
+    info.index = 1;
+    info.upkeep = [15.5f32.to_bits(), 7.25f32.to_bits(), 90.0f32.to_bits()];
+    info.records = vec![TypeRecord {
+        units: vec![21, 22],
+        ..info.records.first().cloned().expect("a type record")
+    }];
+    info.show.ready = true;
+    info.show.running = true;
+    info.show.stopped = false;
+    info.show.items = vec![state(21, -1), state(22, 2), state(23, 3)];
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    let read = back.shows.infos[0].as_ref().unwrap();
+    assert_eq!(read.show, zoo.shows.infos[0].as_ref().unwrap().show);
+    assert_eq!(read.upkeep, zoo.shows.infos[0].as_ref().unwrap().upkeep);
+    assert_eq!((read.schedule.clone(), read.index), (vec![5400, 5401], 1));
+    assert!(read.records[0].units.is_empty());
+    assert_eq!(back.write(&money).unwrap(), zoo.write(&money).unwrap());
 }
 
 #[test]

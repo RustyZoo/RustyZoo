@@ -152,7 +152,7 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
                 (true, _) => 1,
                 (_, true) => MAX,
                 _ if on_tank || wet(t) => 1,
-                _ if m.avoiding => m.emergency_cost,
+                _ if m.avoiding || m.emergency => m.emergency_cost,
                 _ => m.non_path_cost,
             };
             let afraid = units(w, m, t).iter().any(|u| m.predators.contains(&u.0));

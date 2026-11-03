@@ -110,8 +110,12 @@ impl Cx<'_, '_> {
 
     // ---- the ladder and the status tick
 
-    /// 5: with no task, or a done one, a guide starts a leg; the leg-start flag goes down.
+    /// 5: a frightened guide lets its group go and avoids its predator; else with no task, or a
+    /// done one, a guide starts a leg; the leg-start flag goes down.
     pub(in crate::goal) fn guide_ladder(&mut self, task: u8, done: bool) {
+        if self.staff_fright(task) {
+            return;
+        }
         if task == NONE || done {
             self.guide_state(|s| s.leg = false);
             self.set_task(LEG, 4, 0, None);
@@ -280,7 +284,7 @@ impl Cx<'_, '_> {
 
     /// 9.1: every guest that follows this guide is released, one draw each (every caller passes
     /// 100 per cent), and the list is emptied.
-    fn release(&mut self) {
+    pub(in crate::goal) fn release(&mut self) {
         release_followers(self.world, self.ctx, self.data, self.unit.id);
         self.guide_reset();
     }

@@ -26,7 +26,7 @@ use crate::place::path_shape;
 use crate::sim::Rng;
 use crate::timing::Date;
 use crate::world::{Shape, World};
-use crate::zoo::Entity;
+use crate::zoo::{BuildingRecord, Entity};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
@@ -109,8 +109,8 @@ pub struct Slot {
     /// unit placing 7.4), 0 for none.
     pub birth: i32,
     /// The draw places of a slot with the drawn-users flag (`cHasDrawSlots`; shows 4.3): the
-    /// positions relative to the building, as the slot's, and their heights; `None` for a slot
-    /// without the flag.
+    /// positions relative to the building, as the slot's, and their heights, `p / 2` of them;
+    /// `None` for a slot without the flag.
     pub places: Option<Vec<(i32, i32, i32)>>,
 }
 
@@ -162,23 +162,27 @@ impl Slot {
 }
 
 /// The draw places of a slot section (shows 4.3): `cHasDrawSlots` names a section of `p` values read
-/// in triples (x, y, height), one per place, and of `order` names of lists of `o` values; the
-/// first list counts the places. A section that is missing gives a flag with no places.
+/// in triples (x, y, height). The table has `p / 2` places, the first `p / 3` from the values and
+/// the rest (0, 0, 0); the order lists play no part. A section that is missing gives a flag with
+/// no places, and a slot of no capacity has no flag.
 fn draw_places(
     config: Option<&crate::config::Config>,
     slot: &crate::config::Section,
 ) -> Option<Vec<(i32, i32, i32)>> {
     let name = slot.get("cHasDrawSlots")?;
+    if slot.get("capacity").and_then(to_int).unwrap_or(0) <= 0 {
+        return None;
+    }
     let section = config.and_then(|c| c.section(name));
-    let count = (section.and_then(|s| s.get_all("order").first()))
-        .and_then(|list| config?.section(list))
-        .map_or(0, |list| list.get_all("o").len());
     let values: Vec<i32> = (section.map(|s| s.get_all("p")).unwrap_or_default())
         .iter()
         .map(|v| to_int(v).unwrap_or(0))
         .collect();
-    let triples = values.as_chunks::<3>().0.iter();
-    Some(triples.take(count).map(|&[x, y, z]| (x, y, z)).collect())
+    let mut places = vec![(0, 0, 0); values.len() / 2];
+    for (place, &[x, y, z]) in places.iter_mut().zip(values.as_chunks::<3>().0) {
+        *place = (x, y, z);
+    }
+    Some(places)
 }
 
 /// What a building type declares (guest buildings 3.1).
@@ -404,10 +408,31 @@ impl Live {
         }
     }
 
+    /// The record a save writes (zoo format 6.9): the figures, the price and the users now, over
+    /// `base`, which keeps the fill of a type that is not a trash can (a grandstand's flag is not
+    /// modelled) and the members.
+    pub fn record(&self, mut base: BuildingRecord, trash: bool) -> BuildingRecord {
+        let users: Vec<(u32, u32)> = (self.users.iter())
+            .map(|&(u, s, _)| (u, s as u32))
+            .collect();
+        base.users_now = (users.len() as u32).saturating_add(self.extra);
+        base.users = users;
+        base.guests = self.guests;
+        base.income = self.income.map(f32::to_bits);
+        base.upkeep = Some(self.upkeep.to_bits());
+        base.price = self.price.to_bits();
+        base.built = crate::timing::file_time(self.built);
+        if trash {
+            base.fill = self.fill;
+        }
+        base
+    }
+
     /// Seats `unit` on a free draw place of slot `slot` and returns the place and its position
     /// relative to the building (shows 4.3): `pick(capacity)` is drawn until the place is free (a
-    /// draw per try). Nothing is drawn when the slot has no free place; a draw past the places is
-    /// a place that is taken. The seats of users that left are dropped first.
+    /// draw per try), over the `capacity` seats of the slot. Nothing is drawn when the slot has no
+    /// free seat. A seat past the place table sits at (0, 0, 0). The seats of users that left are
+    /// dropped first.
     pub fn seat(
         &mut self,
         slot: usize,
@@ -419,7 +444,7 @@ impl Live {
         let users = &self.users;
         self.seats
             .retain(|s| users.iter().any(|u| u.0 == s.unit) && s.unit != unit);
-        let range = usize::try_from(capacity).unwrap_or(0).min(places.len());
+        let range = usize::try_from(capacity).unwrap_or(0);
         let taken = |place| {
             self.seats
                 .iter()
@@ -435,7 +460,7 @@ impl Live {
             }
         };
         self.seats.push(Seat { unit, slot, place });
-        Some(places[place])
+        Some(places.get(place).copied().unwrap_or_default())
     }
 
     /// The month changes (guest buildings 9): this month's figures become last month's.
@@ -447,16 +472,23 @@ impl Live {
 }
 
 /// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
-/// building starts its live state, with the date its months open are counted from (guest
+/// building or a compost starts its live state, with the date its months open are counted from (guest
 /// buildings 4).
 pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
-    if crate::month::is_guest_building(ty) {
-        let live = Live::new(&Kind::of(ty, world.units.prices.default));
+    let kind = Kind::of(ty, world.units.prices.default);
+    if keeps_figures(ty, &kind) {
+        let live = Live::new(&kind);
         world
             .units
             .buildings
             .insert(id, Live { built: now, ..live });
     }
+}
+
+/// Whether a building of this type has figures of its own: a guest building, and the compost,
+/// which earns from the dung it recycles (zoo format 6.9).
+fn keeps_figures(ty: &EntityType, kind: &Kind) -> bool {
+    crate::month::is_guest_building(ty) || kind.satisfies("compost")
 }
 
 /// The building at position `at` of the entity list of a zoo just loaded takes the figures its
@@ -472,10 +504,10 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
         return;
     };
-    if !crate::month::is_guest_building(ty) {
+    let kind = Kind::of(ty, world.units.prices.default);
+    if !keeps_figures(ty, &kind) {
         return;
     }
-    let kind = Kind::of(ty, world.units.prices.default);
     let id = e.common.as_ref().map_or(0, |c| c.id);
     let built = Date::from_file_time(record.built).game_ms();
     let live = Live {

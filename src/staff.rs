@@ -1,7 +1,7 @@
 //! Staff (staff 3 to 5): the types the Hire panel lists, what hiring books and where, the monthly
 //! cost, and the colours and counters a new staff member draws when it is created (the pending one
 //! when an item of the Hire panel is chosen, the staff of a loaded map at the load); a keeper's
-//! status tick and what leaving does to the exhibit he was going to.
+//! status tick (with the look for a predator) and what leaving does to the exhibit he was going to.
 //!
 //! The keeper class (the zookeeper, the scientist and the marine specialist), the tour guide and
 //! the maintenance worker are staff; the helicopter comes with the scenarios.
@@ -196,6 +196,7 @@ impl Staff {
     /// and guests the record's tiles and ids stand for, in the record's order.
     pub fn restore(&mut self, r: &StaffRecord, assigned: Vec<u32>, members: Vec<u32>) {
         (self.work, self.chase) = (r.work, r.chase);
+        self.captured = r.captured;
         self.crowd = r.crowd.unwrap_or(self.crowd);
         self.assigned.clear();
         for x in assigned {
@@ -232,6 +233,7 @@ impl Staff {
             crowd: if guide { Some(self.crowd) } else { base.crowd },
             members: self.members.clone(),
             leg: self.leg,
+            captured: self.captured,
             duties,
             ..base
         }
@@ -252,29 +254,51 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     }
 }
 
-/// A staff member's status tick: a guide's gathering countdown (tour guide 4); a keeper's
-/// assigned exhibits with fewer than 2 tiles go (staff 4.2).
+/// A staff member's status tick (staff 4.2): a keeper's assigned exhibits with fewer than 2 tiles
+/// go; then every member's chase counter, which looks for a predator when it fires (unless he
+/// avoids one already) and raises or lowers his frightened flag; then a guide's gathering
+/// countdown (tour guide 4).
 pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
-    if unit.kind == Kind::Guide {
-        return crate::goal::crowd(unit, world, ctx, at, data);
-    }
     let Part::Staff(s) = &unit.part else {
         return;
     };
     let who = type_of(ctx.cat, &world.zoo.entities[at]);
-    let small = |x: &u32| {
-        who.is_some_and(|w| assign::block_service(world, ctx.cat, *x, w, (false, false)) == 1)
-    };
-    let kept: Vec<u32> = s.assigned.iter().copied().filter(|x| !small(x)).collect();
-    if let (true, Part::Staff(s)) = (unit.kind == Kind::Keeper, &mut unit.part) {
-        s.assigned = kept;
+    if unit.kind == Kind::Keeper {
+        let small = |x: &u32| {
+            who.is_some_and(|w| assign::block_service(world, ctx.cat, *x, w, (false, false)) == 1)
+        };
+        let kept: Vec<u32> = s.assigned.iter().copied().filter(|x| !small(x)).collect();
+        if let Part::Staff(s) = &mut unit.part {
+            s.assigned = kept;
+        }
+    }
+    let period = who
+        .and_then(|t| number(t, "cChaseCheck"))
+        .map_or(2, |n| n as i32);
+    if let Part::Staff(s) = &mut unit.part {
+        let fired = s.chase == 0;
+        s.chase = if fired { period } else { s.chase }.wrapping_sub(1);
+        if fired && unit.goal.record.task != crate::goal::AVOID {
+            let (cat, removed) = (ctx.cat, &*ctx.removals);
+            unit.frightened = crate::unit::predator::find(world, cat, removed, unit, at, 0) != 0;
+        }
+    }
+    if unit.kind == Kind::Guide {
+        crate::goal::crowd(unit, world, ctx, at, data);
     }
 }
 
 /// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. A guide lets its group
-/// go, a worker gives his task back.
+/// go, a worker gives his task back, and a member capturing an animal frees it.
 pub fn leaves(world: &mut World, id: u32) {
+    // A member who was capturing an animal releases its claim (unit placing 8.2).
+    if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
+        let caught = std::mem::take(&mut s.captured);
+        if let Some(Part::Animal(a)) = world.units.get_mut(caught).map(|u| &mut u.part) {
+            a.claim = 0;
+        }
+    }
     // A guide picked up or removed lets its group go: the guests notice at their next update.
     if let Some(Part::Staff(s)) = (world.units.get_mut(id))
         .filter(|u| u.kind == Kind::Guide)
