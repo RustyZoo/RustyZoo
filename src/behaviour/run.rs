@@ -788,7 +788,6 @@ impl Runner {
 
     /// Runs the current call of the set at depth `k` once; returns whether it succeeded. It
     /// raises the level's `done` when the call has finished (behaviours 5).
-    #[allow(clippy::too_many_lines)] // #1045
     fn run(&mut self, k: usize, call: &Call, anim: &mut Animation, env: &mut Env) -> bool {
         let timing = |name: &str| env.data.timing(env.unit, name);
         let found = |name: &String| timing(name).is_some();
@@ -835,21 +834,7 @@ impl Runner {
                 return true;
             }
             Op::PlaySet(name) => return self.nest_call(env, name),
-            Op::PlaySetProb(rows) => {
-                // One draw, and another after every row that is passed (behaviours 5.3).
-                let mut draw = env.rng.pick(100) as i32 + 1;
-                let mut left = 100i64;
-                for (name, weight) in rows {
-                    if draw <= *weight {
-                        return self.nest_call(env, name);
-                    }
-                    left -= i64::from(*weight);
-                    if 0 < left && left <= 100 {
-                        draw = env.rng.pick(left as u32) as i32 + 1;
-                    }
-                }
-                return false;
-            }
+            Op::PlaySetProb(rows) => return self.nest_prob(env, rows),
             Op::PlaySetTerrain { land, water, tank } => {
                 let name = match (self.tank_mode, tank) {
                     (4, Some((_, under))) => under,
@@ -863,27 +848,7 @@ impl Runner {
                 let name = if self.tank_mode == 4 { tank } else { land };
                 return self.nest_call(env, name);
             }
-            Op::Routine(routine) => {
-                // The goals run every step anyway (goals 6.3): the call is done when the play
-                // state is ready. A call for another class of unit does nothing; the keeper's
-                // fails (behaviours 5.5).
-                let own = match routine {
-                    Routine::Keeper => "keeper",
-                    Routine::Guest => "guests",
-                    Routine::Guide => "tour",
-                    Routine::Maint => "maint",
-                };
-                if env.unit.class != own {
-                    return *routine != Routine::Keeper;
-                }
-                // It makes idle the base at every run (goals 6.3), like the move call makes its
-                // animation: a finished walk keeps its move animation until the cut shows it.
-                if !(*routine == Routine::Guide && self.talking) && found(&"idle".to_string()) {
-                    anim.base_to("idle");
-                }
-                self.chain[k].done = self.ready;
-                return true;
-            }
+            Op::Routine(routine) => return self.routine(k, *routine, anim, env),
             Op::KeepControl | Op::Spray | Op::FaceDirection => {
                 return true;
             }
@@ -961,6 +926,46 @@ impl Runner {
             anim.finish(&timing);
         }
         (self.playing, self.ready) = (true, false);
+        true
+    }
+
+    /// A set picked at random among the rows (behaviours 5.3): one draw, and another after every
+    /// row that is passed.
+    fn nest_prob(&mut self, env: &mut Env, rows: &[(String, i32)]) -> bool {
+        let mut draw = env.rng.pick(100) as i32 + 1;
+        let mut left = 100i64;
+        for (name, weight) in rows {
+            if draw <= *weight {
+                return self.nest_call(env, name);
+            }
+            left -= i64::from(*weight);
+            if 0 < left && left <= 100 {
+                draw = env.rng.pick(left as u32) as i32 + 1;
+            }
+        }
+        false
+    }
+
+    /// A routine call (behaviours 5.5): the goals run every step anyway (goals 6.3), so the call
+    /// is done when the play state is ready. A call for another class of unit does nothing; the
+    /// keeper's fails.
+    fn routine(&mut self, k: usize, routine: Routine, anim: &mut Animation, env: &Env) -> bool {
+        let own = match routine {
+            Routine::Keeper => "keeper",
+            Routine::Guest => "guests",
+            Routine::Guide => "tour",
+            Routine::Maint => "maint",
+        };
+        if env.unit.class != own {
+            return routine != Routine::Keeper;
+        }
+        // It makes idle the base at every run (goals 6.3), like the move call makes its
+        // animation: a finished walk keeps its move animation until the cut shows it.
+        let idle = env.data.timing(env.unit, "idle").is_some();
+        if !(routine == Routine::Guide && self.talking) && idle {
+            anim.base_to("idle");
+        }
+        self.chain[k].done = self.ready;
         true
     }
 
