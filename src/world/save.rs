@@ -62,7 +62,7 @@ impl World {
     /// makes them, so it never saves them or their thoughts), with the live thoughts and the live
     /// names, statistics and last service of the exhibits. An exhibit is matched with the record that
     /// names its tile; a record whose tile is in no exhibit keeps what it stored.
-    pub fn saved(&self, known: impl Fn(&Entity) -> bool) -> Zoo {
+    pub(crate) fn saved(&self, known: impl Fn(&Entity) -> bool) -> Zoo {
         let mut zoo = self.zoo.clone();
         zoo.drop_unknown(known);
         let ids: HashSet<u32> = (zoo.entities.iter())
@@ -107,7 +107,7 @@ impl World {
     /// gets the record of a new one, a guest's record takes the live guest's fields, a guest
     /// building's record takes its live users and figures (zoo format 6.9), and a staff member's
     /// record takes its live state.
-    pub fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
+    pub(crate) fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         // A save writes the install language, whatever the file loaded said (localisation 10).
         zoo.locale = self.language.number;
         let now = crate::timing::file_time(zoo.clocks.calendar);

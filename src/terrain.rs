@@ -23,8 +23,8 @@ const ELEVATION_COST: f32 = 8.0;
 /// The most a price may be: a larger one is read as a typing mistake.
 const MAX_PRICE: f32 = 1e9;
 /// The brush sides.
-pub const MIN_SIZE: usize = 1;
-pub const MAX_SIZE: usize = 5;
+pub(crate) const MIN_SIZE: usize = 1;
+pub(crate) const MAX_SIZE: usize = 5;
 /// The terrain types the list leaves out: waterfall, trampled ground and gunnite.
 const UNLISTED: [u8; 3] = [12, 16, 17];
 /// The type that guests make: shown in the paint tab (6.4).
@@ -37,13 +37,13 @@ const TRAMPLED_COLOR: [u8; 3] = [0xFB, 0xC0, 0x0A];
 
 /// What a modification of the ground is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     Modify,
     Paint,
 }
 
 impl Mode {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Mode::Modify => "modify",
             Mode::Paint => "paint",
@@ -126,7 +126,7 @@ fn price(value: &[u8]) -> f32 {
 
 /// The price of one step of elevation: `[Map] elevationCost` of the ini file, 8 when it is
 /// missing, negative or too large (terrain editing 8.1).
-pub fn elevation_cost(ini: &[u8]) -> f32 {
+pub(crate) fn elevation_cost(ini: &[u8]) -> f32 {
     Config::parse(ini)
         .ok()
         .and_then(|c| {
@@ -138,22 +138,22 @@ pub fn elevation_cost(ini: &[u8]) -> f32 {
 
 /// What an object needs of the ground (the keys `cSwims` and `cOnlySwims`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Habit {
+pub(crate) struct Habit {
     pub swims: bool,
     pub only_swims: bool,
 }
 
 /// A tile of the map by its column and row.
-pub type Cell = (u32, u32);
+pub(crate) type Cell = (u32, u32);
 
 /// The tile under a window point of the world.
-pub type Under<'a> = &'a dyn Fn(&World, (i32, i32)) -> Option<Cell>;
+pub(crate) type Under<'a> = &'a dyn Fn(&World, (i32, i32)) -> Option<Cell>;
 
 /// How the entities say what they need of the ground.
-pub type Habits<'a> = &'a dyn Fn(&Entity) -> Habit;
+pub(crate) type Habits<'a> = &'a dyn Fn(&Entity) -> Habit;
 
 /// What an entity needs of the ground, from its type; an entity of an unknown type does not swim.
-pub fn habit(catalogue: &Catalogue, entity: &Entity) -> Habit {
+pub(crate) fn habit(catalogue: &Catalogue, entity: &Entity) -> Habit {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     catalogue
         .find(
@@ -168,7 +168,7 @@ pub fn habit(catalogue: &Catalogue, entity: &Entity) -> Habit {
 /// flag is on for the value 1 only). A type that swims and is neither a land nor an underwater
 /// type (`cLand` is on when missing) lives in water alone. A type without characteristics does
 /// not swim.
-pub fn type_habit(ty: &EntityType) -> Habit {
+pub(crate) fn type_habit(ty: &EntityType) -> Habit {
     let Some(section) = ty
         .config
         .as_deref()
@@ -189,7 +189,7 @@ pub fn type_habit(ty: &EntityType) -> Habit {
 /// The top left tile of a brush of `size` tiles a side centred on `centre`, moved back inside a
 /// map of `width` by `height` tiles when it sticks out (terrain editing 4.2). An even brush has
 /// its centre tile at the upper left of its middle.
-pub fn brush_origin(size: usize, centre: (i32, i32), width: u32, height: u32) -> (i32, i32) {
+pub(crate) fn brush_origin(size: usize, centre: (i32, i32), width: u32, height: u32) -> (i32, i32) {
     let n = size.clamp(MIN_SIZE, MAX_SIZE) as i32;
     let lo = (n - 1) / 2;
     let fit = |c: i32, side: u32| {
@@ -204,13 +204,13 @@ pub fn brush_origin(size: usize, centre: (i32, i32), width: u32, height: u32) ->
 
 /// The first state of each tile a session touched.
 #[derive(Debug, Default)]
-pub struct Session {
+pub(crate) struct Session {
     touched: Vec<(usize, Tile)>,
 }
 
 impl Session {
     /// Records `tile` as tile `t` was, unless the session has touched it.
-    pub fn touch(&mut self, t: usize, tile: Tile) {
+    pub(crate) fn touch(&mut self, t: usize, tile: Tile) {
         if !self.touched.iter().any(|&(n, _)| n == t) {
             self.touched.push((t, tile));
         }
@@ -219,7 +219,7 @@ impl Session {
     /// The cost of the session, computed again from the snapshot (terrain editing 8.2): for each
     /// touched tile the largest change of a corner times the step price, and the price of the
     /// type it has now when that differs from its first.
-    pub fn cost(&self, world: &World, elevation: f32, types: &[Type]) -> f32 {
+    pub(crate) fn cost(&self, world: &World, elevation: f32, types: &[Type]) -> f32 {
         self.touched
             .iter()
             .filter_map(|&(t, old)| Some((old, world.zoo.tiles.get(t)?)))
@@ -240,7 +240,7 @@ impl Session {
 
     /// Puts every touched tile back and forgets them (terrain editing 8.5): elevations and shape
     /// always, the type only when the tile accepts it as it is now, before its shape is put back.
-    pub fn restore(&mut self, world: &mut World, habits: Habits, types: &[Type]) {
+    pub(crate) fn restore(&mut self, world: &mut World, habits: Habits, types: &[Type]) {
         for (t, old) in std::mem::take(&mut self.touched) {
             let width = world.zoo.width as usize;
             let terrain = if accepts(world, habits, types, t, old.terrain) {
@@ -258,7 +258,7 @@ impl Session {
         }
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.touched.clear();
     }
 
@@ -270,7 +270,7 @@ impl Session {
 
 /// What leaving the tool did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Left {
+pub(crate) enum Left {
     /// There was nothing to pay or the session was paid.
     Kept,
     /// The cash did not cover the session: it was cancelled.
@@ -278,7 +278,7 @@ pub enum Left {
 }
 
 /// The terrain tool: the brush, the paint type, the session.
-pub struct Tool {
+pub(crate) struct Tool {
     types: Vec<Type>,
     elevation: f32,
     mode: Option<Mode>,
@@ -308,7 +308,7 @@ pub struct Tool {
 
 impl Tool {
     /// The tool of a game: the types of the install and the price of a step.
-    pub fn new(types: Vec<Type>, elevation: f32) -> Tool {
+    pub(crate) fn new(types: Vec<Type>, elevation: f32) -> Tool {
         Tool {
             types,
             elevation,
@@ -330,13 +330,13 @@ impl Tool {
     }
 
     /// The mode while a terrain tab is the map view's tool.
-    pub fn mode(&self) -> Option<Mode> {
+    pub(crate) fn mode(&self) -> Option<Mode> {
         self.mode
     }
 
     /// The cursor while a terrain tab is the map view's tool (terrain editing 7.1): the painter's,
     /// or the shaper's idle, dragging (button down) and levelling (button down in a level mode).
-    pub fn cursor(&self) -> Option<u32> {
+    pub(crate) fn cursor(&self) -> Option<u32> {
         Some(match (self.mode?, self.pressed, self.level) {
             (Mode::Paint, ..) => cursor::TERRAIN_PAINT,
             (Mode::Modify, false, _) => cursor::TERRAIN_IDLE,
@@ -345,41 +345,41 @@ impl Tool {
         })
     }
 
-    pub fn size(&self) -> usize {
+    pub(crate) fn size(&self) -> usize {
         self.size
     }
 
-    pub fn kind(&self) -> u8 {
+    pub(crate) fn kind(&self) -> u8 {
         self.kind
     }
 
     /// The shaping mode: whether the ground is kept joined, and whether the brush is brought to a
     /// height instead of being dragged.
-    pub fn shaping(&self) -> (bool, bool) {
+    pub(crate) fn shaping(&self) -> (bool, bool) {
         (self.contiguous, self.level)
     }
 
-    pub fn set_shaping(&mut self, contiguous: bool, level: bool) {
+    pub(crate) fn set_shaping(&mut self, contiguous: bool, level: bool) {
         (self.contiguous, self.level) = (contiguous, level);
     }
 
     /// The types the paint list shows, in order.
-    pub fn listed(&self) -> Vec<&Type> {
+    pub(crate) fn listed(&self) -> Vec<&Type> {
         self.types.iter().filter(|t| t.listed).collect()
     }
 
     /// Every type of the install, by number.
-    pub fn types(&self) -> &[Type] {
+    pub(crate) fn types(&self) -> &[Type] {
         &self.types
     }
 
     /// The type with this number.
-    pub fn find(&self, kind: u8) -> Option<&Type> {
+    pub(crate) fn find(&self, kind: u8) -> Option<&Type> {
         self.types.iter().find(|t| t.kind == kind)
     }
 
     /// The tool becomes the map view's tool: the session starts empty (terrain editing 3.1).
-    pub fn enter(&mut self, mode: Mode) {
+    pub(crate) fn enter(&mut self, mode: Mode) {
         self.mode = Some(mode);
         self.session.clear();
         self.centre = None;
@@ -390,7 +390,7 @@ impl Tool {
 
     /// The tool is left: the session is accepted when the cash covers it, else cancelled
     /// (terrain editing 8.6).
-    pub fn leave(
+    pub(crate) fn leave(
         &mut self,
         world: &mut World,
         habits: Habits,
@@ -413,14 +413,14 @@ impl Tool {
     }
 
     /// The cost of the session.
-    pub fn cost(&self, world: &World) -> f32 {
+    pub(crate) fn cost(&self, world: &World) -> f32 {
         self.session.cost(world, self.elevation, &self.types)
     }
 
     /// Pays the session and starts a new one; the cost of the brush is worked out again. A
     /// session that costs nothing is kept as it is (terrain editing 8.4). The undo list becomes
     /// the one action that takes the whole session back.
-    pub fn accept(
+    pub(crate) fn accept(
         &mut self,
         world: &mut World,
         habits: Habits,
@@ -439,7 +439,7 @@ impl Tool {
     }
 
     /// Takes the session back; the undo list is emptied (terrain editing 8.5).
-    pub fn cancel(&mut self, world: &mut World, habits: Habits, lines: &mut Vec<String>) {
+    pub(crate) fn cancel(&mut self, world: &mut World, habits: Habits, lines: &mut Vec<String>) {
         if self.session.touched.is_empty() {
             return;
         }
@@ -450,7 +450,7 @@ impl Tool {
     }
 
     /// Sets the brush side; refused outside 1 to 5.
-    pub fn set_size(&mut self, size: usize) -> bool {
+    pub(crate) fn set_size(&mut self, size: usize) -> bool {
         if !(MIN_SIZE..=MAX_SIZE).contains(&size) {
             return false;
         }
@@ -459,7 +459,7 @@ impl Tool {
     }
 
     /// Chooses the paint type; refused for a type that is not in the list.
-    pub fn set_kind(&mut self, kind: u8) -> bool {
+    pub(crate) fn set_kind(&mut self, kind: u8) -> bool {
         match self.types.iter().any(|t| t.kind == kind && t.listed) {
             true => {
                 self.kind = kind;
@@ -470,7 +470,7 @@ impl Tool {
     }
 
     /// The tiles of the brush, in rows.
-    pub fn tiles(&self, world: &World) -> Vec<usize> {
+    pub(crate) fn tiles(&self, world: &World) -> Vec<usize> {
         let Some((x0, y0)) = self.brush else {
             return Vec::new();
         };
@@ -482,14 +482,19 @@ impl Tool {
     }
 
     /// Whether tile `t` accepts the paint type (terrain editing 6.2).
-    pub fn accepts(&self, world: &World, habits: Habits, t: usize) -> bool {
+    pub(crate) fn accepts(&self, world: &World, habits: Habits, t: usize) -> bool {
         accepts(world, habits, &self.types, t, self.kind)
     }
 
     /// Places the brush around the tile under the pointer and works out what painting it would
     /// cost; whether it moved. It does not move when the tile is off the map or is the brush's
     /// own centre already.
-    pub fn place(&mut self, world: &World, habits: Habits, tile: Option<(u32, u32)>) -> bool {
+    pub(crate) fn place(
+        &mut self,
+        world: &World,
+        habits: Habits,
+        tile: Option<(u32, u32)>,
+    ) -> bool {
         let Some(centre) =
             tile.and_then(|(x, y)| Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?)))
         else {
@@ -515,7 +520,7 @@ impl Tool {
     }
 
     /// Places the brush again after its side or the paint type changed.
-    pub fn refresh(&mut self, world: &World, habits: Habits) {
+    pub(crate) fn refresh(&mut self, world: &World, habits: Habits) {
         if let Some(centre) = self.centre {
             self.set_centre(world, habits, centre);
         }
@@ -523,13 +528,13 @@ impl Tool {
 
     /// What painting the brush where it is costs: the price of the type for each tile that
     /// accepts it.
-    pub fn brush_cost(&self) -> f32 {
+    pub(crate) fn brush_cost(&self) -> f32 {
         self.brush_cost
     }
 
     /// The amount written next to the pointer in the paint tab: minus what painting the brush
     /// where it is costs, 0 when nothing would be painted (terrain editing 7.3).
-    pub fn pointer_amount(&self) -> Option<i64> {
+    pub(crate) fn pointer_amount(&self) -> Option<i64> {
         (self.mode == Some(Mode::Paint)).then(|| whole(self.brush_cost).saturating_neg())
     }
 
@@ -537,7 +542,7 @@ impl Tool {
     /// the tile is not the one asked about last (which is never forgotten), that of its terrain
     /// type (terrain editing 7.3). `None` for no change, a tile off the map (it changes nothing) or
     /// a type without help.
-    pub fn help_at(&mut self, world: &World, tile: Option<Cell>) -> Option<i32> {
+    pub(crate) fn help_at(&mut self, world: &World, tile: Option<Cell>) -> Option<i32> {
         let tile = tile.filter(|_| self.mode == Some(Mode::Paint) && !self.pressed)?;
         if self.helped == Some(tile) {
             return None;
@@ -564,7 +569,7 @@ impl Tool {
     /// The left button went down on the map at the window point `at`, on tile `tile` (terrain
     /// editing 5.6 and 6.3): the stroke begins; painting, the brush paints at once; in a level
     /// mode it takes the height of the tile and makes a step at once.
-    pub fn press(
+    pub(crate) fn press(
         &mut self,
         world: &mut World,
         habits: Habits,
@@ -595,7 +600,7 @@ impl Tool {
     /// the way: when the pointer moved more than 16 pixels it is cut into 10 points, the new
     /// position first; shaping, the brush follows by the rules of its mode and the vertical drag
     /// makes steps.
-    pub fn moved(
+    pub(crate) fn moved(
         &mut self,
         world: &mut World,
         habits: Habits,
@@ -724,7 +729,7 @@ impl Tool {
     }
 
     /// The button went up.
-    pub fn release(&mut self) {
+    pub(crate) fn release(&mut self) {
         self.pressed = false;
         self.last = None;
     }
@@ -764,7 +769,7 @@ impl Tool {
     /// The highlights: the tiles of the brush, green for one the tool may change and red for one
     /// outside the zoo or, painting, one that does not accept the type unless it has it (terrain
     /// editing 7.2); painting, the trampled tiles of the map in their colour.
-    pub fn marks(&self, world: &World, habits: Habits) -> Vec<Mark> {
+    pub(crate) fn marks(&self, world: &World, habits: Habits) -> Vec<Mark> {
         let Some(mode) = self.mode else {
             return Vec::new();
         };
@@ -807,7 +812,7 @@ fn whole(amount: f32) -> i64 {
 /// has its conditions: no path and no animal, guest or staff member on the tile; water into land: no object in the four quarter
 /// slots or on the four sides lives in water alone; land into water: the tile is flat and every
 /// object in the quarter slots swims (a fence on a side never stops water).
-pub fn accepts(world: &World, habits: Habits, types: &[Type], t: usize, kind: u8) -> bool {
+pub(crate) fn accepts(world: &World, habits: Habits, types: &[Type], t: usize, kind: u8) -> bool {
     let Some(tile) = world.zoo.tiles.get(t) else {
         return false;
     };

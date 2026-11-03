@@ -25,7 +25,7 @@ use crate::world::World;
 
 /// The parts of the game the rules read.
 #[derive(Clone, Copy)]
-pub struct Game<'a> {
+pub(crate) struct Game<'a> {
     pub world: &'a World,
     pub cat: &'a Catalogue,
     pub money: &'a Money,

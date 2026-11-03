@@ -6,11 +6,11 @@ use super::service::gate_tiles;
 use crate::render::order::ground_height;
 use crate::world::World;
 
-pub type Point = (i32, i32, i32);
+pub(crate) type Point = (i32, i32, i32);
 
 /// The points of the gate of one tank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ladder {
+pub(crate) struct Ladder {
     pub inside: usize,
     pub outside: usize,
     /// The directions from `O` to `I` and from `I` to `O`.
@@ -56,7 +56,7 @@ fn toward(world: &World, a: usize, b: usize) -> Option<u32> {
 
 impl Ladder {
     /// The gate of tank `x`, if it has one with both tiles on the map.
-    pub fn of(world: &World, x: u32) -> Option<Ladder> {
+    pub(crate) fn of(world: &World, x: u32) -> Option<Ladder> {
         let tank = world.tank(x)?;
         let (inside, outside) = gate_tiles(world, x)?;
         let (to_in, to_out) = (

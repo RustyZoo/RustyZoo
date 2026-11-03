@@ -40,7 +40,9 @@ use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
-use crate::timing::{Calendar, Pass, Timers};
+#[cfg(test)]
+use crate::timing::Calendar;
+use crate::timing::{Pass, Timers};
 use crate::ui::interface::{Action, Buttons, Interface};
 use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
@@ -706,7 +708,8 @@ impl<'a> App<'a> {
     }
 
     /// The camera of the game; `None` in the menu.
-    pub fn camera(&self) -> Option<&Camera> {
+    #[cfg(test)]
+    pub(crate) fn camera(&self) -> Option<&Camera> {
         self.game.as_ref().map(|g| &g.camera)
     }
 
@@ -730,12 +733,14 @@ impl<'a> App<'a> {
     }
 
     /// The calendar of the game; `None` in the menu.
-    pub fn calendar(&self) -> Option<&Calendar> {
+    #[cfg(test)]
+    pub(crate) fn calendar(&self) -> Option<&Calendar> {
         self.game.as_ref().map(|_| self.sim.calendar())
     }
 
     /// The cash and the accounts of the game; `None` in the menu.
-    pub fn money(&self) -> Option<&Money> {
+    #[cfg(test)]
+    pub(crate) fn money(&self) -> Option<&Money> {
         self.game.as_ref().map(|g| &g.money)
     }
 
@@ -778,7 +783,8 @@ impl<'a> App<'a> {
     /// Whether the last pass began a long operation, which shows the busy cursor (string tables
     /// 6.1): rotating or zooming a map, loading a game from the interface or a script. A save
     /// never does.
-    pub fn busy(&self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn busy(&self) -> bool {
         self.busy
     }
 
@@ -824,7 +830,8 @@ impl<'a> App<'a> {
     }
 
     /// The actions the interface ran in the last pass, for the game's code.
-    pub fn ui_actions(&self) -> &[Action] {
+    #[cfg(test)]
+    pub(crate) fn ui_actions(&self) -> &[Action] {
         &self.ui_actions
     }
 
@@ -834,7 +841,7 @@ impl<'a> App<'a> {
     }
 
     /// How many awards the zoo holds (none without a game).
-    pub fn awards(&self) -> usize {
+    pub(crate) fn awards(&self) -> usize {
         self.game.as_ref().map_or(0, |g| g.world.zoo.awards.len())
     }
 }

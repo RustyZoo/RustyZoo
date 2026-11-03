@@ -8,9 +8,9 @@ use crate::path;
 use crate::unit::{Part, walk};
 
 /// Task 0x72, keeper food, 0x7a, drink water, and 0x7c, go to the surface for air.
-pub const KEEPER_FOOD: u8 = 114;
-pub const DRINK: u8 = 122;
-pub const SURFACE: u8 = 124;
+pub(crate) const KEEPER_FOOD: u8 = 114;
+pub(crate) const DRINK: u8 = 122;
+pub(crate) const SURFACE: u8 = 124;
 
 impl Cx<'_, '_> {
     /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
@@ -103,7 +103,7 @@ impl Cx<'_, '_> {
 
     /// Tank fauna 5: sends the animal to tile `to`, which has the terrain mode it just took: it
     /// stops what it does and walks there at the base level of the tile.
-    pub fn send_to(&mut self, to: usize) {
+    pub(crate) fn send_to(&mut self, to: usize) {
         crate::unit::movement::stop(self.unit);
         self.reset();
         self.set_task(RANDOM, 1, 0, None);

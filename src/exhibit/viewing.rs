@@ -103,18 +103,18 @@ pub struct Area {
 /// The area each of the eight directions of a tile looks through, as (exhibit, area) numbers: a
 /// tile that sees the exhibit in no line within 3 tiles has none, and the last area to take a
 /// tile for a direction holds it.
-pub type Slots = HashMap<usize, [Option<(u32, u32)>; 8]>;
+pub(crate) type Slots = HashMap<usize, [Option<(u32, u32)>; 8]>;
 
 /// The slots of the tiles and the number of the next area.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Store {
+pub(crate) struct Store {
     pub slots: Slots,
     pub next: u32,
 }
 
 /// The candidate set of an exhibit (10.2 point 1): the map tiles outside it within 2 tiles of a
 /// fenced tile, each once, in the order found.
-pub fn candidates(plan: &Plan) -> Vec<usize> {
+pub(crate) fn candidates(plan: &Plan) -> Vec<usize> {
     let mut set: Vec<usize> = Vec::new();
     let mut taken = vec![false; plan.inside.len()];
     for &e in plan.order.iter().filter(|&&e| plan.fenced[e]) {
@@ -137,7 +137,7 @@ pub fn candidates(plan: &Plan) -> Vec<usize> {
 /// Resizes the viewing areas of exhibit `id` (10.2): the areas and slots it has stay, and the
 /// path tiles of the candidate set each go through [`join`] again, also the ones already in an
 /// area (they are listed twice then). Whether an area was made.
-pub fn build(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store) -> bool {
+pub(crate) fn build(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store) -> bool {
     let mut made = false;
     for t in candidates(plan).into_iter().filter(|&t| plan.path[t]) {
         made |= join(plan, id, areas, store, t);
@@ -146,7 +146,13 @@ pub fn build(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store) -> 
 }
 
 /// Adds one path tile to the areas of exhibit `id` (10.3). Whether it made an area.
-pub fn join(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store, t: usize) -> bool {
+pub(crate) fn join(
+    plan: &Plan,
+    id: u32,
+    areas: &mut Vec<Area>,
+    store: &mut Store,
+    t: usize,
+) -> bool {
     if !plan.in_zoo[t] {
         return false;
     }
@@ -193,7 +199,7 @@ pub fn join(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store, t: u
 impl Exhibits {
     /// Resizes the areas of exhibit `id`, for a plan of it that was just read; the exhibit is
     /// marked to be rated again, itself only (10.1).
-    pub fn resize(&mut self, plan: &Plan, id: u32) {
+    pub(crate) fn resize(&mut self, plan: &Plan, id: u32) {
         let Some(e) = self.list.iter_mut().find(|e| e.id == id) else {
             return;
         };
@@ -203,7 +209,7 @@ impl Exhibits {
 
     /// The exhibits that own a tile of the 5 x 5 square centred on tile `t`, in the square's
     /// order (x outer, y inner): the ones a path tile placed there joins (10.1).
-    pub fn near(&self, t: usize, width: usize) -> Vec<u32> {
+    pub(crate) fn near(&self, t: usize, width: usize) -> Vec<u32> {
         let (tx, ty) = ((t % width) as i32, (t / width) as i32);
         let mut near: Vec<u32> = Vec::new();
         for x in (tx - 2).max(0)..=(tx + 2).min(width as i32 - 1) {
@@ -218,7 +224,7 @@ impl Exhibits {
     }
 
     /// A path tile was placed (10.1): each exhibit of [`Exhibits::near`] gets it, with its plan.
-    pub fn path_placed(&mut self, t: usize, plans: Vec<(u32, Plan)>) {
+    pub(crate) fn path_placed(&mut self, t: usize, plans: Vec<(u32, Plan)>) {
         for (id, plan) in plans {
             if let Some(e) = self.list.iter_mut().find(|e| e.id == id)
                 && join(&plan, id, &mut e.areas, &mut self.views, t)
@@ -232,7 +238,7 @@ impl Exhibits {
     /// It leaves the areas its eight slots hold, then every area that still lists it, those the
     /// first pass hit included; an area left empty is destroyed, which marks its exhibit to be
     /// rated again (itself only).
-    pub fn path_removed(&mut self, t: usize) {
+    pub(crate) fn path_removed(&mut self, t: usize) {
         let held = self.views.slots.remove(&t).unwrap_or_default();
         let mut done: Vec<(u32, u32)> = Vec::new();
         for (x, a) in held.into_iter().flatten() {
@@ -313,7 +319,7 @@ pub struct Ground {
 
 impl Ground {
     /// Flat ground at elevation 0 with nothing on it.
-    pub fn new(width: usize, height: usize) -> Ground {
+    pub(crate) fn new(width: usize, height: usize) -> Ground {
         let n = width * height;
         Ground {
             width,
@@ -331,7 +337,7 @@ impl Ground {
 
     /// The ground as it stands when only the entities up to index `last` are read (a zoo being
     /// loaded); the later ones block nothing.
-    pub fn until(world: &World, body: impl Fn(&Entity) -> Body, last: usize) -> Ground {
+    pub(crate) fn until(world: &World, body: impl Fn(&Entity) -> Body, last: usize) -> Ground {
         let mut ground = Ground::new(world.zoo.width as usize, world.zoo.height as usize);
         for (t, tile) in world.zoo.tiles.iter().enumerate() {
             ground.base[t] = tile.elevation;
@@ -394,7 +400,7 @@ impl Ground {
     /// above the base of `from` to one above the base of `to`, every point tested against the
     /// ground (the base elevation of its tile), the scenery of its quadrant and, at each change
     /// of tile, the fences between the tiles (against the eye of `from`).
-    pub fn sees(&self, from: usize, to: usize) -> bool {
+    pub(crate) fn sees(&self, from: usize, to: usize) -> bool {
         let w = self.width;
         let at = |t: usize| {
             [
@@ -469,7 +475,8 @@ impl Area {
     /// total, y and x parts are returned, to be added to the animal's own. The direction from
     /// the animal to the tile is taken from the signs of the offsets (an animal on the tile has
     /// none: both parts lose).
-    pub fn pressure(
+    #[cfg(test)]
+    pub(crate) fn pressure(
         &self,
         width: usize,
         guests: u32,

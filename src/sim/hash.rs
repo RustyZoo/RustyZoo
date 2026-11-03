@@ -14,7 +14,7 @@ const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const PRIME: u64 = 0x0000_0100_0000_01b3;
 
 /// An FNV-1a hash being fed.
-pub struct Fnv(u64);
+pub(crate) struct Fnv(u64);
 
 impl Default for Fnv {
     fn default() -> Fnv {
@@ -23,7 +23,7 @@ impl Default for Fnv {
 }
 
 impl Fnv {
-    pub fn finish(&self) -> u64 {
+    pub(crate) fn finish(&self) -> u64 {
         self.0
     }
 
@@ -357,7 +357,7 @@ impl Fnv {
 
 /// The hash of the whole deterministic state of a game: the tiles, the entities, the units, the
 /// exhibits, the money, the calendar, the clocks and the generator.
-pub fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
+pub(crate) fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
     let mut h = Fnv::default();
     h.zoo(&world.zoo);
     h.u64(world.units.hash());

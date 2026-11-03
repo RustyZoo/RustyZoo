@@ -12,7 +12,7 @@ use crate::world::World;
 /// The type keys that decide the dead state: `cDeadOnLand`, `cDeadOnFlatWater`,
 /// `cDeadUnderwater`, `cSurface` and `cHeight`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Keys {
+pub(crate) struct Keys {
     pub on_land: bool,
     pub on_flat_water: bool,
     pub underwater: bool,
@@ -23,7 +23,7 @@ pub struct Keys {
 /// Whether an object with `keys` is dead: `level` is the water level of the tank under its own
 /// tile (none outside a tank) and `water` tells for each tile of its footprint whether the
 /// ground is water.
-pub fn is_dead(keys: &Keys, level: Option<u32>, water: &[bool]) -> bool {
+pub(crate) fn is_dead(keys: &Keys, level: Option<u32>, water: &[bool]) -> bool {
     let land = water.iter().any(|&w| !w);
     let wet = water.iter().any(|&w| w);
     let level = level.map(i64::from);
@@ -54,7 +54,7 @@ fn decide_at(world: &mut World, kind: &Kind, at: usize) -> bool {
 
 /// Decides the dead state of the new or set down building `id` of type `ty`: no user is
 /// there to put out.
-pub fn decide(world: &mut World, ty: &EntityType, id: u32) {
+pub(crate) fn decide(world: &mut World, ty: &EntityType, id: u32) {
     if !crate::month::is_guest_building(ty) {
         return;
     }
@@ -66,7 +66,7 @@ pub fn decide(world: &mut World, ty: &EntityType, id: u32) {
 
 /// A zoo has just been loaded: the dead state of every guest building is decided, and no user is
 /// put out (the loader's flag, 11.1.1).
-pub fn decide_all(world: &mut World, cat: &Catalogue) {
+pub(crate) fn decide_all(world: &mut World, cat: &Catalogue) {
     for at in 0..world.zoo.entities.len() {
         if let Some(kind) = guest_kind(world, cat, at) {
             decide_at(world, &kind, at);
@@ -76,7 +76,7 @@ pub fn decide_all(world: &mut World, cat: &Catalogue) {
 
 /// Validates again the buildings on every tank whose water level or wall height moved since the
 /// last call: the simulation's water step and the app's edits both call it, each tank once.
-pub fn wet_changed(world: &mut World, cat: &Catalogue) {
+pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue) {
     for tank in world.take_wet() {
         tank_changed(world, cat, tank);
     }
@@ -84,7 +84,7 @@ pub fn wet_changed(world: &mut World, cat: &Catalogue) {
 
 /// The water level or the wall height of tank `tank` moved: the buildings standing on its tiles
 /// are validated again, and each one found dead puts all its users out.
-pub fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
+pub(crate) fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
     for at in 0..world.zoo.entities.len() {
         let Some(kind) = guest_kind(world, cat, at) else {
             continue;

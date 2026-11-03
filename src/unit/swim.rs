@@ -22,7 +22,7 @@ mod tests;
 /// The segment of the 3D move from one node to the next: where it started, its extent in
 /// movement units, its truncated length and the distance gone along it, and the cell it goes to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Segment {
+pub(crate) struct Segment {
     to: (i32, i32, i32),
     start: (i32, i32, i32),
     delta: (i32, i32, i32),
@@ -40,7 +40,7 @@ fn diver(unit: &Unit) -> bool {
 /// type. A unit in a tank with water is under water (4)
 /// below the surface, unless its type stays at the surface, else it is put on the surface (3); a
 /// dry tank holds it on the floor. A change of mode restarts its animation.
-pub fn check(unit: &mut Unit, world: &mut World, at: usize) {
+pub(crate) fn check(unit: &mut Unit, world: &mut World, at: usize) {
     let Some(c) = world.zoo.entities.get(at).and_then(|e| e.common.as_ref()) else {
         return;
     };
@@ -109,7 +109,7 @@ pub fn check(unit: &mut Unit, world: &mut World, at: usize) {
 
 /// The unit `id`, just put on the map, takes the tank mode of where it stands and, for an animal,
 /// its terrain mode (4, 5); the world moves it on at its next step.
-pub fn put(world: &mut World, id: u32) {
+pub(crate) fn put(world: &mut World, id: u32) {
     let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
         return;
     };
@@ -123,7 +123,7 @@ pub fn put(world: &mut World, id: u32) {
 
 /// 9.4: where the unit is for its ambient table: under water or at the surface of a tank for a
 /// diver, on water for a swimmer, else on land.
-pub fn place(unit: &Unit, world: &World, at: usize) -> Place {
+pub(crate) fn place(unit: &Unit, world: &World, at: usize) -> Place {
     let wet = wet(world, at);
     let egg = matches!(&unit.part, Part::Animal(a) if a.egg);
     match (diver(unit), unit.tank) {
@@ -135,7 +135,7 @@ pub fn place(unit: &Unit, world: &World, at: usize) -> Place {
 }
 
 /// Whether the entity at position `at` stands on a water tile.
-pub fn wet(world: &World, at: usize) -> bool {
+pub(crate) fn wet(world: &World, at: usize) -> bool {
     (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
         .is_some_and(|t| world.is_water(t))
@@ -143,12 +143,12 @@ pub fn wet(world: &World, at: usize) -> bool {
 
 /// 9.5: what the nesting calls of the unit at position `at` choose by: its tank mode and whether
 /// its tile is a water tile, whatever its type and even for an egg.
-pub fn nesting(unit: &mut Unit, world: &World, at: usize) {
+pub(crate) fn nesting(unit: &mut Unit, world: &World, at: usize) {
     (unit.runner.tank_mode, unit.runner.wet) = (unit.tank, wet(world, at));
 }
 
 /// 9.1: the idle animation of the unit by its tank mode.
-pub fn idle_name(unit: &Unit) -> &'static str {
+pub(crate) fn idle_name(unit: &Unit) -> &'static str {
     match (diver(unit), unit.tank) {
         (true, 4) => "subidle",
         (true, 3) => "surfidle",
@@ -157,7 +157,7 @@ pub fn idle_name(unit: &Unit) -> &'static str {
 }
 
 /// 9.2: the move animation a unit in a tank shows, whatever the speed band; none out of one.
-pub fn move_name(unit: &Unit) -> Option<&'static str> {
+pub(crate) fn move_name(unit: &Unit) -> Option<&'static str> {
     match (diver(unit), unit.tank, unit.vertical) {
         (true, 4, -1) => Some("dive"),
         (true, 4, 1) => Some("rise"),
@@ -169,7 +169,7 @@ pub fn move_name(unit: &Unit) -> Option<&'static str> {
 
 /// 5: the terrain mode of an animal (0 land, 1 water, 2 tank), set without sending the animal
 /// anywhere. A species that lives only under water is always in the tank mode.
-pub fn set_terrain(unit: &mut Unit, mode: u8) {
+pub(crate) fn set_terrain(unit: &mut Unit, mode: u8) {
     let only = unit.mover.only_underwater;
     if let Part::Animal(a) = &mut unit.part {
         a.terrain = if only { 2 } else { mode };
@@ -179,7 +179,7 @@ pub fn set_terrain(unit: &mut Unit, mode: u8) {
 /// 5: the terrain mode an animal gets where it is put on the map (a placement, a drop, the first
 /// turn): water for a swimmer on a water tile, the tank mode for a diver on a tank tile, else
 /// land; an animal at its minimum health keeps its mode on water or a tank tile.
-pub fn add_to_map(unit: &mut Unit, world: &World, at: usize) {
+pub(crate) fn add_to_map(unit: &mut Unit, world: &World, at: usize) {
     let Part::Animal(a) = &unit.part else {
         return;
     };
@@ -208,7 +208,7 @@ pub fn add_to_map(unit: &mut Unit, world: &World, at: usize) {
 /// used as it is: a species deeper than the water, or a negative depth, gets a level outside it,
 /// which the depth search refuses. The numbers are the original's 32-bit ones, so a wild depth
 /// wraps instead of stopping.
-pub fn level_of(unit: &Unit, world: &World, rng: &mut Rng, tile: usize, here: i32) -> i32 {
+pub(crate) fn level_of(unit: &Unit, world: &World, rng: &mut Rng, tile: usize, here: i32) -> i32 {
     let floor = world.zoo.tiles[tile].elevation;
     let Some(top) = (world.tank_at(tile).and_then(|id| world.tank(id))).map(|k| k.steps().1) else {
         return floor;
@@ -251,7 +251,7 @@ fn abort(unit: &mut Unit, world: &mut World) -> bool {
 /// 8.2: one step of the 3D move by `distance` along the path of (tile, level) nodes; true when
 /// the move is done. A node is reached as soon as the unit's cell is the node's; the next
 /// segment starts where the unit is.
-pub fn progress(unit: &mut Unit, world: &mut World, mut distance: u32, at: usize) -> bool {
+pub(crate) fn progress(unit: &mut Unit, world: &mut World, mut distance: u32, at: usize) -> bool {
     if distance > 64 {
         distance = 16;
     }

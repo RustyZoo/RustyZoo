@@ -24,8 +24,8 @@ const SCENARIO_PLAY: i32 = 50008;
 /// The freeform screen: list, picture, description, cash field and its spinners, difficulty, Play.
 const MAP_LIST: i32 = 11504;
 /// The list and the Play button of the freeform screen are those of the saved games too.
-pub const SAVED_LIST: i32 = MAP_LIST;
-pub const SAVED_LOAD: i32 = MAP_PLAY;
+pub(crate) const SAVED_LIST: i32 = MAP_LIST;
+pub(crate) const SAVED_LOAD: i32 = MAP_PLAY;
 const MAP_PICTURE: i32 = 11501;
 const MAP_DESCRIPTION: i32 = 11507;
 const CASH_FIELD: i32 = 11510;
@@ -44,7 +44,7 @@ const UNUSED: [i32; 11] = [
 
 /// Shows the freeform screen as a list of saved games: `names` are the rows, `title` the heading,
 /// and Play (Load) is off until a row is selected. `false` if there is no such screen.
-pub fn show_saved(ui: &mut Interface, names: Vec<Vec<u8>>, title: &[u8]) -> bool {
+pub(crate) fn show_saved(ui: &mut Interface, names: Vec<Vec<u8>>, title: &[u8]) -> bool {
     // Showing a layout shows what it holds.
     let shown = ui.show(super::FREEFORM_LAYOUT);
     for id in UNUSED {
@@ -61,7 +61,7 @@ pub fn show_saved(ui: &mut Interface, names: Vec<Vec<u8>>, title: &[u8]) -> bool
 }
 
 /// Load is on while a row of the list of saved games is selected.
-pub fn enable_load(ui: &mut Interface, on: bool) {
+pub(crate) fn enable_load(ui: &mut Interface, on: bool) {
     enable(ui, MAP_PLAY, on);
 }
 
@@ -141,7 +141,7 @@ impl Menu {
 
     /// What the lists and the cash field tell: the selection moved, a double click, an edit that
     /// ended. The lines for the log.
-    pub fn action(&mut self, vfs: &Vfs, ui: &mut Interface, action: Action) -> Vec<String> {
+    pub(crate) fn action(&mut self, vfs: &Vfs, ui: &mut Interface, action: Action) -> Vec<String> {
         let mut log = Vec::new();
         match action {
             Action::Row(SCENARIO_LIST, value) => {
@@ -164,7 +164,7 @@ impl Menu {
 
     /// Starts the scenario `file` as the play button does (the next tutorial, scenarios 9.1): the
     /// request is the start of its map.
-    pub fn start_file(&mut self, vfs: &Vfs, file: &str) {
+    pub(crate) fn start_file(&mut self, vfs: &Vfs, file: &str) {
         let listed = self
             .scenarios
             .iter()
@@ -176,7 +176,7 @@ impl Menu {
 
     /// The screen after a scenario ended (5.3): the finished scenario is selected and shows its
     /// win or lose picture and story. Nothing if it is not in the list (a freeform map).
-    pub fn show_result(&mut self, vfs: &Vfs, ui: &mut Interface) -> Vec<String> {
+    pub(crate) fn show_result(&mut self, vfs: &Vfs, ui: &mut Interface) -> Vec<String> {
         let mut log = Vec::new();
         if let Some((i, _)) = self.ended {
             self.scenario = Some(i);

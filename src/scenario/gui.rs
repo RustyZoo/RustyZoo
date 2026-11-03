@@ -11,7 +11,7 @@ use super::popup::{Op, Popup};
 
 /// Something a trigger does to the interface, in order.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Effect {
+pub(crate) enum Effect {
     /// Shows a popup.
     Popup(Popup),
     /// Presses the element if it exists, then shows the popup.
@@ -27,7 +27,7 @@ pub enum Effect {
 
 /// Which types an availability trigger reaches (7.3).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Which {
+pub(crate) enum Which {
     Name(i32),
     Names(Vec<i32>),
     Animals,
@@ -38,7 +38,7 @@ pub enum Which {
 
 /// What an availability trigger tells when it really changed a flag (fresh runs only).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Tell {
+pub(crate) enum Tell {
     /// The message line: the string, with the name id of the type for its `%r` (trigger 4 only;
     /// trigger 7 shows the string as it is).
     Message(i32, Option<i32>),
@@ -47,7 +47,7 @@ pub enum Tell {
 
 /// An availability trigger: the types it reaches are made available or not.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Avail {
+pub(crate) struct Avail {
     pub which: Which,
     pub on: bool,
     pub tell: Option<Tell>,
@@ -55,7 +55,7 @@ pub struct Avail {
 
 impl Avail {
     /// Whether the trigger reaches the type.
-    pub fn reaches(&self, ty: &crate::entity::EntityType) -> bool {
+    pub(crate) fn reaches(&self, ty: &crate::entity::EntityType) -> bool {
         match &self.which {
             Which::Name(id) => ty.name_id == *id,
             Which::Names(ids) => ids.contains(&ty.name_id),
@@ -69,7 +69,7 @@ impl Avail {
 /// What triggers 1, 3, 5, 6, 8 and 9 ask of the game (7.2, 7.4, 7.5). The popup comes after it, when
 /// there is one and the run is fresh.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Deed {
+pub(crate) enum Deed {
     /// Trigger 1: the message of string `text` built with `value`, of kind `kind`.
     Say { kind: i32, text: i32, value: i32 },
     /// Trigger 3: `how` 0 a donation, 1 cash added, 2 cash set to `amount`; then the message of
@@ -119,7 +119,7 @@ impl Deed {
 
 /// A press the rules have not read yet: a list box adds the row selected and its text.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Press {
+pub(crate) struct Press {
     pub row: Option<(usize, Vec<u8>)>,
 }
 
@@ -151,7 +151,7 @@ enum Queue {
 
 /// A run of things left one after the other in the same queue.
 #[derive(Debug)]
-pub enum Act {
+pub(crate) enum Act {
     Avail(Vec<Avail>),
     Deed(Vec<Deed>),
     Effects(Vec<Effect>),
@@ -159,7 +159,7 @@ pub enum Act {
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
 #[derive(Debug, Default)]
-pub struct Gui(RefCell<Inner>);
+pub(crate) struct Gui(RefCell<Inner>);
 
 impl Gui {
     /// Rule 10: whether the element exists and is shown, as the last sync told.
@@ -189,7 +189,7 @@ impl Gui {
 
     /// The application tells what the rules asked about: whether each element is shown, what each
     /// string says.
-    pub fn sync(&self, shown: &dyn Fn(i32) -> bool, text: &dyn Fn(i32) -> Vec<u8>) {
+    pub(crate) fn sync(&self, shown: &dyn Fn(i32) -> bool, text: &dyn Fn(i32) -> Vec<u8>) {
         let mut g = self.0.borrow_mut();
         let g = &mut *g;
         g.shown = g.asked.iter().map(|&id| (id, shown(id))).collect();
@@ -198,7 +198,7 @@ impl Gui {
 
     /// The element `id` was pressed (a list box: `row`, with its text). Only an element the rules
     /// asked about before notices.
-    pub fn pressed(&self, id: i32, row: Option<(usize, Vec<u8>)>) {
+    pub(crate) fn pressed(&self, id: i32, row: Option<(usize, Vec<u8>)>) {
         if let Some(entry) = self.0.borrow_mut().pressed.get_mut(&id) {
             *entry = Some(Press { row });
         }
@@ -222,7 +222,7 @@ impl Gui {
     }
 
     /// Shows a popup after the effects already left.
-    pub fn popup(&self, popup: Popup) {
+    pub(crate) fn popup(&self, popup: Popup) {
         self.push(Effect::Popup(popup));
     }
 
@@ -244,26 +244,28 @@ impl Gui {
 
     /// The forced researches trigger 10 left since the last call, each with whether the progress
     /// is set too (research 6.8).
-    pub fn take_forced(&self) -> Vec<bool> {
+    pub(crate) fn take_forced(&self) -> Vec<bool> {
         std::mem::take(&mut self.0.borrow_mut().forced)
     }
 
     /// The deeds the triggers left since the last call.
-    pub fn take_deeds(&self) -> Vec<Deed> {
+    #[cfg(test)]
+    pub(crate) fn take_deeds(&self) -> Vec<Deed> {
         let mut g = self.0.borrow_mut();
         g.order.retain(|&q| q != Queue::Deed);
         std::mem::take(&mut g.deeds)
     }
 
     /// The availability changes the triggers left since the last call.
-    pub fn take_avail(&self) -> Vec<Avail> {
+    pub(crate) fn take_avail(&self) -> Vec<Avail> {
         let mut g = self.0.borrow_mut();
         g.order.retain(|&q| q != Queue::Avail);
         std::mem::take(&mut g.avail)
     }
 
     /// The effects the triggers left since the last call.
-    pub fn take_effects(&self) -> Vec<Effect> {
+    #[cfg(test)]
+    pub(crate) fn take_effects(&self) -> Vec<Effect> {
         let mut g = self.0.borrow_mut();
         g.order.retain(|&q| q != Queue::Effect);
         std::mem::take(&mut g.out)
@@ -271,7 +273,7 @@ impl Gui {
 
     /// The oldest run of things the triggers left, of one kind: triggers that ran one after the
     /// other are carried out in that order, whatever they do (`awards.md` 6.2).
-    pub fn take_run(&self) -> Option<Act> {
+    pub(crate) fn take_run(&self) -> Option<Act> {
         let mut g = self.0.borrow_mut();
         let first = *g.order.first()?;
         let n = g.order.iter().take_while(|&&q| q == first).count();

@@ -24,15 +24,15 @@ use crate::vfs::Vfs;
 use crate::zoo::Zoo;
 
 mod screens;
-pub use screens::{SAVED_LIST, SAVED_LOAD, enable_load, show_saved};
+pub(crate) use screens::{SAVED_LIST, SAVED_LOAD, enable_load, show_saved};
 
 /// The layout of the main menu and the elements the code touches.
-pub const LAYOUT: i32 = 26;
+pub(crate) const LAYOUT: i32 = 26;
 const BACKGROUND: i32 = 7100;
 const CONTINUE: i32 = 7113;
 /// The string of the message when the file Continue names cannot be opened.
 const CANNOT_OPEN: i32 = 318;
-pub const LOAD: i32 = 7112;
+pub(crate) const LOAD: i32 = 7112;
 const ZOO_ITEMS: i32 = 7114;
 const EXIT: i32 = 7116;
 const VERSION: i32 = 7119;
@@ -41,7 +41,7 @@ const CREDITS: i32 = 7115;
 const CREDITS_LAYOUT: i32 = 40;
 /// The layouts of the scenario and freeform screens.
 const SCENARIO_LAYOUT: i32 = 32;
-pub const FREEFORM_LAYOUT: i32 = 39;
+pub(crate) const FREEFORM_LAYOUT: i32 = 39;
 /// Seconds a credits page stays when no registry file says.
 const CREDITS_DELAY: i32 = 8;
 /// The string of the version label and the tooltips of Continue.
@@ -92,7 +92,7 @@ pub fn credit_pages(vfs: &Vfs) -> (Vec<i32>, u32) {
 
 /// A game to open, asked by a button (main menu 8).
 #[derive(Clone, Debug, PartialEq)]
-pub struct Start {
+pub(crate) struct Start {
     /// The file to load as a saved game: a path, absolute or relative to the install folder.
     pub path: String,
     /// What the log calls it.
@@ -112,7 +112,7 @@ pub struct Start {
 
 /// What a button asks of the game.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Request {
+pub(crate) enum Request {
     Open(Start),
     /// Something to tell the player, in a question box.
     Message(String),
@@ -159,7 +159,7 @@ pub struct Menu {
 }
 
 /// [`Menu::last_path`] for the settings `ini` of the install folder `root`.
-pub fn last_path(ini: &Config, root: &Path) -> Option<PathBuf> {
+pub(crate) fn last_path(ini: &Config, root: &Path) -> Option<PathBuf> {
     let last = ini_value(ini, "user", "lastfile")?;
     let last = crate::vfs::name_from_bytes(last).trim().replace('\\', "/");
     (!last.is_empty()).then(|| root.join(last))
@@ -199,7 +199,7 @@ impl Menu {
     }
 
     /// The expansion flags.
-    pub fn expansions(&self) -> i32 {
+    pub(crate) fn expansions(&self) -> i32 {
         self.expansions
     }
 
@@ -207,7 +207,7 @@ impl Menu {
     /// lower than the stored one, and a win appends the types it unlocks to `[user]`
     /// `unlockEntityN` (the types already listed are not listed twice). The lines for the log, and
     /// the ids newly listed.
-    pub fn scenario_ended(&mut self, end: &Ended) -> (Vec<String>, Vec<i32>) {
+    pub(crate) fn scenario_ended(&mut self, end: &Ended) -> (Vec<String>, Vec<i32>) {
         let mut log = Vec::new();
         let found = self.scenarios.iter().position(|s| s.file == end.file);
         // A tutorial goes back to the main menu, not to the scenario screen (9.1).
@@ -229,7 +229,7 @@ impl Menu {
 
     /// The `unlock_all_scenarios` cheat (cheats 4.2 C): the result of every scenario becomes 0,
     /// "unlocked by a cheat", a win included. The lines for the log.
-    pub fn unlock_all_scenarios(&mut self) -> Vec<String> {
+    pub(crate) fn unlock_all_scenarios(&mut self) -> Vec<String> {
         let keys: Vec<String> = self
             .scenarios
             .iter()
@@ -246,14 +246,14 @@ impl Menu {
     }
 
     /// The settings as they are now: the rewards unlocked during this run are in them.
-    pub fn settings(&self) -> &Config {
+    pub(crate) fn settings(&self) -> &Config {
         &self.ini
     }
 
     /// The lookup of the recorded rewards at a game load or a scenario start (entity types 10.4):
     /// the table of unlocked ids is emptied and refilled with the recorded ids that `typed` says
     /// have a type. The scan is bounded.
-    pub fn look_up(&mut self, typed: impl Fn(i32) -> bool) {
+    pub(crate) fn look_up(&mut self, typed: impl Fn(i32) -> bool) {
         let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
         self.marked = (0..count.clamp(0, 4096))
             .filter_map(|n| ini_whole(&self.ini, "user", &format!("unlockEntity{n}")))
@@ -264,7 +264,7 @@ impl Menu {
     /// Appends types to the rewards of `[user] unlockEntityN` (an id already in the table of
     /// unlocked ids is not listed again, an id of 0 or less is skipped). Returns the ids newly
     /// listed.
-    pub fn unlock(&mut self, ids: &[i32]) -> Vec<i32> {
+    pub(crate) fn unlock(&mut self, ids: &[i32]) -> Vec<i32> {
         let mut listed_now = Vec::new();
         // The scan is bounded: a list that long is a hostile file.
         let count = ini_whole(&self.ini, "user", "unlockCount").unwrap_or(0);
@@ -304,7 +304,7 @@ impl Menu {
 
     /// Shows the main menu: the background of the expansion flags, Continue enabled or not with
     /// its tooltip, Zoo Items disabled, the version label. Returns the lines for the log.
-    pub fn show(&mut self, ui: &mut Interface) -> Vec<String> {
+    pub(crate) fn show(&mut self, ui: &mut Interface) -> Vec<String> {
         let mut log = Vec::new();
         self.credits = None;
         ui.show(LAYOUT);
@@ -373,18 +373,23 @@ impl Menu {
 
     /// `[user] lastfile` as a path: relative to the install folder unless it is absolute, with
     /// the slashes of the system; `None` when it is empty.
-    pub fn last_path(&self) -> Option<PathBuf> {
+    pub(crate) fn last_path(&self) -> Option<PathBuf> {
         last_path(&self.ini, &self.root)
     }
 
     /// A game was saved to or loaded from `path`: it becomes `[user] lastfile`, the file Continue
     /// opens.
-    pub fn set_last_file(&mut self, path: &str) {
+    pub(crate) fn set_last_file(&mut self, path: &str) {
         self.write_back("user", "lastfile", path);
     }
 
     /// The button `id` was selected: the lines for the log and whether the program ends.
-    pub fn selected(&mut self, vfs: &Vfs, ui: &mut Interface, id: i32) -> (Vec<String>, bool) {
+    pub(crate) fn selected(
+        &mut self,
+        vfs: &Vfs,
+        ui: &mut Interface,
+        id: i32,
+    ) -> (Vec<String>, bool) {
         match id {
             EXIT => (vec!["exit".to_string()], true),
             CREDITS => (self.show_credits(ui), false),
@@ -394,7 +399,7 @@ impl Menu {
     }
 
     /// What the last button asked of the game, once.
-    pub fn take_request(&mut self) -> Option<Request> {
+    pub(crate) fn take_request(&mut self) -> Option<Request> {
         self.request.take()
     }
 
@@ -427,7 +432,7 @@ impl Menu {
 
     /// Reads the file of `start` as a saved game: a plain file, not one of the game's resources;
     /// a refusal is a message that says which file and why.
-    pub fn load(
+    pub(crate) fn load(
         &self,
         path: &str,
         catalogue: &crate::entity::Catalogue,
@@ -441,7 +446,7 @@ impl Menu {
 
     /// A game starts: the menu layouts are hidden (the map view under them is the game's), and
     /// scenarios and freeform maps empty `lastfile`.
-    pub fn hide(&mut self, ui: &mut Interface, forget_last: bool) {
+    pub(crate) fn hide(&mut self, ui: &mut Interface, forget_last: bool) {
         self.credits = None;
         self.ended = None;
         for id in [LAYOUT, SCENARIO_LAYOUT, FREEFORM_LAYOUT, CREDITS_LAYOUT] {
@@ -457,7 +462,7 @@ impl Menu {
     }
 
     /// The menu music the settings ask for, started from its beginning.
-    pub fn music(&self) -> Option<Music> {
+    pub(crate) fn music(&self) -> Option<Music> {
         Music::from_config(&self.ini)
     }
 
@@ -489,7 +494,7 @@ impl Menu {
     /// replaces the page with the next one and sets the deadline of that one in the same update;
     /// after the last one the credits hide themselves. Credits that were closed (Exit hides the
     /// layout) are over.
-    pub fn update(&mut self, ui: &mut Interface, now: u64) -> Vec<String> {
+    pub(crate) fn update(&mut self, ui: &mut Interface, now: u64) -> Vec<String> {
         let Some(shown) = &mut self.credits else {
             return Vec::new();
         };

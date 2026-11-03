@@ -15,7 +15,7 @@ const MAX_UNLOCKS: i32 = 10_000;
 
 /// The flags changed since the start-up values (a type not in the map keeps its start-up flag).
 #[derive(Debug, Default)]
-pub struct Availability(HashMap<usize, bool>);
+pub(crate) struct Availability(HashMap<usize, bool>);
 
 /// Whether the type is available at the start of a program: `[Global] AvailableAtStartup` is 1
 /// or missing.
@@ -28,7 +28,7 @@ fn at_startup(ty: &EntityType) -> bool {
 
 impl Availability {
     /// Whether the type at `index` of the catalogue is available. A user type always is.
-    pub fn is(&self, cat: &Catalogue, index: usize) -> bool {
+    pub(crate) fn is(&self, cat: &Catalogue, index: usize) -> bool {
         let Some(ty) = cat.types.get(index) else {
             return false;
         };
@@ -42,13 +42,13 @@ impl Availability {
 
     /// Makes every type with this name id, whatever its subtype, available or not. A name id of
     /// 0 sets the nameless types; a negative one matches no type. Whether a flag changed.
-    pub fn set(&mut self, cat: &Catalogue, name_id: i32, on: bool) -> bool {
+    pub(crate) fn set(&mut self, cat: &Catalogue, name_id: i32, on: bool) -> bool {
         self.set_where(cat, |ty| ty.name_id == name_id, on)
     }
 
     /// Makes every type `keep` accepts available or not (a user type never changes). Whether a
     /// flag changed.
-    pub fn set_where(
+    pub(crate) fn set_where(
         &mut self,
         cat: &Catalogue,
         keep: impl Fn(&EntityType) -> bool,
@@ -67,7 +67,7 @@ impl Availability {
     /// The rewards of the ini file: `[user] unlockCount` and `unlockEntity0` ... each name id
     /// makes available every type of the class and type name of the first type with that name id
     /// and that name id. A missing or invalid entry is skipped. Whether a flag changed.
-    pub fn unlock(&mut self, cat: &Catalogue, ini: &Config) -> bool {
+    pub(crate) fn unlock(&mut self, cat: &Catalogue, ini: &Config) -> bool {
         let count = ini_whole(ini, "user", "unlockCount").unwrap_or(0);
         let mut changed = false;
         for n in 0..count.clamp(0, MAX_UNLOCKS) {
@@ -79,7 +79,7 @@ impl Availability {
 
     /// One reward: every type of the class and type name of the first type with this name id, and
     /// that name id, becomes available. An id of 0 or less is skipped. Whether a flag changed.
-    pub fn unlock_id(&mut self, cat: &Catalogue, id: i32) -> bool {
+    pub(crate) fn unlock_id(&mut self, cat: &Catalogue, id: i32) -> bool {
         let Some(first) = cat.types.iter().find(|t| t.name_id == id && id > 0) else {
             return false;
         };

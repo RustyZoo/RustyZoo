@@ -11,7 +11,7 @@ use crate::ui::layout::{
 
 /// The most items a region holds. The button of item `n` of region `id` has the id
 /// `COPY_IDS + id * 1000 + n`.
-pub const MAX_ITEMS: usize = 1000;
+pub(crate) const MAX_ITEMS: usize = 1000;
 const COPY_IDS: i32 = 1_000_000;
 
 /// The shape of a region's grid: the columns, the whole rows that fit, one button's size and
@@ -30,7 +30,7 @@ impl Interface {
     /// Fills the region `id` with a button for each icon, at most [`MAX_ITEMS`]: none is selected
     /// and the first row shows. The region is hidden when there is no icon. `false` if there is
     /// no such region, or its template is not a button.
-    pub fn set_items(&mut self, id: i32, icons: &[Option<Picture>]) -> bool {
+    pub(crate) fn set_items(&mut self, id: i32, icons: &[Option<Picture>]) -> bool {
         let Some(r) = self.region(id) else {
             return false;
         };
@@ -84,7 +84,7 @@ impl Interface {
 
     /// Selects item `item` of the region `id`, or none, and scrolls to show it. Does not run any
     /// action. `false` if there is no such region or item.
-    pub fn select_item(&mut self, id: i32, item: Option<usize>) -> bool {
+    pub(crate) fn select_item(&mut self, id: i32, item: Option<usize>) -> bool {
         let Some(r) = self.region(id) else {
             return false;
         };
@@ -110,7 +110,7 @@ impl Interface {
     }
 
     /// The first row of the region `id` that shows.
-    pub fn top(&self, id: i32) -> usize {
+    pub(crate) fn top(&self, id: i32) -> usize {
         match self.region(id).map(|r| &self.tree.elements[r].kind) {
             Some(Kind::ScrollingRegion(region)) => region.top,
             _ => 0,
@@ -119,7 +119,7 @@ impl Interface {
 
     /// Scrolls the region `id` to start at row `top`, or as far as it can go. Does not touch the
     /// selection.
-    pub fn set_top(&mut self, id: i32, top: usize) {
+    pub(crate) fn set_top(&mut self, id: i32, top: usize) {
         let Some(r) = self.region(id) else { return };
         let most = self.region_extent(r).map_or(0, |e| e.0);
         if let Kind::ScrollingRegion(region) = &mut self.tree.elements[r].kind {
@@ -130,7 +130,7 @@ impl Interface {
     }
 
     /// The item of region `id` that the button `button` shows.
-    pub fn item_of(&self, id: i32, button: i32) -> Option<usize> {
+    pub(crate) fn item_of(&self, id: i32, button: i32) -> Option<usize> {
         let Kind::ScrollingRegion(region) = &self.tree.elements[self.region(id)?].kind else {
             return None;
         };

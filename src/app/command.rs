@@ -47,7 +47,7 @@ const KEY_NAMES: [(&str, Key); 17] = [
 ];
 
 impl Key {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         KEY_NAMES.iter().find(|k| k.1 == self).map_or("", |k| k.0)
     }
 }

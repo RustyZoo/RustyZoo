@@ -91,7 +91,7 @@ impl Interface {
 
     /// Gives the element `id` a tooltip of its own, `text`; an empty text takes it away. `false`
     /// if there is no such element.
-    pub fn set_tip(&mut self, id: i32, text: String) -> bool {
+    pub(crate) fn set_tip(&mut self, id: i32, text: String) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -116,7 +116,7 @@ impl Interface {
 
     /// The layout under the pointer went away: no element is hovered and no tooltip is shown or
     /// due, until the pointer moves again.
-    pub fn forget_pointer(&mut self) {
+    pub(crate) fn forget_pointer(&mut self) {
         self.hover_to(None);
         self.tooltip_for(None);
     }
@@ -150,7 +150,7 @@ impl Interface {
     /// The pointer reached something that is not an element (a tile of the map): the tooltip shown
     /// or due goes away and, if string `help` has a text, it is due after the delay. The string
     /// is shown as it is: the game asks for the short text whatever `helpType` says.
-    pub fn help_tip(&mut self, help: i32) {
+    pub(crate) fn help_tip(&mut self, help: i32) {
         self.hide_tip();
         let text = match help {
             1.. => crate::text::to_cp1252(&self.strings.string(help)),
@@ -253,7 +253,7 @@ impl Interface {
 /// pointer and its top 30 pixels lower; moved left to end at the window's right edge if it
 /// would cross it, and above the pointer (its bottom at the pointer) if it would cross the
 /// bottom.
-pub fn place(
+pub(crate) fn place(
     (px, py): (i32, i32),
     (w, h): (i32, i32),
     (window_w, window_h): (i32, i32),

@@ -8,7 +8,7 @@ use crate::exhibit::Tank;
 
 impl World {
     /// Tells the world whether the game is paused: a fill or a drain is then instant.
-    pub fn set_paused(&mut self, paused: bool) {
+    pub(crate) fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
     }
 
@@ -73,12 +73,12 @@ impl World {
     }
 
     /// The tanks whose water level or wall height moved since the last call.
-    pub fn take_wet(&mut self) -> Vec<u32> {
+    pub(crate) fn take_wet(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.wet)
     }
 
     /// An animal's dung lowers the purity of the water of tank `id` (animals-needs 8.1).
-    pub fn pollute(&mut self, id: u32, by: u32) {
+    pub(crate) fn pollute(&mut self, id: u32, by: u32) {
         let purity = self.tank(id).map_or(0, |t| i64::from(t.purity));
         self.set_purity(id, purity - i64::from(by));
     }
@@ -87,7 +87,7 @@ impl World {
     /// and below the full level, one down while not filled and above 0; a tank that comes empty
     /// with another target salinity takes it and is filled again.
     /// Whether a level moved.
-    pub fn step_water(&mut self) -> bool {
+    pub(crate) fn step_water(&mut self) -> bool {
         let before = self.events.len();
         for id in self.tank_ids() {
             let mut swapped = false;
@@ -112,7 +112,7 @@ impl World {
     /// Fills tank `id` (3.10): refused, silently, while something in it may not be in water; the
     /// first such object (an entity id) is returned. The level then rises with the steps, or at
     /// once while the game is paused.
-    pub fn fill(&mut self, id: u32) -> Option<u32> {
+    pub(crate) fn fill(&mut self, id: u32) -> Option<u32> {
         if let Some(&object) = self.unfit(id, false).first() {
             return Some(object);
         }
@@ -128,7 +128,7 @@ impl World {
 
     /// Drains tank `id`: refused (false) while an animal is in it. The level falls with the steps,
     /// or to 0 at once while the game is paused.
-    pub fn drain(&mut self, id: u32) -> bool {
+    pub(crate) fn drain(&mut self, id: u32) -> bool {
         let animal = self.tiles_of(id).into_iter().any(|t| {
             let units = self.scene.units_on(t);
             (units.iter()).any(|&o| self.zoo.entities[self.owner[o]].class == "animals")
@@ -150,7 +150,7 @@ impl World {
     /// is taken as soon as it is empty, at once when it already is. False when the drain was
     /// refused (an animal is in the tank); only a tank that is still filled then keeps its
     /// salinity. The caller fills it.
-    pub fn set_salinity(&mut self, id: u32, salt: bool) -> bool {
+    pub(crate) fn set_salinity(&mut self, id: u32, salt: bool) -> bool {
         let Some(tank) = self.tank(id) else {
             return false;
         };
@@ -174,7 +174,7 @@ impl World {
     /// The need of an object in a quarter of a tile is the `cDepth` of its type; that of a unit
     /// (but a transient one) the larger of its `cDepth` and the `cHeight` of each quarter object
     /// it cannot walk through.
-    pub fn wall_floor(&self, id: u32) -> u32 {
+    pub(crate) fn wall_floor(&self, id: u32) -> u32 {
         let mut need = i32::MIN;
         for t in self.tiles_of(id) {
             let held: Vec<_> = (0..4).filter_map(|q| self.quadrant(t, q)).collect();
@@ -205,7 +205,7 @@ impl World {
 
     /// Gives tank `id` a wall height, cut to the lowest it takes and the highest a tank has (4.7);
     /// when the water is then above the full level it is cut at once.
-    pub fn set_height(&mut self, id: u32, height: u32) {
+    pub(crate) fn set_height(&mut self, id: u32, height: u32) {
         let height = height.max(self.wall_floor(id)).min(self.tank_config.limit);
         self.edit_tank(id, |t, config| {
             t.height = height;
@@ -252,7 +252,7 @@ impl World {
     /// The wall height the pending gate over the fence piece at `at` takes (placing 6.4): the
     /// height of the tank that piece is a wall of, 0 for a piece of another type or of a wall no
     /// tank records.
-    pub fn wall_height(&self, at: usize) -> u32 {
+    pub(crate) fn wall_height(&self, at: usize) -> u32 {
         let wall = self
             .shapes
             .get(at)

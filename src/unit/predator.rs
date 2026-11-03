@@ -13,17 +13,17 @@ use crate::unit::{Kind, Part, Unit};
 use crate::world::World;
 
 /// The type name id of the man: a species whose prey list holds it frightens every guest.
-pub const MAN: i32 = 9503;
+pub(crate) const MAN: i32 = 9503;
 
 /// `cPredatorRadius` of the unit class file, 5 when it has none. Everything computed from it is
 /// 32-bit wrapping arithmetic, as in the original (animals 11.8).
-pub fn radius(cat: &Catalogue) -> i32 {
+pub(crate) fn radius(cat: &Catalogue) -> i32 {
     cat.predator_radius.unwrap_or(5)
 }
 
 /// The escaped list (animals 11.1), as entity positions: the animals still loose and on the map,
 /// those loose at the load first in file order, then the others in the order they escaped.
-pub fn escaped(world: &World) -> Vec<usize> {
+pub(crate) fn escaped(world: &World) -> Vec<usize> {
     let loose = |&e: &usize| {
         let id = world.zoo.entities[e].common.as_ref().map_or(0, |c| c.id);
         matches!(world.units.get(id).map(|u| &u.part), Some(Part::Animal(a)) if a.escaped)
@@ -94,7 +94,7 @@ fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -
 
 /// `find_predator(unit, mode)`: the id of the threat the unit standing at position `at` sees, 0 for
 /// none. `removed` holds the units asked to go, which no longer count as the kept predator.
-pub fn find(
+pub(crate) fn find(
     world: &World,
     cat: &Catalogue,
     removed: &[u32],

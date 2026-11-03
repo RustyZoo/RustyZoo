@@ -7,7 +7,7 @@ impl Interface {
     /// Disables (`off`) or enables the element `id`; whether it changed. A selected member of a
     /// radio set is deselected as it is disabled, and so are the others of its set. `false` for an
     /// element that does not exist.
-    pub fn disable(&mut self, id: i32, off: bool) -> bool {
+    pub(crate) fn disable(&mut self, id: i32, off: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -24,7 +24,7 @@ impl Interface {
 
     /// Hides (`hide`) or shows the element `id` on its own, a layout with what it holds; whether
     /// it changed. `false` for an element that does not exist.
-    pub fn conceal(&mut self, id: i32, hide: bool) -> bool {
+    pub(crate) fn conceal(&mut self, id: i32, hide: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -44,7 +44,7 @@ impl Interface {
     /// Shows (`on`) or hides the element `id` by the program, as an element kept out of its layout
     /// by the never-shown flag: that flag goes with the hidden one, so the layout's own shows leave
     /// it alone and a hidden one is never hit. `false` for an element that does not exist.
-    pub fn reveal(&mut self, id: i32, on: bool) -> bool {
+    pub(crate) fn reveal(&mut self, id: i32, on: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -53,7 +53,7 @@ impl Interface {
     }
 
     /// The text of row `row` of the list box `id`.
-    pub fn row_text(&self, id: i32, row: usize) -> Option<&[u8]> {
+    pub(crate) fn row_text(&self, id: i32, row: usize) -> Option<&[u8]> {
         match &self.tree.elements[self.tree.find(id)?].kind {
             Kind::ListBox(list) => list.rows.rows.get(row).map(|r| r.text.as_slice()),
             _ => None,

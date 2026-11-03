@@ -37,7 +37,7 @@ pub(super) struct Input {
 
 impl Interface {
     /// Applies one mouse message. Returns whether it belongs to the map view.
-    pub fn mouse(&mut self, mouse: Mouse) -> bool {
+    pub(crate) fn mouse(&mut self, mouse: Mouse) -> bool {
         match mouse {
             Mouse::Move(x, y) => self.moved((x, y)),
             Mouse::Down => self.down(),
@@ -60,7 +60,7 @@ impl Interface {
 
     /// Whether the element under the pointer (the one a held button captured, if any) is the map
     /// view: only then does the map view's cursor show (string tables 6.1).
-    pub fn pointer_on_map(&mut self) -> bool {
+    pub(crate) fn pointer_on_map(&mut self) -> bool {
         let at = self.input.pointer;
         let target = self.input.capture.or_else(|| self.hit(at));
         target.is_some() && target == self.map_view
@@ -68,7 +68,7 @@ impl Interface {
 
     /// Whether the element under the pointer (the one a held button captured, if any) is an
     /// editable text field: it shows the text cursor (string tables 6.1).
-    pub fn pointer_on_text(&mut self) -> bool {
+    pub(crate) fn pointer_on_text(&mut self) -> bool {
         let at = self.input.pointer;
         let target = self.input.capture.or_else(|| self.hit(at));
         target.is_some_and(|t| matches!(self.tree.elements[t].kind, Kind::EditableText(_)))
@@ -328,7 +328,7 @@ impl Interface {
 
     /// A hotkey presses the button `id`, then releases it inside: its action runs. Nothing
     /// happens if the button is not on the screen or is disabled; `false` then.
-    pub fn press_button(&mut self, id: i32) -> bool {
+    pub(crate) fn press_button(&mut self, id: i32) -> bool {
         let Some(b) = self
             .tree
             .find(id)
@@ -345,7 +345,7 @@ impl Interface {
 
     /// Runs the select action of the first of the buttons `ids` that is down, as a press would
     /// (a radio set settled by a show has hidden its page).
-    pub fn reselect(&mut self, ids: &[i32]) {
+    pub(crate) fn reselect(&mut self, ids: &[i32]) {
         if let Some(b) = ids
             .iter()
             .find(|&&id| self.is_down(id))

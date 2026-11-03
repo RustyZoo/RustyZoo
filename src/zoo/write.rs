@@ -53,7 +53,7 @@ impl Zoo {
     /// for an entity the writer has no body for, for a zoo that was not read from a file, and for
     /// the files this writer cannot upgrade yet (a version below 70, shows below 103 that hold
     /// scripts, a habitat with a show below 106).
-    pub fn write(&self, money: &Money) -> Result<Vec<u8>, String> {
+    pub(crate) fn write(&self, money: &Money) -> Result<Vec<u8>, String> {
         let v = self.version;
         if !(MIN_VERSION..=MAX_VERSION).contains(&v) {
             return Err(format!("version {v} cannot be written"));

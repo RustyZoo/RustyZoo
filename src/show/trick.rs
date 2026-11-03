@@ -9,14 +9,14 @@ use crate::world::World;
 use crate::zoo::Item;
 
 /// The trick that is the treat: every list ends with it and a default script offers it.
-pub const FOOD: u16 = 11299;
+pub(crate) const FOOD: u16 = 11299;
 
 /// The tricks of an animal type in order (shows 19.1): for the default subtype's prefix, then the
 /// type's own when it differs, the names of `trick` in the section `<prefix>tricks`, all in one
 /// list. `empty` empties the list so far; a name reads `<prefix>tricks/<name>` as one trick, a
 /// fresh item when the section is missing, unless the list holds one with the same id already. A
 /// type that is no animal has none.
-pub fn tricks(ty: &EntityType) -> Vec<Item> {
+pub(crate) fn tricks(ty: &EntityType) -> Vec<Item> {
     let Some(config) = ty.config.as_deref().filter(|_| ty.class == "animals") else {
         return Vec::new();
     };
@@ -44,7 +44,7 @@ pub fn tricks(ty: &EntityType) -> Vec<Item> {
 }
 
 /// Whether the animal type performs: its list is not empty (shows 18.1).
-pub fn performs(ty: &EntityType) -> bool {
+pub(crate) fn performs(ty: &EntityType) -> bool {
     !tricks(ty).is_empty()
 }
 
@@ -87,7 +87,7 @@ fn item(section: &Section, species: u32) -> Item {
 /// available tricks in order, with the food trick after each run of tricks that adds up to the
 /// threshold. `None` for a type with no tricks; a type whose tricks are all unavailable gets a
 /// script with no item.
-pub fn default_items(
+pub(crate) fn default_items(
     world: &World,
     cat: &Catalogue,
     params: &Params,

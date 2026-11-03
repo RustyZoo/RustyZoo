@@ -57,7 +57,7 @@ fn release_followers(world: &mut World, ctx: &mut Ctx, data: &dyn Data, guide: u
 
 /// 12.1: the guide `id` is taken off the map for good (fired) or picked up: it releases its group
 /// at once, its list and leg-start flag go, and the draws come from `rng`.
-pub fn release_group(world: &mut World, cat: &Catalogue, rng: &mut Rng, id: u32) {
+pub(crate) fn release_group(world: &mut World, cat: &Catalogue, rng: &mut Rng, id: u32) {
     if world.units.get(id).is_none_or(|u| u.kind != Kind::Guide) {
         return;
     }

@@ -9,7 +9,7 @@ use crate::timing::{ini_value, ini_whole};
 pub const START_LIMIT: i32 = 6000;
 /// The most a playing positional sound may be attenuated at a position refresh before it is
 /// stopped (sound specification 4.2).
-pub const REFRESH_LIMIT: i32 = 9000;
+pub(crate) const REFRESH_LIMIT: i32 = 9000;
 
 /// What an owner does with a positional loop at an update, given the attenuation sum it would
 /// have (sound specification 4.2).
@@ -54,7 +54,7 @@ pub fn gain(sum: i32) -> f32 {
 /// view-space point `listener` (the centre of the map view): `X = min(trunc(2.75 * d), 10000)`
 /// and `pan = clamp(6 * dx, -10000, 10000)` (sound specification 5). A positive pan quietens the
 /// left channel.
-pub fn positional(sound: (i64, i64), listener: (i64, i64)) -> (i32, i32) {
+pub(crate) fn positional(sound: (i64, i64), listener: (i64, i64)) -> (i32, i32) {
     let dx = sound.0.saturating_sub(listener.0);
     let dy = sound.1.saturating_sub(listener.1);
     // Every operation rounded to 24 bits (sound O9).
@@ -65,7 +65,7 @@ pub fn positional(sound: (i64, i64), listener: (i64, i64)) -> (i32, i32) {
 
 /// The global term `G` for the `[UI] userAttenuation` setting `u`: the slider position
 /// `s = clamp(100 - u div 15, 0, 100)` gives `(100 - s) * 15`, or 5000 at 0 (specification 4.3).
-pub fn user_term(u: i32) -> i32 {
+pub(crate) fn user_term(u: i32) -> i32 {
     let slider = (100 - u / 15).clamp(0, 100);
     if slider == 0 {
         5000
@@ -131,12 +131,12 @@ impl Music {
             .saturating_add(self.fade)
     }
 
-    pub fn gain(&self) -> f32 {
+    pub(crate) fn gain(&self) -> f32 {
         gain(self.sum())
     }
 
     /// Whether it plays at full level and is not fading.
-    pub fn playing(&self) -> bool {
+    pub(crate) fn playing(&self) -> bool {
         self.state == State::Playing
     }
 
@@ -146,7 +146,7 @@ impl Music {
 
     /// A game starts: the fade begins if the music plays and does not fade already. The first
     /// fade of a session (`first`) waits five interface updates (specification 6.3).
-    pub fn start_fade(&mut self, first: bool) {
+    pub(crate) fn start_fade(&mut self, first: bool) {
         if self.state == State::Playing {
             self.state = match first {
                 true => State::Waiting(FIRST_DELAY),
@@ -158,7 +158,7 @@ impl Music {
     /// One interface update with its nominal period in milliseconds. Returns whether it changed
     /// the music: the volume must be refreshed, or the music has just stopped (see
     /// [`Music::stopped`]). False while waiting, and once stopped.
-    pub fn update(&mut self, period: u32) -> bool {
+    pub(crate) fn update(&mut self, period: u32) -> bool {
         match self.state {
             State::Playing | State::Stopped => false,
             State::Waiting(left) => {
@@ -186,7 +186,7 @@ impl Music {
 
     /// The line a log gets for the update that last returned true, or for the one that stopped
     /// the music.
-    pub fn log_line(&self) -> String {
+    pub(crate) fn log_line(&self) -> String {
         match self.stopped() {
             true => "music stopped".to_string(),
             false => format!(

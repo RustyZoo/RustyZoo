@@ -14,9 +14,9 @@ pub mod rating;
 pub mod viewing;
 
 /// The region of the zoo grounds.
-pub const GROUNDS: u32 = 0;
+pub(crate) const GROUNDS: u32 = 0;
 /// The region of the tiles beyond the zoo wall.
-pub const EXTERIOR: u32 = u32::MAX;
+pub(crate) const EXTERIOR: u32 = u32::MAX;
 
 /// An exhibit: its number (kept while it exists), name, gate and size.
 #[derive(Debug, Clone, PartialEq)]
@@ -49,7 +49,7 @@ pub struct Exhibit {
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,
     /// What its panel shows besides the rating.
-    pub stats: Stats,
+    pub(crate) stats: Stats,
     /// Its viewing areas (habitat rating 10), kept up to date per path change.
     pub areas: Vec<viewing::Area>,
 }
@@ -57,7 +57,7 @@ pub struct Exhibit {
 /// The statistics of an exhibit (habitat rating 13.2 and 13.3). The simulation writes them: the
 /// guests' viewing the popularity and the donations, the month change the shift of the triples.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Stats {
+pub(crate) struct Stats {
     /// The calendar date it was made.
     pub created: Option<Date>,
     /// 0 to 100.
@@ -77,7 +77,7 @@ pub struct Stats {
 impl Stats {
     /// The month ends (habitat rating 13.3): this month's figures become last month's and this
     /// month starts from 0; the totals keep running.
-    pub fn enter_new_month(&mut self) {
+    pub(crate) fn enter_new_month(&mut self) {
         for t in [&mut self.donations, &mut self.upkeep] {
             *t = [t[1], 0.0, t[2]];
         }
@@ -106,7 +106,7 @@ pub struct Tank {
 impl Tank {
     /// The wall height and the water level in levels, cut to 1000 so that a sum with a floor or a
     /// product with 16 never overflows (a file can store any number).
-    pub fn steps(&self) -> (i32, i32) {
+    pub(crate) fn steps(&self) -> (i32, i32) {
         let cut = |v: u32| v.min(1000) as i32;
         (cut(self.height), cut(self.level))
     }
@@ -187,7 +187,7 @@ impl TankConfig {
     /// Reads the `[tank]` section of a `tanks.cfg`; a key that is missing keeps the default, and
     /// a number is cut to what a tank can hold (a height or level 0 to 255, a sink -24 to 24, a
     /// purity 0 to 100, a terrain type 0 to 255).
-    pub fn read(config: &Config) -> TankConfig {
+    pub(crate) fn read(config: &Config) -> TankConfig {
         let tank = config.section("tank");
         let number = |key: &str| tank.and_then(|s| s.get(key)).and_then(to_int);
         let mut found = TankConfig::default();
@@ -229,7 +229,7 @@ impl TankConfig {
     }
 
     /// The level of a full tank of this wall height, `H + waterOffset` cut to 0 and 255 (3.10).
-    pub fn top(&self, height: u32) -> u32 {
+    pub(crate) fn top(&self, height: u32) -> u32 {
         (i64::from(height) + i64::from(self.offset)).clamp(0, 255) as u32
     }
 }
@@ -251,7 +251,7 @@ impl Default for Tank {
 }
 
 /// A set of tiles joined without an exhibit fence.
-pub struct Part {
+pub(crate) struct Part {
     pub tiles: Vec<usize>,
     /// The region holds the zoo entrance or a tile beyond the zoo wall.
     pub grounds: bool,
@@ -271,16 +271,16 @@ pub struct Exhibits {
     pub grounds: rating::State,
     /// The zoo grounds' figures, which the month end moves like an exhibit's. No file stores them
     /// and nothing writes them yet (habitat rating 13.3).
-    pub grounds_stats: Stats,
+    pub(crate) grounds_stats: Stats,
     /// The slots of the viewing areas.
-    pub views: viewing::Store,
+    pub(crate) views: viewing::Store,
 }
 
 /// The tiles of the region of `start` in the original's order (exhibits and money 3.1): a stack of
 /// seed tiles, each popped tile that is not in yet puts in its row run (the tile, then the tiles
 /// to its west, then those to its east), and pushes the tiles above and below the run from west
 /// to east. The list is the reverse of the order the tiles were put in.
-pub fn fill(world: &World, start: usize) -> Vec<usize> {
+pub(crate) fn fill(world: &World, start: usize) -> Vec<usize> {
     let mut put = vec![false; world.zoo.tiles.len()];
     let mut list = Vec::new();
     let mut seeds = vec![start];
@@ -323,7 +323,7 @@ pub fn fill(world: &World, start: usize) -> Vec<usize> {
 /// The line of the boundary of the region `tiles` that the file closes last (exhibits and money
 /// 3.8): a line is closed by the earlier in the file of the exhibit fence pieces on its two slots.
 /// The tile inside, the tile across and the tile of the closing piece.
-pub fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usize, usize)> {
+pub(crate) fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usize, usize)> {
     let inside: std::collections::HashSet<usize> = tiles.iter().copied().collect();
     let mut last: Option<(usize, (usize, usize, usize))> = None;
     for &t in tiles {
@@ -349,7 +349,7 @@ pub fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usize, usiz
 /// The boundary pairs of the tile list `order` (3.1): for each tile, for the sides 0, 2, 4, 6, the
 /// pair (tile, neighbour) when `inside` says the neighbour is not in the exhibit; no neighbour at
 /// the map edge.
-pub fn boundary_of(
+pub(crate) fn boundary_of(
     world: &World,
     order: &[usize],
     inside: &dyn Fn(usize) -> bool,
@@ -367,7 +367,7 @@ pub fn boundary_of(
 }
 
 /// The regions of a world, the one of the entrance first and then the others by their first tile.
-pub fn parts(world: &World) -> Vec<Part> {
+pub(crate) fn parts(world: &World) -> Vec<Part> {
     let tiles = world.zoo.tiles.len();
     let mut seen = vec![false; tiles];
     let mut parts = Vec::new();
@@ -409,7 +409,7 @@ impl Exhibits {
     /// tile. A region that holds the entrance tile or a tile beyond the zoo wall is the zoo
     /// grounds (the gate buildings join the exterior to the grounds), and the tiles beyond the
     /// wall are marked [`EXTERIOR`] in it.
-    pub fn new(world: &World) -> Exhibits {
+    pub(crate) fn new(world: &World) -> Exhibits {
         let mut found = Exhibits {
             region: vec![GROUNDS; world.zoo.tiles.len()],
             next: 1,
@@ -433,7 +433,7 @@ impl Exhibits {
     }
 
     /// An empty set for a map of `tiles` tiles, with this one's numbers.
-    pub fn blank(&self, tiles: usize) -> Exhibits {
+    pub(crate) fn blank(&self, tiles: usize) -> Exhibits {
         Exhibits {
             region: vec![GROUNDS; tiles],
             list: Vec::new(),
@@ -446,14 +446,14 @@ impl Exhibits {
     }
 
     /// Adds an exhibit that goes on, with the tiles it holds now.
-    pub fn keep(&mut self, exhibit: Exhibit, part: &Part) {
+    pub(crate) fn keep(&mut self, exhibit: Exhibit, part: &Part) {
         let id = exhibit.id;
         self.list.push(exhibit);
         self.assign(id, part);
     }
 
     /// Adds the part as a new exhibit with the next number and a name.
-    pub fn add(&mut self, part: &Part, name: String) -> u32 {
+    pub(crate) fn add(&mut self, part: &Part, name: String) -> u32 {
         let id = self.next;
         self.next += 1;
         self.list.push(Exhibit {
@@ -477,7 +477,7 @@ impl Exhibits {
     }
 
     /// The tiles of the part belong to exhibit `id`.
-    pub fn assign(&mut self, id: u32, part: &Part) {
+    pub(crate) fn assign(&mut self, id: u32, part: &Part) {
         for &t in &part.tiles {
             self.region[t] = id;
         }
@@ -489,7 +489,7 @@ impl Exhibits {
     }
 
     /// Marks the tiles beyond the zoo wall.
-    pub fn exterior(&mut self, world: &World) {
+    pub(crate) fn exterior(&mut self, world: &World) {
         for (t, r) in self.region.iter_mut().enumerate() {
             if !world.in_zoo(t) {
                 *r = EXTERIOR;
@@ -498,16 +498,16 @@ impl Exhibits {
     }
 
     /// The exhibit numbered `id`.
-    pub fn get(&self, id: u32) -> Option<&Exhibit> {
+    pub(crate) fn get(&self, id: u32) -> Option<&Exhibit> {
         self.list.iter().find(|e| e.id == id)
     }
 
-    pub fn list_mut(&mut self) -> &mut [Exhibit] {
+    pub(crate) fn list_mut(&mut self) -> &mut [Exhibit] {
         &mut self.list
     }
 
     /// The month ends: every exhibit shifts its monthly figures.
-    pub fn enter_new_month(&mut self) {
+    pub(crate) fn enter_new_month(&mut self) {
         for e in &mut self.list {
             e.stats.enter_new_month();
         }
@@ -517,7 +517,7 @@ impl Exhibits {
     /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious and show
     /// neighbours with it, theirs in turn, up to those already marked; the zoo grounds have no
     /// rating.
-    pub fn mark(&mut self, id: u32) {
+    pub(crate) fn mark(&mut self, id: u32) {
         let Some(e) = self.get_mut(id) else {
             return;
         };
@@ -535,7 +535,7 @@ impl Exhibits {
         }
     }
 
-    pub fn get_mut(&mut self, id: u32) -> Option<&mut Exhibit> {
+    pub(crate) fn get_mut(&mut self, id: u32) -> Option<&mut Exhibit> {
         self.list.iter_mut().find(|e| e.id == id)
     }
 
@@ -558,19 +558,19 @@ impl Exhibits {
     }
 
     /// The region of tile `t`: [`GROUNDS`], [`EXTERIOR`] or the number of an exhibit (from 1).
-    pub fn region(&self, t: usize) -> Option<u32> {
+    pub(crate) fn region(&self, t: usize) -> Option<u32> {
         self.region.get(t).copied()
     }
 
     /// The boundary of exhibit `id` in the original's order (3.1): for each tile of its list, for
     /// the sides 0, 2, 4, 6, the pair (tile, neighbour outside it); no neighbour at the map edge.
-    pub fn boundary(&self, world: &World, id: u32) -> Vec<(usize, Option<usize>)> {
+    pub(crate) fn boundary(&self, world: &World, id: u32) -> Vec<(usize, Option<usize>)> {
         let tiles = self.get(id).map_or(&[][..], |e| &e.order);
         boundary_of(world, tiles, &|n| self.region(n) == Some(id))
     }
 
     /// Gives exhibit `id` a new tile list: the same tiles, filled again.
-    pub fn reorder(&mut self, id: u32, order: Vec<usize>) {
+    pub(crate) fn reorder(&mut self, id: u32, order: Vec<usize>) {
         if let Some(e) = self.get_mut(id) {
             e.order = order;
         }

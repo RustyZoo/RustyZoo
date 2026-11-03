@@ -24,22 +24,22 @@ use crate::world::World;
 
 /// The layout of the panel, the name field, the buttons (follow, pick up, fire, assign mode) and the
 /// tab buttons: status, the exhibits of a keeper or guide, the duties of a worker.
-pub const LAYOUT: i32 = 17;
-pub const NAME: i32 = 3502;
-pub const FOLLOW: i32 = 3515;
-pub const PICK_UP: i32 = 3570;
-pub const FIRE: i32 = 3606;
-pub const ASSIGN: i32 = 3578;
-pub const TABS: [i32; 3] = [3562, 3564, 3565];
+pub(crate) const LAYOUT: i32 = 17;
+pub(crate) const NAME: i32 = 3502;
+pub(crate) const FOLLOW: i32 = 3515;
+pub(crate) const PICK_UP: i32 = 3570;
+pub(crate) const FIRE: i32 = 3606;
+pub(crate) const ASSIGN: i32 = 3578;
+pub(crate) const TABS: [i32; 3] = [3562, 3564, 3565];
 /// The exhibits list with its two buttons, and the layout of its tab.
-pub const LIST: i32 = 3569;
-pub const REMOVE: i32 = 3579;
-pub const REMOVE_ALL: i32 = 3580;
-pub const EXHIBITS_LAYOUT: i32 = 601;
+pub(crate) const LIST: i32 = 3569;
+pub(crate) const REMOVE: i32 = 3579;
+pub(crate) const REMOVE_ALL: i32 = 3580;
+pub(crate) const EXHIBITS_LAYOUT: i32 = 601;
 /// The list of the worker's duty switches.
-pub const DUTIES: i32 = 3587;
+pub(crate) const DUTIES: i32 = 3587;
 /// The training icons, one per bit of the type's training mask (research 6.5).
-pub const ICONS: [i32; 5] = [3581, 3582, 3583, 3584, 3585];
+pub(crate) const ICONS: [i32; 5] = [3581, 3582, 3583, 3584, 3585];
 const SALARY: i32 = 3503;
 const DUTY: i32 = 3505;
 /// The string of the first duty kind, and the pictures of a check box off and on.
@@ -49,7 +49,7 @@ pub(crate) const CHECKS: [&str; 2] = [
     "ui/sharedui/checkbx2/checkbx2",
 ];
 /// The interface clock time between two refreshes (ms).
-pub const PERIOD: u64 = 1000;
+pub(crate) const PERIOD: u64 = 1000;
 
 /// The tasks the job text looks at: go to an exhibit, enter one, leave one, and the guide's two.
 const EXIT: u8 = 127;
@@ -92,7 +92,7 @@ const SPEAKING: i32 = 10401;
 const GUIDE_MONITORING: i32 = 10402;
 
 /// What the exhibit of a tile is called in the job text.
-pub enum Place {
+pub(crate) enum Place {
     /// No exhibit: the tile is outside the zoo or there is no tile.
     None,
     Grounds,
@@ -102,7 +102,7 @@ pub enum Place {
 /// The job text of a staff member (staff 9): the string and the name that goes in its `%s`;
 /// `None` for an empty text. `at` gives the place of a tile, `animal` whether an entity is an
 /// animal and then an egg. The shows and the captures are M7's.
-pub fn duty(
+pub(crate) fn duty(
     unit: &Unit,
     type_id: i32,
     at: impl Fn(Option<usize>) -> Place,
@@ -153,7 +153,7 @@ pub fn duty(
 
 /// The selected staff member and the refresh clock.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     /// The selected staff member, by entity id.
     pub selected: Option<u32>,
     pub clock: Clock,
@@ -225,7 +225,7 @@ impl Panel {
     }
 
     /// Selects the staff member with entity id `id`: the panel is filled at once (4.3).
-    pub fn select(&mut self, id: u32) {
+    pub(crate) fn select(&mut self, id: u32) {
         self.selected = Some(id);
         self.fresh = true;
         self.clock.force = true;
@@ -233,13 +233,13 @@ impl Panel {
     }
 
     /// Fills the panel again from the start: the name field shows the staff member's name.
-    pub fn reselect(&mut self) {
+    pub(crate) fn reselect(&mut self) {
         if let Some(id) = self.selected {
             self.select(id);
         }
     }
 
-    pub fn deselect(&mut self) {
+    pub(crate) fn deselect(&mut self) {
         self.selected = None;
         self.over = None;
         self.told.clear();
@@ -247,7 +247,7 @@ impl Panel {
 
     /// Writes the panel for the selected staff member and returns the log line when something it
     /// shows changed. `placing`: the map view holds a pending entity (the assign button is off).
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         world: &World,

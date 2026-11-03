@@ -24,7 +24,7 @@ const CHECKS: u64 = 0xFF | 1 << 10 | 1 << 14 | 1 << 15 | 1 << 16 | 1 << 62;
 /// first term is stored as a single-precision float, each next product is added to the sum before
 /// that is rounded again (the product is not rounded first), and the last sum is not rounded at
 /// all.
-pub fn land_score(r: &Record) -> f64 {
+pub(crate) fn land_score(r: &Record) -> f64 {
     let term = |w: f32, p: f32| f64::from(w) * f64::from(p);
     let mut sum = f64::from(0.3f32 * r.terrain);
     for (w, p) in [(0.2, r.objects), (0.1, r.foliage), (0.1, r.rocks)] {
@@ -35,7 +35,7 @@ pub fn land_score(r: &Record) -> f64 {
 
 /// The home of an animal of species `likes` that stands in exhibit `x`, `None` when the candidate
 /// is a show tank or has no gate (no other is tried).
-pub fn home(world: &World, cat: &Catalogue, x: u32, likes: &Likes) -> Option<u32> {
+pub(crate) fn home(world: &World, cat: &Catalogue, x: u32, likes: &Likes) -> Option<u32> {
     let e = world.exhibits().get(x)?;
     let mut home = x;
     if e.tank.is_some() && likes.amphibious && !e.amphibious.is_empty() {
@@ -69,7 +69,7 @@ pub fn home(world: &World, cat: &Catalogue, x: u32, likes: &Likes) -> Option<u32
 }
 
 /// Settles the bits of the animals of exhibit `x`, rated just now.
-pub fn settle(world: &mut World, cat: &Catalogue, x: u32) {
+pub(crate) fn settle(world: &mut World, cat: &Catalogue, x: u32) {
     let Some(e) = world.exhibits().get(x) else {
         return;
     };

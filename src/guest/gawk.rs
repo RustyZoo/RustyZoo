@@ -18,7 +18,7 @@ use crate::zoo::Entity;
 /// A scenery object the list has judged: whether it joined, its `cEstheticWeight` and `cHelpID`,
 /// the tile it stands on and whether it is gawked at from its front only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Judged {
+pub(crate) struct Judged {
     pub id: u32,
     pub member: bool,
     pub weight: i32,
@@ -30,14 +30,14 @@ pub struct Judged {
 
 /// The objects judged so far in entity order, and the edit count they were judged at.
 #[derive(Debug, Default)]
-pub struct Gawk {
+pub(crate) struct Gawk {
     edits: Option<u64>,
     list: Vec<Judged>,
 }
 
 impl Gawk {
     /// The members of the list in order.
-    pub fn members(&self) -> impl Iterator<Item = &Judged> {
+    pub(crate) fn members(&self) -> impl Iterator<Item = &Judged> {
         self.list.iter().filter(|j| j.member)
     }
 }
@@ -48,13 +48,13 @@ fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
 }
 
 /// The `cHelpID` of the type of `e`.
-pub fn help_id(cat: &Catalogue, e: &Entity) -> Option<i32> {
+pub(crate) fn help_id(cat: &Catalogue, e: &Entity) -> Option<i32> {
     number(type_of(cat, e)?, "cHelpID").map(|v| v as i32)
 }
 
 /// The gawk list after a change of the map: the objects it knows keep their verdict, the new
 /// ones are judged now, the removed ones are dropped.
-pub fn update(world: &mut World, cat: &Catalogue) {
+pub(crate) fn update(world: &mut World, cat: &Catalogue) {
     if world.units.gawk.edits == Some(world.edits) {
         return;
     }
@@ -94,7 +94,7 @@ pub fn update(world: &mut World, cat: &Catalogue) {
 
 /// 3.2: the ids and the help ids of the entities held by the last quadrant (offsets 32 or more) of
 /// the tiles of the seen list; none while the guest holds a return building.
-pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSet<i32>) {
+pub(crate) fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSet<i32>) {
     let (mut ids, mut helps) = (HashSet::new(), HashSet::new());
     if g.returning.is_some() {
         return (ids, helps);
@@ -112,7 +112,7 @@ pub fn marks(world: &World, cat: &Catalogue, g: &Guest) -> (HashSet<u32>, HashSe
 /// 3.2: the members of the list the guest has not seen, in list order. An object is seen when
 /// the entity held by the last quadrant of some tile of the seen list is that object or has the
 /// same help id; its own tile in the list counts for nothing.
-pub fn unseen(world: &World, cat: &Catalogue, g: &Guest) -> Vec<Judged> {
+pub(crate) fn unseen(world: &World, cat: &Catalogue, g: &Guest) -> Vec<Judged> {
     let (ids, helps) = marks(world, cat, g);
     (world.units.gawk.members())
         .filter(|j| !(ids.contains(&j.id) || j.help.is_some_and(|h| helps.contains(&h))))
@@ -121,14 +121,14 @@ pub fn unseen(world: &World, cat: &Catalogue, g: &Guest) -> Vec<Judged> {
 }
 
 /// 3.3: S, the weight of the unseen objects as a number of sites.
-pub fn sites(unseen: &[Judged]) -> usize {
+pub(crate) fn sites(unseen: &[Judged]) -> usize {
     let w: i64 = unseen.iter().map(|j| i64::from(j.weight)).sum();
     if w <= 0 { 0 } else { (w / 100).max(1) as usize }
 }
 
 /// 3.7, `pickGawkScenery`: the unseen object with the best score, the first on a tie; `d` is the
 /// squared distance in tiles from the tile `here` of a map `width` tiles wide.
-pub fn pick(unseen: &[Judged], here: usize, width: usize) -> Option<Judged> {
+pub(crate) fn pick(unseen: &[Judged], here: usize, width: usize) -> Option<Judged> {
     let at = |t: usize| ((t % width) as i64, (t / width) as i64);
     let mut best: Option<(i64, Judged)> = None;
     for j in unseen {
@@ -144,7 +144,7 @@ pub fn pick(unseen: &[Judged], here: usize, width: usize) -> Option<Judged> {
 
 /// 8.7: the set a guest of the type with name id `guest` plays at the scenery `ty`, by the
 /// esthetic bonus the object has for that type (0 for a type it lists not).
-pub fn gawk_set(ty: &EntityType, guest: i32) -> &'static str {
+pub(crate) fn gawk_set(ty: &EntityType, guest: i32) -> &'static str {
     let v = GUESTS.iter().position(|&id| id == guest);
     match v.map_or(0.0, |i| bonus(ty)[i]) as i32 {
         ..0 => "bGawkObject1",
@@ -157,14 +157,14 @@ pub fn gawk_set(ty: &EntityType, guest: i32) -> &'static str {
 }
 
 /// 8.7: the `cUsedThought` ids of the scenery type, in file order.
-pub fn thoughts(ty: &EntityType) -> Vec<i32> {
+pub(crate) fn thoughts(ty: &EntityType) -> Vec<i32> {
     let ints = (ty.config.as_deref()).and_then(|c| c.section("Characteristics/Integers"));
     let all = ints.map(|s| s.get_all("cUsedThought")).unwrap_or_default();
     all.iter().filter_map(|v| to_int(v)).collect()
 }
 
 /// The type of the entity at position `at` of the entity list.
-pub fn kind<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
+pub(crate) fn kind<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
     type_of(cat, world.zoo.entities.get(at)?)
 }
 
@@ -172,7 +172,7 @@ pub fn kind<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Option<&'a Enti
 /// footprint box grown by one tile, corners included, those on the map), x outer and y inner. The
 /// tiles with a path piece come first as one list, else the others; with `cGawkOnlyFromFront`
 /// only the side the object faces is kept (an odd rotation keeps the whole ring).
-pub fn ring(world: &World, object: &Judged) -> Vec<usize> {
+pub(crate) fn ring(world: &World, object: &Judged) -> Vec<usize> {
     let Some((e, shape)) = world
         .find(object.id)
         .and_then(|e| Some((e, world.shape(e)?)))
