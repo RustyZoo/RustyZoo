@@ -1,5 +1,8 @@
 //! The numbers of `shows.cfg`, which show a grandstand belongs to, and the emptying routines.
 
+mod cycle;
+mod relay;
+
 use super::*;
 use crate::building::Live;
 use crate::config::Config;
@@ -10,7 +13,7 @@ use std::sync::Arc;
 
 /// A grandstand: 12 places in two columns, a slot of 12, users that sit and use the exit.
 fn stand() -> String {
-    let mut text = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
+    let mut text = "[Characteristics/Floats]\ncUpkeep=15\n[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
         cUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\ngrandstand\n[slots]\nname=slot\n\
         [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=144\nexitpos=0\nexitpos=144\ncapacity=12\n\
         cHasDrawSlots=drawslots\n[drawslots]\n"
@@ -297,6 +300,36 @@ fn emptying_a_show_removes_every_user_of_the_grandstands_that_face_its_tank() {
     assert_eq!((c.x, c.y), (240, 160));
 }
 
+/// The targets of the abort events posted so far, in posting order.
+fn aborts(w: &World) -> Vec<u32> {
+    (w.units.posts.iter())
+        .filter(|e| e.kind == 0x2722)
+        .map(|e| e.target)
+        .collect()
+}
+
+#[test]
+fn two_users_of_a_building_get_one_abort_event_each_in_entering_order() {
+    let (mut w, cat) = crowded();
+    // Entering order, not id order.
+    w.units.buildings.get_mut(&7).unwrap().users = vec![(2, 0, 0), (1, 0, 0)];
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 7);
+    assert_eq!(aborts(&w), [2, 1]);
+}
+
+#[test]
+fn a_user_listed_by_the_live_list_and_the_record_gets_one_abort_event() {
+    let (mut w, cat) = crowded();
+    let at = w.find(7).unwrap();
+    let mut b = crate::zoo::fresh::building_new(5.0, 0);
+    b.users = vec![(1, 0)];
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(b);
+    w.units.posts.clear();
+    crate::building::leave::push_out(&mut w, &cat, 7);
+    assert_eq!(aborts(&w), [1, 2]);
+}
+
 #[test]
 fn emptying_a_show_that_has_no_info_or_no_tank_does_nothing() {
     let (mut w, cat) = crowded();
@@ -311,12 +344,12 @@ fn emptying_a_show_that_has_no_info_or_no_tank_does_nothing() {
 #[test]
 fn emptying_a_grandstand_lowers_its_flag_and_empties_its_show() {
     let (mut w, cat) = crowded();
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     assert!(w.units.buildings[&7].users.is_empty() && w.units.buildings[&7].fill == 0);
     // A grandstand that holds the show but faces away loses its flag and keeps its users; the
     // grandstands that face the tank are emptied all the same.
     let (mut w, cat) = crowded();
-    empty_grandstands(&mut w, &cat, 8);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 8);
     let (a, b) = (&w.units.buildings[&7], &w.units.buildings[&8]);
     assert_eq!((a.users.len(), b.users.len(), b.fill), (0, 1, 0));
 }
@@ -325,19 +358,19 @@ fn emptying_a_grandstand_lowers_its_flag_and_empties_its_show() {
 fn emptying_a_grandstand_with_no_show_leaves_its_users() {
     let (mut w, cat) = crowded();
     w.units.buildings.get_mut(&7).unwrap().show_id = 0;
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     let live = &w.units.buildings[&7];
     assert_eq!((live.users.len(), live.fill), (2, 1));
     // A building that is no grandstand, and an id that is nothing.
-    empty_grandstands(&mut w, &cat, 1);
-    empty_grandstands(&mut w, &cat, 99);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 1);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 99);
 }
 
 #[test]
 fn a_grandstand_of_a_show_whose_info_is_gone_is_not_emptied() {
     let (mut w, cat) = crowded();
     w.zoo.shows.infos = vec![None];
-    empty_grandstands(&mut w, &cat, 7);
+    empty_grandstands(&mut w, &cat, &mut Events::default(), 7);
     let live = &w.units.buildings[&7];
     assert_eq!((live.users.len(), live.fill), (2, 1));
 }

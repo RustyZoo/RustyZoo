@@ -102,6 +102,7 @@ fn place(
         gated: false,
         tank: crate::render::tank_kind(ty),
         walkable: (false, false),
+        forms: None,
     };
     world.add_rated(entity, Some(shape), rated).is_some()
 }

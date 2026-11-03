@@ -1102,6 +1102,108 @@ fn the_marker_height_is_its_own_frame_height() {
 }
 
 #[test]
+fn a_window_mended_where_a_staging_differs_is_the_window_drawn_again() {
+    use crate::sprite::tests::{sized, sprite_file};
+    // A one pixel frame of the palette colour `index`.
+    let frame = |index: u8| {
+        let mut data = Vec::new();
+        for field in [1u16, 1, 0, 0, 0] {
+            data.extend(field.to_le_bytes());
+        }
+        data.extend([1, 0, 1, index]);
+        sized(&data)
+    };
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let install = cache_install_with(
+        "render-mend",
+        frame_file(),
+        &[
+            ("guests.cfg", b"[guests]\nman = man.ai\n".to_vec()),
+            (
+                "man.ai",
+                b"[Animations]\nidle = idle\nwalk = walk\n".to_vec(),
+            ),
+            ("guests/man/idle/idle.ani", ani("idle")),
+            ("guests/man/walk/walk.ani", ani("walk")),
+            ("a/idle/N", sprite_file(None, 1, &[frame(1)])),
+            (
+                "a/walk/N",
+                sprite_file(None, 3, &[frame(1), frame(2), frame(1)]),
+            ),
+            (
+                "animals/Lion/lion.pal",
+                palette_file(&[[255, 0, 255], [200, 0, 0], [0, 200, 0]]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[("guests", "man", "")]);
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut elsewhere = tile_with(&[("guests", "man", "")]);
+    if let Some(common) = elsewhere.entities[0].common.as_mut() {
+        (common.x, common.y) = (44, 20);
+    }
+    let mut stage = |zoo: &Zoo, frame: Option<u32>, rotation| {
+        let extra = Extra {
+            shown: frame
+                .into_iter()
+                .map(|frame| Shown {
+                    id: 1,
+                    animation: "walk".into(),
+                    frame,
+                })
+                .collect(),
+            ..Extra::default()
+        };
+        renderer.stage_with(zoo, rotation, false, &extra).unwrap()
+    };
+    let (idle, step1, step2, same, away) = (
+        stage(&zoo, None, 0),
+        stage(&zoo, Some(1), 0),
+        stage(&zoo, Some(2), 0),
+        stage(&zoo, Some(2), 0),
+        stage(&elsewhere, Some(1), 0),
+    );
+    for zoom in [-2, 0, 2] {
+        for grid in [false, true] {
+            let b = idle.bounds_at(zoom);
+            let (x, y) = (b[0] as i32 - 8, b[1] as i32 - 8);
+            let size = (160, 120);
+            let draw = |staged: &Staged| {
+                let mut canvas = Framebuffer::new(size.0, size.1);
+                staged.draw(&mut canvas, x, y, zoom, grid);
+                canvas
+            };
+            // The third pair has the same pixels: the frame of the walk is the idle one.
+            let pairs = [(&idle, &step1), (&step1, &step2), (&step2, &idle)];
+            // A unit that moved leaves its old place.
+            let pairs = pairs.into_iter().chain([(&step1, &away), (&away, &idle)]);
+            for (k, (old, new)) in pairs.enumerate() {
+                let mut canvas = draw(old);
+                let rects = new.changes(old, size, (x, y), zoom, grid).unwrap();
+                assert!(!rects.is_empty(), "zoom {zoom}");
+                new.redraw(&mut canvas, x, y, zoom, grid, &rects);
+                assert!(canvas.pixels == draw(new).pixels, "zoom {zoom} grid {grid}");
+                // A picture one pixel high is not drawn zoomed out.
+                assert!(zoom < 0 || k == 2 || canvas.pixels != draw(old).pixels);
+            }
+            // Nothing differs between two stagings of the same things.
+            assert_eq!(step2.changes(&same, size, (x, y), zoom, grid), Some(vec![]));
+        }
+    }
+    // Another rotation or another map cannot be mended.
+    let turned = stage(&zoo, Some(1), 1);
+    assert_eq!(turned.changes(&step1, (160, 120), (0, 0), 0, false), None);
+    // A rectangle is clipped to the window, and nothing outside is left to draw.
+    assert_eq!(
+        step1.changes(&idle, (1, 1), (i32::MIN, i32::MIN), 0, false),
+        Some(vec![])
+    );
+}
+
+#[test]
 fn each_reaction_draws_its_face_over_its_unit_at_the_frame_of_its_age() {
     let install = marker_install("render-faces", 1);
     let faces = |ty: &str, faces: &[(u32, bool, u32)]| {
@@ -1140,6 +1242,91 @@ fn each_reaction_draws_its_face_over_its_unit_at_the_frame_of_its_age() {
     assert_eq!(pics[2].2, pics[0].2 + 5);
     let pics = extra_pics(&install, "huge", &extra).0;
     assert_eq!(pics[2].2, pics[0].2.saturating_sub(i32::MAX));
+}
+
+#[test]
+fn a_face_that_ends_is_mended_where_it_was_drawn() {
+    use crate::sprite::tests::{sized, sprite_file};
+    // A one pixel frame of the palette colour `index`.
+    let frame = |index: u8| {
+        let mut data = Vec::new();
+        for field in [1u16, 1, 0, 0, 0] {
+            data.extend(field.to_le_bytes());
+        }
+        data.extend([1, 0, 1, index]);
+        sized(&data)
+    };
+    let ani = |dirs: &str| format!("[animation]\n{dirs}animation = N\n").into_bytes();
+    let face = |name: &str| {
+        let dirs = format!("dir0 = objects\ndir1 = {name}\ndir2 = idle\n");
+        [
+            (format!("objects/{name}/idle/idle.ani"), ani(&dirs)),
+            (
+                format!("objects/{name}/idle/N"),
+                sprite_file(None, 3, &[frame(1), frame(1), frame(2)]),
+            ),
+        ]
+    };
+    let mut members = vec![
+        (
+            "guests.cfg".to_string(),
+            b"[guests]\nman = man.ai\n".to_vec(),
+        ),
+        (
+            "man.ai".to_string(),
+            b"[Animations]\nidle = idle\n[Characteristics/Integers]\ncFacesYOffset = 20\n".to_vec(),
+        ),
+        (
+            "guests/man/idle/idle.ani".to_string(),
+            ani("dir0 = a\ndir1 = idle\n"),
+        ),
+        ("a/idle/N".to_string(), sprite_file(None, 1, &[frame(1)])),
+        (
+            "animals/Lion/lion.pal".to_string(),
+            palette_file(&[[255, 0, 255], [200, 0, 0], [0, 200, 0]]),
+        ),
+    ];
+    members.extend(face("smile"));
+    members.extend(face("frown"));
+    let members: Vec<_> = members
+        .iter()
+        .map(|(n, d)| (n.as_str(), d.clone()))
+        .collect();
+    let install = cache_install_with("render-face-mend", frame_file(), &members);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut stage = |faces: Vec<(u32, bool, u32)>| {
+        let extra = Extra {
+            faces,
+            ..Extra::default()
+        };
+        let zoo = tile_with(&[("guests", "man", "")]);
+        renderer.stage_with(&zoo, 0, false, &extra).unwrap()
+    };
+    // The face rises 20 pixels above its unit: a smile, a frown at another frame, none.
+    let (smile, frown, none) = (
+        stage(vec![(1, true, 0)]),
+        stage(vec![(1, false, 250)]),
+        stage(vec![]),
+    );
+    for zoom in [0, 2] {
+        let b = none.bounds_at(zoom);
+        let (x, y) = (b[0] as i32 - 8, b[1] as i32 - 60);
+        let size = (160, 160);
+        let draw = |staged: &Staged| {
+            let mut canvas = Framebuffer::new(size.0, size.1);
+            staged.draw(&mut canvas, x, y, zoom, false);
+            canvas
+        };
+        for (old, new) in [(&smile, &none), (&none, &smile), (&smile, &frown)] {
+            let mut canvas = draw(old);
+            assert!(canvas.pixels != draw(new).pixels, "zoom {zoom}");
+            let rects = new.changes(old, size, (x, y), zoom, false).unwrap();
+            new.redraw(&mut canvas, x, y, zoom, false, &rects);
+            assert!(canvas.pixels == draw(new).pixels, "zoom {zoom}");
+        }
+    }
 }
 
 #[test]

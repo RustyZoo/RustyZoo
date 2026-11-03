@@ -225,9 +225,74 @@ enum Pic {
     Blended(Rc<Animation>, View, Blend),
 }
 
+impl Pic {
+    /// Whether both draw the same pixels: the cached pictures are the same copy.
+    fn same(&self, other: &Pic) -> bool {
+        match (self, other) {
+            (Pic::Flat(a), Pic::Flat(b)) => Rc::ptr_eq(a, b),
+            (Pic::Mark(a, p), Pic::Mark(b, q)) => Rc::ptr_eq(a, b) && p == q,
+            (Pic::Rendered(a), Pic::Rendered(b)) => Rc::ptr_eq(a, b),
+            (Pic::Anim(a, v, p, f), Pic::Anim(b, w, q, g)) => {
+                Rc::ptr_eq(a, b) && v == w && p == q && f == g
+            }
+            (Pic::Blended(a, v, x), Pic::Blended(b, w, y)) => Rc::ptr_eq(a, b) && v == w && x == y,
+            _ => false,
+        }
+    }
+
+    /// A number that is the same for pictures that are [`Pic::same`].
+    fn print(&self) -> u64 {
+        let (kind, copy, frame) = match self {
+            Pic::Flat(a) => (0, Rc::as_ptr(a) as usize, 0),
+            Pic::Mark(a, _) => (1, Rc::as_ptr(a) as usize, 0),
+            Pic::Rendered(a) => (2, Rc::as_ptr(a) as usize, 0),
+            Pic::Anim(a, v, _, f) => (
+                3,
+                Rc::as_ptr(a) as usize,
+                f * 4 + v.file * 2 + usize::from(v.mirror),
+            ),
+            Pic::Blended(a, v, _) => (
+                4,
+                Rc::as_ptr(a) as usize,
+                v.file * 2 + usize::from(v.mirror),
+            ),
+        };
+        [copy as u64, frame as u64]
+            .iter()
+            .fold(kind, |h, &n| mix(h, n))
+    }
+}
+
+/// One step of a cheap hash.
+fn mix(hash: u64, n: u64) -> u64 {
+    (hash.rotate_left(5) ^ n).wrapping_mul(0x517c_c1b7_2722_0a95)
+}
+
+impl Placed {
+    /// Whether both are the same picture at the same place.
+    fn same(&self, other: &Placed) -> bool {
+        (self.x, self.y, self.piece, self.grid, self.lift)
+            == (other.x, other.y, other.piece, other.grid, other.lift)
+            && self.pic.same(&other.pic)
+    }
+
+    /// A number that is the same for pictures that are [`Placed::same`].
+    fn print(&self) -> u64 {
+        let piece = self.piece.map_or([0; 4], |p| {
+            [p.corner.0, p.corner.1, p.offset.0, p.offset.1].map(|n| n as u32 as u64 + 1)
+        });
+        [self.x, self.y, self.lift]
+            .iter()
+            .map(|&n| n as u32 as u64)
+            .chain(piece)
+            .chain([u64::from(self.grid), self.pic.print()])
+            .fold(0, mix)
+    }
+}
+
 /// A piece of a tile: where its tile's corner is in view space at normal zoom, and the offset of
 /// the piece's anchor from the tile's image origin there (map drawing 8).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Piece {
     corner: (i32, i32),
     offset: (i32, i32),
@@ -314,7 +379,16 @@ impl Placed {
     /// The box `b` of the picture at normal zoom, moved to the zoomed `anchor`: scaled about the
     /// anchor by the blitter, with two pixels to spare for its rounding.
     fn zoomed_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
-        let y = i64::from(self.y) - i64::from(self.lift);
+        self.scaled_box(b, anchor, level, i64::from(self.y) - i64::from(self.lift))
+    }
+
+    /// The box where the picture is drawn: [`Placed::zoomed_box`] with the lift of a raised face
+    /// (which the culling box leaves out) applied after the zoom.
+    fn drawn_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom) -> [i64; 4] {
+        self.scaled_box(b, anchor, level, i64::from(self.y))
+    }
+
+    fn scaled_box(&self, b: &[i64; 4], anchor: (i64, i64), level: Zoom, y: i64) -> [i64; 4] {
         let rel = [
             b[0] - i64::from(self.x),
             b[1] - y,
@@ -451,6 +525,188 @@ impl Staged {
             }
         }
     }
+
+    /// The other pictures, in paint order, with the number of tiles before each (`grid` as in
+    /// [`Staged::draw`]), by their print.
+    fn others(&self, grid: bool) -> Vec<(u64, usize, usize)> {
+        let mut tiles = 0;
+        let mut found = Vec::new();
+        for &e in &self.items {
+            match e {
+                Entry::Tile(_) => tiles += 1,
+                Entry::Own(i) if grid || !self.own[i].0.grid => {
+                    found.push((self.own[i].0.print(), tiles, i));
+                }
+                Entry::Own(_) => {}
+            }
+        }
+        found
+    }
+
+    /// The rectangles `[left, top, right, bottom)` of a window of `size` pixels, whose top left is
+    /// the view point `view` at `zoom`, that look different drawn from `self` than from the
+    /// staging `old` of the same map, which was drawn there before: the boxes of the pictures
+    /// that are in one and not in the other. `None` when that cannot be told (another rotation or
+    /// ground, pictures that changed their order) or the rectangles cover too much to be worth it.
+    pub fn changes(
+        &self,
+        old: &Staged,
+        (width, height): (u32, u32),
+        (view_x, view_y): (i32, i32),
+        zoom: i32,
+        grid: bool,
+    ) -> Option<Vec<[i32; 4]>> {
+        let tiles = |s: &Staged| -> Vec<usize> {
+            (s.items.iter())
+                .filter_map(|&e| match e {
+                    Entry::Tile(t) => Some(t),
+                    Entry::Own(_) => None,
+                })
+                .collect()
+        };
+        if self.rotation != old.rotation
+            || !Rc::ptr_eq(&self.grounds, &old.grounds)
+            || tiles(self) != tiles(old)
+        {
+            return None;
+        }
+        let (before, after) = (old.others(grid), self.others(grid));
+        let key = |&(print, tiles, _): &(u64, usize, usize)| (print, tiles);
+        let (mut sorted_before, mut sorted_after) = (before.clone(), after.clone());
+        sorted_before.sort_unstable();
+        sorted_after.sort_unstable();
+        // The pictures of each side that are on the other one too.
+        let (mut kept_before, mut kept_after) =
+            (vec![false; old.own.len()], vec![false; self.own.len()]);
+        let (mut i, mut j) = (0, 0);
+        while i < sorted_before.len() && j < sorted_after.len() {
+            let (b, a) = (&sorted_before[i], &sorted_after[j]);
+            match key(b).cmp(&key(a)) {
+                std::cmp::Ordering::Less => i += 1,
+                std::cmp::Ordering::Greater => j += 1,
+                std::cmp::Ordering::Equal => {
+                    if old.own[b.2].0.same(&self.own[a.2].0) {
+                        (kept_before[b.2], kept_after[a.2]) = (true, true);
+                    }
+                    (i, j) = (i + 1, j + 1);
+                }
+            }
+        }
+        // Pictures that stay must stay in the same order, or what covers what changes.
+        let kept = |all: &[(u64, usize, usize)], flags: &[bool]| -> Vec<(u64, usize)> {
+            all.iter().filter(|e| flags[e.2]).map(key).collect()
+        };
+        if kept(&before, &kept_before) != kept(&after, &kept_after) {
+            return None;
+        }
+        let level = Zoom::from_value(zoom);
+        let mut rects: Vec<[i32; 4]> = Vec::new();
+        for (s, flags) in [(old, &kept_before), (self, &kept_after)] {
+            for (i, (placed, b)) in s.own.iter().enumerate() {
+                if flags[i] || (placed.grid && !grid) {
+                    continue;
+                }
+                let anchor = placed.anchor(self.rotation, zoom, level);
+                let b = placed.drawn_box(b, anchor, level);
+                let rect = [
+                    (b[0] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
+                    (b[1] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
+                    (b[2] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
+                    (b[3] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
+                ];
+                if rect[0] < rect[2] && rect[1] < rect[3] {
+                    rects.push(rect);
+                    if rects.len() > MAX_CHANGES {
+                        return None;
+                    }
+                }
+            }
+        }
+        let rects = merge(rects);
+        let area: i64 = rects
+            .iter()
+            .map(|r| i64::from(r[2] - r[0]) * i64::from(r[3] - r[1]))
+            .sum();
+        (area * 2 <= i64::from(width) * i64::from(height)).then_some(rects)
+    }
+
+    /// Draws again only the rectangles `rects` (as [`Staged::changes`] gives them) of `target`,
+    /// which holds a drawing of the window `view_x`, `view_y`, `zoom`, `grid` from another staging
+    /// of the same map: the result is what [`Staged::draw`] gives.
+    pub fn redraw(
+        &self,
+        target: &mut Framebuffer,
+        view_x: i32,
+        view_y: i32,
+        zoom: i32,
+        grid: bool,
+        rects: &[[i32; 4]],
+    ) {
+        let level = Zoom::from_value(zoom);
+        let mut parts: Vec<Framebuffer> = rects
+            .iter()
+            .map(|r| {
+                let mut part = Framebuffer::new((r[2] - r[0]) as u32, (r[3] - r[1]) as u32);
+                part.fill([0, 0, 0, 255]);
+                part
+            })
+            .collect();
+        for (placed, b) in self.pictures().filter(|(p, _)| grid || !p.grid) {
+            let anchor = placed.anchor(self.rotation, zoom, level);
+            // As `draw` culls by the window, then where it draws.
+            let c = placed.zoomed_box(b, anchor, level);
+            let (w, h) = (i64::from(target.width), i64::from(target.height));
+            let (vx, vy) = (i64::from(view_x), i64::from(view_y));
+            if !(c[0] < vx + w && c[2] > vx && c[1] < vy + h && c[3] > vy) {
+                continue;
+            }
+            let b = placed.drawn_box(b, anchor, level);
+            for (part, r) in parts.iter_mut().zip(rects) {
+                let (left, top) = (
+                    i64::from(view_x) + i64::from(r[0]),
+                    i64::from(view_y) + i64::from(r[1]),
+                );
+                let (right, bottom) = (
+                    i64::from(view_x) + i64::from(r[2]),
+                    i64::from(view_y) + i64::from(r[3]),
+                );
+                if b[0] < right && b[2] > left && b[1] < bottom && b[3] > top {
+                    placed.draw(part, (clamp32(left), clamp32(top)), anchor, level);
+                }
+            }
+        }
+        for (part, r) in parts.iter().zip(rects) {
+            let row = part.width as usize * 4;
+            for (k, line) in part.pixels.chunks_exact(row).enumerate() {
+                let at = ((r[1] as usize + k) * target.width as usize + r[0] as usize) * 4;
+                target.pixels[at..at + row].copy_from_slice(line);
+            }
+        }
+    }
+}
+
+/// The most pictures that may have changed for a window to be drawn in parts.
+const MAX_CHANGES: usize = 400;
+
+/// The rectangles with the ones that touch each other joined.
+fn merge(mut rects: Vec<[i32; 4]>) -> Vec<[i32; 4]> {
+    let mut done: Vec<[i32; 4]> = Vec::new();
+    while let Some(mut r) = rects.pop() {
+        while let Some(k) = done
+            .iter()
+            .position(|d| d[0] <= r[2] && r[0] <= d[2] && d[1] <= r[3] && r[1] <= d[3])
+        {
+            let d = done.swap_remove(k);
+            r = [
+                r[0].min(d[0]),
+                r[1].min(d[1]),
+                r[2].max(d[2]),
+                r[3].max(d[3]),
+            ];
+        }
+        done.push(r);
+    }
+    done
 }
 
 /// Draws an RGBA image whose anchor is at `at` at a zoom, source over, clipped. The pixels land
@@ -671,6 +927,7 @@ impl<'a> MapRenderer<'a> {
                 crate::build::number(ty, "walkable") == Some(1.0),
                 crate::build::number(ty, "walkableByTall") == Some(1.0),
             ),
+            forms: (entity.class == "animals").then(|| ty.forms()),
         })
     }
 
