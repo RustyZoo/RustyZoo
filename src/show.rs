@@ -1,18 +1,55 @@
-//! Shows (shows 3, 4, 10): the numbers of `shows.cfg`, which show a grandstand belongs to, and the
-//! two routines that empty the grandstands of a show.
+//! Shows (shows 3 to 6, 10): the numbers of `shows.cfg`, which show a grandstand belongs to, the
+//! show cycle with the events that carry it to the grandstands, and the two routines that empty
+//! the grandstands of a show.
 //!
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
-//! and saved with the zoo. The show cycle, the audience and the figures are not here yet: a show
-//! never starts, so the abort that `empty_grandstands` asks of a running show (shows 5.6) is left
-//! to the cycle.
+//! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
+//! the world manager's and the grandstands' reading of the events. The animal side of an item is
+//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience and the
+//! figures are not here yet.
 
 use crate::building::{kind_of, leave::push_out};
 use crate::config::{Config, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
+use crate::sim::Events;
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::ShowInfo;
+
+mod cycle;
+mod performer;
+mod relay;
+
+pub use relay::{listen_grandstand, listen_world};
+
+/// The type id of the marine specialist, who conducts a show (shows 3.2).
+const KEEPER: u32 = 9552;
+
+/// The event types of a show (shows 6.1).
+mod event {
+    pub const ANNOUNCE: u16 = 0x2711;
+    pub const START_NOTE: u16 = 0x2712;
+    pub const STARTED: u16 = 0x2713;
+    pub const STOP: u16 = 0x2714;
+    pub const ENDED: u16 = 0x2715;
+    pub const ABORT: u16 = 0x2716;
+    pub const ABORTED: u16 = 0x2717;
+    /// Relayed by a grandstand like an end, but never posted by the world manager (shows 6.3).
+    pub const OVER: u16 = 0x2719;
+    pub const NEXT_ITEM: u16 = 0x271d;
+    pub const TRICK_DONE: u16 = 0x271f;
+    pub const CALL: u16 = 0x271a;
+    pub const ITEM_ABORTED: u16 = 0x2723;
+    pub const PREPARE: u16 = 0x2724;
+    pub const CUE: u16 = 0x2725;
+    pub const BAD: u16 = 0x272a;
+    pub const NEUTRAL: u16 = 0x272b;
+    pub const GOOD: u16 = 0x272c;
+    pub const GREAT: u16 = 0x272d;
+    pub const CHEER: u16 = 0x2735;
+    pub const BOO: u16 = 0x2736;
+}
 
 /// The numbers of `shows.cfg` that the cycle reads (shows 3.1). The built-in values hold without
 /// the file, which only Marine Mania has.
@@ -98,19 +135,23 @@ pub fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
     world.zoo.shows.info(n?)
 }
 
-/// The exhibit of the show info whose show id is `id`.
-fn exhibit_of(world: &World, id: u16) -> Option<u32> {
-    let n = world
-        .zoo
-        .shows
-        .infos
-        .iter()
-        .position(|i| i.as_ref().is_some_and(|i| i.id == id))?;
+/// The exhibit of habitat record `n`, from its first tile.
+fn tank_of(world: &World, n: usize) -> Option<u32> {
     let &(x, y) = world.zoo.habitat_tiles.get(n)?;
     world
         .exhibits()
         .region(world.tile_index(x, y)?)
         .filter(|&r| world.exhibits().get(r).is_some())
+}
+
+/// The habitat record of the show info whose show id is `id`.
+fn habitat_of(world: &World, id: u16) -> Option<usize> {
+    (world.zoo.shows.infos.iter()).position(|i| i.as_ref().is_some_and(|i| i.id == id))
+}
+
+/// The exhibit of the show info whose show id is `id`.
+fn exhibit_of(world: &World, id: u16) -> Option<u32> {
+    tank_of(world, habitat_of(world, id)?)
 }
 
 /// The grandstands of a world in the order of the building list, as (id, position in the entity
@@ -121,6 +162,35 @@ fn grandstands(world: &World, cat: &Catalogue) -> Vec<(u32, usize)> {
         .filter(|(_, e)| kind_of(cat, e, default).is_some_and(|k| k.satisfies("grandstand")))
         .filter_map(|(at, e)| Some((e.common.as_ref()?.id, at)))
         .collect()
+}
+
+/// What the show of a grandstand is read from (shows 4.1): the show tanks, the grandstands and the
+/// ground, made once for a number of questions.
+struct Sight {
+    tanks: Vec<(u32, u16)>,
+    stands: Vec<(u32, usize)>,
+    ground: Option<Ground>,
+}
+
+impl Sight {
+    fn of(world: &World, cat: &Catalogue) -> Sight {
+        let (tanks, stands) = (show_tanks(world), grandstands(world, cat));
+        let ground = (!tanks.is_empty() && !stands.is_empty())
+            .then(|| Ground::of(world, viewing::bodies(cat)));
+        Sight {
+            tanks,
+            stands,
+            ground,
+        }
+    }
+
+    /// `show_seen_from` of grandstand `at`: the show id of the first show tank it faces, 0 for none.
+    fn seen(&self, world: &World, at: usize) -> u16 {
+        let Some(ground) = &self.ground else { return 0 };
+        (self.tanks.iter())
+            .find(|&&(x, _)| faces(world, ground, x, at))
+            .map_or(0, |&(_, show)| show)
+    }
 }
 
 /// Whether grandstand `at` faces exhibit `exhibit` (shows 4.1): the tile four tiles in front of it
@@ -190,10 +260,35 @@ fn associate_upto(world: &mut World, cat: &Catalogue, last: usize) {
     }
 }
 
+/// The show manager's step (shows 5.1), first in the AI manager's update, at AI tick `now`: every
+/// show info in show id order listens, updates and refreshes its upkeep figure. Nothing happens
+/// in a world without a show info.
+pub fn update(world: &mut World, cat: &Catalogue, events: &mut Events, now: u32) {
+    let mut infos: Vec<(u16, usize)> = (world.zoo.shows.infos.iter().enumerate())
+        .filter_map(|(n, i)| Some((i.as_ref()?.id, n)))
+        .collect();
+    if infos.is_empty() {
+        return;
+    }
+    infos.sort_by_key(|&(id, _)| id);
+    let sight = Sight::of(world, cat);
+    let upkeep: Vec<(u16, f32)> = (sight.stands.iter())
+        .map(|&(id, at)| {
+            let cost = crate::place::bulldozer::type_of(cat, &world.zoo.entities[at])
+                .map_or(0.0, |ty| crate::month::upkeep_of(&world.units, ty, id));
+            (sight.seen(world, at), cost)
+        })
+        .collect();
+    for (id, n) in infos {
+        let sum = (upkeep.iter().filter(|u| u.0 == id)).fold(0.0, |a, u| a + u.1);
+        cycle::update(world, cat, events, now, n, sum);
+    }
+}
+
 /// Shows 10.1: the grandstand `id` is emptied when it belongs to a show whose info exists. The
-/// show is aborted first (shows 5.6; left to the cycle), the grandstand's "show soon" flag goes down
-/// and the grandstands that face the show's tank lose their users.
-pub fn empty_grandstands(world: &mut World, cat: &Catalogue, id: u32) {
+/// show is aborted first (shows 5.6), the grandstand's "show soon" flag goes down and the
+/// grandstands that face the show's tank lose their users.
+pub fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events, id: u32) {
     let Some(at) = world.find(id) else { return };
     let default = world.units.prices.default;
     if !kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
@@ -205,6 +300,7 @@ pub fn empty_grandstands(world: &mut World, cat: &Catalogue, id: u32) {
     if show == 0 || !has_info(world, show) {
         return;
     }
+    cycle::abort(world, cat, events, show);
     if let Some(live) = world.units.buildings.get_mut(&id) {
         live.fill = 0;
     }

@@ -9,6 +9,7 @@ use crate::zoo::Clocks;
 use std::collections::HashMap;
 
 mod avoid;
+mod capture;
 mod contagion;
 mod shelter;
 mod surface;

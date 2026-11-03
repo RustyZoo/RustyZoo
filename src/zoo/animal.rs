@@ -44,6 +44,10 @@ pub struct AnimalRecord {
     pub interval: i32,
     pub mate_delay: Option<i32>,
     pub boxed: i32,
+    /// The id of the staff member who has taken the animal as his capture job, 0 for none, and
+    /// the tranquilised flag (animals 11.6), from version 52.
+    pub claim: u32,
+    pub tranq: bool,
     /// The two dates (zoo format 6.11), as file times.
     pub dates: [u64; 2],
     /// The escaped flag: the animal stands loose on the zoo grounds (animals 11.1).
@@ -52,7 +56,7 @@ pub struct AnimalRecord {
     pub escape: Option<Escape>,
     /// The home exhibit's gate tile, (-1, -1) for none.
     pub home: [i32; 2],
-    /// The fields the engine does not model, in file order and in the form of version 106 (94
+    /// The fields the engine does not model, in file order and in the form of version 106 (68
     /// bytes): a segment the vector is too short for takes the value of a new animal.
     pub spare: Vec<u8>,
 }
@@ -154,14 +158,11 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
             broken,
         });
     }
-    // The crate counter, a word and a byte, then the crated flag.
-    match v >= 52 {
-        true => {
-            a.boxed = r.i32()?;
-            spare.extend(r.take(5)?);
-            a.crated = r.u8()? != 0;
-        }
-        false => spare.extend([0; 5]),
+    // The crate counter, the capture claim and the tranquilised flag, then the crated flag.
+    if v >= 52 {
+        a.boxed = r.i32()?;
+        (a.claim, a.tranq) = (r.u32()?, r.u8()? != 0);
+        a.crated = r.u8()? != 0;
     }
     a.thirsty = v >= 54 && r.u8()? != 0;
     a.drinking = (v == 57 || v >= 61) && r.u8()? != 0;
@@ -265,10 +266,15 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
         }
         None => o.u32(0),
     }
-    // The crate counter, a word and the tranquilised flag; then the crated one.
+    // The crate counter, the capture claim and the tranquilised flag; then the crated one.
     o.i32(a.boxed);
-    s.put(o, &[0; 5]);
-    o.bytes(&[flag(a.crated), flag(a.thirsty), flag(a.drinking)]);
+    o.u32(a.claim);
+    o.bytes(&[
+        flag(a.tranq),
+        flag(a.crated),
+        flag(a.thirsty),
+        flag(a.drinking),
+    ]);
     o.u8(flag(a.rampaging));
     s.put(o, &[0; 4]);
     o.i32(a.rampage);

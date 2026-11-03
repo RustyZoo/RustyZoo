@@ -72,6 +72,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate: false,
         gated: false,
         walkable: (false, false),
+        forms: None,
         tank: TankKind::NONE,
     };
     match e.class.as_str() {
@@ -89,6 +90,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             kind: Kind::Edge,
             fence: true,
             walkable: (false, false),
+            forms: None,
             tank: TankKind {
                 wall: true,
                 show: false,
@@ -112,6 +114,12 @@ fn shape(e: &Entity) -> Option<Shape> {
         }),
         "hall" => Some(Shape {
             footprint: (4, 4),
+            ..fixed
+        }),
+        // An egg 4 by 4, a crate 6 by 2, a body 1 by 1.
+        "animals" if e.type_name == "lion" => Some(Shape {
+            kind: Kind::Unit,
+            forms: Some([(4, 4), (6, 2)]),
             ..fixed
         }),
         "animals" => Some(Shape {
@@ -869,6 +877,33 @@ fn the_tiles_carried_are_those_of_the_points_of_the_footprint_not_its_quadrants(
     assert_eq!(world.carried(0), [0]);
     let world = self::world(vec![entity("elephant", 16 + 64, 16, 0)]);
     assert_eq!(world.carried(1), [0, 1]);
+}
+
+/// The tiles carried along with a lion in the middle of tile (4, 4) facing `rotation`, in its egg
+/// or its crate or neither.
+fn lion_tiles(rotation: u32, egg: bool, crated: bool) -> Vec<usize> {
+    let mut lion = entity("animals", 4 * 64 + 32, 4 * 64 + 32, rotation);
+    lion.type_name = "lion".into();
+    lion.common.as_mut().unwrap().id = 7;
+    let mut world = world(vec![lion]);
+    let Some(crate::unit::Part::Animal(a)) = world.units.get_mut(7).map(|u| &mut u.part) else {
+        panic!("not an animal");
+    };
+    (a.egg, a.crated) = (egg, crated);
+    world.carried(4 * 8 + 4)
+}
+
+#[test]
+fn an_egg_or_a_crate_carries_the_tiles_of_its_own_footprint_turned_with_the_animal() {
+    // The body is 1 by 1: nothing comes along.
+    assert!(lion_tiles(0, false, false).is_empty());
+    // The egg is 4 by 4 (tiles 3..4 both ways); the crate 6 by 2 along x, so 3..5 in row 4, and
+    // 4 in column 3..5 turned a quarter; an egg wins over a crate.
+    assert_eq!(lion_tiles(0, true, false), [27, 28, 35, 36]);
+    assert_eq!(lion_tiles(0, false, true), [35, 36, 37]);
+    assert_eq!(lion_tiles(2, false, true), [28, 36, 44]);
+    assert_eq!(lion_tiles(1, false, true), [28, 36, 44]);
+    assert_eq!(lion_tiles(0, true, true), [27, 28, 35, 36]);
 }
 
 #[test]

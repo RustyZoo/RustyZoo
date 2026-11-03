@@ -29,7 +29,10 @@ mod tests;
 #[cfg(test)]
 mod wear_tests;
 
-pub use events::{Event, Events, KEEPER_CHANNEL, TASK_CHANNEL, UNIT_CHANNEL};
+pub use events::{
+    BUILDING_CHANNEL, Event, Events, KEEPER_CHANNEL, SHOW_CHANNEL, TANK_CHANNEL, TASK_CHANNEL,
+    UNIT_CHANNEL, WORLD_CHANNEL,
+};
 pub use rng::{Rng, Seconds};
 
 use crate::behaviour::{Data, NoData};
@@ -654,6 +657,8 @@ impl Sim {
         // The AI manager: first the task pool reads the events of the buffer (simulation 4.2).
         let tiles = world.zoo.tiles.len();
         (world.units.pool).listen(self.events.listen(0, TASK_CHANNEL), tiles);
+        // The show manager updates the shows, before the AI clock moves (shows 5.1).
+        crate::show::update(world, cat, &mut self.events, self.ai_ticks);
         // The clock in whole ticks with the remainder kept, the removal pass,
         // the entities, the event queue.
         let total = self.ai_rem.wrapping_add(step);
@@ -695,6 +700,8 @@ impl Sim {
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 unit::gate::advance(world, cat, data, at, step);
                 update(world, at, step);
+                // A grandstand reads the events of its show (shows 6.3).
+                crate::show::listen_grandstand(world, cat, &mut self.events, &mut self.rng, at);
                 // A fence piece wears at its own place in the list.
                 for event in world.wear(cat, at, step, &mut self.lines) {
                     self.events.post(event);
@@ -776,6 +783,8 @@ impl Sim {
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
         self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        // The shows' events reach the tank and the grandstands (shows 6.2).
+        crate::show::listen_world(world, cat, &mut self.events, &mut self.rng);
         // The scenario manager.
         if let Some(scenario) = &mut self.scenario {
             let game = Game {

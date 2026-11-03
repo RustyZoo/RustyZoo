@@ -230,6 +230,8 @@ fn shape(e: &Entity) -> Option<Shape> {
         "fences" => (Kind::Edge, (1, 1), true, false),
         "tankwall" => (Kind::Wall, (1, 1), true, false),
         "gate" => (Kind::Fixed, (2, 2), false, true),
+        "animals" if e.type_name == "snake" => (Kind::Unit, (8, 2), false, false),
+        "animals" if e.type_name == "mammoth" => (Kind::Unit, (6, 6), false, false),
         "animals" | "helicopter" => (Kind::Unit, (1, 1), false, false),
         "gator" => (Kind::Unit, (3, 1), false, false),
         _ => return None,
@@ -242,6 +244,13 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate,
         gated: fence,
         walkable: (false, false),
+        // The egg and crate footprints of the animals `an_animal_in_a_crate_or_an_egg_blocks...`
+        // names (the render's shape reads them from the type).
+        forms: match e.type_name.as_str() {
+            "lion" => Some([(1, 1), (4, 4)]),
+            "emu" => Some([(4, 4), (1, 1)]),
+            _ => None,
+        },
         tank: TankKind {
             wall: e.class == "tankwall",
             show: e.type_name == "show",
@@ -1359,12 +1368,12 @@ fn a_fence_between_the_tiles_of_one_object_and_on_the_entrance_is_refused() {
 fn the_smart_fences_test_keeps_fences_off_big_bodies_and_large_placement_rectangles() {
     let cat = catalogue();
     // A bench (placement 2 x 1 half tiles over a footprint of 1 x 1) in the last quarter of
-    // tile (3, 3), at the local point (48, 48), and an elephant (6 x 6) in tile (5, 5).
+    // tile (3, 3), at the local point (48, 48), and a mammoth (6 x 6) in tile (5, 5).
     let w = world(
         (0, 0),
         vec![
             entity("objects", "bench", 3 * 64 + 48, 3 * 64 + 48, 0),
-            entity("animals", "elephant", 5 * 64 + 32, 5 * 64 + 32, 0),
+            entity("animals", "mammoth", 5 * 64 + 32, 5 * 64 + 32, 0),
         ],
         |_| {},
     );
@@ -1379,7 +1388,7 @@ fn the_smart_fences_test_keeps_fences_off_big_bodies_and_large_placement_rectang
     assert_eq!(on(true, 3, 3, 0), Verdict::Valid);
     assert_eq!(on(true, 3, 3, 2), Verdict::Valid);
     assert_eq!(on(true, 4, 3, 6), Verdict::Valid);
-    // The elephant covers its own tile and the ones next to it (6 / 2 >= 2 * 1), not two away.
+    // The mammoth covers its own tile and the ones next to it (6 / 2 >= 2 * 1), not two away.
     for (tx, ty) in [(5, 5), (6, 5), (4, 6), (6, 6)] {
         assert_eq!(on(true, tx, ty, 0), Verdict::Invalid, "tile {tx},{ty}");
         assert_eq!(on(false, tx, ty, 0), Verdict::Valid, "tile {tx},{ty} off");
@@ -1387,6 +1396,57 @@ fn the_smart_fences_test_keeps_fences_off_big_bodies_and_large_placement_rectang
     for (tx, ty) in [(7, 5), (5, 3), (2, 7)] {
         assert_eq!(on(true, tx, ty, 0), Verdict::Valid, "tile {tx},{ty}");
     }
+}
+
+#[test]
+fn the_smart_fences_test_turns_the_footprint_of_a_unit_with_its_rotation() {
+    let cat = catalogue();
+    // A snake 8 by 2 half tiles in the middle of tile (4, 4): under it along x, not along y.
+    let verdict = |rotation: u32, (tx, ty): (i64, i64)| {
+        let mut snake = entity("animals", "snake", 4 * 64 + 32, 4 * 64 + 32, rotation);
+        snake.common.as_mut().unwrap().id = 7;
+        let w = world((0, 0), vec![snake], |_| {});
+        fence_at(&w, &cat, true, 11, tx, ty, 0).verdict
+    };
+    let (valid, invalid) = (Verdict::Valid, Verdict::Invalid);
+    assert_eq!([verdict(0, (6, 4)), verdict(0, (4, 6))], [invalid, valid]);
+    // A quarter turn swaps the sides; an odd rotation does too.
+    assert_eq!([verdict(2, (6, 4)), verdict(2, (4, 6))], [valid, invalid]);
+    assert_eq!([verdict(1, (6, 4)), verdict(1, (4, 6))], [valid, invalid]);
+    assert_eq!([verdict(4, (6, 4)), verdict(4, (4, 6))], [invalid, valid]);
+}
+
+#[test]
+fn the_smart_fences_test_judges_an_animal_in_a_crate_or_an_egg_by_that_footprint() {
+    let cat = catalogue();
+    // The lion is 1 by 1 plain and in the egg, 4 by 4 in the crate; the emu the other way round.
+    let verdict = |name: &str, egg: bool, crated: bool| {
+        let mut animal = entity("animals", name, 4 * 64 + 32, 4 * 64 + 32, 0);
+        animal.common.as_mut().unwrap().id = 7;
+        let mut w = world((0, 0), vec![animal], |_| {});
+        let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(7).map(|u| &mut u.part) else {
+            panic!("not an animal");
+        };
+        (a.egg, a.crated) = (egg, crated);
+        fence_at(&w, &cat, true, 11, 5, 4, 0).verdict
+    };
+    let (valid, invalid) = (Verdict::Valid, Verdict::Invalid);
+    assert_eq!(
+        [verdict("lion", false, false), verdict("emu", false, false)],
+        [valid; 2]
+    );
+    assert_eq!(
+        [verdict("lion", false, true), verdict("emu", false, true)],
+        [invalid, valid]
+    );
+    assert_eq!(
+        [verdict("lion", true, false), verdict("emu", true, false)],
+        [valid, invalid]
+    );
+    assert_eq!(
+        [verdict("lion", true, true), verdict("emu", true, true)],
+        [valid, invalid]
+    );
 }
 
 #[test]
@@ -1702,14 +1762,8 @@ fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotati
 
 #[test]
 fn an_animal_in_a_crate_or_an_egg_blocks_with_the_footprint_of_that_form() {
-    let mut cat = catalogue();
+    let cat = catalogue();
     // A crate 4 by 4 and an egg 1 by 1 (lion), and the other way round (emu).
-    let lion = "[Characteristics/Integers]\ncBoxFootprintX=4\ncBoxFootprintY=4\n\
-                cEggFootprintX=1\ncEggFootprintY=1\n";
-    let emu = "[Characteristics/Integers]\ncBoxFootprintX=1\ncBoxFootprintY=1\n\
-               cEggFootprintX=4\ncEggFootprintY=4\n";
-    cat.push(ty("animals", "lion", lion, [1, 1, 1]));
-    cat.push(ty("animals", "emu", emu, [1, 1, 1]));
     // The tree holds x and y 0..32 of tile (3, 2); the animal stands 50 along x, 34 from its
     // centre: clear of a 1 by 1 body (16 + 16), inside a 4 by 4 one (16 + 64).
     let verdict = |name: &str, egg: bool, crated: bool| {
@@ -2095,6 +2149,27 @@ fn a_sold_base_puts_its_helicopter_out_before_hiding_it() {
         .unwrap();
     assert_eq!(c.unit.as_ref().unwrap().target.goal, 0);
     assert_ne!(at(&w), pad);
+}
+
+#[test]
+fn a_sold_base_posts_one_abort_event_for_its_helicopter_listed_only_by_the_record() {
+    use crate::place::bulldozer::remove;
+    let (mut w, cat, mut money, base, heli) = base_with_helicopter();
+    // The helicopter is a user of the base's record and of no live list.
+    assert!(
+        w.units
+            .buildings
+            .get(&base)
+            .is_none_or(|l| l.users.is_empty())
+    );
+    w.units.posts.clear();
+    let mut rng = crate::sim::Rng::default();
+    remove(&mut w, &mut money, &cat, base, &mut rng).unwrap();
+    let aborts: Vec<_> = (w.units.posts.iter())
+        .filter(|e| e.kind == 0x2722)
+        .map(|e| (e.sender, e.target, e.sender_channel, e.channel, e.delay))
+        .collect();
+    assert_eq!(aborts, [(heli, heli, 0x55, 0x55, 1)]);
 }
 
 #[test]

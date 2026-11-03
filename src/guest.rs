@@ -582,6 +582,7 @@ pub fn arrive(
         gated: false,
         tank: TankKind::NONE,
         walkable: (false, false),
+        forms: None,
     };
     let child = guest.child;
     let Some(id) = world.unrecorded(|w| w.add(entity, Some(shape))) else {

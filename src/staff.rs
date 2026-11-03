@@ -196,6 +196,7 @@ impl Staff {
     /// and guests the record's tiles and ids stand for, in the record's order.
     pub fn restore(&mut self, r: &StaffRecord, assigned: Vec<u32>, members: Vec<u32>) {
         (self.work, self.chase) = (r.work, r.chase);
+        self.captured = r.captured;
         self.crowd = r.crowd.unwrap_or(self.crowd);
         self.assigned.clear();
         for x in assigned {
@@ -232,6 +233,7 @@ impl Staff {
             crowd: if guide { Some(self.crowd) } else { base.crowd },
             members: self.members.clone(),
             leg: self.leg,
+            captured: self.captured,
             duties,
             ..base
         }
@@ -288,8 +290,15 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
 
 /// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. A guide lets its group
-/// go, a worker gives his task back.
+/// go, a worker gives his task back, and a member capturing an animal frees it.
 pub fn leaves(world: &mut World, id: u32) {
+    // A member who was capturing an animal releases its claim (unit placing 8.2).
+    if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
+        let caught = std::mem::take(&mut s.captured);
+        if let Some(Part::Animal(a)) = world.units.get_mut(caught).map(|u| &mut u.part) {
+            a.claim = 0;
+        }
+    }
     // A guide picked up or removed lets its group go: the guests notice at their next update.
     if let Some(Part::Staff(s)) = (world.units.get_mut(id))
         .filter(|u| u.kind == Kind::Guide)

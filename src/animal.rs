@@ -250,6 +250,8 @@ macro_rules! keys {
             pub amphibious: bool,
             /// `cSwims`, `cUnderwater` and `cOnlyUnderwater` of the type.
             pub swims: bool,
+            /// `cHeliRecovery` is 1: the helicopter and the scientist recover the species.
+            pub heli_recovery: bool,
             pub underwater: bool,
             pub only_underwater: bool,
             /// The species prefers salt water: its value for terrain 10 is at least that of
@@ -271,6 +273,7 @@ macro_rules! keys {
                     death_chance: int("cDeathChance", class.death_chance),
                     amphibious,
                     swims: int("cSwims", 0) == 1,
+                    heli_recovery: int("cHeliRecovery", 0) == 1,
                     underwater: int("cUnderwater", 0) == 1,
                     only_underwater: int("cOnlyUnderwater", 0) == 1,
                     salt: false,
@@ -497,6 +500,11 @@ pub struct Animal {
     /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
     /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
+    /// The keeper's dart put it to sleep: it has no goals and chooses no ambient set until the
+    /// sleep check wakes it or it is crated (animals 9.1, 11.6).
+    pub tranq: bool,
+    /// The id of the staff member who has taken it as his capture job, 0 for none (animals 11.6).
+    pub claim: u32,
     /// The escape walk (animals 11.3): its record while the flag is up.
     pub walk: Option<crate::zoo::Escape>,
     /// The crossing animation the escape walk forces (11.3), for the turn to play.
@@ -589,6 +597,7 @@ impl Animal {
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
         self.escaped = r.escaped;
+        (self.claim, self.tranq) = (r.claim, r.tranq);
         // The flags are rebuilt from their words (animals 11.3).
         self.walk = r.escape.map(|e| crate::zoo::Escape {
             reached: u32::from(e.reached == 1),
@@ -630,6 +639,8 @@ impl Animal {
             dying: self.dying,
             crated: self.crated,
             boxed: self.crate_count,
+            claim: self.claim,
+            tranq: self.tranq,
             egg: self.egg,
             thirsty: self.thirsty,
             rampaging: self.rampaging,
@@ -1016,7 +1027,7 @@ fn escape(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out
             out.log.push("escape");
         }
     } else {
-        a.escaped = false;
+        (a.escaped, a.claim) = (false, 0);
     }
 }
 

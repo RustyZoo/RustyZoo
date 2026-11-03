@@ -609,6 +609,7 @@ fn filter(g: &mut Game, health: u32, urgent: bool) -> u32 {
         gated: false,
         tank: crate::world::TankKind::NONE,
         walkable: (false, false),
+        forms: None,
     };
     let id = g.w.add(e, Some(shape)).unwrap();
     let keys = "[Characteristics/Integers]\ncStartingHealth=10\ncDecayedHealth=5\n";

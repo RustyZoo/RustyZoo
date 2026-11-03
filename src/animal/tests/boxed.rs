@@ -128,6 +128,13 @@ fn an_opened_crate_snaps_to_the_quarter_tile_centre() {
     assert_eq!((x.rem_euclid(64), y.rem_euclid(64)), (48, 16));
 }
 
+/// Gives the animal at `at` the egg and crate footprints of its type, as the game's shapes do.
+fn with_forms(world: &mut World, cat: &Catalogue, at: usize) {
+    let mut shape = world.shape(at).unwrap();
+    shape.forms = cat.find("animals", b"zebra", b"f").map(|t| t.forms());
+    world.retype(at, "f", shape);
+}
+
 #[test]
 fn snapping_takes_the_crate_footprint_while_crated() {
     let cat = zebras_with("cBoxFootprintX=4\ncBoxFootprintY=2", "");
@@ -139,13 +146,14 @@ fn snapping_takes_the_crate_footprint_while_crated() {
     sim.start_game(64, Clocks::default());
     sim.load(&mut world, &cat);
     let at = world.find(500).unwrap();
+    with_forms(&mut world, &cat, at);
     let mut snapped = |crated: bool| {
         let c = world.zoo.entities[at].common.as_mut().unwrap();
         (c.x, c.y) = (c.x.div_euclid(64) * 64 + 41, c.y.div_euclid(64) * 64 + 9);
         if let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part {
             a.crated = crated;
         }
-        crate::animal::boxed::snap(&mut world, &cat, at);
+        crate::animal::boxed::snap(&mut world, at);
         let (x, y) = spot(&world, 500);
         (x.rem_euclid(64), y.rem_euclid(64))
     };
@@ -166,6 +174,7 @@ fn an_opened_crate_snaps_with_its_footprint_turned_by_the_facing() {
     sim.start_game(64, Clocks::default());
     sim.load(&mut world, &cat);
     let at = world.find(500).unwrap();
+    with_forms(&mut world, &cat, at);
     let mut snapped = |crated: bool, rotation: u32| {
         let c = world.zoo.entities[at].common.as_mut().unwrap();
         (c.x, c.y) = (c.x.div_euclid(64) * 64 + 41, c.y.div_euclid(64) * 64 + 9);
@@ -173,11 +182,48 @@ fn an_opened_crate_snaps_with_its_footprint_turned_by_the_facing() {
         if let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part {
             (a.crated, a.egg) = (crated, !crated);
         }
-        crate::animal::boxed::snap(&mut world, &cat, at);
+        crate::animal::boxed::snap(&mut world, at);
         let (x, y) = spot(&world, 500);
         (x.rem_euclid(64), y.rem_euclid(64))
     };
     let egg = [0, 1, 2, 3, 4].map(|r| snapped(false, r));
     assert_eq!(egg, [(48, 32), (32, 16), (32, 16), (32, 16), (48, 32)]);
     assert_eq!([snapped(true, 0), snapped(true, 1)], [(0, 32), (32, 0)]);
+}
+
+#[test]
+fn the_claim_and_the_dart_are_saved_with_the_animal_and_the_crate_drops_them() {
+    let (k, class) = (keys(), Class::default());
+    for (claim, tranq) in [(0, false), (7, true), (u32::MAX, false), (1, true)] {
+        let saved = AnimalRecord {
+            claim,
+            tranq,
+            ..record()
+        };
+        let mut a = animal();
+        a.restore(&saved, &k, &class);
+        assert_eq!((a.claim, a.tranq), (claim, tranq));
+        let back = a.record(record());
+        assert_eq!((back.claim, back.tranq), (claim, tranq));
+    }
+    let mut a = Animal {
+        escaped: true,
+        claim: 7,
+        tranq: true,
+        ..animal()
+    };
+    crate::animal::boxed::crate_up(&mut a);
+    assert!(a.crated && !a.escaped && !a.tranq && a.claim == 0);
+}
+
+#[test]
+fn a_darted_animal_chooses_no_ambient_set() {
+    let (log, _) = crates(&Life::new().idling(), |w| {
+        // The crate at 700 is open and darted instead.
+        if let Part::Animal(a) = &mut w.units.get_mut(700).unwrap().part {
+            (a.crated, a.tranq) = (false, true);
+        }
+    });
+    assert!(!log.iter().any(|l| l == "set 700 bIdle"));
+    assert!(log.iter().any(|l| l == "set 500 bIdle"));
 }
