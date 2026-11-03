@@ -40,6 +40,8 @@ pub const SITE: u8 = 100;
 pub const HABITAT: u8 = 101;
 /// The duties of a keeper (staff 7.5).
 pub const DUTIES: u8 = 110;
+/// A keeper darts and crates an escaped animal (staff 7.11).
+pub const CAPTURE: u8 = 111;
 pub const GAWK: u8 = 112;
 /// A guest walks to a scenery object and gawks at it (goals 11.12).
 pub const SCENERY: u8 = 128;
@@ -208,6 +210,8 @@ pub enum Goal {
     Duties,
     /// 0x78 of a maintenance worker: take a task of the pool and do its jobs (staff 8.3).
     Maint,
+    /// The capture task of a keeper: dart and crate an escaped animal (staff 7.11).
+    Capture,
     /// 0x7e and 0x7f of a keeper: enter a tank and leave it by the ladders (tank staff 4).
     EnterTank,
     ExitTank,
@@ -258,6 +262,7 @@ impl Goal {
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
             (DUTIES, Kind::Keeper) => Some(Goal::Duties),
+            (CAPTURE, Kind::Keeper) => Some(Goal::Capture),
             (MAINT, Kind::Worker) => Some(Goal::Maint),
             (ENTER_TANK, Kind::Keeper) => Some(Goal::EnterTank),
             (EXIT_TANK, Kind::Keeper) => Some(Goal::ExitTank),
@@ -293,6 +298,7 @@ impl Goal {
             Goal::Base => RANDOM,
             Goal::Habitat | Goal::Exhibit => HABITAT,
             Goal::Duties => DUTIES,
+            Goal::Capture => CAPTURE,
             Goal::Maint => MAINT,
             Goal::EnterTank => ENTER_TANK,
             Goal::ExitTank => EXIT_TANK,
@@ -329,6 +335,7 @@ impl Goal {
                 cx.duties_init();
                 true
             }
+            Goal::Capture => cx.capture_init(),
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
             Goal::Surface => cx.surface_init(),
@@ -340,7 +347,11 @@ impl Goal {
     }
 
     /// Called when a stale object is removed.
-    fn abort(self, _: &mut Cx) {}
+    fn abort(self, cx: &mut Cx) {
+        if self == Goal::Capture {
+            cx.done_capture();
+        }
+    }
 
     /// 4.3: one update of the object.
     fn update(self, cx: &mut Cx) {
@@ -370,6 +381,7 @@ impl Goal {
             Goal::Talk => return cx.talk_check_done(),
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
+            Goal::Capture => return cx.capture_check_done(),
             // It never completes by itself (staff 8.1).
             Goal::Maint => return,
             Goal::EnterTank | Goal::ExitTank => return cx.ladder_task_check_done(),
@@ -422,6 +434,7 @@ impl Goal {
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Exhibit => cx.exhibit_complete(),
             Goal::Duties => cx.duties_complete(),
+            Goal::Capture => cx.capture_complete(),
             Goal::EnterTank | Goal::ExitTank => cx.ladder_task_complete(),
             Goal::Leave => cx.leave_complete(),
             Goal::DrinkWater => cx.drink_complete(),
@@ -447,7 +460,7 @@ impl Goal {
     }
 }
 
-/// The sub-goal object of a job: the keeper's jobs 1 to 6 (staff 7.6 to 7.8), the worker's jobs 7 to
+/// The sub-goal object of a job: the keeper's jobs 1 to 6 and 13 to 15 (staff 7.6 to 7.8, 7.11), the worker's jobs 7 to
 /// 10, 16, 17, 26 and 27 (staff 8.4 to 8.7, tank staff 8), the base one (9.2) for every other job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sub {
@@ -459,7 +472,7 @@ pub enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Keeper, 1..=6 | 13..=15 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
@@ -597,6 +610,22 @@ pub fn lose_task(unit: &mut Unit) {
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
     crate::unit::movement::stop(unit);
     unit.destination = None;
+}
+
+/// A unit stops everything with the goal reset (staff 7.11, unit placing 9.1): its record and its
+/// need flags go, its walk and its set stop, and its hold is lowered.
+pub fn stop_all(unit: &mut Unit) {
+    unit.goal.record = Record::default();
+    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
+    unit.goal.wants_to_decide = false;
+    crate::unit::movement::stop(unit);
+    unit.destination = None;
+    unit.runner = Default::default();
+    unit.mover.emergency = false;
+    unit.wait = 0;
+    if let Part::Animal(a) = &mut unit.part {
+        (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
+    }
 }
 
 /// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
@@ -824,9 +853,9 @@ impl Cx<'_, '_> {
         self.record().job_target.clear();
     }
 
-    /// A dying, crated or egg animal runs no goal update (10.1 point 1).
+    /// A dying, darted, crated or egg animal runs no goal update (10.1 point 1).
     fn halted(&self) -> bool {
-        matches!(&self.unit.part, Part::Animal(a) if a.dying || a.crated || a.egg)
+        matches!(&self.unit.part, Part::Animal(a) if a.dying || a.tranq || a.crated || a.egg)
     }
 
     /// 7.3: whether an idle unit wanders: it is not in the building chain and not chased (M7).

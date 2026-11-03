@@ -56,7 +56,7 @@ pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) 
     if !a.sleeping {
         // An animal in the water or a tank cannot act here: it only tires, like a rested one. A
         // tired one whose set does not start gets nothing.
-        if env.wet || a.escaped || a.energy < k.energy_threshold {
+        if env.wet || (a.escaped && !a.tranq) || a.energy < k.energy_threshold {
             a.energy_change = a.energy_change.saturating_add(k.energy_increment);
         } else if !asleep && sets.has_sleep {
             (a.sleeping, asleep) = (true, true);
@@ -66,6 +66,7 @@ pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) 
     }
     if a.sleeping && !asleep {
         (a.energy, a.sleeping, a.slept) = (0, false, env.now);
+        a.tranq = false;
         out.log.push("wake");
     }
 }
@@ -236,7 +237,7 @@ pub fn ambient_sleep(
     let Part::Animal(a) = &unit.part else {
         return false;
     };
-    if !idle || a.egg || a.dying || a.crated {
+    if !idle || a.egg || a.dying || a.crated || a.tranq {
         return false;
     }
     let k = super::keys(world, ctx.cat, at);

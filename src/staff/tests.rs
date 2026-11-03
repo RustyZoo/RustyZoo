@@ -673,3 +673,18 @@ fn only_a_guide_saves_its_crowd_countdown() {
     let saved = |guide: bool| s.record(StaffRecord::default(), Vec::new(), 0, guide).crowd;
     assert_eq!((saved(false), saved(true)), (None, Some(7)));
 }
+
+#[test]
+fn the_captured_animal_is_saved_with_the_staff_member() {
+    for captured in [0, 55, u32::MAX] {
+        let record = StaffRecord {
+            captured,
+            ..StaffRecord::default()
+        };
+        let mut s = Staff::default();
+        s.restore(&record, Vec::new(), Vec::new());
+        assert_eq!(s.captured, captured);
+        let back = s.record(StaffRecord::default(), Vec::new(), 4, false);
+        assert_eq!(back.captured, captured);
+    }
+}
