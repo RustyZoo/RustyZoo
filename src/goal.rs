@@ -27,13 +27,15 @@ mod dropped;
 mod drown;
 mod entry;
 mod guest;
+mod reach;
 mod recover;
+mod show;
 mod staff;
 #[cfg(test)]
 mod tests;
 
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub(crate) use dropped::{dropped, picked_up};
+pub(crate) use dropped::{dropped, picked_up, reset_unit};
 pub(crate) use entry::{crowd, send, use_call};
 pub(crate) use guest::{IN_BUILDING, LEAVE};
 pub(crate) use staff::release_group;
@@ -112,7 +114,7 @@ pub(crate) fn quiet(world: &mut World) {
     let ids: Vec<u32> = world.units.iter().map(|u| u.id).collect();
     for id in ids {
         if let Some(u) = world.units.get_mut(id) {
-            u.goal.record.task = 134;
+            u.goal.record.task = 115;
         }
     }
 }
@@ -262,6 +264,10 @@ pub(crate) enum Goal {
     Recover,
     /// The drown task (132): a man drowns, a woman or a child is put back on land (tank fauna 13.1).
     Drown,
+    /// The tasks 133 and 134 of an animal: swim to the portal of the show tank, and back home
+    /// (shows 21.3, 21.4).
+    GoShow,
+    Return,
 }
 
 impl Goal {
@@ -300,6 +306,8 @@ impl Goal {
             (SICK, Kind::Guest) => Some(Goal::Sick),
             (RECOVER, Kind::Guest) => Some(Goal::Recover),
             (DROWN, _) => Some(Goal::Drown),
+            (GO_TO_SHOW, Kind::Animal) => Some(Goal::GoShow),
+            (RETURN_FROM_SHOW, Kind::Animal) => Some(Goal::Return),
             (AVOID, Kind::Animal) => None,
             (AVOID, _) => Some(Goal::Avoid),
             _ => None,
@@ -337,6 +345,8 @@ impl Goal {
             Goal::Avoid => AVOID,
             Goal::Recover => RECOVER,
             Goal::Drown => DROWN,
+            Goal::GoShow => GO_TO_SHOW,
+            Goal::Return => RETURN_FROM_SHOW,
         }
     }
 
@@ -393,6 +403,7 @@ impl Goal {
             Goal::Avoid => return cx.avoid_check_done(),
             Goal::Recover => return cx.recover_check_done(),
             Goal::Drown => return cx.drown_check_done(),
+            Goal::GoShow | Goal::Return => return cx.show_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Scenery => return cx.scenery_check_done(),
             Goal::DoScenery => return cx.do_scenery_check_done(),
@@ -433,6 +444,8 @@ impl Goal {
             Goal::Recover => cx.recover_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
+            Goal::GoShow => cx.go_show_decide(),
+            Goal::Return => cx.return_decide(),
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
             Goal::Leg => cx.leg_decide(),
@@ -477,6 +490,8 @@ impl Goal {
             Goal::Avoid => cx.avoid_exit(),
             Goal::Recover => cx.reset(),
             Goal::Drown => cx.drown_complete(),
+            Goal::GoShow => cx.go_show_complete(),
+            Goal::Return => cx.return_complete(),
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
@@ -840,28 +855,6 @@ impl Cx<'_, '_> {
         let e = self.world.zoo.entities.get(self.at);
         e.and_then(|e| e.common.as_ref())
             .map_or(0, |c| c.movement_mode)
-    }
-
-    /// 8.2: whether the unit reached the target of the task, or of the job.
-    fn reached(&self, job: bool) -> bool {
-        let r = &self.unit.goal.record;
-        let target = if job { &r.job_target } else { &r.target };
-        let Some(c) = self
-            .world
-            .zoo
-            .entities
-            .get(self.at)
-            .and_then(|e| e.common.as_ref())
-        else {
-            return false;
-        };
-        let grid =
-            |(x, y, z): (i32, i32, i32)| (x.div_euclid(64), y.div_euclid(64), z.div_euclid(16));
-        match (c.movement_mode, target.pos) {
-            (1, pos) => pos == Some((c.x, c.y, c.z)),
-            (3, pos) => pos.map(grid) == Some(grid((c.x, c.y, c.z))),
-            _ => target.tile.is_some() && target.tile == self.tile(),
-        }
     }
 
     /// 6.2 before the object: one draw, and one time in 15 a unit outside the zoo is removed and

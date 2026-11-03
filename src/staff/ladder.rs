@@ -29,7 +29,7 @@ pub(crate) struct Ladder {
 }
 
 /// The point of tile `t` on its edge toward direction `d`, snapped inside the tile.
-fn edge(world: &World, t: usize, d: usize) -> (i32, i32) {
+pub(crate) fn edge(world: &World, t: usize, d: usize) -> (i32, i32) {
     let w = world.zoo.width as usize;
     let (dx, dy) = crate::unit::movement::DIR[d];
     let snap = |c: i32| (32 + 32 * c).clamp(0, 63);

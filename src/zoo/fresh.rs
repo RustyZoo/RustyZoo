@@ -73,14 +73,14 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
     Ok((pre.0, post.0))
 }
 
-/// The four values of a fence or tank wall record, and the portal flag of a tank wall.
+/// The four values of a fence or tank wall record, and the portal and open flags of a tank wall.
 pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
     let mut o = Out(Vec::new());
     [f.strength, f.life as u32, f.timers[0], f.timers[1]]
         .iter()
         .for_each(|&n| o.u32(n));
     if class == "tankwall" {
-        o.bytes(&[f.portal.into(), 0]);
+        o.bytes(&[f.portal.into(), f.open.into()]);
     }
     o.0
 }

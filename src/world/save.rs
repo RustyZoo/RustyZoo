@@ -267,6 +267,7 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        (block.b5, block.b6) = (u8::from(u.called), u8::from(u.back));
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
         block.pending = u.runner.queued().unwrap_or_default().to_string();

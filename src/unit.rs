@@ -258,6 +258,10 @@ pub struct Unit {
     /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Not saved
     /// until Shows 2 stores the unit blocks' show fields.
     pub show: u16,
+    /// An animal called to its show (it swims to the show tank) and one sent home from it (shows
+    /// 18.2); both are saved in the unit block.
+    pub called: bool,
+    pub back: bool,
 }
 
 impl Unit {
@@ -311,6 +315,8 @@ impl Unit {
             predator: 0,
             afraid: false,
             show: 0,
+            called: false,
+            back: false,
         }
     }
 
@@ -930,6 +936,11 @@ impl Hooks for Standard<'_> {
         crate::guest::needs(unit, world, ctx, at);
     }
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        // The checks that skip an animal in a show read it as it is now (shows 18.2, 25).
+        let shown = crate::show::in_show_now(world, ctx.cat, unit);
+        if let Part::Animal(a) = &mut unit.part {
+            a.in_show = shown;
+        }
         crate::animal::checks(unit, world, ctx, at, self.data);
         crate::guest::checks(unit, world, ctx, at, self.data);
         crate::staff::checks(unit, world, ctx, at, self.data);

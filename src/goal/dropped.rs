@@ -4,7 +4,7 @@
 //! member forgets the targets it could not reach, a keeper in an exhibit starts its duties.
 
 use super::{Cx, DUTIES, RECOVER};
-use crate::behaviour::Data;
+use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::sim::{Events, Rng};
 use crate::unit::{Ctx, Kind, Part, Unit};
@@ -59,6 +59,14 @@ fn run(
     with_unit(world, &mut ctx, data, id, f);
 }
 
+/// The goal of unit `id` is reset (goals 12.1) by code outside a unit's turn, as the show does for
+/// its animals.
+pub(crate) fn reset_unit(world: &mut World, cat: &Catalogue, id: u32) {
+    run(world, cat, &mut Rng::default(), &NoData, id, |cx| {
+        cx.reset()
+    });
+}
+
 /// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1) and
 /// loses its fright (the clearing of the state variables, simulation 8.2).
 pub(crate) fn picked_up(
@@ -74,6 +82,9 @@ pub(crate) fn picked_up(
         cx.unit.afraid = false;
         cx.unit.predator = 0;
     });
+    // Shows 21.6 point 2: any unit picked up aborts the show of its show id.
+    let show = world.units.get(id).map_or(0, |u| u.show);
+    crate::show::abort_show(world, cat, show);
 }
 
 /// Unit placing 8.5: the drop rule of the unit `id`, put down on the map.

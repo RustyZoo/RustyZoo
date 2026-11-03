@@ -68,6 +68,7 @@ fn map() -> Zoo {
                     life: 10,
                     timers: [0; 2],
                     portal: false,
+                    open: false,
                 }),
                 ..Default::default()
             }),

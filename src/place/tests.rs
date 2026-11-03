@@ -1523,6 +1523,7 @@ fn a_fence_on_a_held_slot_is_free_only_for_the_same_type_above_its_decayed_life(
             life,
             timers: [0; 2],
             portal: false,
+            open: false,
         });
         world((0, 0), vec![e], |_| {})
     };

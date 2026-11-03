@@ -21,6 +21,7 @@ mod contagion;
 mod dropped;
 mod drown;
 mod shelter;
+mod show;
 mod surface;
 
 /// A 10 by 10 map with one unit of this class and id 1 at tile (5, 5).
@@ -431,7 +432,7 @@ fn a_refused_step_makes_the_goal_give_up_and_clears_the_flag() {
     run(&mut w, &mut s, 1);
     let u = unit(&w);
     assert!(!u.aborted && u.path.is_empty() && !u.goal.record.target.is_set());
-    assert_eq!(u.goal.record.task, 134, "the task stays");
+    assert_eq!(u.goal.record.task, 115, "the task stays");
 }
 
 #[test]

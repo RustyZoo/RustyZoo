@@ -15,6 +15,18 @@ use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
 use crate::render::corner_elevation;
 
 impl World {
+    /// A show portal (shows 21.5): the open byte of the tank wall at position `at` takes `open`.
+    /// False, and nothing changes, when it has it already or the piece is no wall.
+    pub(crate) fn set_portal(&mut self, at: usize, open: bool) -> bool {
+        let fence = (self.zoo.entities.get_mut(at)).and_then(|e| e.common.as_mut()?.fence.as_mut());
+        let Some(fence) = fence.filter(|f| f.open != open) else {
+            return false;
+        };
+        fence.open = open;
+        self.dirty = true;
+        true
+    }
+
     /// Whether the fence piece at position `at` of the entity list is a connector (12.1).
     pub(crate) fn connector(&self, at: usize) -> bool {
         let common = self.zoo.entities.get(at).and_then(|e| e.common.as_ref());

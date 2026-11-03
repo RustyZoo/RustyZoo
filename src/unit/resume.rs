@@ -109,6 +109,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
+        let call = (block.b5, block.b6);
         let cost = block.w4;
         let task = u8::try_from(block.target.goal).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
@@ -121,6 +122,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
             unit.held = held;
+            (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
             (unit.frightened, unit.predator) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
             if unit.kind == crate::unit::Kind::Guest {
@@ -786,5 +788,32 @@ mod tests {
         );
         // The pending call's own flag comes back with it.
         assert!(!b.runner.queued_flag());
+    }
+
+    #[test]
+    fn the_call_and_return_flags_of_a_unit_are_saved_and_loaded() {
+        // The unit block's two flag bytes after the optional ones (shows 26 point 2).
+        for (called, back) in [(true, false), (false, true), (true, true), (false, false)] {
+            let mut w = walking(106, Vec::new(), "");
+            let u = w.units.get_mut(1).unwrap();
+            (u.started, u.called, u.back) = (true, called, back);
+            let block = saved_block(&w);
+            assert_eq!((block.b5, block.b6), (called.into(), back.into()));
+            let mut loaded = walking(106, Vec::new(), "");
+            loaded.zoo.entities[0].common.as_mut().unwrap().unit = Some(Box::new(block));
+            load(&mut loaded, 0);
+            let u = loaded.units.get(1).unwrap();
+            assert_eq!((u.called, u.back), (called, back));
+        }
+        // A byte other than 0 and 1 reads as raised.
+        let w = saved_block_in(
+            106,
+            UnitBlock {
+                b5: 9,
+                b6: 200,
+                ..Default::default()
+            },
+        );
+        assert!(w.units.get(1).is_some_and(|u| u.called && u.back));
     }
 }

@@ -47,7 +47,7 @@ pub(super) fn staged(items: Vec<Item>) -> (World, Catalogue) {
     let (mut w, mut cat) = crowded();
     cat.push(EntityType {
         name_id: SEAL as i32,
-        ..kind("animals", "seal", "")
+        ..kind("animals", "seal", "[tricks]\ntrick=a\n")
     });
     for (id, class, name) in [
         (21, "animals", "seal"),
@@ -106,7 +106,7 @@ fn kinds(events: &Events) -> Vec<u16> {
 }
 
 /// Starts the staged show at its time and returns the events of the start step.
-fn started(items: Vec<Item>) -> (World, Catalogue, Events) {
+pub(super) fn started(items: Vec<Item>) -> (World, Catalogue, Events) {
     let (mut w, cat) = staged(items);
     let mut events = Events::default();
     tick(&mut w, &cat, &mut events, 90);

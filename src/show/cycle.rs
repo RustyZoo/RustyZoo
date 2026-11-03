@@ -47,7 +47,6 @@ pub(super) fn update(
 }
 
 /// `abort()` of the show whose show id is `id`, if it has an info (shows 5.6).
-#[cfg(test)]
 pub(super) fn abort(world: &mut World, cat: &Catalogue, events: &mut Events, id: u16) {
     let now = world.units.ai_ticks;
     if let Some(n) = super::habitat_of(world, id) {
@@ -162,12 +161,15 @@ impl Cycle<'_> {
         other.map(f)
     }
 
-    /// Whether `u` is in a show (shows 18.2): it was started in one that holds an item state for it.
-    /// Its return flag, which also counts, is Shows 2's.
+    /// Whether `u` is in a show (shows 18.2).
     fn in_show(&self, u: u32) -> bool {
-        let show = self.world.units.get(u).map_or(0, |x| x.show);
+        let Some(unit) = self.world.units.get(u) else {
+            return false;
+        };
         let held = |i: &ShowInfo| i.show.items.iter().any(|st| st.animal == u);
-        show != 0 && self.show(show, held).unwrap_or(false)
+        super::in_show(self.world, self.cat, unit, |show| {
+            self.show(show, held).unwrap_or(false)
+        })
     }
 
     // ---- Reading the show info's own events (shows 5.7)
@@ -477,7 +479,7 @@ impl Cycle<'_> {
                 self.post(event::NEXT_ITEM, 0, KEEPER_CHANNEL, 0, st.item as u16);
             }
         }
-        performer::read_events(self.world, u, st);
+        performer::read_events(self.world, self.cat, self.events, u, st);
         let r = self.run_current_item(u, st, count);
         if r != 0 {
             self.abort_item(u, st);
@@ -595,7 +597,7 @@ impl Cycle<'_> {
         let id = self.id();
         for u in self.info.units(self.info.show.species).to_vec() {
             if self.world.units.get(u).is_some_and(|x| x.show == id) {
-                performer::release(self.world, u);
+                performer::release(self.world, self.cat, u);
             }
         }
         let show = &mut self.info.show;

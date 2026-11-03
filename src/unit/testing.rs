@@ -17,6 +17,7 @@ pub(crate) fn entity(
         life: 5,
         timers: [0; 2],
         portal: false,
+        open: false,
     });
     Entity {
         class: class.into(),
