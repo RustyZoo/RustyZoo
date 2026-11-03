@@ -126,8 +126,10 @@ fn two_items_of_one_trick_id_start_the_first_one() {
 
 #[test]
 fn an_item_whose_trick_cannot_start_aborts_for_that_animal() {
-    // A trick of a type no trick has: the start answers 3 and the item is aborted (shows 5.4).
-    let (mut w, cat, mut events) = cued(vec![item(4, 3, 5)], 0);
+    // A trick of a type no trick has: the start answers 3 and the item is aborted (shows 5.4). The
+    // start of the show would have removed it, so the script changes after the start.
+    let (mut w, cat, mut events) = cued(vec![item(0, 3, 5)], 0);
+    w.zoo.shows.scripts[0].items[0].marker = 4;
     tick(&mut w, &cat, &mut events, 91);
     let st = &info_mut(&mut w).show.items[0];
     assert!(st.finished && st.aborted && !st.started);

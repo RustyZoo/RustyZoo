@@ -1,5 +1,8 @@
 //! The show cycle of one show info (shows 5): the announce, the start, the items, the stop and
-//! the abort. It draws nothing; it posts events (shows 6.1) and asks messages.
+//! the abort. It posts events (shows 6.1) and asks messages; its only draws are the toy
+//! validations of 23.6 and the tricks it asks the animals to start.
+
+mod validate;
 
 use super::{KEEPER, event, performer};
 use crate::behaviour::{Data, NoData};
@@ -399,15 +402,16 @@ impl Cycle<'_> {
             return 4;
         }
         let script = self.info.show.script;
-        let keep: Vec<bool> = (0..self.items(script))
-            .map(|i| performer::validate_item(self.world, sp, i as i16) == 0)
-            .collect();
-        if let Some(x) = (self.world.zoo.shows.scripts.iter_mut()).find(|x| x.id == script) {
-            let mut at = 0;
-            x.items.retain(|_| {
-                at += 1;
-                keep[at - 1]
-            });
+        // An item that fails goes at once and the next one is tested at the same index.
+        let mut i = 0;
+        while i < self.items(script) {
+            if self.validate_item(i as i16) == 0 {
+                i += 1;
+            } else if let Some(x) =
+                (self.world.zoo.shows.scripts.iter_mut()).find(|x| x.id == script)
+            {
+                x.items.remove(i);
+            }
         }
         if self.items(script) == 0 { 6 } else { 0 }
     }
@@ -519,7 +523,7 @@ impl Cycle<'_> {
             ready = st.ready;
         } else {
             ready = st.ready;
-            let r = performer::validate_item(self.world, self.info.show.species, st.item);
+            let r = self.validate_item(st.item);
             if r != 0 {
                 self.abort_item(u, st);
                 return r;

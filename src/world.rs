@@ -330,10 +330,12 @@ impl World {
         world.retank(false);
         world.name_loaded();
         world.relink();
-        // The loaded animals join the show lists at the first rating of their exhibits.
+        // The loaded animals are placed in file order and join the show lists with the first step
+        // (shows 26 point 3); the first rating of their exhibits then finds them listed.
         world.show_moves.clear();
         for at in 0..world.zoo.entities.len() {
             world.filter_added(at);
+            world.show_moved(at, true);
         }
         world.walk_loaded();
         world.units.sync(&world.zoo.entities);

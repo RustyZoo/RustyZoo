@@ -1,4 +1,4 @@
-//! The animal side of a show (shows 18 to 25): the events it reads, its validation and its release.
+//! The animal side of a show (shows 18 to 25): the events it reads and its release.
 //! The trick it starts is `goal::start_trick`. Each function is the place the cycle calls the animal at.
 
 use super::event;
@@ -7,12 +7,6 @@ use crate::goal::reset_unit;
 use crate::sim::{Events, UNIT_CHANNEL};
 use crate::world::World;
 use crate::zoo::ItemState;
-
-/// Whether the animals can do item `item` of the script of `species` in this show (shows 23.6);
-/// 0 for yes, else the code that aborts the item.
-pub(super) fn validate_item(_world: &World, _species: u32, _item: i16) -> i32 {
-    0
-}
 
 /// Reads the events addressed to `animal` and sets the flags of its item state (shows 24), in
 /// order, each row's effects in its own order: the call raises its called flag and lowers its
