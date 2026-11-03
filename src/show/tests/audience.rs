@@ -3,6 +3,7 @@
 use super::*;
 use crate::exhibit::Tank;
 use crate::sim::Rng;
+use crate::zoo::TypeRecord;
 
 const REACH: i32 = 150;
 
@@ -145,4 +146,25 @@ fn a_seat_is_booked_in_the_type_record_and_the_info_this_month_and_in_all() {
     // A show that is not there books nothing.
     assert!(!pay(&mut w, 4242, 1.0));
     assert!(!pay(&mut w, 0, 1.0));
+}
+
+#[test]
+fn a_seat_for_a_species_with_no_record_makes_it_in_key_order_with_no_script_and_the_date() {
+    for (species, keys) in [(5, [1, 5, 9]), (0, [0, 1, 9]), (12, [1, 9, 12])] {
+        let (mut w, _) = audience(&[], true);
+        w.units.now = 86_400_000;
+        let info = w.zoo.shows.infos[0].as_mut().unwrap();
+        info.show.species = species;
+        info.records = vec![TypeRecord::new(1, 3, 7), TypeRecord::new(9, 4, 8)];
+        assert!(pay(&mut w, 1001, 2.0));
+        let info = w.zoo.shows.infos[0].as_ref().unwrap();
+        assert_eq!(info.records.iter().map(|r| r.key).collect::<Vec<_>>(), keys);
+        let made = info.record(species).unwrap();
+        let date = crate::timing::file_time(86_400_000);
+        assert_eq!(
+            (made.script, made.pending, made.date),
+            (u16::MAX, u16::MAX, date)
+        );
+        assert_eq!(made.attendance, [1, 0, 1]);
+    }
 }

@@ -300,19 +300,19 @@ impl ShowInfo {
         self.records.iter().find(|r| r.key == t)
     }
 
-    /// A seat of price `r` is sold (shows 7.3 point 3): the receipts of the type record of the
-    /// show's species (made when missing) and then of the info, this month and in all, and the
-    /// attendance in the same four places.
-    pub fn book(&mut self, r: f32) {
+    /// A seat of price `r` is sold on file time `date` (shows 7.3 point 3): the receipts of the
+    /// type record of the show's species (made when missing, in key order, with no script and no
+    /// pending one) and then of the info, this month and in all, and the attendance in the same
+    /// four places.
+    pub fn book(&mut self, r: f32, date: u64) {
         let species = self.show.species;
-        let at = self
-            .records
-            .iter()
-            .position(|t| t.key == species)
-            .unwrap_or_else(|| {
-                self.records.push(TypeRecord::new(species, 0, 0));
-                self.records.len() - 1
-            });
+        let at = match self.records.binary_search_by_key(&species, |t| t.key) {
+            Ok(at) => at,
+            Err(at) => {
+                (self.records).insert(at, TypeRecord::new(species, u16::MAX, date));
+                at
+            }
+        };
         let sold = |receipts: &mut [u32; 3], attendance: &mut [u32; 3]| {
             for n in [0, 2] {
                 receipts[n] = (f32::from_bits(receipts[n]) + r).to_bits();

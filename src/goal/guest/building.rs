@@ -19,7 +19,7 @@ use crate::zoo::Entity;
 mod litter;
 
 /// The thought of a guest too crowded to be served by a building (guests 7.2).
-const CROWDED: i32 = 10243;
+pub(super) const CROWDED: i32 = 10243;
 
 /// The thoughts of a need: wanting it and finding nothing to serve it (guests 14).
 fn wants(need: &str) -> (i32, i32) {
@@ -240,6 +240,16 @@ impl Cx<'_, '_> {
         if let (Some(t), Some(g)) = (tile, self.guest()) {
             crate::guest::view::see(g, t);
         }
+    }
+
+    /// Whether building `id` has no open slot for the guest.
+    pub(super) fn full(&mut self, id: u32) -> bool {
+        let Some((e, kind)) = self.building(id) else {
+            return false;
+        };
+        let who = self.species();
+        let live = self.world.units.buildings.get(&id);
+        !building::has_open_slot(self.world, &e, &kind, live, who.as_ref())
     }
 
     /// A building with no free slot (goals 11.3): a guest thinks it is crowded, the building joins

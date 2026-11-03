@@ -158,3 +158,52 @@ fn the_step_books_the_seats_as_show_income_and_reads_the_reach_from_the_ini() {
         assert!(w.units.show_income.is_empty());
     }
 }
+
+/// The goal (need, building, task), the wandered flag and the thoughts after a rung.
+type After = ((Option<&'static str>, u32, u8), bool, Vec<i32>);
+
+/// Runs the show rung for the guest of `zoo(true)` with a stand of `users` users; the rung's
+/// answer, the goal, the wandered flag and the thoughts after it.
+fn rung(users: usize, walk: &dyn Data) -> (bool, After) {
+    let (mut w, cat) = zoo(true);
+    w.units.buildings.get_mut(&7).unwrap().users = vec![(2, 0, 0); users];
+    let mut rng = Rng::default();
+    let went = with_cx_in(&cat, walk, &mut w, &mut rng, |cx| {
+        (cx.next_site(), cx.record().task)
+    });
+    let (need, building) = need(&w);
+    let u = w.units.get(1).unwrap();
+    let thoughts = w.units.thoughts.of(1).iter().map(|t| t.text).collect();
+    (
+        went.0,
+        ((need, building, went.1), u.goal.wandered, thoughts),
+    )
+}
+
+#[test]
+fn a_grandstand_with_no_open_slot_resets_the_goal_and_raises_the_wandered_flag() {
+    // Twelve users of twelve seats, and a free seat that no path leads to: the ladder ends with
+    // no task, no need, no building target, and the flag up.
+    for (users, walk) in [(12, &walks() as &dyn Data), (0, &NoData)] {
+        let (ended, (goal, wandered, _)) = rung(users, walk);
+        assert_eq!(
+            (ended, goal, wandered),
+            (true, (None, 0, 0), true),
+            "{users}"
+        );
+    }
+    // A free seat with a path is gone to, and the flag stays down.
+    let (ended, (goal, wandered, _)) = rung(11, &walks());
+    assert_eq!(
+        (ended, goal, wandered),
+        (true, (Some("grandstand"), 7, 102), false)
+    );
+}
+
+#[test]
+fn a_full_grandstand_found_by_the_rung_makes_the_guest_think_crowded() {
+    assert_eq!(rung(12, &walks()).1.2, [10243]);
+    // With no path the guest thinks nothing, and with room it thinks nothing.
+    assert!(rung(0, &NoData).1.2.is_empty());
+    assert!(rung(11, &walks()).1.2.is_empty());
+}

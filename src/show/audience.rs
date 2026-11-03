@@ -79,9 +79,10 @@ fn seen_show(world: &World, ground: &Ground, at: usize, seen: &[usize]) -> bool 
 /// The price `r` of a seat in a grandstand of show `show` is booked in the show's figures (shows
 /// 7.3 point 3 steps 1 and 2). Whether the show exists, so that the caller books the income.
 pub fn pay(world: &mut World, show: u16, r: f32) -> bool {
+    let date = crate::timing::file_time(world.units.now);
     let Some(info) = habitat_of(world, show).and_then(|n| world.zoo.shows.infos[n].as_mut()) else {
         return false;
     };
-    info.book(r);
+    info.book(r, date);
     true
 }
