@@ -1363,7 +1363,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
 # The dung pile and the trampled ground are made inside the checks, which lays no egg at seed 1 now: seed 5 is the first seed from 1 that gives a clutch and a hatching on both builds (the same steps).
-check expansion-trial "egg@426;eggs:3;hatch@1053" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "egg@426;eggs:6;hatch@1053" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

@@ -604,7 +604,7 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
     unit.tank = 0;
     unit.carried = true;
     // The pick-up of the animal itself lowers the hold of an aborted heal (staff 7.7).
-    unit.wait = 0;
+    unit.held = false;
     match &mut unit.part {
         // An escaped animal is crated (8.2 point 4); any other one's escape walk ends.
         crate::unit::Part::Animal(a) => match a.escaped {
