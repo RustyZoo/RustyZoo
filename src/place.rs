@@ -790,7 +790,7 @@ fn check(
 }
 
 /// Whether a tile of `tiles` is not flat or not at the height of the first (placing 5.2 item 5).
-fn uneven(world: &World, tiles: &[usize]) -> bool {
+pub(crate) fn uneven(world: &World, tiles: &[usize]) -> bool {
     let tile = |t: usize| world.zoo.tiles[t];
     tiles.first().is_some_and(|&first| {
         tiles
@@ -801,7 +801,7 @@ fn uneven(world: &World, tiles: &[usize]) -> bool {
 
 /// Whether a tile side inside the footprint of `fp` quarters whose first quarter is at
 /// `(x0, y0)` holds a fence or is a cliff (placing 5.2 item 6).
-fn fenced(world: &World, x0: i32, y0: i32, fp: (i32, i32)) -> bool {
+pub(crate) fn fenced(world: &World, x0: i32, y0: i32, fp: (i32, i32)) -> bool {
     let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
     let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
     let ty1 = (y0 + 32 * (fp.1 - 1)).div_euclid(64);
