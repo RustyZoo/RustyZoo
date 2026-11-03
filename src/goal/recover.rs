@@ -1,6 +1,6 @@
 //! The recover task (131) of a guest: climb out of the water (tank fauna 13). The guest walks to a
 //! dry tile near it (or the first one east of it along the water); each failed search costs one
-//! of its tries, and with none left it takes the drowning task, which has no goal yet.
+//! of its tries, and with none left it takes the drowning task (`drown.rs`).
 
 use super::{Cx, DROWN};
 
