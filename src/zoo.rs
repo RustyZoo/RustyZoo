@@ -316,7 +316,7 @@ pub(crate) struct GuestRecord {
 }
 
 /// The four values a fence or tank wall record holds after its common part.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct Fence {
     pub strength: u32,
     /// A signed number, as the original tests it: below 1 (a stored value above `i32::MAX` too) the
@@ -326,6 +326,9 @@ pub(crate) struct Fence {
     pub timers: [u32; 2],
     /// A tank wall whose first trailing byte is not 0 is a portal.
     pub portal: bool,
+    /// The second trailing byte of a tank wall: a portal is open while an animal crosses it
+    /// (shows 21.5).
+    pub open: bool,
 }
 
 /// What the exhibit record keeps of a tank exhibit.

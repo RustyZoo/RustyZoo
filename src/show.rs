@@ -5,8 +5,9 @@
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
-//! `performer`, the events an animal reads, and `crate::goal::start_trick`, the trick it starts; its
-//! calls and validation are still stubs. The marine specialist is `keeper`. The audience is `audience`: the search of a guest for a show and the price of a seat.
+//! `performer`, its calls and the events it reads, and `crate::goal::start_trick`, the trick it
+//! starts; its validation is still a stub. The marine specialist is `keeper`. The audience is
+//! `audience`: the search of a guest for a show and the price of a seat.
 
 use crate::behaviour::Data;
 use crate::building::kind_of;
@@ -15,7 +16,9 @@ use crate::building::leave::push_out;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
+use crate::place::bulldozer::type_of;
 use crate::sim::{Events, Rng};
+use crate::unit::Unit;
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{Item, ShowInfo};
@@ -24,6 +27,7 @@ mod audience;
 mod cycle;
 mod keeper;
 mod performer;
+mod portals;
 mod relay;
 pub(crate) mod toy;
 pub mod trick;
@@ -31,6 +35,7 @@ mod units;
 
 pub(crate) use audience::{find, pay};
 pub(crate) use keeper::{cue, needs_keeper, rejoin, removed};
+pub(crate) use portals::{open_portals, portal};
 pub(crate) use relay::{listen_grandstand, listen_world};
 pub(crate) use units::{Move, counted, join, leave, settle};
 
@@ -56,6 +61,7 @@ pub(crate) mod event {
     pub(crate) const TRICK_DONE: u16 = 0x271f;
     pub(crate) const FAILED: u16 = 0x2722;
     pub(crate) const CALL: u16 = 0x271a;
+    pub(crate) const ARRIVED: u16 = 0x271b;
     pub(crate) const ITEM_ABORTED: u16 = 0x2723;
     pub(crate) const PREPARE: u16 = 0x2724;
     pub(crate) const CUE: u16 = 0x2725;
@@ -193,9 +199,40 @@ fn habitat_of(world: &World, id: u16) -> Option<usize> {
 }
 
 /// The exhibit of the show info whose show id is `id`.
-#[cfg(test)]
-fn exhibit_of(world: &World, id: u16) -> Option<u32> {
+pub(crate) fn exhibit_of(world: &World, id: u16) -> Option<u32> {
     tank_of(world, habitat_of(world, id)?)
+}
+
+/// Whether `unit` is in a show (shows 18.2): it is an animal that performs, and it is on its way
+/// home or was started in a show whose info holds an item state for it (`held` tells that of the
+/// show id it is given).
+pub(crate) fn in_show(
+    world: &World,
+    cat: &Catalogue,
+    unit: &Unit,
+    held: impl FnOnce(u16) -> bool,
+) -> bool {
+    let at = world.find(unit.id);
+    let ty = at.and_then(|at| type_of(cat, &world.zoo.entities[at]));
+    ty.is_some_and(trick::performs) && (unit.back || (unit.show != 0 && held(unit.show)))
+}
+
+/// [`in_show`] when no show info is out of the world.
+pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit) -> bool {
+    let held = |show: u16| {
+        let infos = world.zoo.shows.infos.iter().flatten();
+        let mut infos = infos.filter(|i| i.id == show);
+        infos.any(|i| i.show.items.iter().any(|s| s.animal == unit.id))
+    };
+    in_show(world, cat, unit, held)
+}
+
+/// `abort_show` (shows 21.6): the show of the show id `id` is aborted when it has an info. The
+/// events it posts go out with the next step's.
+pub(crate) fn abort_show(world: &mut World, cat: &Catalogue, id: u16) {
+    let mut events = Events::default();
+    cycle::abort(world, cat, &mut events, id);
+    world.units.posts.extend(events.take_posted());
 }
 
 /// The grandstands of a world in the order of the building list, as (id, position in the entity

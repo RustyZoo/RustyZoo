@@ -354,6 +354,7 @@ impl Session<'_> {
             life: 10,
             timers: [0; 2],
             portal: false,
+            open: false,
         });
         let entity = Entity {
             class: t.class.into(),

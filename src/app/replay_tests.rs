@@ -54,6 +54,7 @@ fn map(version: u32, stored: bool) -> Zoo {
                     life: 1,
                     timers: [7; 2],
                     portal: false,
+                    open: false,
                 }),
                 ..Default::default()
             }),

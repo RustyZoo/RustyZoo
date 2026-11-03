@@ -1851,6 +1851,7 @@ fn made_in_play() -> Vec<Entity> {
         life: -20,
         timers: [1, 2],
         portal: false,
+        open: false,
     };
     let record = BuildingRecord {
         guests: [1, 2, 3],
@@ -1903,6 +1904,7 @@ fn made_in_play() -> Vec<Entity> {
             with(&|c| {
                 c.fence = Some(Fence {
                     portal: true,
+                    open: true,
                     ..fence
                 })
             }),

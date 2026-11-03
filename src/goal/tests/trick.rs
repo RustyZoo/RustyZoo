@@ -29,11 +29,16 @@ fn ty(class: &'static str, name: &str, subtype: &str, id: u32, text: &str) -> En
 
 /// A seal that skips tricks at or below `happy` with `chance` percent, and a toy for one seal.
 fn types(skip: &str) -> Catalogue {
+    types_with(skip, "")
+}
+
+/// [`types`] with `extra` ini text appended to the seal's.
+fn types_with(skip: &str, extra: &str) -> Catalogue {
     let toy = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=9\ncUserStaysOutside=0\n\
         [Satisfies]\nbuilding\nshowtrick\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\n\
         entrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1\n";
     let mut cat = Catalogue::default();
-    let seal = format!("[Characteristics/Integers]\n{skip}");
+    let seal = format!("[Characteristics/Integers]\n{skip}\n{extra}");
     cat.push(ty("animals", "seal", "m", SEAL, &seal));
     cat.push(ty("building", "building", "sealwav", TOY, toy));
     cat
@@ -313,6 +318,49 @@ fn a_toy_that_cannot_take_the_animal_aborts_the_trick_and_leaving_one_ends_it() 
         cx.set_exits();
     });
     assert_eq!(kinds(&w), [event::FINISHED]);
+}
+
+/// The seal has a trick list, so it performs.
+const PERFORMS: &str = "[tricks]\ntrick=a\n";
+
+#[test]
+fn a_trick_animal_whose_toy_is_full_at_arrival_aborts_the_item() {
+    let (cat, mut w, mut rng) = (
+        types_with("", PERFORMS),
+        zoo(trick(1, "wave")),
+        Rng::default(),
+    );
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    // The toy takes one user and has another: no open slot when the animal arrives (task 0x66).
+    w.units
+        .buildings
+        .entry(9)
+        .or_default()
+        .users
+        .push((77, 0, 0));
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+        cx.building_arrived()
+    });
+    let kinds: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [event::FAILED]);
+    assert!(matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && !a.toy));
+}
+
+#[test]
+fn a_trick_animal_whose_toy_is_gone_at_entry_aborts_the_item() {
+    let (cat, mut w, mut rng) = (
+        types_with("", PERFORMS),
+        zoo(trick(1, "wave")),
+        Rng::default(),
+    );
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    w.zoo.entities.pop();
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+        cx.entrance_arrived()
+    });
+    let kinds: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [event::FAILED]);
+    assert!(matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && !a.toy));
 }
 
 /// A swimmer in the middle of the show tank (full to level 4), which has a gate, with the script

@@ -969,6 +969,7 @@ fn wall_copy_new_is_a_healthy_plain_piece_of_the_type_with_nothing_of_the_wall_k
             life: 0,
             timers: [5, 6],
             portal: true,
+            open: false,
         });
     }
     world.begin();
@@ -993,7 +994,8 @@ fn wall_copy_new_is_a_healthy_plain_piece_of_the_type_with_nothing_of_the_wall_k
             strength: 500,
             life: 10,
             timers: [0; 2],
-            portal: false
+            portal: false,
+            open: false,
         })
     );
     assert_eq!(e.body_size, None);

@@ -957,7 +957,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay, now
                 strength: number(ty, "cStrength").unwrap_or(STRENGTH) as u32,
                 life: number(ty, "cLife").unwrap_or(LIFE) as i32,
                 timers: [0; 2],
-                portal: false,
+                ..Fence::default()
             }),
             food: number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32,
             filter: (ty.class == "filter").then(|| crate::world::placed_filter(ty, over, now)),

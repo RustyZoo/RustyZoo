@@ -17,6 +17,7 @@ fn entity_at(class: &str, kind: &str, subtype: &str, (x, y): (i32, i32), rotatio
         life: 5,
         timers: [0; 2],
         portal: false,
+        open: false,
     });
     Entity {
         class: class.into(),

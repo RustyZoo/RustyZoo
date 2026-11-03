@@ -268,7 +268,7 @@ impl Cx<'_, '_> {
             self.think(CROWDED, Some(id));
         }
         self.saw(id);
-        self.reset();
+        self.clear_goal();
     }
 
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
@@ -299,7 +299,7 @@ impl Cx<'_, '_> {
             return;
         };
         let Some((_, kind)) = self.building(id) else {
-            return self.reset();
+            return self.clear_goal();
         };
         let Some((slot, _)) = self.open_slot(id) else {
             return self.crowded(id);
@@ -323,7 +323,7 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn enter_decide(&mut self) {
         let (id, slot) = self.target();
         let Some((e, kind)) = self.building(id) else {
-            return self.reset();
+            return self.clear_goal();
         };
         let own = self.tile();
         if kind.outside || kind.teleports {
@@ -331,13 +331,13 @@ impl Cx<'_, '_> {
         }
         let to = kind.slots.get(slot).map(|s| building::place(&e, s.at));
         let Some(t) = to.and_then(|p| self.tile_at(p)) else {
-            return self.reset();
+            return self.clear_goal();
         };
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
         self.unit.through_building = true;
         if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
             self.unit.through_building = false;
-            return self.reset();
+            return self.clear_goal();
         }
         self.unit.goal.record.target.set_tile(self.world, Some(t));
     }
@@ -387,7 +387,7 @@ impl Cx<'_, '_> {
         match started {
             true => self.set_task(USE, 0, id, None),
             false if self.building(id).is_some() => self.crowded(id),
-            false => self.reset(),
+            false => self.clear_goal(),
         }
     }
 
@@ -601,7 +601,7 @@ impl Cx<'_, '_> {
             return;
         }
         let (Some(entered), Some(kind)) = (entered, kind) else {
-            self.reset();
+            self.clear_goal();
             self.unit.goal.wandered = true;
             return;
         };

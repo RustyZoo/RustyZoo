@@ -331,6 +331,7 @@ fn worn(world: &mut World, x: usize, y: usize, d: usize, life: i32) {
         life,
         timers: [0; 2],
         portal: false,
+        open: false,
     });
 }
 

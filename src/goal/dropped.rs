@@ -82,6 +82,9 @@ pub(crate) fn picked_up(
         cx.unit.afraid = false;
         cx.unit.predator = 0;
     });
+    // Shows 21.6 point 2: any unit picked up aborts the show of its show id.
+    let show = world.units.get(id).map_or(0, |u| u.show);
+    crate::show::abort_show(world, cat, show);
 }
 
 /// Unit placing 8.5: the drop rule of the unit `id`, put down on the map.

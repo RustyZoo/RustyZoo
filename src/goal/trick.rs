@@ -5,7 +5,7 @@ use super::Cx;
 use crate::animal::food;
 use crate::behaviour::Data;
 use crate::entity::Catalogue;
-use crate::show::{event, toy, trick_item};
+use crate::show::{event, in_show_now, toy, trick_item};
 use crate::sim::Rng;
 use crate::sim::{Event, KEEPER_CHANNEL, SHOW_CHANNEL};
 use crate::staff::service;
@@ -91,6 +91,15 @@ impl Cx<'_, '_> {
     /// An event from the unit to itself: a trick done or aborted.
     pub(super) fn tell_trick(&mut self, kind: u16) {
         crate::building::leave::post_own(self.world, self.unit.id, kind);
+    }
+
+    /// 12.2 with shows 24 point 3: the clear goal that ends the building chain of an animal. One in
+    /// a show tells its item aborted before the reset, so a toy trick never waits for ever.
+    pub(super) fn clear_goal(&mut self) {
+        if in_show_now(self.world, self.ctx.cat, self.unit) {
+            self.tell_trick(event::FAILED);
+        }
+        self.reset();
     }
 
     /// Whether the animal is on its way to a toy for its trick (the need served is `showtrick`).

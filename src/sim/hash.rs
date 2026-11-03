@@ -123,7 +123,7 @@ impl Fnv {
                 for v in [f.strength, f.life as u32, f.timers[0], f.timers[1]] {
                     self.u32(v);
                 }
-                self.u8(u8::from(f.portal));
+                self.u8(u8::from(f.portal) | u8::from(f.open) << 1);
             }
             self.u32(*movement_mode);
             self.i32(*food);

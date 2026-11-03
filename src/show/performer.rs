@@ -1,6 +1,5 @@
-//! The animal side of a show (shows 18 to 25): the events it reads. The rest is a stub until Shows
-//! 2: its calls, its validation and its release. The trick it starts is `goal::start_trick`. Each
-//! function is the place the cycle calls the animal at.
+//! The animal side of a show (shows 18 to 25): the events it reads, its validation and its release.
+//! The trick it starts is `goal::start_trick`. Each function is the place the cycle calls the animal at.
 
 use super::event;
 use crate::entity::Catalogue;
@@ -16,7 +15,8 @@ pub(super) fn validate_item(_world: &World, _species: u32, _item: i16) -> i32 {
 }
 
 /// Reads the events addressed to `animal` and sets the flags of its item state (shows 24), in
-/// order, each row's effects in its own order.
+/// order, each row's effects in its own order: the call raises its called flag and lowers its
+/// return flag; its arrival resets its goal and sets it finished and ready.
 pub(super) fn read_events(
     world: &mut World,
     cat: &Catalogue,
@@ -31,6 +31,15 @@ pub(super) fn read_events(
         .collect();
     for kind in heard {
         match kind {
+            event::CALL => {
+                if let Some(u) = world.units.get_mut(animal) {
+                    (u.back, u.called) = (false, true);
+                }
+            }
+            event::ARRIVED => {
+                reset_unit(world, cat, animal);
+                (state.finished, state.ready) = (true, true);
+            }
             event::CUE => state.ready = true,
             event::FINISHED => {
                 state.finished = true;
@@ -43,5 +52,10 @@ pub(super) fn read_events(
     }
 }
 
-/// The show is over for `animal`: its goal is reset and it is sent home (shows 5.6, 21).
-pub(super) fn release(_world: &mut World, _animal: u32) {}
+/// The show is over for `animal`: its goal is reset and it is sent home (shows 5.6 `reinit`).
+pub(super) fn release(world: &mut World, cat: &Catalogue, animal: u32) {
+    reset_unit(world, cat, animal);
+    if let Some(u) = world.units.get_mut(animal) {
+        (u.back, u.called) = (true, false);
+    }
+}

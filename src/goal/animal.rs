@@ -13,12 +13,15 @@ pub(crate) const DRINK: u8 = 122;
 pub(crate) const SURFACE: u8 = 124;
 
 impl Cx<'_, '_> {
-    /// 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
+    /// 10.1 point 3 comes first: the show rung (shows 21.2). 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
     /// has it, is in the building chain or is drinking. Points 6 and 7 keep the building chain and
     /// send the animal to the shelter it aims at; they end the ladder, so the thirst of point 8 and
     /// the breath of point 9 wait. Point 8 sets the drink task for a thirsty animal and point 9
     /// comes last, whatever those do.
     pub(super) fn animal_ladder(&mut self, task: u8) {
+        if !matches!(&self.unit.part, Part::Animal(_)) || self.animal_show_rung(task) {
+            return;
+        }
         let Part::Animal(a) = &self.unit.part else {
             return;
         };
