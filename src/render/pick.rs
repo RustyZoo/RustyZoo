@@ -62,7 +62,7 @@ impl Staged {
     /// width of the search is the `cHitThreshold` of the type plus `extra` (5 for the bulldozer
     /// and the gate tool, 0 for the selection). Only entities of the zoo that were drawn can be
     /// hit.
-    pub fn pick(
+    pub(crate) fn pick(
         &self,
         point: (i64, i64),
         extra: i32,

@@ -38,7 +38,8 @@ impl Lines {
 
 impl App<'_> {
     /// The first line of a log: the size of the window, which the frames depend on.
-    pub fn log_header(&self) -> String {
+    #[cfg(test)]
+    pub(crate) fn log_header(&self) -> String {
         format!("size {}x{}", self.frame.width, self.frame.height)
     }
 
@@ -80,7 +81,7 @@ impl App<'_> {
 
     /// [`App::log_lines`] with the text of the frame hash given by `hash` (called once at most):
     /// a caller that hashes in a thread puts a placeholder there.
-    pub fn log_lines_with(
+    pub(crate) fn log_lines_with(
         &self,
         pass: u64,
         now: u64,

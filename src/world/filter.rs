@@ -81,7 +81,7 @@ fn ms(v: i64) -> i32 {
 /// 7.2): the starting health, its decay timer full (with the completed research `over`) and a
 /// filter timer of 0, so that it filters (and charges) at its first update, no upkeep paid, today
 /// as its build and service dates and a count of 1 month.
-pub fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
+pub(crate) fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
     let keys = Keys::of(ty).researched(ty, over);
     let today = file_time(now);
     Filter {
@@ -99,7 +99,7 @@ pub fn placed(ty: &EntityType, over: &Overlay, now: i64) -> Filter {
 /// between them (information panels 18.3, 18.6). The program truncates `d + 29.9` and then divides
 /// by 30 toward zero, so from 30 days in the future on the numerator is `d + 30` (a date 1 to 59
 /// days ahead gives 0, 60 to 89 days -1).
-pub fn months_since(from: u64, now: i64) -> i32 {
+pub(crate) fn months_since(from: u64, now: i64) -> i32 {
     let ticks = i128::from(file_time(now)) - i128::from(from);
     let days = (ticks / 864_000_000_000).clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i64;
     let whole = if days >= -29 { days + 29 } else { days + 30 };
@@ -108,7 +108,7 @@ pub fn months_since(from: u64, now: i64) -> i32 {
 
 /// How worn a filter is, by its health (tank staff 7.5; information panels 18.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Wear {
+pub(crate) enum Wear {
     /// Health 0.
     Broken,
     /// Health 1 to `cDecayedHealth`.
@@ -117,7 +117,7 @@ pub enum Wear {
 }
 
 /// The wear of a filter of type `ty` with `health`.
-pub fn wear(ty: &EntityType, health: u32) -> Wear {
+pub(crate) fn wear(ty: &EntityType, health: u32) -> Wear {
     match i64::from(health) {
         0 => Wear::Broken,
         h if h <= Keys::of(ty).decayed => Wear::Decayed,
@@ -127,7 +127,7 @@ pub fn wear(ty: &EntityType, health: u32) -> Wear {
 
 /// The sell price of a filter of type `ty` with `health` as a part of its purchase cost (tank
 /// staff 7.2): 0.8, halved once decayed, 0 once broken.
-pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
+pub(crate) fn sell_rate(ty: &EntityType, health: u32) -> f32 {
     match wear(ty, health) {
         Wear::Broken => 0.0,
         Wear::Decayed => 0.4,
@@ -136,7 +136,7 @@ pub fn sell_rate(ty: &EntityType, health: u32) -> f32 {
 }
 
 /// The loop a filter plays: the sound file, and its attenuation as the base term.
-pub struct Loop {
+pub(crate) struct Loop {
     pub id: u32,
     pub file: String,
     pub base: i32,
@@ -144,7 +144,7 @@ pub struct Loop {
 
 impl World {
     /// The filters that are switched off or show bubbles, for the picture (tank staff 7.3, 7.5).
-    pub fn filter_looks(&self) -> Vec<FilterLook> {
+    pub(crate) fn filter_looks(&self) -> Vec<FilterLook> {
         (self.filter_view.iter())
             .map(|(&id, v)| FilterLook {
                 id,
@@ -158,7 +158,7 @@ impl World {
     /// `cDecayedHealth`, the decayed one from 1 to it, with the attenuation next to the file name
     /// (`[FilterSounds]`, sound 8.2). A filter that is switched off or broken, or whose type names
     /// no such sound, plays nothing.
-    pub fn filter_loops(&self, cat: &Catalogue) -> Vec<Loop> {
+    pub(crate) fn filter_loops(&self, cat: &Catalogue) -> Vec<Loop> {
         let mut loops = Vec::new();
         for e in &self.zoo.entities {
             let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.filter?))) else {
@@ -189,7 +189,7 @@ impl World {
     /// Sets the purity of tank `id` to `purity` cut to 0 and `initialWaterPurity` (tank staff 7.4):
     /// the water too murky to see through is told once. The tank is not marked for a new rating
     /// (habitat rating 4).
-    pub fn set_purity(&mut self, id: u32, purity: i64) {
+    pub(crate) fn set_purity(&mut self, id: u32, purity: i64) {
         let Some(old) = self.tank(id).map(|t| t.purity) else {
             return;
         };
@@ -209,7 +209,7 @@ impl World {
 
     /// The timed decay of the water (exhibits and money 3.10): while a tank holds water and has
     /// purity left, its purity timer runs; at `waterPurityDecayTime` the purity drops by one.
-    pub fn decay_water(&mut self, step: u32) {
+    pub(crate) fn decay_water(&mut self, step: u32) {
         let limit = self.tank_config.decay;
         for id in self.tank_ids() {
             let Some(tank) = self.tank(id).filter(|t| t.level > 0 && t.purity > 0) else {
@@ -228,7 +228,7 @@ impl World {
 
     /// The tank the filter at `at` faces: the tank of the neighbour of its tile in its facing
     /// direction (tank staff 7.2).
-    pub fn filter_tank(&self, at: usize) -> Option<u32> {
+    pub(crate) fn filter_tank(&self, at: usize) -> Option<u32> {
         let c = self.zoo.entities.get(at)?.common.as_ref()?;
         let tile = self.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
         self.tank_at(self.neighbour(tile, c.rotation as usize)?)
@@ -264,7 +264,7 @@ impl World {
     /// neighbour (directions 0, 2, 4, 6) that is a tile of a tank no live filter serves, with no
     /// piece on the side of `tile` towards it; `facing` when it is one of them, else the last.
     /// None on a tank tile or with no such neighbour.
-    pub fn filter_facing(&self, tile: usize, facing: u32) -> Option<u32> {
+    pub(crate) fn filter_facing(&self, tile: usize, facing: u32) -> Option<u32> {
         if self.tank_at(tile).is_some() {
             return None;
         }
@@ -292,7 +292,7 @@ impl World {
     /// Puts a new filter of type `ty` on tile `tile` facing `rotation`, as the player places one
     /// (tank staff 7.2): full health, and a filter timer of 0 so that it filters at its first
     /// update. Whether it was added.
-    pub fn add_filter(&mut self, ty: &EntityType, tile: usize, rotation: u32) -> bool {
+    pub(crate) fn add_filter(&mut self, ty: &EntityType, tile: usize, rotation: u32) -> bool {
         let w = self.zoo.width as usize;
         let name = crate::place::unit::named(self, ty);
         let common = Common {
@@ -332,7 +332,7 @@ impl World {
 
     /// The events a zoo just loaded posts for its filters (tank staff 7.5): a broken one posts
     /// 10036 again and a decayed one 10035.
-    pub fn loaded_filter_events(&self, cat: &Catalogue) -> Vec<Event> {
+    pub(crate) fn loaded_filter_events(&self, cat: &Catalogue) -> Vec<Event> {
         let mut events = Vec::new();
         for (at, e) in self.zoo.entities.iter().enumerate() {
             let (Some(c), Some(ty)) = (e.common.as_ref(), type_of(cat, e)) else {
@@ -354,7 +354,7 @@ impl World {
     /// otherwise its tank records it, then the cycle that charges the upkeep and cleans the water
     /// runs, then the wear. A `world filter` line tells each cycle, each loss of health and a
     /// removal. The events the wear posts are returned, and the id of a filter to remove.
-    pub fn filter_step(
+    pub(crate) fn filter_step(
         &mut self,
         cat: &Catalogue,
         at: usize,
@@ -465,7 +465,7 @@ impl World {
     /// Removes the flooded or doubled filter with this id (tank staff 7.3): nothing is refunded,
     /// but the undo action records its sell price of the moment, which an undo takes back
     /// (placing 8, kind 2). Whether there was such a filter.
-    pub fn remove_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
+    pub(crate) fn remove_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
         let price = (self.find(id)).map(|at| refund(cat, &self.zoo.entities[at]));
         let gone = self.remove(id);
         if let Some(price) = price.filter(|_| gone) {
@@ -476,7 +476,7 @@ impl World {
 
     /// A start with `reset` or `resetdate` resets every filter (guest buildings 4.1): the upkeep
     /// figures go to 0, the count to 1 and the build and service dates to game time `now` (ms).
-    pub fn reset_filters(&mut self, now: i64) {
+    pub(crate) fn reset_filters(&mut self, now: i64) {
         let today = file_time(now);
         for f in self
             .zoo
@@ -490,7 +490,7 @@ impl World {
 
     /// The filter with this id is serviced (tank staff 7.6): its health is the starting health.
     /// Whether there is such a filter.
-    pub fn service_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
+    pub(crate) fn service_filter(&mut self, cat: &Catalogue, id: u32) -> bool {
         let Some(at) = self.find(id) else {
             return false;
         };

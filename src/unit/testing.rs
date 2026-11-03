@@ -5,7 +5,13 @@ use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity, Fence, Tile, View, Zoo};
 
 /// An entity standing at the point `(x, y)`.
-pub fn entity(class: &str, kind: &str, id: u32, (x, y): (i32, i32), rotation: u32) -> Entity {
+pub(crate) fn entity(
+    class: &str,
+    kind: &str,
+    id: u32,
+    (x, y): (i32, i32),
+    rotation: u32,
+) -> Entity {
     let fence = matches!(class, "fences" | "tankwall").then_some(Fence {
         strength: 5,
         life: 5,
@@ -32,14 +38,14 @@ pub fn entity(class: &str, kind: &str, id: u32, (x, y): (i32, i32), rotation: u3
 }
 
 /// The centre of tile `(tx, ty)`.
-pub fn centre((tx, ty): (i32, i32)) -> (i32, i32) {
+pub(crate) fn centre((tx, ty): (i32, i32)) -> (i32, i32) {
     (tx * 64 + 32, ty * 64 + 32)
 }
 
 /// Units take their place by their position, `paths` are path pieces, `fences` exhibit fences,
 /// `bush` and `building` a one-quarter object (a `bush` of type `grass` is walkable, a `building`
 /// of type `hall` takes a whole tile).
-pub fn shape(e: &Entity) -> Option<Shape> {
+pub(crate) fn shape(e: &Entity) -> Option<Shape> {
     let thing = |kind, footprint, fence| Shape {
         kind,
         footprint,
@@ -121,17 +127,20 @@ pub fn shape(e: &Entity) -> Option<Shape> {
 }
 
 /// The shape of a keeper or any other unit.
-pub fn keeper_shape() -> Shape {
+pub(crate) fn keeper_shape() -> Shape {
     shape(&entity("keeper", "", 0, (0, 0), 0)).expect("a unit has a shape")
 }
 
 /// A flat `w` by `h` map, all of it inside the zoo, with the entities `edit` makes.
-pub fn world(size: (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)) -> World {
+pub(crate) fn world(
+    size: (i32, i32),
+    edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>),
+) -> World {
     world_with(size, |zoo| edit(&mut zoo.tiles, &mut zoo.entities))
 }
 
 /// The same, with the whole zoo to edit.
-pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
+pub(crate) fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     let mut zoo = Zoo {
         awards: Vec::new(),
         kept: Default::default(),
@@ -167,28 +176,28 @@ pub fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
 
 /// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
 /// `run`, `swim`, `climb` (3 frames) and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
-pub struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
+pub(crate) struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
 impl Walker {
-    pub fn new(call: &str) -> Walker {
+    pub(crate) fn new(call: &str) -> Walker {
         let parse = |c: &str| crate::behaviour::parse_call(c.as_bytes()).unwrap().0;
         Walker(vec![parse(call)], vec![parse("fKeepControl()")])
     }
 
     /// Starts the set `bWalk` on unit `id`, forced, as the goals of a guest or staff member do.
-    pub fn start(&self, w: &mut World, id: u32) {
+    pub(crate) fn start(&self, w: &mut World, id: u32) {
         self.start_set(w, id, "bWalk", true);
     }
 
     /// The same for a unit the test has already put on its walk (path, speed, flags): the call
     /// goes on with that walk, not through its first run (movement 8.2).
-    pub fn resume(&self, w: &mut World, id: u32) {
+    pub(crate) fn resume(&self, w: &mut World, id: u32) {
         self.start(w, id);
         w.units.get_mut(id).unwrap().runner.take_started();
     }
 
     /// Starts the set `name` (`bWalk`, or `bZoo`, which does nothing for ever).
-    pub fn start_set(&self, w: &mut World, id: u32, name: &str, force: bool) {
+    pub(crate) fn start_set(&self, w: &mut World, id: u32, name: &str, force: bool) {
         let at = w.find(id).unwrap();
         let mut rng = crate::sim::Rng::default();
         let env = crate::behaviour::Env {
@@ -240,12 +249,12 @@ impl crate::behaviour::Data for Walker {
 /// A 12 by 8 map with a tank of 4 by 3 tiles from (2, 2): the floor at level 0, the walls
 /// `height` high and the water at `level`; its first tile is (2, 2). The animals are the given
 /// ids at a tile and a height.
-pub fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -> World {
+pub(crate) fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -> World {
     tank_world_with(height, level, animals, Vec::new())
 }
 
 /// [`tank_world`] with more entities in the zoo.
-pub fn tank_world_with(
+pub(crate) fn tank_world_with(
     height: u32,
     level: u32,
     animals: &[(u32, (i32, i32), i32)],
@@ -325,7 +334,7 @@ pub fn show_tank() -> World {
 
 /// The numbers of a walking type: the rates 20, 46 and 76, the animation speeds 50 (slow) and 80
 /// (slow, in water), and a swimmer.
-pub fn rates(number: &crate::behaviour::Number) -> i32 {
+pub(crate) fn rates(number: &crate::behaviour::Number) -> i32 {
     match number {
         crate::behaviour::Number::Int(n) => *n,
         crate::behaviour::Number::Characteristic(key) => match key.as_str() {
@@ -344,18 +353,18 @@ pub fn rates(number: &crate::behaviour::Number) -> i32 {
 /// that shares the tank's right wall, the ground raised to level `land`: the wall tops are level
 /// with it at 2. The land exhibit's other three sides are exhibit fences; `animals` stand at
 /// the given tiles.
-pub fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+pub(crate) fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
     amphibious_world_with(land, animals, false)
 }
 
 /// [`amphibious_world`] with a second land exhibit of 2 by 3 tiles from (0, 2) on the other side
 /// of the tank (its other three sides are exhibit fences, the tank's left wall is shared).
-pub fn amphibious_world_between(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+pub(crate) fn amphibious_world_between(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
     amphibious_world_with(land, animals, true)
 }
 
 /// Gives every exhibit a gate, an id no piece has, for what needs a gate (tank fauna 12.3).
-pub fn gated(mut w: World) -> World {
+pub(crate) fn gated(mut w: World) -> World {
     w.exhibits_mut()
         .list_mut()
         .iter_mut()
@@ -368,7 +377,7 @@ pub fn gated(mut w: World) -> World {
 /// shares with `L`; and the show tank `S` from (6, 2), 4 wide, which shares `T`'s right wall.
 /// Both tanks are filled and 4 high on a floor at 0, `L`'s ground is at 4, so `T` and `L` are
 /// amphibious neighbours and `T` and `S` show neighbours. `animals` stand at the given tiles.
-pub fn show_world(animals: &[(u32, &str, (i32, i32))]) -> World {
+pub(crate) fn show_world(animals: &[(u32, &str, (i32, i32))]) -> World {
     let piece = |class: &str, (x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
         let id = 1000 + x as u32 * 10 + y as u32 + d;
@@ -416,7 +425,7 @@ pub fn show_world(animals: &[(u32, &str, (i32, i32))]) -> World {
     w
 }
 
-pub fn show_world2(animals: &[(u32, &str, (i32, i32))]) -> World {
+pub(crate) fn show_world2(animals: &[(u32, &str, (i32, i32))]) -> World {
     let piece = |class: &str, (x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
         let id = 1000 + x as u32 * 100 + y as u32 * 10 + d;

@@ -19,7 +19,7 @@ const LONG: u32 = 1000;
 
 /// An animal of the keeper's kind in an exhibit.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Seen {
+pub(crate) struct Seen {
     pub id: u32,
     pub tile: usize,
     /// Health at most `100 - cSicklyAnimalPct` percent of its maximum (staff 2).
@@ -38,7 +38,7 @@ pub struct Seen {
 
 impl Seen {
     /// Hungry and unfed: what sends a keeper to the exhibit (staff 2).
-    pub fn unfed(&self) -> bool {
+    pub(crate) fn unfed(&self) -> bool {
         self.hungry && self.bare
     }
 }
@@ -66,7 +66,7 @@ fn list(ty: &EntityType, key: &str) -> Vec<i32> {
 }
 
 /// The object types the keeper rakes (`cDirt`, staff 3).
-pub fn dirt_ids(who: &EntityType) -> Vec<i32> {
+pub(crate) fn dirt_ids(who: &EntityType) -> Vec<i32> {
     list(who, "cDirt")
 }
 
@@ -77,19 +77,19 @@ fn xy(world: &World, t: usize) -> (i64, i64) {
 }
 
 /// The squared distance in tiles.
-pub fn distance(world: &World, a: usize, b: usize) -> i64 {
+pub(crate) fn distance(world: &World, a: usize, b: usize) -> i64 {
     let (a, b) = (xy(world, a), xy(world, b));
     (a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)
 }
 
 /// The animals of exhibit `x` that are of the keeper's kind (`cKeeper`, default 9500).
-pub fn animals(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
+pub(crate) fn animals(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
     seen(world, cat, x, who, animals_in(world, x))
 }
 
 /// The same animals in the order of the exhibit's stored animal list (habitat rating 5.1); the
 /// caller recomputes a dirty exhibit first.
-pub fn listed(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
+pub(crate) fn listed(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<Seen> {
     seen(world, cat, x, who, crate::animal::exhibit_animals(world, x))
 }
 
@@ -134,7 +134,7 @@ fn seen(world: &World, cat: &Catalogue, x: u32, who: &EntityType, ats: Vec<usize
 }
 
 /// Whether the centre slot of tile `t` holds the keeper's dung (staff 2).
-pub fn is_dung(world: &World, cat: &Catalogue, who: &EntityType, t: usize) -> bool {
+pub(crate) fn is_dung(world: &World, cat: &Catalogue, who: &EntityType, t: usize) -> bool {
     let entity = world.quadrant(t, 3).map(|e| &world.zoo.entities[e]);
     entity.is_some_and(|e| {
         e.class == "objects"
@@ -143,13 +143,19 @@ pub fn is_dung(world: &World, cat: &Catalogue, who: &EntityType, t: usize) -> bo
 }
 
 /// The tiles of exhibit `x` whose centre slot holds the keeper's dung.
-pub fn dung(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<usize> {
+pub(crate) fn dung(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> Vec<usize> {
     let tiles = world.tiles_of(x).into_iter();
     tiles.filter(|&t| is_dung(world, cat, who, t)).collect()
 }
 
 /// The units of the food of the kind `food` that the animals of `x` still need (staff 7.6).
-pub fn food_needed(world: &World, cat: &Catalogue, x: u32, who: &EntityType, food: i32) -> i32 {
+pub(crate) fn food_needed(
+    world: &World,
+    cat: &Catalogue,
+    x: u32,
+    who: &EntityType,
+    food: i32,
+) -> i32 {
     let want: i32 = (animals(world, cat, x, who).iter())
         .filter(|a| a.food == food)
         .map(|a| a.needed)
@@ -161,7 +167,7 @@ pub fn food_needed(world: &World, cat: &Catalogue, x: u32, who: &EntityType, foo
 }
 
 /// The keepers at work (task 0x6e) in exhibit `x`.
-pub fn present(world: &World, x: u32) -> usize {
+pub(crate) fn present(world: &World, x: u32) -> usize {
     let at = |u: &&crate::unit::Unit| {
         let c = (world.find(u.id)).and_then(|e| world.zoo.entities[e].common.as_ref());
         let tile = c.and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
@@ -172,7 +178,7 @@ pub fn present(world: &World, x: u32) -> usize {
 }
 
 /// The own target tiles of the keepers (staff 4.3: the claimed tiles), on their way or at work.
-pub fn claimed(world: &World) -> Vec<usize> {
+pub(crate) fn claimed(world: &World) -> Vec<usize> {
     let own = |u: &crate::unit::Unit| match &u.part {
         Part::Staff(s) if u.kind == Kind::Keeper => s.target,
         _ => None,
@@ -186,7 +192,7 @@ pub fn claimed(world: &World) -> Vec<usize> {
 /// `murkyWaterPurity` calls the marine keeper (point 4), as does a show that needs him (point 5).
 /// The amphibious neighbours and the nested
 /// tanks wait for their issues.
-pub fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
+pub(crate) fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
     let Some(exhibit) = world.exhibits().get(x) else {
         return false;
     };
@@ -219,7 +225,7 @@ pub fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
 /// The exhibit the keeper `me` serves next (7.3), `here` being the exhibit he stands in. His
 /// assigned exhibits, else every exhibit; the zoo grounds never (open point 4); the stable sort
 /// keeps the list order (open point 5).
-pub fn choose(
+pub(crate) fn choose(
     world: &World,
     cat: &Catalogue,
     who: &EntityType,
@@ -269,7 +275,7 @@ pub fn choose(
 }
 
 /// The tiles inside and outside the gate of exhibit `x`.
-pub fn gate_tiles(world: &World, x: u32) -> Option<(usize, usize)> {
+pub(crate) fn gate_tiles(world: &World, x: u32) -> Option<(usize, usize)> {
     let (tile, side) = world.gate_slot(x)?;
     let across = world.neighbour(tile, side)?;
     Some(match world.exhibits().region(tile) == Some(x) {
@@ -281,7 +287,7 @@ pub fn gate_tiles(world: &World, x: u32) -> Option<(usize, usize)> {
 /// The entrance test of a failed way to an exhibit with the gate tiles `(inside, outside)` (staff
 /// 7.4): a fence piece on both sides of the gate edge, or the larger crossing cost of the keeper
 /// 19 or more, or an object in the centre slot of either tile.
-pub fn entrance_blocked(
+pub(crate) fn entrance_blocked(
     world: &World,
     keeper: &Mover,
     (inside, outside): (usize, usize),

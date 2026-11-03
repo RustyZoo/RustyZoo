@@ -20,10 +20,10 @@ use crate::zoo::{Entity, Fence};
 
 /// What the bulldozer and the gate tool add to the width of the pixel pick, which is
 /// [`crate::render::Staged::pick`] (placing 7.1); the selection adds nothing.
-pub const WIDEN: i32 = 5;
+pub(crate) const WIDEN: i32 = 5;
 
 /// The type of an entity.
-pub fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
+pub(crate) fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
 }
@@ -31,7 +31,7 @@ pub fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
 /// The tied wall of the fence piece at position `e` (placing 7.1): the piece stands on a tile of
 /// a tank, the tile across is not in that tank, and the slot across on the same line holds a tank
 /// wall.
-pub fn tied(world: &World, e: usize) -> Option<usize> {
+pub(crate) fn tied(world: &World, e: usize) -> Option<usize> {
     world.shape(e).filter(|s| s.fence)?;
     let (t, d) = world.slot(e)?;
     let n = world.neighbour(t, d)?;
@@ -53,7 +53,7 @@ fn has_height(world: &World, e: usize) -> bool {
 /// The entities a click on the fence piece at position `e` takes, in the order they go: the
 /// piece and its tied wall, the piece first when the tied wall has a wall height, else the tied
 /// wall first (placing 7.1).
-pub fn with_tied(world: &World, e: usize) -> Vec<usize> {
+pub(crate) fn with_tied(world: &World, e: usize) -> Vec<usize> {
     match tied(world, e) {
         Some(q) if has_height(world, q) => vec![e, q],
         Some(q) => vec![q, e],
@@ -63,7 +63,7 @@ pub fn with_tied(world: &World, e: usize) -> Vec<usize> {
 
 /// Whether the entity at position `e` is a tank wall with a tied wall on a line between a show
 /// tank and a tank that is not one: it stays (placing 7.1).
-pub fn mixed_tanks(world: &World, e: usize) -> bool {
+pub(crate) fn mixed_tanks(world: &World, e: usize) -> bool {
     let tank = |t: usize| world.tank_at(t).and_then(|id| world.tank(id));
     let Some((t, d)) = world
         .shape(e)
@@ -81,7 +81,7 @@ pub fn mixed_tanks(world: &World, e: usize) -> bool {
 /// zoo and it is a path or one of the scenery classes whose type is deletable (`cDeletable` 1,
 /// which is the default); a tank wall between two tanks only when both are show tanks or
 /// neither. Animals, guests and staff never are.
-pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
+pub(crate) fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
     let (Some(entity), Some(shape)) = (world.zoo.entities.get(e), world.shape(e)) else {
         return false;
     };
@@ -111,7 +111,7 @@ pub fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
 /// The sell price of an entity (placing 7.2): 0.8 of its purchase cost; for a fence 0.4 once its
 /// life is at or below the decayed life of its type, 0 once it is broken; the same for a tank
 /// filter by its health (tank staff 7.2).
-pub fn refund(cat: &Catalogue, e: &Entity) -> f32 {
+pub(crate) fn refund(cat: &Catalogue, e: &Entity) -> f32 {
     let Some(ty) = type_of(cat, e) else {
         return 0.0;
     };
@@ -160,7 +160,7 @@ fn rubble_price(cat: &Catalogue, e: &Entity) -> f32 {
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile
 /// of it that is on the map and in the zoo, its path, the holders of its four quarters and the
 /// fences in its four edge slots. Not all of them can be removed.
-pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
+pub(crate) fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
     let mut found = Vec::new();
     for ty in a.1.min(b.1)..=a.1.max(b.1) {
         for tx in a.0.min(b.0)..=a.0.max(b.0) {
@@ -187,7 +187,7 @@ pub fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
 
 /// The sum of the refunds of the entities at positions `at`, a rubble group counted once: the
 /// first piece met pays, the others are tinted but not collected (placing 7.1, issue 930).
-pub fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
+pub(crate) fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
     let mut paid: Vec<u32> = Vec::new();
     let mut sum = 0.0;
     for &e in at {
@@ -209,7 +209,7 @@ pub fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
 
 /// What is asked before an object is removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Question {
+pub(crate) enum Question {
     /// "Are you sure you want to sell ...?" (string 154): a type that needs confirming.
     Sell,
     /// "Are you sure you want to fire ...?" (string 155): a staff member.
@@ -223,7 +223,7 @@ pub enum Question {
 impl Question {
     /// The two regions of an exhibit question (the grounds are 0), smaller first: a pair that
     /// was asked stays asked (a silent No) while others merge.
-    pub fn pair(self) -> Option<(u32, u32)> {
+    pub(crate) fn pair(self) -> Option<(u32, u32)> {
         let (a, b) = match self {
             Question::Sell | Question::Fire => return None,
             Question::Merge(x, y) => (x, y),
@@ -235,7 +235,7 @@ impl Question {
 
 /// What the bulldozer does with an entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Check {
+pub(crate) enum Check {
     /// Remove it.
     Go,
     /// Ask first.
@@ -282,7 +282,13 @@ fn exhibit_question(world: &World, e: usize) -> Option<Question> {
 /// What to do with the entity at position `e` before removing it: the exhibit question comes
 /// first and replaces the sell one; `sell` is the switch `[UI] confirmSell`; `asked` the pairs
 /// of regions this press asked about already.
-pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32, u32)]) -> Check {
+pub(crate) fn check(
+    world: &World,
+    cat: &Catalogue,
+    e: usize,
+    sell: bool,
+    asked: &[(u32, u32)],
+) -> Check {
     if let Some(q) = exhibit_question(world, e) {
         return match q.pair().is_some_and(|p| asked.contains(&p)) {
             true => Check::Keep,
@@ -301,7 +307,7 @@ pub fn check(world: &World, cat: &Catalogue, e: usize, sell: bool, asked: &[(u32
 
 /// What a removal did, for the log.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Removed {
+pub(crate) struct Removed {
     pub id: u32,
     /// `class/type/subtype`.
     pub name: String,
@@ -317,7 +323,7 @@ pub struct Removed {
 /// Removes the entity with this id and books its refund as a construction refund (placing 7.2).
 /// The world gives an exhibit whose gate goes a new one and tells the exhibits what happened
 /// (exhibits and money 3.3). `None` if there is no such entity. A trash can's spill draws from `rng`.
-pub fn remove(
+pub(crate) fn remove(
     world: &mut World,
     money: &mut Money,
     cat: &Catalogue,

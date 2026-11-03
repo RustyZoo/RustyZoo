@@ -10,7 +10,7 @@ use super::{R, Reader};
 /// stores: the common staff block and the own fields of the class (zoo format 6.13). The layout of a
 /// tour guide in version 106 was read from the writer, not seen in a file (save games 11.1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StaffRecord {
+pub(crate) struct StaffRecord {
     /// The work and chase counters (staff 4.2).
     pub work: i32,
     pub chase: i32,

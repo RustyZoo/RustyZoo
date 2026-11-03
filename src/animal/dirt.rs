@@ -14,7 +14,7 @@ use crate::sim::Rng;
 
 /// The event a pile of dung on the zoo grounds posts for the maintenance task pool (the same
 /// number as the one an exhibit posts for what an emptied exhibit leaves).
-pub const DUNG: u16 = 10032;
+pub(crate) const DUNG: u16 = 10032;
 use crate::entity::EntityType;
 use crate::render::order::Kind;
 use crate::unit::{Ctx, Part, Unit};
@@ -23,7 +23,7 @@ use crate::zoo::{Common, Entity};
 
 /// Puts a scenery object of type `ty`, named `(class, type, subtype)`, in the middle of tile
 /// `(x, y)`, facing `rotation`, with `food` in its counter; whether it was added.
-pub fn put(
+pub(crate) fn put(
     world: &mut World,
     ty: &EntityType,
     names: (&str, &str, &str),
@@ -39,7 +39,7 @@ pub fn put(
 }
 
 /// The same at the point `(x, y)` in world units (64 to a tile).
-pub fn put_at(
+pub(crate) fn put_at(
     world: &mut World,
     ty: &EntityType,
     names: (&str, &str, &str),
@@ -51,7 +51,7 @@ pub fn put_at(
 }
 
 /// The same at the height `z` when it is given (food in the water), else on the ground.
-pub fn put_z(
+pub(crate) fn put_z(
     world: &mut World,
     ty: &EntityType,
     names: (&str, &str, &str),
@@ -111,7 +111,7 @@ fn place(
 /// `putDownDirt` (8.1) for the animal at position `at`: in a tank the water loses purity; on land
 /// a pile of its size goes in the middle of the tile, if the quarter there is free; in the water
 /// nothing happens. Whether it is done (the dung meter then restarts at 0).
-pub fn put_down(
+pub(crate) fn put_down(
     world: &mut World,
     cat: &Catalogue,
     rng: &mut Rng,
@@ -173,7 +173,7 @@ pub fn put_down(
 
 /// Every animal of exhibit `x` mourns at its next tick (animals-needs 10.4): the exhibit's stored
 /// list, recomputed first when it is dirty.
-pub fn mourn(world: &mut World, ctx: &mut Ctx, x: u32) {
+pub(crate) fn mourn(world: &mut World, ctx: &mut Ctx, x: u32) {
     crate::exhibit::rating::refresh(world, ctx.cat, x, &mut || ctx.rng.rand());
     let ids: Vec<u32> = (crate::animal::exhibit_animals(world, x).into_iter())
         .filter_map(|at| world.zoo.entities[at].common.as_ref().map(|c| c.id))
@@ -186,7 +186,7 @@ pub fn mourn(world: &mut World, ctx: &mut Ctx, x: u32) {
 }
 
 /// `fDie` (10.2): the animal is removed, "has died of old age" is posted and its exhibit mourns.
-pub fn die(unit: &Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn die(unit: &Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     ctx.remove(world, unit.id);
     world.units.post(DIED, unit.id);
     world.units.tell(format!("died {}", unit.id));
@@ -201,7 +201,7 @@ pub fn die(unit: &Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 
 impl super::Animal {
     /// A keeper's heal (9.7): full health, no longer sick.
-    pub fn heal(&mut self, k: &Keys) {
+    pub(crate) fn heal(&mut self, k: &Keys) {
         (self.health, self.at_minimum_health) = (k.max_hits, false);
         self.unmark(super::SICK);
     }
@@ -212,7 +212,13 @@ impl super::Animal {
 /// same subtype and another name id (catalogue order), the type the animal at `id` turns into in
 /// place. It gets a fresh default name, an idle picture and the type's values; everything else
 /// stays. An empty list changes nothing and draws nothing more.
-pub fn change_species(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
+pub(crate) fn change_species(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut Rng,
+    data: &dyn Data,
+    id: u32,
+) {
     if !world.units.cheat.heal_changes_species || rng.pick(10) != 0 {
         return;
     }

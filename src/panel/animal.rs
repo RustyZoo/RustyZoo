@@ -24,12 +24,12 @@ use crate::world::World;
 
 /// The layout of the panel, the name field, the buttons that follow the animal, show its exhibit
 /// and its recommendations, and the tab buttons (each tab forces a refresh).
-pub const LAYOUT: i32 = 6;
-pub const NAME: i32 = 3102;
-pub const FOLLOW: i32 = 3114;
-pub const EXHIBIT: i32 = 3197;
-pub const RECOMMENDATIONS: i32 = 3122;
-pub const TABS: [i32; 3] = [3162, 3164, 3165];
+pub(crate) const LAYOUT: i32 = 6;
+pub(crate) const NAME: i32 = 3102;
+pub(crate) const FOLLOW: i32 = 3114;
+pub(crate) const EXHIBIT: i32 = 3197;
+pub(crate) const RECOMMENDATIONS: i32 = 3122;
+pub(crate) const TABS: [i32; 3] = [3162, 3164, 3165];
 const SELL: i32 = 3111;
 const PICK_UP: i32 = 3115;
 const THOUGHTS: i32 = 3125;
@@ -44,7 +44,7 @@ const SLEPT: [i32; 2] = [3178, 3179];
 const FED_STRING: i32 = 3116;
 const SLEPT_STRING: i32 = 3119;
 /// The interface clock time between two refreshes (ms).
-pub const PERIOD: u64 = 5000;
+pub(crate) const PERIOD: u64 = 5000;
 /// Game milliseconds in an hour, and the hours up to which a time ago is "recently" and "a short
 /// time ago".
 const HOUR: i64 = 3_600_000;
@@ -61,7 +61,7 @@ pub(crate) fn percent(v: i32, lo: i32, hi: i32) -> i32 {
 /// What the bars show: the values of happiness, hunger, health and suitability, and the picture
 /// of the suitability bar (0 red, 1 yellow, 2 green).
 #[derive(Debug, PartialEq, Eq)]
-pub struct Bars {
+pub(crate) struct Bars {
     pub values: [i32; 4],
     pub level: usize,
 }
@@ -70,7 +70,7 @@ pub struct Bars {
 /// is picked by the transitions of the habitat check (very unhappy first, then unhappy, never for an
 /// egg or a carried animal) against the value shown. An egg shows happiness, hunger and
 /// suitability full.
-pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
+pub(crate) fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
     let full = |v: i32| if a.egg { 100 } else { v };
     let very = i64::from(rating) * 100 < i64::from(k.pct_habitat) * i64::from(k.habitat_preference);
     let unhappy = !a.egg && !carried && rating < k.habitat_preference;
@@ -98,7 +98,7 @@ pub fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
 
 /// The band of a time ago (animals 13.2): 0 below 1440 hours of calendar time, 1 up to 8640, 2
 /// above.
-pub fn band(now: i64, then: i64) -> usize {
+pub(crate) fn band(now: i64, then: i64) -> usize {
     let hours = now.saturating_sub(then) / HOUR;
     usize::from(hours >= RECENT) + usize::from(hours > SHORT)
 }
@@ -125,7 +125,7 @@ pub(crate) fn suitability_in(world: &World, cat: &Catalogue, exhibit: u32, key: 
 
 /// The selected animal and the refresh clock.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     /// The selected animal, by entity id.
     pub selected: Option<u32>,
     pub clock: Clock,
@@ -140,7 +140,7 @@ pub struct Panel {
 
 impl Panel {
     /// Selects the animal with entity id `id`: the panel is filled at once (4.3).
-    pub fn select(&mut self, id: u32) {
+    pub(crate) fn select(&mut self, id: u32) {
         self.selected = Some(id);
         self.fresh = true;
         self.clock.force = true;
@@ -148,20 +148,20 @@ impl Panel {
     }
 
     /// Fills the panel again from the start: the name field shows the animal's name.
-    pub fn reselect(&mut self) {
+    pub(crate) fn reselect(&mut self) {
         if let Some(id) = self.selected {
             self.select(id);
         }
     }
 
-    pub fn deselect(&mut self) {
+    pub(crate) fn deselect(&mut self) {
         self.selected = None;
         self.told.clear();
     }
 
     /// Writes the panel for the selected animal at game time `now` (ms of the calendar) and
     /// returns its log line when something it shows changed.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         world: &World,

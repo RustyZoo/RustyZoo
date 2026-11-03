@@ -12,7 +12,7 @@ use crate::ui::interface::Interface;
 use std::ops::RangeInclusive;
 
 /// The ids of the names of user types: the catalogue hands them out from the first to the last.
-pub const NAMES: RangeInclusive<i32> = 19000..=21999;
+pub(crate) const NAMES: RangeInclusive<i32> = 19000..=21999;
 
 /// The offset of the long help id from the name id.
 const HELP: i32 = 30000;
@@ -25,7 +25,11 @@ const THE: i32 = 55000;
 /// locale (its decimal text, when the host gives one) and by `LCID` of `[defaultLCID]` (1033
 /// when the key is missing or empty) that has keys. The names are compared as texts: `01033`
 /// names `[01033]`, not `[1033]`. `None` when none has: the type then has no texts.
-pub fn section<'a>(config: &'a Config, install: &str, user: Option<&str>) -> Option<&'a Section> {
+pub(crate) fn section<'a>(
+    config: &'a Config,
+    install: &str,
+    user: Option<&str>,
+) -> Option<&'a Section> {
     let install = if install.is_empty() { "1033" } else { install };
     let lcid = config
         .section("defaultLCID")
@@ -45,7 +49,7 @@ pub fn section<'a>(config: &'a Config, install: &str, user: Option<&str>) -> Opt
 
 /// The texts of one user-created name (localisation 8.2), as the bytes of the file (Windows-1252).
 #[derive(Debug, Default, PartialEq)]
-pub struct Texts {
+pub(crate) struct Texts {
     /// `cName`: the name.
     pub name: Vec<u8>,
     /// `cLongHelp`: the long help.
@@ -58,7 +62,7 @@ pub struct Texts {
 }
 
 /// The texts of a language section.
-pub fn texts(section: &Section) -> Texts {
+pub(crate) fn texts(section: &Section) -> Texts {
     let value = |key: &str| section.get(key).unwrap_or_default().to_vec();
     Texts {
         name: value("cName"),
@@ -88,7 +92,11 @@ fn user_locale() -> Option<String> {
 /// The text of every user name id of the catalogue, in the install language `install` and the
 /// user's `user` locale (`None` when the host gives none): the name id, the help id and the
 /// "the" id of each type named in [`NAMES`], as the interface shows them.
-pub fn names(catalogue: &Catalogue, install: &str, user: Option<&str>) -> Vec<(i32, String)> {
+pub(crate) fn names(
+    catalogue: &Catalogue,
+    install: &str,
+    user: Option<&str>,
+) -> Vec<(i32, String)> {
     let mut out = Vec::new();
     for ty in catalogue
         .types
@@ -109,7 +117,7 @@ pub fn names(catalogue: &Catalogue, install: &str, user: Option<&str>) -> Vec<(i
 
 /// Shows the texts of the user types of `catalogue` wherever their ids are shown, in the install
 /// language that string 22015 of `ui` gives.
-pub fn serve(ui: &mut Interface, catalogue: &Catalogue) {
+pub(crate) fn serve(ui: &mut Interface, catalogue: &Catalogue) {
     let install = ui.string(22015);
     for (id, text) in names(catalogue, &install, user_locale().as_deref()) {
         ui.set_string(id, text);

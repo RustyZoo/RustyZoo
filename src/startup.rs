@@ -14,7 +14,7 @@ use crate::timing::ini_whole;
 use crate::vfs::{MAX_MEMBER_SIZE, find_ignoring_case};
 
 /// The bitmap resource of the start-up picture for the expansion flags (0 to 3).
-pub fn picture_number(expansions: i32) -> u32 {
+pub(crate) fn picture_number(expansions: i32) -> u32 {
     502 + (expansions & 3) as u32
 }
 
@@ -44,7 +44,7 @@ fn find_resource(install: &Path, kind: u32, number: u32) -> Option<Vec<u8>> {
 /// (`c >> 3`), green made a 6 bit code `(g5 << 1) | (g5 >> 4)`, then the codes shown with their
 /// high bits repeated (main menu 3.3 item 7); `None` if no library has it or it is not
 /// a bitmap of 8 or 24 bits.
-pub fn picture(install: &Path, expansions: i32) -> Option<Framebuffer> {
+pub(crate) fn picture(install: &Path, expansions: i32) -> Option<Framebuffer> {
     decode(&find_resource(
         install,
         pe::RT_BITMAP,

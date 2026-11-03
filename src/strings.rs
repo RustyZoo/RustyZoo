@@ -17,7 +17,7 @@ use crate::vfs::MAX_MEMBER_SIZE;
 
 /// The install language that the text of string 22015 gives: a decimal number, else (missing,
 /// zero or not a number) [`SHIPPED_LANGUAGE`].
-pub fn language_number(text: &str) -> u32 {
+pub(crate) fn language_number(text: &str) -> u32 {
     match text.trim().parse() {
         Ok(number) if number != 0 => number,
         _ => SHIPPED_LANGUAGE,
@@ -26,7 +26,7 @@ pub fn language_number(text: &str) -> u32 {
 
 /// The language the game ships in, US English (Windows language identifier 1033): the install
 /// language of a folder that does not give one.
-pub const SHIPPED_LANGUAGE: u32 = 1033;
+pub(crate) const SHIPPED_LANGUAGE: u32 = 1033;
 
 /// The install language: its number (string 22015) and the words of the default exhibit names
 /// (strings 6208 to 6210: exhibit, tank, show tank).
@@ -38,7 +38,7 @@ pub struct Language {
 
 impl Language {
     /// The language the game ships in, with its English words.
-    pub fn shipped() -> Language {
+    pub(crate) fn shipped() -> Language {
         Language {
             number: SHIPPED_LANGUAGE,
             exhibit_words: ["Exhibit", "Tank", "Show Tank"].map(String::from),
@@ -120,7 +120,7 @@ pub struct StringTables {
 
 /// Whether a name id belongs to user-created content: the whole id is in 19000..=21999,
 /// 49000..=51999 or 74000..=76999 (entity types 10.3). No mask: high bits make it another id.
-pub fn is_user_id(id: i32) -> bool {
+pub(crate) fn is_user_id(id: i32) -> bool {
     [19000..=21999, 49000..=51999, 74000..=76999]
         .iter()
         .any(|range| range.contains(&id))
@@ -167,7 +167,7 @@ impl StringTables {
     }
 
     /// The text of string `id` and the library that supplies it; `None` if no library has it.
-    pub fn string_source(&self, id: u32) -> Option<(&str, &str)> {
+    pub(crate) fn string_source(&self, id: u32) -> Option<(&str, &str)> {
         // The texts of user-created content (`is_user_id`) are not in the libraries: the
         // interface gets them from the definition files (`usertext`). A string table holds
         // numbers up to 65535 only, so the last range never meets a library.
@@ -187,7 +187,7 @@ impl StringTables {
 
     /// The bytes of the `TEXT` entry `name` (matched ignoring letter case) and the library that
     /// supplies it; `None` if no library has it.
-    pub fn text_source(&self, name: &str) -> Option<(&str, &[u8])> {
+    pub(crate) fn text_source(&self, name: &str) -> Option<(&str, &[u8])> {
         // ponytail: an empty name is an empty text; the bytes end at the first zero byte, and
         // are returned undecoded (Windows-1252 in the English version).
         let name = name.to_ascii_uppercase();
@@ -202,18 +202,18 @@ impl StringTables {
     }
 
     /// The bytes of the `TEXT` entry `name`, or an empty text if no library has it.
-    pub fn text(&self, name: &str) -> &[u8] {
+    pub(crate) fn text(&self, name: &str) -> &[u8] {
         self.text_source(name).map_or(&[], |(_, data)| data)
     }
 
     /// The install language: the number of string 22015 (1033 English, 1036 French). A missing,
     /// zero or non-decimal text reads as [`SHIPPED_LANGUAGE`] (localisation 4 and 11).
-    pub fn install_language(&self) -> u32 {
+    pub(crate) fn install_language(&self) -> u32 {
         language_number(self.string(22015))
     }
 
     /// The install language with the words of its default exhibit names.
-    pub fn language(&self) -> Language {
+    pub(crate) fn language(&self) -> Language {
         Language {
             number: self.install_language(),
             exhibit_words: [6208, 6209, 6210].map(|id| self.string(id).to_string()),

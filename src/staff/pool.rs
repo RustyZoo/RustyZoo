@@ -9,15 +9,15 @@
 use crate::zoo::Event;
 
 /// The jobs a task names (goals 5): litter, a full trash can, dung, a worn fence and a worn filter.
-pub const TRASH_PILE: u8 = 7;
-pub const TRASH_CAN: u8 = 9;
-pub const ZOO_DOO: u8 = 11;
-pub const GO_TO_FENCE: u8 = 16;
-pub const GO_TO_FILTER: u8 = 26;
+pub(crate) const TRASH_PILE: u8 = 7;
+pub(crate) const TRASH_CAN: u8 = 9;
+pub(crate) const ZOO_DOO: u8 = 11;
+pub(crate) const GO_TO_FENCE: u8 = 16;
+pub(crate) const GO_TO_FILTER: u8 = 26;
 
 /// A task: what to do and where, the worker that holds it (0 none) and whether it comes first.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Task {
+pub(crate) struct Task {
     pub id: u32,
     pub job: u8,
     pub tile: usize,
@@ -26,7 +26,7 @@ pub struct Task {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Pool {
+pub(crate) struct Pool {
     pub tasks: Vec<Task>,
     last: u32,
 }
@@ -48,7 +48,7 @@ fn job_of(kind: u16) -> Option<(u8, bool)> {
 impl Pool {
     /// The pool reads the events of its channel (simulation 4.2): one task for each, at the tile of
     /// the event's data. An event with a tile outside the map of `tiles` tiles makes none.
-    pub fn listen<'a>(&mut self, events: impl Iterator<Item = &'a Event>, tiles: usize) {
+    pub(crate) fn listen<'a>(&mut self, events: impl Iterator<Item = &'a Event>, tiles: usize) {
         for e in events {
             let Some((job, urgent)) = job_of(e.kind) else {
                 continue;
@@ -72,17 +72,17 @@ impl Pool {
         }
     }
 
-    pub fn get(&self, id: u32) -> Option<&Task> {
+    pub(crate) fn get(&self, id: u32) -> Option<&Task> {
         self.tasks.iter().find(|t| t.id == id)
     }
 
     /// The task is done or void: it leaves the pool.
-    pub fn finish(&mut self, id: u32) {
+    pub(crate) fn finish(&mut self, id: u32) {
         self.tasks.retain(|t| t.id != id);
     }
 
     /// Worker `worker` gives up its tasks; they stay in the pool for anyone.
-    pub fn unlink(&mut self, worker: u32) {
+    pub(crate) fn unlink(&mut self, worker: u32) {
         for t in self.tasks.iter_mut().filter(|t| t.worker == worker) {
             t.worker = 0;
         }

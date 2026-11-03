@@ -11,14 +11,20 @@ use crate::world::{World, piece_event};
 
 /// The event a guest posts for the maintenance task pool when litter lands, and the event a trash
 /// can posts when it fills up (guest buildings 8).
-pub const DROPPED: u16 = 10031;
-pub const CAN_FILLING: u16 = 10030;
+pub(crate) const DROPPED: u16 = 10031;
+pub(crate) const CAN_FILLING: u16 = 10030;
 
 /// The guest `id` at position `at` of the entity list drops a piece of litter at its feet. It
 /// lands on a free quarter of a tile that is not in an exhibit or a tank and not water, facing a
 /// drawn direction (`rand() & 7`, drawn before the add as for dung). Whether it did; `None` when
 /// the tile takes no litter (nothing is drawn or done).
-pub fn drop(world: &mut World, cat: &Catalogue, at: usize, id: u32, rng: &mut Rng) -> Option<bool> {
+pub(crate) fn drop(
+    world: &mut World,
+    cat: &Catalogue,
+    at: usize,
+    id: u32,
+    rng: &mut Rng,
+) -> Option<bool> {
     let Some((x, y)) = world
         .zoo
         .entities
@@ -84,7 +90,7 @@ const AROUND: [(i32, i32); 8] = [
 /// (`rand() & 7`) first, whether the add then succeeds or not; each piece added tells the task pool.
 /// A can that holds nothing, and anything that is no can, changes nothing. The pieces are not part
 /// of the deletion an undo takes back.
-pub fn spill(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) {
+pub(crate) fn spill(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) {
     let default = world.units.prices.default;
     let Some(at) = world.find(id) else {
         return;

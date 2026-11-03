@@ -57,7 +57,7 @@ impl VfsError {
     /// Whether the operating system failed (permissions, the descriptor limit, a disk error)
     /// rather than the content being wrong (no such name, an empty or damaged file, a size over
     /// the limit). Callers that can go on without a file stop on the first kind only.
-    pub fn is_system(&self) -> bool {
+    pub(crate) fn is_system(&self) -> bool {
         self.1
     }
 }
@@ -317,7 +317,7 @@ impl Vfs {
     /// The content of every copy of the name that can be read, in search order: the first one is
     /// what [`read`](Vfs::read) serves, the others are shadowed by it. For surveys of the data,
     /// not for loading it. A copy with a damaged content is left out.
-    pub fn read_copies(&self, name: &str) -> Result<Vec<Vec<u8>>, VfsError> {
+    pub(crate) fn read_copies(&self, name: &str) -> Result<Vec<Vec<u8>>, VfsError> {
         let normalised = normalise(name);
         let mut copies = Vec::new();
         for source in &self.sources {
@@ -393,7 +393,7 @@ impl Vfs {
     /// files by prefix and suffix: the union of all sources, each name once, sorted. A directory
     /// offers all its names; an archive offers only its members of the record types (see
     /// `first_record_wins`). The prefix and the suffix are plain strings, not patterns.
-    pub fn listed(&self, prefix: &str, suffix: &str) -> Vec<String> {
+    pub(crate) fn listed(&self, prefix: &str, suffix: &str) -> Vec<String> {
         let (prefix, suffix) = (normalise(prefix), normalise(suffix));
         let mut matching = HashSet::new();
         for source in &self.sources {
@@ -422,10 +422,6 @@ impl Vfs {
             .unwrap_or(false)
     }
 
-    fn distinct_names(&self) -> HashSet<&String> {
-        self.sources.iter().flat_map(Source::names).collect()
-    }
-
     /// What was wrong with the installation, in plain words, one line each: archives that were
     /// ignored, a damaged central directory, symbolic links that were not followed, files whose
     /// names differ only in letter case. Empty on a healthy installation.
@@ -446,7 +442,7 @@ impl Vfs {
     /// Puts the keys of `over` on top of the ini file, as [`Config::overlay`] does; [`ini`](Vfs::ini)
     /// then returns the merged file in the dialect of [`Config`]. Fails, changing nothing, if the
     /// result would be too large to read.
-    pub fn overlay_ini(&mut self, over: &Config) -> Result<(), TooLarge> {
+    pub(crate) fn overlay_ini(&mut self, over: &Config) -> Result<(), TooLarge> {
         let mut merged = Config::parse(&self.ini)?;
         merged.overlay(over);
         let bytes = merged.to_bytes();
@@ -463,38 +459,6 @@ impl Vfs {
             .iter()
             .filter(|s| matches!(s, Source::Directory(_)))
             .count()
-    }
-
-    /// The number of archives (`*.ztd` and `*.zip`) accepted.
-    pub fn archive_count(&self) -> usize {
-        self.sources
-            .iter()
-            .filter(|s| matches!(s, Source::Archive { .. }))
-            .count()
-    }
-
-    /// The number of loose files indexed, counted once for every search directory below which
-    /// they lie (the install folder is usually one of them).
-    pub fn loose_count(&self) -> usize {
-        self.sources
-            .iter()
-            .map(|source| match source {
-                Source::Directory(files) => files.len(),
-                Source::Archive { .. } => 0,
-            })
-            .sum()
-    }
-
-    /// The number of distinct names, that is, of loose files and members that can be read.
-    pub fn member_count(&self) -> usize {
-        self.distinct_names().len()
-    }
-
-    /// The number of loose files and members hidden by a copy of the same name found earlier on
-    /// the search path.
-    pub fn shadowed_count(&self) -> usize {
-        let all: usize = self.sources.iter().map(|s| s.names().len()).sum();
-        all - self.member_count()
     }
 }
 
@@ -703,7 +667,7 @@ fn first_record_wins(name: &str) -> bool {
 /// A name from raw bytes, without losing any: valid UTF-8 stays as it is and each byte that is not
 /// part of a valid sequence becomes the private-use character U+F700 plus the byte, so two names
 /// that differ in such bytes stay distinct. Names are compared byte for byte after `normalise`.
-pub fn name_from_bytes(bytes: &[u8]) -> String {
+pub(crate) fn name_from_bytes(bytes: &[u8]) -> String {
     let mut name = String::with_capacity(bytes.len());
     for chunk in bytes.utf8_chunks() {
         name.push_str(chunk.valid());
@@ -718,7 +682,7 @@ pub fn name_from_bytes(bytes: &[u8]) -> String {
 }
 
 /// Lower-cases ASCII letters and turns `\` into `/`.
-pub fn normalise(path: &str) -> String {
+pub(crate) fn normalise(path: &str) -> String {
     path.chars()
         .map(|c| {
             if c == '\\' {
@@ -949,6 +913,9 @@ fn index_directory(
     }
     Ok(files)
 }
+
+#[cfg(test)]
+mod counts;
 
 #[cfg(test)]
 mod tests {

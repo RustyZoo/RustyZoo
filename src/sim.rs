@@ -29,13 +29,15 @@ mod tests;
 #[cfg(test)]
 mod wear_tests;
 
-pub use events::{
+pub(crate) use events::{
     BUILDING_CHANNEL, Event, Events, KEEPER_CHANNEL, SHOW_CHANNEL, TANK_CHANNEL, TASK_CHANNEL,
     UNIT_CHANNEL, WORLD_CHANNEL,
 };
-pub use rng::{Rng, Seconds};
+pub(crate) use rng::{Rng, Seconds};
 
-use crate::behaviour::{Data, NoData};
+use crate::behaviour::Data;
+#[cfg(test)]
+use crate::behaviour::NoData;
 use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
@@ -53,7 +55,7 @@ use crate::zoo::Clocks;
 /// (simulation 9.1). Those that belong to the path finder, the habitat manager or the goals are
 /// read here once and used by them.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Ai {
+pub(crate) struct Ai {
     /// Milliseconds of an AI tick; the original crashes on 0, so 0 keeps 1000. A negative value
     /// reads as the huge unsigned number the original divides by.
     pub ai_tick: u32,
@@ -83,7 +85,7 @@ pub struct Ai {
 
 impl Ai {
     /// The keys of the `[AI]` section; a missing or unreadable one keeps its fallback.
-    pub fn from_ini(ini: &[u8]) -> Ai {
+    pub(crate) fn from_ini(ini: &[u8]) -> Ai {
         let config = Config::parse(ini).ok();
         let whole = |key: &str, fallback: i32| {
             config
@@ -130,7 +132,7 @@ impl Ai {
 
 /// What a step did that the caller acts on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Report {
+pub(crate) struct Report {
     /// The previous step changed the month: this step runs the month-end work (the finance
     /// check), after the generator was seeded again.
     pub month_end: bool,
@@ -146,7 +148,7 @@ pub struct Report {
 
 /// The managers' state: the clocks, the generator and the event queue of one program run.
 #[derive(Debug)]
-pub struct Sim {
+pub(crate) struct Sim {
     pub ai: Ai,
     pub rng: Rng,
     pub events: Events,
@@ -193,7 +195,7 @@ pub struct Sim {
 impl Sim {
     /// The managers at the start of the program: the `[AI]` keys read once, the generator
     /// seeded from the wall clock (the first seeding of main loop 9.2).
-    pub fn new(ini: &[u8]) -> Sim {
+    pub(crate) fn new(ini: &[u8]) -> Sim {
         let mut sim = Sim {
             ai: Ai::from_ini(ini),
             rng: Rng::default(),
@@ -236,14 +238,14 @@ impl Sim {
     /// Makes a replay: the seconds of the seedings are `seeds` in order (those a log told), and
     /// the seedings that already happened are made again with them (the lines they gave are
     /// dropped).
-    pub fn set_seeds(&mut self, seeds: Vec<u32>) {
+    pub(crate) fn set_seeds(&mut self, seeds: Vec<u32>) {
         self.restart(Seconds::Replay(seeds.into()));
     }
 
     /// Makes a test run: the seconds are `seed + n` from now on, and the seedings that already
     /// happened (the start of the program, and the map when a game is open) are made again with
     /// them, so that the order is the same as when the seed is known from the start.
-    pub fn set_seed(&mut self, seed: u32) {
+    pub(crate) fn set_seed(&mut self, seed: u32) {
         self.restart(Seconds::Test { seed, n: 0 });
     }
 
@@ -261,7 +263,7 @@ impl Sim {
 
     /// Draws the sex of the next hire from the generator: bit 16 of the state set is male (unit
     /// placing 4.3), the lowest bit of the number.
-    pub fn draw_hire(&mut self) {
+    pub(crate) fn draw_hire(&mut self) {
         self.hire_male = self.rng.rand() & 1 == 1;
     }
 
@@ -270,7 +272,7 @@ impl Sim {
     /// and world clocks start from the map's (simulation 4.3, 8.3), the queue is empty,
     /// and the generator is seeded again if the map has another number of tiles than the last one
     /// (main loop 9.2, the second moment).
-    pub fn start_game(&mut self, tiles: usize, clocks: Clocks) {
+    pub(crate) fn start_game(&mut self, tiles: usize, clocks: Clocks) {
         self.status = Status::start(&clocks.status, None);
         let s = &mut self.status.settings;
         (s.escaped_change, s.escaped_time) =
@@ -297,28 +299,28 @@ impl Sim {
 
     /// The research tree of the game just opened is built (research 7.4): the zoo status counts
     /// its programs from the next check on.
-    pub fn set_research(&mut self, tree: Tree) {
+    pub(crate) fn set_research(&mut self, tree: Tree) {
         self.research = Some(tree);
     }
 
     /// The research tree, for the research panel.
-    pub fn research(&self) -> Option<&Tree> {
+    pub(crate) fn research(&self) -> Option<&Tree> {
         self.research.as_ref()
     }
 
     /// The research tree the player's clicks change.
-    pub fn research_mut(&mut self) -> Option<&mut Tree> {
+    pub(crate) fn research_mut(&mut self) -> Option<&mut Tree> {
         self.research.as_mut()
     }
 
     /// The research section of a saved game for the writer; none when the game has no tree
     /// (research 7.5).
-    pub fn research_section(&self) -> Option<Vec<u8>> {
+    pub(crate) fn research_section(&self) -> Option<Vec<u8>> {
         self.research.as_ref().map(Tree::save)
     }
 
     /// The programs completed since the last call (research 5.4).
-    pub fn take_research_done(&mut self) -> Vec<Done> {
+    pub(crate) fn take_research_done(&mut self) -> Vec<Done> {
         std::mem::take(&mut self.research_done)
     }
 
@@ -330,20 +332,28 @@ impl Sim {
 
     /// The building upgrade the completed program named `name` gives, with the name id of the
     /// building type it is for (research 6.3).
-    pub fn research_upgrade(&self, name: i32) -> Option<(i32, crate::building::upgrade::Upgrade)> {
+    pub(crate) fn research_upgrade(
+        &self,
+        name: i32,
+    ) -> Option<(i32, crate::building::upgrade::Upgrade)> {
         self.research.as_ref()?.upgrade_of(name)
     }
 
     /// The characteristic effect of a program the step completed (research 6.4, 6.7), laid on
     /// `over`. The changes of the life counter come back for the live animals.
-    pub fn research_effect(&mut self, cat: &Catalogue, over: &mut Overlay, d: &Done) -> Vec<Life> {
+    pub(crate) fn research_effect(
+        &mut self,
+        cat: &Catalogue,
+        over: &mut Overlay,
+        d: &Done,
+    ) -> Vec<Life> {
         let tree = self.research.as_mut();
         tree.map_or_else(Vec::new, |t| t.complete(cat, over, d))
     }
 
     /// Completes every research program of the game (research 6.8). The programs forced come back
     /// for the caller to apply their effects 0 and 1, with the changes of the life counter.
-    pub fn force_research(
+    pub(crate) fn force_research(
         &mut self,
         cat: &Catalogue,
         over: &mut Overlay,
@@ -359,7 +369,7 @@ impl Sim {
 
     /// Completes every program of the research categories named `name` as a cheat does (research
     /// 6.8); the programs come back as for [`Sim::force_research`].
-    pub fn complete_category(
+    pub(crate) fn complete_category(
         &mut self,
         cat: &Catalogue,
         over: &mut Overlay,
@@ -375,74 +385,74 @@ impl Sim {
     }
 
     /// The research share of the zoo status: the tree's, 0 while a game has none.
-    pub fn research_share(&self) -> i32 {
+    pub(crate) fn research_share(&self) -> i32 {
         self.research.as_ref().map_or(0, Tree::share)
     }
 
     /// The scenario of the game just opened starts: its start triggers fire.
-    pub fn start_scenario(&mut self, scenario: Scenario) {
+    pub(crate) fn start_scenario(&mut self, scenario: Scenario) {
         scenario.start(&mut self.lines);
         self.scenario = Some(scenario);
     }
 
     /// A saved game that holds `scenario` opened (scenarios 5.3): its goals read the stored
     /// `words`, `groups` when the file's version is 86 or later.
-    pub fn resume_scenario(&mut self, mut scenario: Scenario, words: &[u32], groups: bool) {
+    pub(crate) fn resume_scenario(&mut self, mut scenario: Scenario, words: &[u32], groups: bool) {
         scenario.resume(words, groups, &mut self.lines);
         self.scenario = Some(scenario);
     }
 
     /// The scenario being played, if the game is one.
-    pub fn scenario(&self) -> Option<&Scenario> {
+    pub(crate) fn scenario(&self) -> Option<&Scenario> {
         self.scenario.as_ref()
     }
 
     /// Posts an event to the queue, as a unit's change does.
-    pub fn post(&mut self, event: Event) {
+    pub(crate) fn post(&mut self, event: Event) {
         self.events.post(event);
     }
 
     /// Moves the events the world has posted since the last step into the queue at once, so a save
     /// or a hash taken before the next step holds them, ahead of that step's own posts
     /// (guest buildings 6.6 point 4).
-    pub fn absorb(&mut self, world: &mut World) {
+    pub(crate) fn absorb(&mut self, world: &mut World) {
         for event in std::mem::take(&mut world.units.posts) {
             self.events.post(event);
         }
     }
 
     /// Adds a line to the `sim` log.
-    pub fn note(&mut self, line: String) {
+    pub(crate) fn note(&mut self, line: String) {
         self.lines.push(line);
     }
 
     /// How the scenario ended, once, when it has.
-    pub fn scenario_ended(&mut self) -> Option<crate::scenario::Ended> {
+    pub(crate) fn scenario_ended(&mut self) -> Option<crate::scenario::Ended> {
         self.scenario.as_mut()?.ended()
     }
 
     /// A scenario or freeform map is a new game: its calendar starts on 1 January 2001 whatever
     /// date the file stores (main loop 7.2).
-    pub fn restart_calendar(&mut self) {
+    pub(crate) fn restart_calendar(&mut self) {
         self.calendar = Calendar::new();
     }
 
     /// A scenario's own economy file over the settings of the game just started (zoo status 3.1).
-    pub fn scenario_economy(&mut self, file: &[u8]) {
+    pub(crate) fn scenario_economy(&mut self, file: &[u8]) {
         if let Ok(file) = Config::parse(file) {
             self.status.economy(&file);
         }
     }
 
     /// Gives the economy file that every later game's zoo status starts from.
-    pub fn set_economy(&mut self, file: &[u8]) {
+    pub(crate) fn set_economy(&mut self, file: &[u8]) {
         self.economy = Config::parse(file).ok();
     }
 
     /// A zoo has just been loaded (Continue, Load, the command line, or the file of a new game
     /// before its set-up): the load ends with a rating check with the stored cash and the entities
     /// as loaded, research as the tree counts it, which restarts the rating timer (zoo status 16).
-    pub fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
+    pub(crate) fn loaded(&mut self, world: &World, cat: &Catalogue, money: &mut Money) {
         let sums = Sums::of(world, cat, money.cash, self.research_share());
         self.status
             .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
@@ -452,7 +462,7 @@ impl Sim {
     /// events the file stored, in one pass in entity list order (guest buildings 4.1): a can above
     /// 12 pieces calls a worker (staff 8.2), a broken or decayed piece (placing 7.4) or filter
     /// asks for a mender, and dung or food on the grounds or in an empty exhibit calls a worker.
-    pub fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
+    pub(crate) fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
         let mut events = crate::building::loaded_events(world);
         events.extend(world.loaded_events(cat));
         events.extend(world.loaded_filter_events(cat));
@@ -486,7 +496,7 @@ impl Sim {
 
     /// The repair cheat (placing 7.4): every fence piece that is broken or at or below its type's
     /// decayed life is made healthy.
-    pub fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
+    pub(crate) fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
         for at in 0..world.zoo.entities.len() {
             if world.decayed(cat, at) {
                 self.heal(world, cat, at);
@@ -499,7 +509,7 @@ impl Sim {
     /// otherwise the pieces stay as the map stores them (placing 7.4); the timers, the donation
     /// counter and the date of the last escape start again and the rating check of the set-up runs, with no cash, the built-in
     /// settings and every research program counted as done (zoo status 6.4).
-    pub fn new_game(
+    pub(crate) fn new_game(
         &mut self,
         world: &mut World,
         cat: &Catalogue,
@@ -530,7 +540,7 @@ impl Sim {
     /// every guest is made, their users (guest buildings 4.1). The fence pieces of a file older than
     /// version 55 have no condition: they are made healthy (placing 7.4). The draws come before
     /// every draw of the first step.
-    pub fn load(&mut self, world: &mut World, cat: &Catalogue) {
+    pub(crate) fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
         for at in 0..world.zoo.entities.len() {
@@ -556,7 +566,7 @@ impl Sim {
 
     /// The clocks, the status and the event queue a file stores (the inverse of
     /// [`Sim::start_game`]).
-    pub fn clocks(&self) -> Clocks {
+    pub(crate) fn clocks(&self) -> Clocks {
         Clocks {
             status: self.status.record(),
             ai_rem: self.ai_rem,
@@ -569,37 +579,40 @@ impl Sim {
         }
     }
 
-    pub fn calendar(&self) -> &Calendar {
+    pub(crate) fn calendar(&self) -> &Calendar {
         &self.calendar
     }
 
-    pub fn total_ms(&self) -> u32 {
+    #[cfg(test)]
+    pub(crate) fn total_ms(&self) -> u32 {
         self.total
     }
 
     /// The AI clock: whole AI ticks and the milliseconds left over.
-    pub fn ai_clock(&self) -> (u32, u32) {
+    #[cfg(test)]
+    pub(crate) fn ai_clock(&self) -> (u32, u32) {
         (self.ai_ticks, self.ai_rem)
     }
 
     /// The world clock: whole seconds and the milliseconds left over.
-    pub fn world_clock(&self) -> (u32, u32) {
+    #[cfg(test)]
+    pub(crate) fn world_clock(&self) -> (u32, u32) {
         (self.world_secs, self.world_rem)
     }
 
     /// Asks for an entity to be removed at the next step's removal pass.
-    pub fn remove(&mut self, id: u32) {
+    pub(crate) fn remove(&mut self, id: u32) {
         self.removals.push(id);
     }
 
     /// The advice and donation messages since the last call, as text numbers and the amount of a
     /// donation.
-    pub fn take_messages(&mut self) -> Vec<Say> {
+    pub(crate) fn take_messages(&mut self) -> Vec<Say> {
         std::mem::take(&mut self.messages)
     }
 
     /// The `sim` log lines since the last call, without the family word.
-    pub fn take_lines(&mut self) -> Vec<String> {
+    pub(crate) fn take_lines(&mut self) -> Vec<String> {
         std::mem::take(&mut self.lines)
     }
 
@@ -607,7 +620,8 @@ impl Sim {
     /// for each entity of the list, by position, in list order, with the step, after the unit's
     /// own turn ([`unit::update`]). This is the AI manager's loop: the count is taken after the
     /// removal pass, so an entity added by `update` waits for the next step.
-    pub fn step(
+    #[cfg(test)]
+    pub(crate) fn step(
         &mut self,
         world: &mut World,
         step: u32,
@@ -618,7 +632,8 @@ impl Sim {
 
     /// [`Sim::step`] in a game whose types are `cat`, with accounts nobody reads: the units read
     /// their species' keys from it and the exhibits are rated for the species they hold.
-    pub fn step_in(
+    #[cfg(test)]
+    pub(crate) fn step_in(
         &mut self,
         world: &mut World,
         cat: &Catalogue,
@@ -629,7 +644,8 @@ impl Sim {
     }
 
     /// As [`Sim::step_in`], with the data the units' sets and animations read.
-    pub fn step_with(
+    #[cfg(test)]
+    pub(crate) fn step_with(
         &mut self,
         data: &dyn Data,
         cat: &Catalogue,
@@ -650,7 +666,7 @@ impl Sim {
 
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
     /// read and book into them.
-    pub fn step_game(
+    pub(crate) fn step_game(
         &mut self,
         data: &dyn Data,
         cat: &Catalogue,

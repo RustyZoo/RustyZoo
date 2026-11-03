@@ -23,13 +23,15 @@
 use crate::config::{Config, Section, to_int};
 use crate::vfs::Vfs;
 
-pub use apply::{Marks, built_line};
-pub use gui::{Act, Avail, Deed, Effect, Gui, Tell, Which};
-pub use popup::{Hint, Op, Popup};
-pub use rules::Game;
+pub(crate) use apply::{Marks, built_line};
+pub(crate) use gui::{Act, Avail, Deed, Effect, Gui, Tell, Which};
+#[cfg(test)]
+pub(crate) use popup::Hint;
+pub(crate) use popup::{Op, Popup};
+pub(crate) use rules::Game;
 
 mod deed;
-pub use deed::{boxed, cash, remove};
+pub(crate) use deed::{boxed, cash, remove};
 
 mod apply;
 mod gui;
@@ -52,7 +54,7 @@ const MAX_DEPTH: u32 = 16;
 
 /// What the rules read from the game. Without a `game` the rules that read the zoo give 0.
 #[derive(Default)]
-pub struct Env<'a> {
+pub(crate) struct Env<'a> {
     /// The accounts' month index (1 to 12) and year index (0 to 19).
     pub month: i32,
     pub year: i32,
@@ -61,7 +63,7 @@ pub struct Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    pub fn new(month: i32, year: i32, game: Option<Game<'a>>) -> Env<'a> {
+    pub(crate) fn new(month: i32, year: i32, game: Option<Game<'a>>) -> Env<'a> {
         Env {
             month,
             year,
@@ -78,7 +80,7 @@ impl<'a> Env<'a> {
 
 /// Whether the manager runs, or how the scenario ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Run {
+pub(crate) enum Run {
     On,
     Won,
     Lost,
@@ -243,7 +245,7 @@ fn effect(cfg: &Config, [_, b, a, p]: [i32; 4]) -> Option<Effect> {
 /// A line of the objectives list (4.5): the string of its text, the values that go into it and
 /// the state of its goal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Line {
+pub(crate) struct Line {
     pub text: i32,
     pub values: [i32; 3],
     pub state: u8,
@@ -273,7 +275,7 @@ enum Body {
 
 /// One entry of the list. The state is 0 in progress, 1 completed, 2 failed, 3 completed and over.
 #[derive(Clone, Debug)]
-pub struct Goal {
+pub(crate) struct Goal {
     name: String,
     state: u8,
     optional: bool,
@@ -470,7 +472,7 @@ impl Goal {
 
 /// How a scenario ended (5.4): the file, the result and the types a win unlocks.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Ended {
+pub(crate) struct Ended {
     pub file: String,
     pub won: bool,
     pub unlocks: Vec<i32>,
@@ -491,13 +493,13 @@ fn tutorial(file: &str) -> &'static str {
 }
 
 /// Whether `file` is one of the seven tutorial files (9.1), listed or not.
-pub fn is_tutorial(file: &str) -> bool {
+pub(crate) fn is_tutorial(file: &str) -> bool {
     !tutorial(file).is_empty()
 }
 
 /// The file of the tutorial that follows the tutorial `file` (9.1), given the expansion flags
 /// (bit 1 the first expansion, bit 2 the second). None for any other file or without a next one.
-pub fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
+pub(crate) fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
     let next = match tutorial(file) {
         "scn01a" => "scn01",
         "scn01" => "scn02",
@@ -512,7 +514,7 @@ pub fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
 
 /// The string of the end dialog's text (9.1) for the scenario `file` and the expansion flags
 /// (bit 1 the first expansion, bit 2 the second), plus 1 when lost.
-pub fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
+pub(crate) fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
     let name = file.replace('\\', "/").to_ascii_lowercase();
     let base = match name.as_str() {
         "scenario/scn01/scn01.scn" | "scenario/scn01a/scn01a.scn" => 16104,
@@ -528,7 +530,7 @@ pub fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
 
 /// A scenario being played.
 #[derive(Debug)]
-pub struct Scenario {
+pub(crate) struct Scenario {
     file: String,
     /// `[desc]`: the string of the name, the name of the story's text, the pictures of the three
     /// goal states (in progress, completed, failed).
@@ -557,7 +559,7 @@ impl Scenario {
     /// Reads and prepares the scenario `file` (4.1). `None` when the file cannot be read: missing,
     /// empty or without a section header (zoo format 7.2). An
     /// extra file that cannot be read is skipped.
-    pub fn prepare(vfs: &Vfs, file: &str) -> Option<Scenario> {
+    pub(crate) fn prepare(vfs: &Vfs, file: &str) -> Option<Scenario> {
         let read = |name: &str| Config::parse(&vfs.read(name).ok()?).ok();
         let main = read(file)?;
         // An empty file or one with no section header is as unreadable as a missing one.
@@ -644,20 +646,21 @@ impl Scenario {
     }
 
     /// What the scenario and the interface tell one another.
-    pub fn gui(&self) -> &Gui {
+    pub(crate) fn gui(&self) -> &Gui {
         &self.gui
     }
 
     /// The effects the triggers left since the last call. A popup whose hint is -1 takes the line
     /// of the goal in progress now (8.3): the text it shows is built from that line.
-    pub fn effects(&self) -> Vec<Effect> {
+    #[cfg(test)]
+    pub(crate) fn effects(&self) -> Vec<Effect> {
         let mut effects = self.gui.take_effects();
         self.give_hint(&mut effects);
         effects
     }
 
     /// The oldest run of what the triggers left, in the order they ran.
-    pub fn next_act(&self) -> Option<Act> {
+    pub(crate) fn next_act(&self) -> Option<Act> {
         let mut act = self.gui.take_run()?;
         if let Act::Effects(effects) = &mut act {
             self.give_hint(effects);
@@ -674,22 +677,23 @@ impl Scenario {
         }
     }
 
-    pub fn run(&self) -> Run {
+    #[cfg(test)]
+    pub(crate) fn run(&self) -> Run {
         self.run
     }
 
     /// The scenario file.
-    pub fn file(&self) -> &str {
+    pub(crate) fn file(&self) -> &str {
         &self.file
     }
 
     /// The string id of the name and the name of the text of the story (`[desc]`).
-    pub fn title(&self) -> (i32, &[u8]) {
+    pub(crate) fn title(&self) -> (i32, &[u8]) {
         (self.name, &self.story)
     }
 
     /// The picture names of a goal in progress, completed and failed.
-    pub fn icons(&self) -> &[String; 3] {
+    pub(crate) fn icons(&self) -> &[String; 3] {
         &self.icons
     }
 
@@ -710,7 +714,7 @@ impl Scenario {
     }
 
     /// The lines of the objectives list (4.5): the timer's, when it has a text, then the goals'.
-    pub fn lines(&self) -> Vec<Line> {
+    pub(crate) fn lines(&self) -> Vec<Line> {
         let mut out: Vec<Line> = self.timer_line().into_iter().collect();
         self.goals.iter().for_each(|g| g.lines(&mut out));
         out
@@ -726,7 +730,7 @@ impl Scenario {
     }
 
     /// How the scenario ended, once, when it has (5.4).
-    pub fn ended(&mut self) -> Option<Ended> {
+    pub(crate) fn ended(&mut self) -> Option<Ended> {
         let won = match self.run {
             Run::On => return None,
             Run::Won => true,
@@ -745,7 +749,7 @@ impl Scenario {
     }
 
     /// The start triggers fire, in the order listed.
-    pub fn start(&self, log: &mut Vec<String>) {
+    pub(crate) fn start(&self, log: &mut Vec<String>) {
         log.push(format!("scenario start {} {}", self.file, self.goals.len()));
         for (name, trigger) in &self.start {
             trigger.fire(name, "start", true, log, &self.gui);
@@ -758,7 +762,7 @@ impl Scenario {
     /// leaves 0 and extra ones are skipped; a simple goal with a state runs its trigger again,
     /// quietly. A save before version 51 has no words, and one before version 86 has none for
     /// complex and chain goals (`groups` false): they and their children stay at 0.
-    pub fn resume(&mut self, words: &[u32], groups: bool, log: &mut Vec<String>) {
+    pub(crate) fn resume(&mut self, words: &[u32], groups: bool, log: &mut Vec<String>) {
         log.push(format!(
             "scenario resume {} {}",
             self.file,
@@ -776,7 +780,7 @@ impl Scenario {
 
     /// The state words a saved game stores (5.3), one per goal in list order, a complex or chain
     /// goal's own before its children's.
-    pub fn states(&self) -> Vec<u32> {
+    pub(crate) fn states(&self) -> Vec<u32> {
         let mut out = Vec::new();
         self.goals.iter().for_each(|g| g.save(&mut out));
         out
@@ -812,7 +816,7 @@ impl Scenario {
 
     /// A step of `ms` milliseconds (5.1): from 1500 ms gathered the pass updates every goal and
     /// reads its state; a failed or finished goal, or none in progress, ends the scenario.
-    pub fn update(&mut self, ms: u32, env: &Env, log: &mut Vec<String>) {
+    pub(crate) fn update(&mut self, ms: u32, env: &Env, log: &mut Vec<String>) {
         if self.run != Run::On {
             return;
         }

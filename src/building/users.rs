@@ -23,7 +23,7 @@ use crate::world::World;
 /// A file before version 80 restores none of the users of a type whose users are visible inside
 /// (a bench, a picnic table): the list stays empty, the pairs are counted off the guest figures and
 /// each unit in a building task restarts its use set, which adds it again (guest buildings 4.2).
-pub fn restore(world: &mut World, cat: &Catalogue, now: u32) {
+pub(crate) fn restore(world: &mut World, cat: &Catalogue, now: u32) {
     for at in 0..world.zoo.entities.len() {
         let e = &world.zoo.entities[at];
         let Some(record) = e.common.as_ref().and_then(|c| c.building.as_ref()) else {
@@ -145,7 +145,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
 /// Seats the users restored for a type whose users sit visible on draw places (shows 4.3), in
 /// entering order, one draw for each try, as a user entering is: each is put at its place. Runs
 /// after [`restore`].
-pub fn seat_loaded(world: &mut World, cat: &Catalogue, rng: &mut Rng) {
+pub(crate) fn seat_loaded(world: &mut World, cat: &Catalogue, rng: &mut Rng) {
     for at in 0..world.zoo.entities.len() {
         let e = world.zoo.entities[at].clone();
         let Some(kind) = super::kind_of(cat, &e, world.units.prices.default) else {

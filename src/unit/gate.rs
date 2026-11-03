@@ -16,7 +16,7 @@ use crate::world::World;
 
 /// The state of one gate.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Gate {
+pub(crate) struct Gate {
     open: bool,
     playing: bool,
     /// The animation runs reversed: `frame` counts from the end of the file.
@@ -40,16 +40,16 @@ impl Gate {
 }
 
 /// The gates that are open or playing, by the id of the piece.
-pub type Gates = HashMap<u32, Gate>;
+pub(crate) type Gates = HashMap<u32, Gate>;
 
 impl Units {
     /// The gate `id` opens: its animation plays forward from the start, with the open sound.
-    pub fn open_gate(&mut self, id: u32) {
+    pub(crate) fn open_gate(&mut self, id: u32) {
         self.play_gate(id, true);
     }
 
     /// The gate `id` closes: its animation plays reversed from the start, with the close sound.
-    pub fn close_gate(&mut self, id: u32) {
+    pub(crate) fn close_gate(&mut self, id: u32) {
         self.play_gate(id, false);
     }
 
@@ -68,7 +68,7 @@ impl Units {
 
     /// A keeper gives up the exhibit it was going to: it closes the gate it remembers and forgets
     /// it (movement 6.2, last point).
-    pub fn release_gate(&mut self, unit: &mut Unit) {
+    pub(crate) fn release_gate(&mut self, unit: &mut Unit) {
         if unit.kind == Kind::Keeper
             && let Some(id) = unit.gate.take()
         {
@@ -77,7 +77,7 @@ impl Units {
     }
 
     /// [`Units::release_gate`] for the unit `id` of the table.
-    pub fn release_gate_of(&mut self, id: u32) {
+    pub(crate) fn release_gate_of(&mut self, id: u32) {
         let gate = (self.get_mut(id))
             .filter(|u| u.kind == Kind::Keeper)
             .and_then(|u| u.gate.take());
@@ -85,7 +85,7 @@ impl Units {
     }
 
     /// The frame each open or playing gate shows, by the id of the piece.
-    pub fn gate_frames(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
+    pub(crate) fn gate_frames(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
         self.gates.iter().map(|(&id, g)| (id, g.shown()))
     }
 }
@@ -106,7 +106,7 @@ fn animation(world: &World, at: usize) -> String {
 /// Drops the entry of a gate that is gone from the zoo, or that is no longer a gate (the gate
 /// tool turned it into an ordinary fence): an undo that brings the gate back with its id then
 /// shows it closed.
-pub fn forget(world: &mut World) {
+pub(crate) fn forget(world: &mut World) {
     if world.units.gates.is_empty() {
         return;
     }
@@ -131,7 +131,7 @@ fn heard(world: &World, cat: &Catalogue, at: usize, open: bool) -> Option<Heard>
 
 /// The sound a type names under `key` in its characteristics, with the base attenuation of
 /// `atten` (0 when absent); `None` without a name. The voice is `class/type/voice`.
-pub fn heard_of(ty: &EntityType, key: &str, atten: &str, voice: &str) -> Option<Heard> {
+pub(crate) fn heard_of(ty: &EntityType, key: &str, atten: &str, voice: &str) -> Option<Heard> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
         let section = config.section([prefix, b"Characteristics/Integers"].concat())?;
@@ -153,7 +153,7 @@ pub fn heard_of(ty: &EntityType, key: &str, atten: &str, voice: &str) -> Option<
 /// The turn of the entity at `at` for the gates: if it is a gate that is open or playing, its
 /// animation advances by `step` milliseconds, and the sound of an entry that just started is
 /// handed to the app.
-pub fn advance(world: &mut World, cat: &Catalogue, data: &dyn Data, at: usize, step: u32) {
+pub(crate) fn advance(world: &mut World, cat: &Catalogue, data: &dyn Data, at: usize, step: u32) {
     if world.units.gates.is_empty() {
         return;
     }

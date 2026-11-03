@@ -8,7 +8,7 @@ use crate::world::World;
 
 /// The quarter of a tile in the spec's numbering (`(lx / 32) * 2 + ly / 32`) as the world numbers
 /// it (`qy * 2 + qx`).
-pub const SLOT: [usize; 4] = [0, 2, 1, 3];
+pub(crate) const SLOT: [usize; 4] = [0, 2, 1, 3];
 
 fn on_path(w: &World, t: usize) -> bool {
     w.path(t).is_some()
@@ -35,14 +35,14 @@ fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool)
 
 /// 4.3 after the common answer: object `e` lets a rampaging animal through when its type has
 /// `cRubbleable` 1, and rubble lets through any animal whose species has `cRampageChance` above 0.
-pub fn rubbled(w: &World, m: &Mover, e: usize) -> bool {
+pub(crate) fn rubbled(w: &World, m: &Mover, e: usize) -> bool {
     let rubbleable = w.shape(e).is_some_and(|s| s.rubbleable);
     m.rampaging && rubbleable || m.rampager && w.zoo.entities[e].class == "rubble"
 }
 
 /// Whether level `level` is one the entity `e` on tile `t` blocks (tank fauna 7.3): every level
 /// out of a tank.
-pub fn in_reach(w: &World, e: usize, t: usize, level: i32) -> bool {
+pub(crate) fn in_reach(w: &World, e: usize, t: usize, level: i32) -> bool {
     let (Some(tank), Some(c)) = (
         w.shape(e).map(|s| s.tank),
         w.zoo.entities[e].common.as_ref(),
@@ -113,7 +113,7 @@ fn closed(w: &World, m: &Mover, t: usize) -> bool {
 
 /// The terrain cost of tile `t` for the unit (6.1 to 6.6); `goal` is the tile the search under
 /// way is going to.
-pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
+pub(crate) fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
     if m.at == Some(t) {
         return 1;
     }
@@ -182,7 +182,7 @@ pub fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u32 {
 }
 
 /// The edge cost of leaving tile `t` in map direction `d` (5.1, 5.2).
-pub fn edge(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
+pub(crate) fn edge(w: &World, m: &Mover, t: usize, d: usize) -> u32 {
     if d.is_multiple_of(2) {
         return straight(w, m, t, d);
     }
@@ -328,7 +328,7 @@ pub(super) fn escapes(w: &World, m: &Mover, (t, n): (usize, usize), p: usize) ->
 
 /// 4.3 point 1: whether quarter 3 of tile `t` holds a building other than the unit's building
 /// target. A unit without a target meets none.
-pub fn other_building(w: &World, m: &Mover, t: usize) -> bool {
+pub(crate) fn other_building(w: &World, m: &Mover, t: usize) -> bool {
     let Some(target) = m.target_building else {
         return false;
     };
@@ -339,7 +339,7 @@ pub fn other_building(w: &World, m: &Mover, t: usize) -> bool {
 }
 
 /// 4.3: whether the step from `a` to `b` in direction `d` clears the objects.
-pub fn clear(
+pub(crate) fn clear(
     w: &World,
     m: &Mover,
     (a, b): (usize, usize),
@@ -397,7 +397,7 @@ fn clear_one(
 
 /// The step cost `P(a, b)` (4.1) for two neighbouring tiles in direction `d`; `goal` is the tile
 /// of the search under way, none outside a search.
-pub fn step(w: &World, m: &Mover, a: usize, b: usize, d: usize, goal: Option<usize>) -> u32 {
+pub(crate) fn step(w: &World, m: &Mover, a: usize, b: usize, d: usize, goal: Option<usize>) -> u32 {
     let cost = edge(w, m, a, d) + terrain(w, m, b, goal);
     if cost > MAX { MAX } else { cost }
 }

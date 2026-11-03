@@ -50,10 +50,14 @@ mod upgrade;
 pub(crate) use upgrade::NEVER;
 mod write;
 pub(crate) use animal::animal_new;
-pub use animal::{AnimalRecord, Escape};
-pub use show::{Item, ItemState, Script, Show, ShowInfo, Shows, TypeRecord};
-pub use staff::StaffRecord;
-pub use unit::{Behaviour, Level, Target, UnitBlock};
+pub(crate) use animal::{AnimalRecord, Escape};
+#[cfg(test)]
+pub(crate) use show::Show;
+pub(crate) use show::{Item, ItemState, Script, ShowInfo, Shows, TypeRecord};
+pub(crate) use staff::StaffRecord;
+#[cfg(test)]
+pub(crate) use unit::Level;
+pub(crate) use unit::{Behaviour, Target, UnitBlock};
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -65,14 +69,14 @@ use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
 use crate::render::order::ground_height;
 
 /// The oldest version the original accepts.
-pub const MIN_VERSION: u32 = 38;
+pub(crate) const MIN_VERSION: u32 = 38;
 
 /// The newest version the original accepts (and the only one it writes).
-pub const MAX_VERSION: u32 = 106;
+pub(crate) const MAX_VERSION: u32 = 106;
 
 /// The biggest file [`Zoo::parse`] reads: 32 MiB. The biggest file of the game is below 0.7 MiB;
 /// the original has no limit, this one bounds the memory a hostile file can make the parser take.
-pub const MAX_SIZE: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_SIZE: usize = 32 * 1024 * 1024;
 
 /// Why a file was refused. The messages are single lines.
 #[derive(Debug, PartialEq, Eq)]
@@ -115,7 +119,7 @@ pub struct Tile {
 
 /// What a rubble piece stores besides its scenery fields (cheats 4.6).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Rubble {
+pub(crate) struct Rubble {
     /// The ids of all the pieces made by the same call.
     pub group: Vec<u32>,
     /// The name id of the type that turned to rubble.
@@ -142,29 +146,29 @@ pub struct Common {
     /// slot, among others. A stored 0 is the current tick, so the loader keeps it as `None`.
     pub stamp: Option<u32>,
     /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
-    pub fence: Option<Fence>,
+    pub(crate) fence: Option<Fence>,
     /// The movement mode of a unit (3: inside a tank); 0 for everything else.
     pub movement_mode: u32,
     /// The food units left of a scenery entity, a signed counter (zoo format 6.6): kept as stored
     /// for the class `food` and the subtypes `poo` and `dinopoo`, 0 for everything else.
     pub food: i32,
     /// What an animal record stores of the animal's live state; `None` for everything else.
-    pub animal: Option<Box<AnimalRecord>>,
+    pub(crate) animal: Option<Box<AnimalRecord>>,
     /// What a guest record stores of the guest; `None` for everything else.
-    pub guest: Option<Box<GuestRecord>>,
+    pub(crate) guest: Option<Box<GuestRecord>>,
     /// What a staff record stores of the staff member; `None` for everything else.
-    pub staff: Option<Box<StaffRecord>>,
+    pub(crate) staff: Option<Box<StaffRecord>>,
     /// The goal, target, movement, pending call and behaviour set of a unit; `None` for everything
     /// else.
-    pub unit: Option<Box<UnitBlock>>,
+    pub(crate) unit: Option<Box<UnitBlock>>,
     /// The health and timers of a tank filter; `None` for everything else.
-    pub filter: Option<Filter>,
+    pub(crate) filter: Option<Filter>,
     /// The figures a guest building record stores; `None` for everything else.
-    pub building: Option<BuildingRecord>,
+    pub(crate) building: Option<BuildingRecord>,
     /// The group and the type name id of a rubble piece; `None` for everything else.
-    pub rubble: Option<Rubble>,
+    pub(crate) rubble: Option<Rubble>,
     /// The body as read, which the writer patches with the fields above.
-    pub raw: Raw,
+    pub(crate) raw: Raw,
 }
 
 /// Where parts of the entity base lie inside a body, so a writer can keep what it does not model:
@@ -180,7 +184,7 @@ struct Spans {
 /// The body of an entity record as read. It never makes two entities differ: the fields of [`Common`]
 /// are the state, the bytes are what is kept of the rest.
 #[derive(Debug, Clone, Default)]
-pub struct Raw {
+pub(crate) struct Raw {
     body: Vec<u8>,
     spans: Spans,
 }
@@ -188,7 +192,7 @@ pub struct Raw {
 impl Raw {
     /// The raw record of an entity read from a file, for tests of a loaded unit.
     #[cfg(test)]
-    pub fn read() -> Raw {
+    pub(crate) fn read() -> Raw {
         Raw {
             body: vec![0],
             ..Raw::default()
@@ -196,7 +200,7 @@ impl Raw {
     }
 
     /// Whether the entity was made in play: no body was read for it.
-    pub fn is_new(&self) -> bool {
+    pub(crate) fn is_new(&self) -> bool {
         self.body.is_empty()
     }
 }
@@ -210,10 +214,9 @@ impl PartialEq for Raw {
 impl Eq for Raw {}
 
 /// The bytes of the sections the engine does not model, as read (save games 7): written back
-/// unchanged, so they never make two zoos differ. The offsets tell where the modelled values lie in
-/// `finances`.
-#[derive(Debug, Clone, Default)]
-pub struct Kept {
+/// unchanged. The offsets tell where the modelled values lie in `finances`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Kept {
     /// From the habitat count to the end of the habitat records.
     habitats: Vec<u8>,
     /// Where the has-show byte of each habitat record starts and where its show info ends in
@@ -237,21 +240,13 @@ pub struct Kept {
     marketing: Vec<u8>,
 }
 
-impl PartialEq for Kept {
-    fn eq(&self, _: &Kept) -> bool {
-        true
-    }
-}
-
-impl Eq for Kept {}
-
 /// What a guest building record stores of its figures (zoo format 6.9, guest buildings 4): the
 /// guests and the income this month, last month and since construction, the upkeep paid since
 /// construction (from version 68), the price, the users as (unit id, slot) pairs in entering
 /// order, the count of users (the stored one, or the number of pairs if that is more), the trash
 /// can's fill, the construction date (a file time) and the members (unit ids, from version 75).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildingRecord {
+pub(crate) struct BuildingRecord {
     pub guests: [u32; 3],
     /// The money figures as the bits of a single precision number.
     pub income: [u32; 3],
@@ -268,7 +263,7 @@ pub struct BuildingRecord {
 }
 
 /// The milliseconds between two checks of a filter's period (tank staff 7.3 point 6).
-pub const FILTER_CHECK_MS: i32 = 3000;
+pub(crate) const FILTER_CHECK_MS: i32 = 3000;
 
 /// What a tank filter keeps (tank staff 7): its health, the milliseconds left before it loses a
 /// point and before it filters again, the upkeep it paid in the last 30-day period, the current one
@@ -277,7 +272,7 @@ pub const FILTER_CHECK_MS: i32 = 3000;
 /// loaded filter has no timers, since a record does not save them (zoo format 6.8): the first
 /// update starts them from the type; the period check restarts at 3,000.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Filter {
+pub(crate) struct Filter {
     pub health: u32,
     pub timers: Option<[i32; 2]>,
     pub upkeep: [u32; 3],
@@ -292,7 +287,7 @@ pub struct Filter {
 /// file time), the name id of the favourite species, the sick flag, the saw-animal countdown,
 /// female and child, the item slots, the other flags and the guide id (zoo format 6.12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GuestRecord {
+pub(crate) struct GuestRecord {
     pub values: [i32; 5],
     pub countdowns: [i32; 11],
     pub arrived: u64,
@@ -322,7 +317,7 @@ pub struct GuestRecord {
 
 /// The four values a fence or tank wall record holds after its common part.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fence {
+pub(crate) struct Fence {
     pub strength: u32,
     /// A signed number, as the original tests it: below 1 (a stored value above `i32::MAX` too) the
     /// fence is broken; at or below the `cDecayedLife` of its type, decayed.
@@ -382,25 +377,25 @@ pub struct Zoo {
     /// side (map direction 0, 2, 4 or 6, -1 for none); in file order like `habitat_tiles`.
     pub habitat_gates: Vec<((i32, i32), i32)>,
     /// The name, statistics and creation date every habitat stores, in file order.
-    pub habitat_info: Vec<HabitatInfo>,
+    pub(crate) habitat_info: Vec<HabitatInfo>,
     /// The tank exhibits, in file order.
     pub tanks: Vec<Tank>,
     /// The show scripts, the id counters and the show info of each habitat (shows 3, 11).
-    pub shows: Shows,
+    pub(crate) shows: Shows,
     /// The highest entity id handed out so far.
     pub id_counter: u32,
     /// `width * height` tiles, row by row: the tile in column x and row y is `y * width + x`.
     pub tiles: Vec<Tile>,
     pub entities: Vec<Entity>,
     /// The camera the file stores.
-    pub view: View,
+    pub(crate) view: View,
     /// The AI clock and the world clock the file stores.
-    pub clocks: Clocks,
+    pub(crate) clocks: Clocks,
     /// How many units of each type name were named so far (zoo format 7.3), for the number in a
     /// default name.
     pub names: BTreeMap<String, u32>,
     /// What the file holds that is not modelled.
-    pub kept: Kept,
+    pub(crate) kept: Kept,
     /// The awards the zoo holds: no duplicates, largest id first (`awards.md` 4).
     pub awards: Vec<i32>,
 }
@@ -409,7 +404,7 @@ pub struct Zoo {
 /// statistics as stored (habitat rating 13.3), the creation date (a file time) and the guests'
 /// viewing time (the second date, habitat rating 13.2, a duration in file time units).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HabitatInfo {
+pub(crate) struct HabitatInfo {
     pub name: String,
     pub stats: [u32; 9],
     pub created: u64,
@@ -422,7 +417,7 @@ pub struct HabitatInfo {
 /// rating, the donation counter, the adult admission price and the date of the last escape (a file
 /// time). The price of a file without the field is 49, the date 1 January 2000.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StatusRecord {
+pub(crate) struct StatusRecord {
     /// The rating, message and new guest timers.
     pub timers: [u32; 3],
     pub rating: u32,
@@ -446,7 +441,7 @@ impl Default for StatusRecord {
 /// The clocks and the event queue a map stores (simulation 4.3, 8.3): a new game on it starts from
 /// them. All 0 and empty in a file too old to store them, and in a map made by hand.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Clocks {
+pub(crate) struct Clocks {
     /// The zoo status' timers and counters.
     pub status: StatusRecord,
     /// The AI clock: the milliseconds left over and the whole AI ticks.
@@ -466,7 +461,7 @@ pub struct Clocks {
 
 /// One record of the event queue (simulation 5.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Event {
+pub(crate) struct Event {
     pub sender: u32,
     /// The entity it is for, 0 for everyone.
     pub target: u32,
@@ -482,7 +477,7 @@ pub struct Event {
 
 /// The two event buffers a file stores, in file order, and which one is the "next" buffer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Queue {
+pub(crate) struct Queue {
     pub first: Vec<Event>,
     pub second: Vec<Event>,
     pub next_is_first: bool,
@@ -490,7 +485,7 @@ pub struct Queue {
 
 /// The view state of a file (zoo format 7.1), as stored: nothing is checked.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct View {
+pub(crate) struct View {
     pub zoom: i32,
     pub rotation: i32,
     /// The scroll position `(x, y)`.
@@ -502,7 +497,7 @@ pub struct View {
 impl Zoo {
     /// The name of the scenario file the zoo holds (save games 7), if it holds one. Every goal
     /// of a file before version 51 restarts at 0 ([`Zoo::scenario_states`] is empty).
-    pub fn scenario_file(&self) -> Option<String> {
+    pub(crate) fn scenario_file(&self) -> Option<String> {
         let block = self.kept.scenario.get(4..).filter(|b| !b.is_empty())?;
         if self.version < 51 {
             // Before 51 the block is the name alone, with no length word.
@@ -514,7 +509,7 @@ impl Zoo {
 
     /// The goal states of the scenario block, one word per goal as stored (zoo format 7.2); none
     /// when the zoo holds no scenario or its version is before 51.
-    pub fn scenario_states(&self) -> Vec<u32> {
+    pub(crate) fn scenario_states(&self) -> Vec<u32> {
         let words = || {
             let block = self.kept.scenario.get(4..).filter(|_| self.version >= 51)?;
             let name = 4 + u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
@@ -525,7 +520,7 @@ impl Zoo {
     }
 
     /// Replaces the scenario block written: the scenario `file` and its goal states.
-    pub fn set_scenario(&mut self, file: &str, states: &[u32]) {
+    pub(crate) fn set_scenario(&mut self, file: &str, states: &[u32]) {
         let name: Vec<u8> = file.chars().map(|c| c as u8).collect();
         let count = 4 * states.len() as u32;
         let size = 8 + name.len() as u32 + count;
@@ -539,27 +534,27 @@ impl Zoo {
 
     /// The research section as read, from its leading word to its end record (empty before
     /// version 40).
-    pub fn research(&self) -> &[u8] {
+    pub(crate) fn research(&self) -> &[u8] {
         &self.kept.research
     }
 
     /// Replaces the research section written (research 7.5).
-    pub fn set_research(&mut self, section: Vec<u8>) {
+    pub(crate) fn set_research(&mut self, section: Vec<u8>) {
         self.kept.research = section;
     }
 
     /// The thoughts as stored, newest first.
-    pub fn thoughts(&self) -> &[[u32; 5]] {
+    pub(crate) fn thoughts(&self) -> &[[u32; 5]] {
         &self.kept.thoughts
     }
 
     /// Replaces the thoughts a save writes.
-    pub fn set_thoughts(&mut self, thoughts: Vec<[u32; 5]>) {
+    pub(crate) fn set_thoughts(&mut self, thoughts: Vec<[u32; 5]>) {
         self.kept.thoughts = thoughts;
     }
 
     /// The tile in column `x` and row `y`, if it is on the map.
-    pub fn tile(&self, x: u32, y: u32) -> Option<&Tile> {
+    pub(crate) fn tile(&self, x: u32, y: u32) -> Option<&Tile> {
         if x >= self.width || y >= self.height {
             return None;
         }
@@ -570,7 +565,7 @@ impl Zoo {
     /// Refuses a file of a version below 70 that holds an entity whose type `known` does not
     /// find, as the original does: there is no body size to skip it by, so the whole load
     /// fails. From version 70 such an entity is skipped, so the file passes.
-    pub fn check_types(&self, known: impl Fn(&Entity) -> bool) -> Result<(), ZooError> {
+    pub(crate) fn check_types(&self, known: impl Fn(&Entity) -> bool) -> Result<(), ZooError> {
         if self.version >= 70 {
             return Ok(());
         }
@@ -585,7 +580,7 @@ impl Zoo {
     /// Drops the entities whose type `known` does not find, as the original's loader does when it
     /// skips their records: it makes no unit for them and so never saves them (zoo format 6.2).
     /// [`Zoo::checked`] calls it after the load; the engine drops them again when it writes.
-    pub fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
+    pub(crate) fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
         self.entities.retain(known);
     }
 
@@ -610,7 +605,7 @@ impl Zoo {
     /// Where each section of a file ends (a name and the offset in the file, an entity as
     /// `entity/CLASS`), for the parity report of the full-game tests.
     #[cfg(test)]
-    pub fn sections(bytes: &[u8]) -> Result<Marks, ZooError> {
+    pub(crate) fn sections(bytes: &[u8]) -> Result<Marks, ZooError> {
         Zoo::parse_marked(bytes, true).map(|(_, _, marks)| marks)
     }
 
@@ -654,7 +649,7 @@ fn bad<T>(why: &str) -> R<T> {
 }
 
 /// Whether the types of `catalogue` have a definition for an entity.
-pub fn knows(catalogue: &Catalogue) -> impl Fn(&Entity) -> bool + '_ {
+pub(crate) fn knows(catalogue: &Catalogue) -> impl Fn(&Entity) -> bool + '_ {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     move |e| {
         catalogue

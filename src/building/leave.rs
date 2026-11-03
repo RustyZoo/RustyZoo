@@ -139,7 +139,7 @@ fn post_abort(world: &mut World, unit: u32) {
 /// every user is removed as a forced leave, in entering order: it posts its abort event, pays, gets the change record
 /// and is put at an exit (6.7), shown and with its goal stopped. The building keeps its figures.
 /// A building that is no guest building has no users, and nothing happens.
-pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
+pub(crate) fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
     let Some(e) = world.find(id).map(|at| world.zoo.entities[at].clone()) else {
         return;
     };
@@ -200,7 +200,7 @@ pub fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
 /// leave when it is listed (it pays, gets the change record, and is put at the exit or shown); one
 /// that is not listed (still walking in) is taken out unserved. Its goal then stops. Any other
 /// unit is untouched.
-pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
+pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
     let (Some(at), Some(u)) = (world.find(id), world.units.get(id)) else {
         return;
     };

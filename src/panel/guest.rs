@@ -24,11 +24,11 @@ use crate::world::World;
 
 /// The layout of the panel, the name field, the buttons that follow the guest and pick it up, and
 /// the tab buttons (each tab forces a refresh).
-pub const LAYOUT: i32 = 9;
-pub const NAME: i32 = 3402;
-pub const FOLLOW: i32 = 3415;
-pub const PICK_UP: i32 = 3416;
-pub const TABS: [i32; 3] = [3462, 3464, 3465];
+pub(crate) const LAYOUT: i32 = 9;
+pub(crate) const NAME: i32 = 3402;
+pub(crate) const FOLLOW: i32 = 3415;
+pub(crate) const PICK_UP: i32 = 3416;
+pub(crate) const TABS: [i32; 3] = [3462, 3464, 3465];
 /// The bars: happiness, drink, food, restroom and energy.
 const BARS: [i32; 5] = [3404, 3406, 3408, 3410, 3412];
 /// The texts of the time in the park and of the favourite species, the five item pictures and the
@@ -40,7 +40,7 @@ const THOUGHTS: i32 = 3469;
 /// The strings of the four times in the park.
 const TIME_STRING: i32 = 3420;
 /// The interface clock time between two refreshes (ms).
-pub const PERIOD: u64 = 10_000;
+pub(crate) const PERIOD: u64 = 10_000;
 /// The hours of calendar time up to which a guest has "just arrived", stayed "a short time" and
 /// "a while".
 const BANDS: [i64; 3] = [1440, 5760, 8640];
@@ -50,7 +50,7 @@ const TICKS: u64 = 10_000;
 
 /// What the bars show (8.2): happiness as a percentage of its range, and each need as 100 minus
 /// its percentage, so a full bar is a satisfied guest. The energy's upper limit is `max_energy`.
-pub fn bars(g: &Guest, max_energy: i32) -> [i32; 5] {
+pub(crate) fn bars(g: &Guest, max_energy: i32) -> [i32; 5] {
     let need = |v: i32, hi: i32| 100i32.saturating_sub(percent(v, 0, hi));
     let v = &g.values;
     [
@@ -105,7 +105,7 @@ pub(crate) fn thought_rows(texts: &[String]) -> Vec<Row> {
 /// The time in the park (8.3): the index of its text, from the hours of calendar time since the
 /// arrival date, the difference divided as an unsigned number (an arrival later than `now` is a
 /// huge time); a guest with no arrival date has just arrived.
-pub fn stay(arrived: Option<Date>, now: Date) -> usize {
+pub(crate) fn stay(arrived: Option<Date>, now: Date) -> usize {
     let hours = arrived.map_or(0, |a| {
         let ticks = ((now.millis() - a.millis()) as u64).wrapping_mul(TICKS);
         (ticks / (HOUR as u64 * TICKS)) as u32 as i32
@@ -115,7 +115,7 @@ pub fn stay(arrived: Option<Date>, now: Date) -> usize {
 
 /// The selected guest and the refresh clock.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     /// The selected guest, by entity id.
     pub selected: Option<u32>,
     pub clock: Clock,
@@ -126,7 +126,7 @@ pub struct Panel {
 
 impl Panel {
     /// Selects the guest with entity id `id`: the panel is filled at once (4.3).
-    pub fn select(&mut self, id: u32) {
+    pub(crate) fn select(&mut self, id: u32) {
         self.selected = Some(id);
         self.fresh = true;
         self.clock.force = true;
@@ -134,20 +134,20 @@ impl Panel {
     }
 
     /// Fills the panel again from the start: the name field shows the guest's name.
-    pub fn reselect(&mut self) {
+    pub(crate) fn reselect(&mut self) {
         if let Some(id) = self.selected {
             self.select(id);
         }
     }
 
-    pub fn deselect(&mut self) {
+    pub(crate) fn deselect(&mut self) {
         self.selected = None;
         self.told.clear();
     }
 
     /// Writes the panel for the selected guest at calendar date `now` and returns the log line
     /// when something it shows changed.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         world: &World,

@@ -12,7 +12,7 @@ use crate::world::World;
 /// The pending gate and what a click does with it: the fence piece (an entity id) that becomes
 /// the gate of the exhibit.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Gate {
+pub(crate) struct Gate {
     pub pending: Pending,
     pub piece: u32,
     pub exhibit: u32,
@@ -23,7 +23,7 @@ pub struct Gate {
 impl Gate {
     /// What the cost text shows (placing 6.4): the price as it is, also when only the cash falls
     /// short (the gate is red), and 0 when the piece is not a place for the gate of an exhibit.
-    pub fn amount(&self) -> i64 {
+    pub(crate) fn amount(&self) -> i64 {
         match self.exhibit {
             0 => 0,
             _ => crate::text::format::whole_units(f64::from(self.pending.price)),
@@ -33,7 +33,7 @@ impl Gate {
 
 /// The id of the entity at position `at` when it is a fence piece, the hovered entity of the
 /// gate tool (the entity the pixel pick finds, placing 6.4).
-pub fn over(world: &World, at: usize) -> Option<u32> {
+pub(crate) fn over(world: &World, at: usize) -> Option<u32> {
     world.slot(at)?;
     Some(world.zoo.entities[at].common.as_ref()?.id)
 }
@@ -44,7 +44,7 @@ pub fn over(world: &World, at: usize) -> Option<u32> {
 /// nothing for a piece above the decayed life of its type, else the price of the gate type, and
 /// tinted by [`World::keeper_passes`]. An invalid place keeps no message, the cash short on arrival
 /// included (red, the price shown, a click does nothing); an object on a tank tile hides the cost text.
-pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Option<Gate> {
+pub(crate) fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Option<Gate> {
     let piece = &world.zoo.entities[at];
     let (tile, facing) = world.slot(at)?;
     let c = piece.common.as_ref()?;
@@ -94,7 +94,7 @@ pub fn pending(world: &World, cat: &Catalogue, money: &Money, at: usize) -> Opti
 /// piece, made healthy, and books the price as construction; any other place does nothing. The
 /// cash is tested again at the click: if it fell short since the pointer reached the piece, the
 /// message of insufficient funds (10002) shows.
-pub fn place(world: &mut World, money: &mut Money, cat: &Catalogue, gate: &Gate) -> Outcome {
+pub(crate) fn place(world: &mut World, money: &mut Money, cat: &Catalogue, gate: &Gate) -> Outcome {
     let p = &gate.pending;
     if p.verdict == Verdict::Invalid {
         return Outcome::Refused(p.message);

@@ -23,16 +23,16 @@ use crate::vfs::Vfs;
 
 mod library;
 mod run;
-pub use library::{Library, Timings};
-pub use run::{Animation, Data, Env, Flow, Heard, NoData, Note, Runner, Timing};
+pub(crate) use library::{Library, Timings};
+pub(crate) use run::{Animation, Data, Env, Flow, Heard, NoData, Note, Runner, Timing};
 
 /// How many of [`NAMES`] the program knows.
-pub const KNOWN: usize = 53;
+pub(crate) const KNOWN: usize = 53;
 
 /// The 53 operations of the program, then the three names of the shipped data it does not know
 /// (`fFollow`, `fPlayWith`, `fPlayWithSoud`).
 #[rustfmt::skip]
-pub const NAMES: [&str; 56] = [
+pub(crate) const NAMES: [&str; 56] = [
     "fWalk", "fSwim", "fTrot", "fRun", "fSpray", "fKeeperRoutine", "fGuestRoutine",
     "fGuideRoutine", "fMaintRoutine", "fFaceTowardFood", "fFaceTowardTarget", "fShowPredator",
     "fHidePredator", "fEnterBuilding", "fExitBuilding", "fReturnToBuilding", "fDustBall",
@@ -191,7 +191,7 @@ pub struct Row {
 /// Where a unit is for the choice of its ambient table and of the set a nesting call plays (tank
 /// fauna 9.4); the number is the table's place in [`TABLES`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Place {
+pub(crate) enum Place {
     #[default]
     Land,
     Water,
@@ -221,7 +221,7 @@ pub struct Behaviours {
 
 /// A call whose name is not one the program interprets, or that has no name.
 #[derive(Debug, PartialEq, Eq)]
-pub struct BehaviourError {
+pub(crate) struct BehaviourError {
     pub section: String,
     /// The position of the call among the `f` values of the section, from 1.
     pub call: usize,
@@ -230,7 +230,7 @@ pub struct BehaviourError {
 
 impl BehaviourError {
     /// The line of the call in the file `bytes` was read from, from 1.
-    pub fn line(&self, bytes: &[u8]) -> Option<usize> {
+    pub(crate) fn line(&self, bytes: &[u8]) -> Option<usize> {
         let mut section = None;
         let mut seen = 0;
         for (n, line) in bytes.split(|&b| b == b'\n').enumerate() {
@@ -324,7 +324,7 @@ fn number(text: &str) -> Number {
 }
 
 /// The 3D target a name stands for (the saved name of a unit, an argument of a move call).
-pub fn target(text: &str) -> Target {
+pub(crate) fn target(text: &str) -> Target {
     match text {
         "level" => Target::Level,
         "surface" => Target::Surface,
@@ -483,7 +483,7 @@ fn build(name: &str, args: &[String]) -> Result<Op, &'static str> {
 
 /// Parses one call text. `None` when the name is not in [`NAMES`]; otherwise the call and, when
 /// the arguments make it fail, the reason.
-pub fn parse_call(text: &[u8]) -> Option<(Call, Option<&'static str>)> {
+pub(crate) fn parse_call(text: &[u8]) -> Option<(Call, Option<&'static str>)> {
     let (name, args) = split_call(text);
     let name = NAMES.iter().find(|n| Some(n.as_bytes()) == name)?;
     let text = String::from_utf8_lossy(text).into_owned();
@@ -503,7 +503,7 @@ pub fn parse_call(text: &[u8]) -> Option<(Call, Option<&'static str>)> {
 impl Behaviours {
     /// Reads the sets and tables of a definition file. Stops at the first call with an unknown
     /// name.
-    pub fn parse(config: &Config) -> Result<Behaviours, BehaviourError> {
+    pub(crate) fn parse(config: &Config) -> Result<Behaviours, BehaviourError> {
         let mut found = Behaviours::default();
         for (name, section) in config.sections() {
             if name.starts_with(b"BehaviorSet\\")
@@ -563,7 +563,7 @@ impl Behaviours {
 
     /// The first of `prefixes` (a subtype name, or empty for the unprefixed form) that has a
     /// set `name` with at least one call.
-    pub fn find(&self, prefixes: &[&[u8]], name: &[u8]) -> Option<&[Call]> {
+    pub(crate) fn find(&self, prefixes: &[&[u8]], name: &[u8]) -> Option<&[Call]> {
         prefixes.iter().find_map(|prefix| {
             let mut section = prefix.to_vec();
             if !prefix.is_empty() {

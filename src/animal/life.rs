@@ -18,7 +18,7 @@ const DUTIES: u8 = 110;
 
 /// What the checks read of the animal's sets.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Sets {
+pub(crate) struct Sets {
     /// The type has the set.
     pub has_sleep: bool,
     pub has_sick: bool,
@@ -44,7 +44,7 @@ impl Animal {
 /// The sleep check (6): tiredness rises, a tired animal starts `bSleep`, a rested one wakes. While
 /// awake it counts its counter down at every call and acts when it fires; while asleep it acts at
 /// every call and restarts the counter each time.
-pub fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) {
+pub(crate) fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mut Out) {
     let period = class.periods[super::ENERGY];
     if a.sleeping {
         a.counters[super::ENERGY] = period.wrapping_sub(1);
@@ -97,7 +97,7 @@ pub(super) fn start_or_queue(
 
 /// The health check (9): the starving count, the unwell animal, the sick company and the three
 /// ways to fall ill.
-pub fn health(
+pub(crate) fn health(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -168,7 +168,7 @@ pub fn health(
 /// period, and once it is spent each check rolls the species' chance of dying. The animal then
 /// starts `bDie` (its `fDie` removes it) or, with no such set, is removed at once. Whether the
 /// check was due.
-pub fn aging(
+pub(crate) fn aging(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -195,7 +195,7 @@ pub fn aging(
 
 /// What the checks read of the sets of the animal at position `at`. A set that has ended still
 /// is the top one until another starts, so the current set is the top one that runs.
-pub fn sets(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Sets {
+pub(crate) fn sets(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Sets {
     let (entity, runner) = (&world.zoo.entities[at], &unit.runner);
     let has = |name| data.set(entity, name).is_some();
     let now = |name| runner.top() == Some(name) && runner.running();
@@ -212,7 +212,7 @@ pub fn sets(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Sets {
 }
 
 /// Whether a keeper is at work (task 0x6e) on a tile of exhibit `x` (habitat rating 5.1).
-pub fn keeper_at_work(world: &World, x: u32) -> bool {
+pub(crate) fn keeper_at_work(world: &World, x: u32) -> bool {
     let at_work = world.units.iter().filter(|u| u.kind == Kind::Keeper);
     at_work.filter(|u| u.goal.record.task == DUTIES).any(|u| {
         let c = world
@@ -226,7 +226,7 @@ pub fn keeper_at_work(world: &World, x: u32) -> bool {
 /// The ambient choice of an idle, tired animal that can act here runs the sleep check instead
 /// (behaviours 6.4 point 1): called where a set would be chosen. It returns whether it took the
 /// choice, in which case no row is chosen even if `bSleep` did not start.
-pub fn ambient_sleep(
+pub(crate) fn ambient_sleep(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,

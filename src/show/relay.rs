@@ -76,7 +76,7 @@ fn show_sound(world: &World, cat: &Catalogue, rng: &mut Rng, show: u32, kind: u1
 /// The world manager's listen (shows 6.2), after the AI manager of the same step: the show events
 /// of the step go to the tank and to the grandstands that belong to the show, and the cheer or the
 /// boo that follows an end is posted for later.
-pub fn listen_world(world: &World, cat: &Catalogue, events: &mut Events, rng: &mut Rng) {
+pub(crate) fn listen_world(world: &World, cat: &Catalogue, events: &mut Events, rng: &mut Rng) {
     let heard: Vec<Event> = events.listen_all(WORLD_CHANNEL).cloned().collect();
     let stands = grandstands(world, cat);
     // Only the first abort of the step counts.
@@ -122,7 +122,7 @@ pub fn listen_world(world: &World, cat: &Catalogue, events: &mut Events, rng: &m
 /// reactions go to every guest seated on a draw place, after a delay of 0 to 5 steps (90 to 129
 /// more for an end or an abort). A grandstand that does not face the show it belongs to turns
 /// every event into an abort.
-pub fn listen_grandstand(
+pub(crate) fn listen_grandstand(
     world: &mut World,
     cat: &Catalogue,
     events: &mut Events,

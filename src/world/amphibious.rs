@@ -16,7 +16,7 @@ use crate::render::corner_elevation;
 
 impl World {
     /// Whether the fence piece at position `at` of the entity list is a connector (12.1).
-    pub fn connector(&self, at: usize) -> bool {
+    pub(crate) fn connector(&self, at: usize) -> bool {
         let common = self.zoo.entities.get(at).and_then(|e| e.common.as_ref());
         common.is_some_and(|c| self.connectors.binary_search(&c.id).is_ok())
     }

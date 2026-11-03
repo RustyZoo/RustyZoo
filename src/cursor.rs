@@ -12,22 +12,22 @@ use crate::timing::ini_whole;
 use crate::vfs::MAX_MEMBER_SIZE;
 
 /// The interface's default, over any element with no cursor of its own (string tables 6.1).
-pub const DEFAULT: u32 = 200;
+pub(crate) const DEFAULT: u32 = 200;
 /// Over an editable text field, and while a long operation runs.
-pub const TEXT: u32 = 201;
+pub(crate) const TEXT: u32 = 201;
 pub const BUSY: u32 = 211;
 /// The map view's cursors, which show only while the pointer is over the map view: idle, over a
 /// selectable entity, during a path or fence drag, under the bulldozer, with a pending object,
 /// and those of the terrain tool (terrain editing 7.1).
-pub const NORMAL: u32 = 209;
-pub const HOVER: u32 = 210;
-pub const DRAG: u32 = 202;
-pub const BULLDOZER: u32 = 207;
-pub const PLACING: u32 = 208;
-pub const TERRAIN_IDLE: u32 = 203;
-pub const TERRAIN_DRAG: u32 = 204;
-pub const TERRAIN_LEVEL: u32 = 205;
-pub const TERRAIN_PAINT: u32 = 206;
+pub(crate) const NORMAL: u32 = 209;
+pub(crate) const HOVER: u32 = 210;
+pub(crate) const DRAG: u32 = 202;
+pub(crate) const BULLDOZER: u32 = 207;
+pub(crate) const PLACING: u32 = 208;
+pub(crate) const TERRAIN_IDLE: u32 = 203;
+pub(crate) const TERRAIN_DRAG: u32 = 204;
+pub(crate) const TERRAIN_LEVEL: u32 = 205;
+pub(crate) const TERRAIN_PAINT: u32 = 206;
 
 /// The resource types of a cursor and of the group that names it.
 const RT_CURSOR: u32 = 1;

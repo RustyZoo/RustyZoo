@@ -13,7 +13,7 @@
 
 mod filter;
 
-pub use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SELL};
+pub(crate) use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SELL};
 
 use crate::building::{Kind, Live, moveable, upgrade};
 use crate::config::to_double;
@@ -29,25 +29,25 @@ use crate::vfs::Vfs;
 use crate::world::World;
 
 /// The layout of a charging building and of another one.
-pub const CHARGING: i32 = 21;
-pub const PLAIN: i32 = 20;
+pub(crate) const CHARGING: i32 = 21;
+pub(crate) const PLAIN: i32 = 20;
 /// The up and down buttons of the price, and the tab buttons of each panel (each forces a
 /// refresh).
-pub const UP: i32 = 4557;
-pub const DOWN: i32 = 4556;
-pub const TABS: [i32; 6] = [4575, 4576, 4577, 4675, 4678, 4677];
+pub(crate) const UP: i32 = 4557;
+pub(crate) const DOWN: i32 = 4556;
+pub(crate) const TABS: [i32; 6] = [4575, 4576, 4577, 4675, 4678, 4677];
 /// The period of the interface clock between two refreshes of the charging panel (ms; guest
 /// buildings 10.3).
-pub const PERIOD: u64 = 5000;
+pub(crate) const PERIOD: u64 = 5000;
 /// The period of the filter panel's refresh (information panels 18.5).
-pub const FILTER_PERIOD: u64 = 1000;
+pub(crate) const FILTER_PERIOD: u64 = 1000;
 
 /// The elements of the charging panel.
-pub const NAME: i32 = 4502;
+pub(crate) const NAME: i32 = 4502;
 const PICTURE: i32 = 4550;
-pub const PRICE: i32 = 4555;
-pub const SELL: i32 = 4516;
-pub const PICK_UP: i32 = 4580;
+pub(crate) const PRICE: i32 = 4555;
+pub(crate) const SELL: i32 = 4516;
+pub(crate) const PICK_UP: i32 = 4580;
 /// Income, upkeep and profit since construction, and per month.
 const TOTALS: [i32; 3] = [4531, 4533, 4535];
 const MONTHLY: [i32; 3] = [4559, 4561, 4591];
@@ -59,16 +59,16 @@ const ITEMS: [i32; 5] = [4567, 4568, 4569, 4570, 4571];
 /// The elements of the panel of a building that charges nothing: the guests last month, this
 /// month and since construction, and the months open; the layout of the full game also has an
 /// upkeep field.
-pub const PLAIN_NAME: i32 = 4602;
+pub(crate) const PLAIN_NAME: i32 = 4602;
 const PLAIN_PICTURE: i32 = 4650;
-pub const PLAIN_SELL: i32 = 4616;
+pub(crate) const PLAIN_SELL: i32 = 4616;
 const PLAIN_GUESTS: [i32; 3] = [4664, 4666, 4662];
 const PLAIN_MONTHS: i32 = 4668;
 const PLAIN_UPKEEP: i32 = 4696;
 /// The Programs tab of that panel (research 6.3): its tab button, the five upgrade buttons, the
 /// upkeep field, and the adult and child bonus, each with its label and icon.
 const PROGRAMS_TAB: i32 = 4678;
-pub const UPGRADES: [i32; 5] = [4631, 4632, 4633, 4634, 4635];
+pub(crate) const UPGRADES: [i32; 5] = [4631, 4632, 4633, 4634, 4635];
 const UPGRADE_UPKEEP: i32 = 4642;
 const BONUS: [[i32; 3]; 2] = [[4644, 4643, 4647], [4646, 4645, 4648]];
 
@@ -89,7 +89,7 @@ fn info_image(ty: &EntityType) -> Option<String> {
 
 /// The months a building has been open at game time `now` when it was built at `built` (ms):
 /// `(d + 29) / 30` (the ceiling of `d / 30`) for `d` whole days, at least 1 (guest buildings 10.3).
-pub fn months(built: i64, now: i64) -> i64 {
+pub(crate) fn months(built: i64, now: i64) -> i64 {
     let days = now.saturating_sub(built) / DAY_MS as i64;
     ((days.max(0) + 29) / 30).max(1)
 }
@@ -97,7 +97,7 @@ pub fn months(built: i64, now: i64) -> i64 {
 /// The figures the charging panel shows (guest buildings 10.3): income, upkeep and profit since
 /// construction, the first two cut toward zero and the profit their difference, and the same
 /// per month (whole division).
-pub fn figures(live: &Live, months: i64) -> ([i64; 3], [i64; 3]) {
+pub(crate) fn figures(live: &Live, months: i64) -> ([i64; 3], [i64; 3]) {
     let (income, upkeep) = (
         f64::from(live.income[2]) as i64,
         f64::from(live.upkeep) as i64,
@@ -109,7 +109,7 @@ pub fn figures(live: &Live, months: i64) -> ([i64; 3], [i64; 3]) {
 /// The number the player typed into the price field (guest buildings 7.2): the first currency
 /// `symbol` and then the first money group separator `group` (the host's, in the field's code
 /// page) cut out, the rest read as `atof` does.
-pub fn typed(text: &[u8], symbol: &[u8], group: &[u8]) -> f64 {
+pub(crate) fn typed(text: &[u8], symbol: &[u8], group: &[u8]) -> f64 {
     let mut text = text.to_vec();
     let cut = |text: &mut Vec<u8>, part: &[u8]| {
         if let Some(at) = text.windows(part.len()).position(|w| w == part) {
@@ -127,7 +127,7 @@ pub fn typed(text: &[u8], symbol: &[u8], group: &[u8]) -> f64 {
 
 /// The selected building and the refresh clock.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     /// The selected building, by entity id, and the layout of its panel.
     pub selected: Option<u32>,
     pub layout: i32,
@@ -139,7 +139,7 @@ pub struct Panel {
 
 impl Panel {
     /// Selects the building with entity id `id`, shown in `layout`: the panel is filled at once.
-    pub fn select(&mut self, id: u32, layout: i32) {
+    pub(crate) fn select(&mut self, id: u32, layout: i32) {
         self.selected = Some(id);
         self.layout = layout;
         self.fresh = true;
@@ -148,20 +148,20 @@ impl Panel {
     }
 
     /// Fills the panel again from the start: the name field shows the building's name.
-    pub fn reselect(&mut self) {
+    pub(crate) fn reselect(&mut self) {
         if let Some(id) = self.selected {
             self.select(id, self.layout);
         }
     }
 
-    pub fn deselect(&mut self) {
+    pub(crate) fn deselect(&mut self) {
         self.selected = None;
         self.told.clear();
     }
 
     /// Writes the panel for the selected building at game time `now` (ms) and returns the log
     /// line when something it shows changed.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         world: &World,

@@ -11,7 +11,7 @@ use crate::world::World;
 /// 10.1: every `cBreathCheck` status ticks an animal under water (tank mode 4) gains breath. The
 /// counter restarts only when it runs out under water: out of it the check never runs again (the
 /// original's bug, 10.3, kept).
-pub fn breath(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
+pub(crate) fn breath(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
     let was = a.counters[BREATH];
     a.counters[BREATH] = was.wrapping_sub(1);
     if was != 0 || env.tank_mode != 4 {
@@ -24,14 +24,14 @@ pub fn breath(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
 /// 10.2: whether the animal has to go to the surface: it is under water (tank mode 4) and has the
 /// breath of its threshold (`cBreathThreshold`, 100 without the key; a threshold of 0 or less is
 /// always reached).
-pub fn needs_air(breath: i32, k: &Keys, tank_mode: u8) -> bool {
+pub(crate) fn needs_air(breath: i32, k: &Keys, tank_mode: u8) -> bool {
     tank_mode == 4 && breath >= k.breath_threshold
 }
 
 /// 11: every `cMurkyWaterCheck` status ticks an animal in a tank loses happiness and health by the
 /// band of the purity, happiness when the water level is outside its depths (not in a show tank)
 /// and both when the water is of the wrong kind.
-pub fn murky(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
+pub(crate) fn murky(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
     if !fire(&mut a.counters[MURKY], class.periods[MURKY]) {
         return;
     }
@@ -72,7 +72,7 @@ fn roll(rng: &mut Rng, percent: i32) -> bool {
 /// water mode or the land mode, with the draws and the counts of the tiles of its exhibit and its
 /// amphibious neighbours. It answers the mode asked for and, when the animal is to be sent to a
 /// tile of that kind (tank fauna 5), the draw that picks the tile (the caller [`switch`]es).
-pub fn water(
+pub(crate) fn water(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -111,7 +111,7 @@ pub fn water(
 
 /// The terrain mode a tile suits (tank fauna 5): 2 a tank tile, 1 a water tile that is not a
 /// tank's, else 0.
-pub fn kind(world: &World, t: usize) -> u8 {
+pub(crate) fn kind(world: &World, t: usize) -> u8 {
     match () {
         _ if world.tank_at(t).is_some() => 2,
         _ if world.is_water(t) => 1,
@@ -123,7 +123,7 @@ pub fn kind(world: &World, t: usize) -> u8 {
 /// grounds (the exterior included, animals 11.5 points 2 and 3) the fill of the grounds from the
 /// entrance tile (medium: the list of its last fill, exact while no exhibit was made), then any
 /// grounds tile that fill does not reach, in map order.
-pub fn tiles(world: &World, x: u32) -> Vec<usize> {
+pub(crate) fn tiles(world: &World, x: u32) -> Vec<usize> {
     if x != GROUNDS {
         return world.tiles_of(x);
     }
@@ -144,7 +144,7 @@ pub fn tiles(world: &World, x: u32) -> Vec<usize> {
 /// mode (a species that lives only under water, always the tank mode); when it changes, the animal
 /// walks to the tile `pick` of the tiles of its exhibit and its amphibious neighbours that have
 /// the new kind.
-pub fn switch(
+pub(crate) fn switch(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
@@ -165,7 +165,7 @@ pub fn switch(
 
 /// The animal walks to the tile `pick` of the tiles of its region and its amphibious neighbours
 /// that have the kind `mode` (tank fauna 5 point 3).
-pub fn send(
+pub(crate) fn send(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,

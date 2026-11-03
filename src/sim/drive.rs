@@ -185,7 +185,7 @@ pub fn parse(text: &str) -> Result<Vec<(u64, Command)>, String> {
 pub struct Run {
     /// The types of the game.
     pub cat: Catalogue,
-    pub sim: Sim,
+    pub(crate) sim: Sim,
     pub world: World,
     pub money: Money,
     timings: Timings,
@@ -195,7 +195,8 @@ impl Run {
     /// Starts the game as the window's does, from a generator seeded with `seed` (a test run),
     /// with the types `cat`, the keys `class` of the animals' class and the economy file. It is
     /// a new game: the set-up rating check runs, and the fence pieces stay as the file stores them.
-    pub fn new(
+    #[cfg(test)]
+    pub(crate) fn new(
         files: (&[u8], &[u8]),
         types: (Catalogue, Class),
         world: World,
@@ -466,7 +467,8 @@ impl Run {
 
     /// One step of `ms` milliseconds; the `sim`, `unit`, `animal` and `guest` log lines it made. The units
     /// run no behaviour set.
-    pub fn step(&mut self, ms: u32) -> Vec<String> {
+    #[cfg(test)]
+    pub(crate) fn step(&mut self, ms: u32) -> Vec<String> {
         self.step_with(ms, None)
     }
 

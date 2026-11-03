@@ -63,7 +63,7 @@ struct Node {
 }
 
 /// What a search found: the tiles from the start, and whether the last one is the goal.
-pub struct Found {
+pub(crate) struct Found {
     pub path: Vec<usize>,
     /// The level of each tile of the path in a depth search, else empty.
     pub levels: Vec<i32>,
@@ -86,14 +86,14 @@ struct Search<'a> {
 }
 
 /// Whether a unit moves on the diagonals (3.2).
-pub fn diagonal(m: &Mover, s: &Settings) -> bool {
+pub(crate) fn diagonal(m: &Mover, s: &Settings) -> bool {
     s.diagonal && m.kind != Kind::Guest && !(m.test && m.kind == Kind::Animal)
 }
 
 /// The step cost of going from `a` to its neighbour `b` in direction `d` when the step is allowed
 /// (4.2), else `None`. A unit at a building (`building`) is held to the edge cost alone and passes
 /// every quarter but those of another building (4.3 point 1).
-pub fn open(
+pub(crate) fn open(
     w: &World,
     m: &Mover,
     s: &Settings,
@@ -111,7 +111,7 @@ pub fn open(
 
 /// 4.2 in a depth search: the step cost from level `za` of `a` to level `zb` of `b` when the unit's
 /// elevation check (tank fauna 7.1) lets it, else `None`.
-pub fn open_deep(
+pub(crate) fn open_deep(
     w: &World,
     m: &Mover,
     s: &Settings,
@@ -147,7 +147,7 @@ fn elevated(w: &World, m: &Mover, (a, za): (usize, i32), (b, zb): (usize, i32)) 
 }
 
 /// The direction from tile `a` to its neighbour `b`.
-pub fn direction(w: &World, a: usize, b: usize) -> usize {
+pub(crate) fn direction(w: &World, a: usize, b: usize) -> usize {
     (0..8).find(|&d| w.neighbour(a, d) == Some(b)).unwrap_or(0)
 }
 
@@ -342,7 +342,7 @@ impl Search<'_> {
 
 /// Searches from tile `from` to tile `goal`. A partial path (to the node nearest the goal) is
 /// returned when `partial` is set; else the path is empty when the goal is not reached.
-pub fn search(
+pub(crate) fn search(
     w: &World,
     m: &Mover,
     s: &Settings,

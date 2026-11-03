@@ -12,7 +12,7 @@ use crate::world::World;
 
 /// Whether exhibit `x` holds a show that needs a keeper of type `t` (shows 22.1 point 1): `t` is
 /// its keeper type, its unit list of `t` is empty and the show is ready.
-pub fn needs_keeper(world: &World, x: u32, t: u32) -> bool {
+pub(crate) fn needs_keeper(world: &World, x: u32, t: u32) -> bool {
     info_of(world, x).is_some_and(|i| i.show.keeper == t && i.units(t).is_empty() && i.show.ready)
 }
 
@@ -48,7 +48,7 @@ fn cue_set(world: &World, show: u16, heard: &[Event]) -> Option<String> {
 
 /// The start of a keeper's update (shows 22.2 point 1): while his job is 19 he reads the cues of
 /// his show and starts the set of the last one, as a behaviour trick does.
-pub fn cue(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn cue(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     if unit.kind != Kind::Keeper || unit.goal.record.job != super::CONDUCT {
         return;
     }
@@ -67,7 +67,7 @@ pub fn cue(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &
 
 /// After a load (shows 22.1 point 7): a keeper whose job is 19 and who stands in an exhibit joins
 /// its show again, the unit lists not being saved. The goals are loaded by then.
-pub fn rejoin(world: &mut World, cat: &Catalogue) {
+pub(crate) fn rejoin(world: &mut World, cat: &Catalogue) {
     for at in 0..world.zoo.entities.len() {
         let id = world.zoo.entities[at].common.as_ref().map(|c| c.id);
         let conducting = id
@@ -82,7 +82,7 @@ pub fn rejoin(world: &mut World, cat: &Catalogue) {
 
 /// A keeper is removed from the map, not picked up (shows 22.1 point 8): when the show info of his
 /// show id exists he leaves its list and the show is aborted. The events go to the world's posts.
-pub fn removed(world: &mut World, cat: &Catalogue, id: u32) {
+pub(crate) fn removed(world: &mut World, cat: &Catalogue, id: u32) {
     let Some(show) = (world.units.get(id)).filter(|u| u.kind == Kind::Keeper && u.show != 0) else {
         return;
     };

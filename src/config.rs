@@ -35,7 +35,7 @@ use std::fmt;
 /// The largest input accepted: 1 MiB. The reader of the original has no limit; this one bounds
 /// the memory a hostile archive member can cost, at about 40 times its size. The largest file
 /// in the game has 72,908 bytes.
-pub const MAX_INPUT_LEN: usize = 1024 * 1024;
+pub(crate) const MAX_INPUT_LEN: usize = 1024 * 1024;
 
 /// The input is longer than [`MAX_INPUT_LEN`].
 #[derive(Debug, PartialEq, Eq)]
@@ -167,12 +167,12 @@ impl Config {
 
     /// Whether a line of the file began with `[` (or a key was set): the original counts a file
     /// with none as not loaded.
-    pub fn has_header(&self) -> bool {
+    pub(crate) fn has_header(&self) -> bool {
         self.header_seen
     }
 
     /// The section with exactly this name.
-    pub fn section(&self, name: impl AsRef<[u8]>) -> Option<&Section> {
+    pub(crate) fn section(&self, name: impl AsRef<[u8]>) -> Option<&Section> {
         self.sections.get(name.as_ref())
     }
 
@@ -187,7 +187,7 @@ impl Config {
     /// are found ignoring letter case (the way the ini file next to the executable is read) and
     /// created, with this spelling, if missing. The value must fit on one line; an empty value
     /// makes a key without value.
-    pub fn set(&mut self, section: &str, key: &str, value: &str) {
+    pub(crate) fn set(&mut self, section: &str, key: &str, value: &str) {
         self.set_values(
             section.as_bytes(),
             key.as_bytes(),
@@ -219,7 +219,7 @@ impl Config {
 
     /// Puts every key of `over` on top of this file: it replaces the values of the same key of
     /// the same section, names compared ignoring letter case, and the rest stays.
-    pub fn overlay(&mut self, over: &Config) {
+    pub(crate) fn overlay(&mut self, over: &Config) {
         for (section, keys) in over.sections() {
             for (key, values) in &keys.keys {
                 self.set_values(section, key, values.clone());
@@ -229,7 +229,7 @@ impl Config {
 
     /// The file written out, to be read back as the same sections, keys and values (comments
     /// and the order of the items are lost, as in the listings).
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         for (name, section) in &self.sections {
             out.extend([b"[", name.as_slice(), b"]\n"].concat());
@@ -250,12 +250,12 @@ impl Config {
 impl Section {
     /// The first value of the key; `None` if the key is missing or has no value (`key` and
     /// `key =` are the same).
-    pub fn get(&self, key: impl AsRef<[u8]>) -> Option<&[u8]> {
+    pub(crate) fn get(&self, key: impl AsRef<[u8]>) -> Option<&[u8]> {
         self.get_all(key).first().map(Vec::as_slice)
     }
 
     /// Whether the key exists, with or without values.
-    pub fn has(&self, key: impl AsRef<[u8]>) -> bool {
+    pub(crate) fn has(&self, key: impl AsRef<[u8]>) -> bool {
         self.keys.contains_key(key.as_ref())
     }
 
@@ -289,7 +289,7 @@ fn trim(text: &[u8]) -> &[u8] {
 /// C `atol`: optional white space, one optional sign, decimal digits, the rest ignored, 0 if
 /// there is no digit. Too many digits wrap around. `None` for `0x` without a hexadecimal digit:
 /// the caller then leaves its variable as it was.
-pub fn to_int(value: &[u8]) -> Option<i32> {
+pub(crate) fn to_int(value: &[u8]) -> Option<i32> {
     if let Some(digits) = value.strip_prefix(b"0x") {
         let digits = digits.iter().map_while(|&b| char::from(b).to_digit(16));
         let mut number: Option<u32> = None;
@@ -321,12 +321,12 @@ pub fn to_int(value: &[u8]) -> Option<i32> {
 /// digits with an optional `.` and more digits, optional exponent, the rest ignored, 0 if no
 /// number can be read. The decimal mark is always `.`.
 /// ponytail: the original's use of a locale with another decimal mark is not ruled out.
-pub fn to_float(value: &[u8]) -> f32 {
+pub(crate) fn to_float(value: &[u8]) -> f32 {
     to_double(value) as f32
 }
 
 /// [`to_float`] as the double the original reads.
-pub fn to_double(value: &[u8]) -> f64 {
+pub(crate) fn to_double(value: &[u8]) -> f64 {
     let value = value.trim_ascii_start();
     let digits_from = |at: usize| {
         value[at..]
@@ -359,7 +359,7 @@ pub fn to_double(value: &[u8]) -> f64 {
 
 /// A flag is an integer tested against 0: `1`, `2` and `-1` are on; `0`, `yes` and `true` are
 /// off, the last two because they convert to 0. `None` as for [`to_int`].
-pub fn to_flag(value: &[u8]) -> Option<bool> {
+pub(crate) fn to_flag(value: &[u8]) -> Option<bool> {
     to_int(value).map(|n| n != 0)
 }
 

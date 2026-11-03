@@ -14,7 +14,7 @@ use crate::zoo::{Item, Script, TypeRecord};
 
 /// What happened to the show lists, as the world tells it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Move {
+pub(crate) enum Move {
     /// The animal came onto the map.
     On(u32),
     /// The animal left the map: its type and the exhibit it stood in.
@@ -36,7 +36,7 @@ fn performer<'a>(cat: &'a Catalogue, type_name: &str, subtype: &str) -> Option<&
 }
 
 /// Applies the moves the world noted.
-pub fn settle(world: &mut World, cat: &Catalogue) {
+pub(crate) fn settle(world: &mut World, cat: &Catalogue) {
     for m in world.take_moves() {
         match m {
             Move::On(id) => {
@@ -74,7 +74,7 @@ pub fn settle(world: &mut World, cat: &Catalogue) {
 }
 
 /// The first rating of exhibit `x` counted these animals: each performing one joins (shows 20.1).
-pub fn counted(world: &mut World, cat: &Catalogue, x: u32, animals: &[u32]) {
+pub(crate) fn counted(world: &mut World, cat: &Catalogue, x: u32, animals: &[u32]) {
     for &id in animals {
         let Some(e) = world.find(id).map(|at| &world.zoo.entities[at]) else {
             continue;
@@ -86,13 +86,13 @@ pub fn counted(world: &mut World, cat: &Catalogue, x: u32, animals: &[u32]) {
 }
 
 /// The specialist `id` joins the show of exhibit `x` for the length of his job (shows 20 caller 4).
-pub fn join(world: &mut World, cat: &Catalogue, x: u32, id: u32, ty: &EntityType) {
+pub(crate) fn join(world: &mut World, cat: &Catalogue, x: u32, id: u32, ty: &EntityType) {
     walk(world, cat, x, id, ty, true, &mut Vec::new());
 }
 
 /// He leaves the list of his type in the show info of `show`, when there is one (shows 22.1 point
 /// 6); a missing record is made empty.
-pub fn leave(world: &mut World, show: u16, id: u32, key: u32) {
+pub(crate) fn leave(world: &mut World, show: u16, id: u32, key: u32) {
     if let Some(n) = super::habitat_of(world, show) {
         record(world, n, key).units.retain(|&u| u != id);
     }

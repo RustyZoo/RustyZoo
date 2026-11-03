@@ -7,7 +7,7 @@ use crate::world::World;
 /// The numbers a tank's prices are made of, recomputed from the world whenever they are shown or
 /// used.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Prices {
+pub(crate) struct Prices {
     /// The price of one wall step: the purchase costs of the wall pieces over the divisor.
     pub wall: f32,
     /// The price of one cubic unit of water of the tank's salinity, times its tiles.
@@ -20,7 +20,7 @@ pub struct Prices {
 
 impl Prices {
     /// The prices of tank `id`, or none when it is not a tank.
-    pub fn of(world: &World, cat: &Catalogue, id: u32) -> Option<Prices> {
+    pub(crate) fn of(world: &World, cat: &Catalogue, id: u32) -> Option<Prices> {
         let tank = world.tank(id)?;
         let config = world.tank_config();
         let tiles = world.tiles_of(id).len() as f32;
@@ -45,7 +45,7 @@ impl Prices {
     /// The price of the next wall step of a tank at `height`, up or down: the steps above the
     /// floor (the initial height) cost, the steps at or below it are free; a filled tank adds the
     /// water. A lowering gives the same back (negative).
-    pub fn step(&self, height: u32, floor: u32, up: bool, filled: bool) -> f32 {
+    pub(crate) fn step(&self, height: u32, floor: u32, up: bool, filled: bool) -> f32 {
         let next = if up {
             height.saturating_add(1)
         } else {

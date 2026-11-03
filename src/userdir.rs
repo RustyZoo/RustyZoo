@@ -27,7 +27,7 @@ fn dir_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
 
 /// The folder where the saved games go, `Saved Games` in the user folder, or `None` if the system
 /// does not say where.
-pub fn saved_games() -> Option<PathBuf> {
+pub(crate) fn saved_games() -> Option<PathBuf> {
     saved_of(std::env::consts::OS, |name| std::env::var_os(name))
 }
 

@@ -5,7 +5,7 @@
 
 /// How the map is drawn: zoomed out (value -2), normal (0) or zoomed in (2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Zoom {
+pub(crate) enum Zoom {
     Out,
     Normal,
     In,
@@ -14,7 +14,7 @@ pub enum Zoom {
 impl Zoom {
     /// The level of a stored zoom value. Only "less than -1" and "greater than 1" are tested, so
     /// -1, 0 and 1 are all normal.
-    pub fn from_value(value: i32) -> Zoom {
+    pub(crate) fn from_value(value: i32) -> Zoom {
         match value {
             ..-1 => Zoom::Out,
             2.. => Zoom::In,
@@ -26,7 +26,7 @@ impl Zoom {
 /// What is added to the view position of the tile's corner point to get its image origin
 /// (map drawing 4.4), for a rotation and a zoom. The zoomed-out values hold an extra 16 that
 /// [`piece_anchor`] takes off.
-pub fn origin_offset(rotation: u8, zoom: Zoom) -> (i32, i32) {
+pub(crate) fn origin_offset(rotation: u8, zoom: Zoom) -> (i32, i32) {
     const TABLE: [[(i32, i32); 4]; 3] = [
         [(16, 0), (0, 8), (-16, 0), (0, -8)],
         [(0, -32), (-32, -16), (-64, -32), (-32, -48)],
@@ -38,7 +38,7 @@ pub fn origin_offset(rotation: u8, zoom: Zoom) -> (i32, i32) {
 /// The anchor of a tile piece (map drawing 8) whose normal-zoom offset from the image origin
 /// `(ox, oy)` is `(x0, y0)` (32, 32 for the ground). The origin is the one of [`origin_offset`]
 /// at the same zoom.
-pub fn piece_anchor((ox, oy): (i32, i32), (x0, y0): (i32, i32), zoom: Zoom) -> (i32, i32) {
+pub(crate) fn piece_anchor((ox, oy): (i32, i32), (x0, y0): (i32, i32), zoom: Zoom) -> (i32, i32) {
     match zoom {
         Zoom::Out => (ox - 16 + x0 / 2, oy - 16 + y0 / 2),
         Zoom::Normal => (ox + x0, oy + y0),
