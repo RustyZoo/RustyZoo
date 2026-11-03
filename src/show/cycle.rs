@@ -402,15 +402,16 @@ impl Cycle<'_> {
             return 4;
         }
         let script = self.info.show.script;
-        let keep: Vec<bool> = (0..self.items(script))
-            .map(|i| self.validate_item(i as i16) == 0)
-            .collect();
-        if let Some(x) = (self.world.zoo.shows.scripts.iter_mut()).find(|x| x.id == script) {
-            let mut at = 0;
-            x.items.retain(|_| {
-                at += 1;
-                keep[at - 1]
-            });
+        // An item that fails goes at once and the next one is tested at the same index.
+        let mut i = 0;
+        while i < self.items(script) {
+            if self.validate_item(i as i16) == 0 {
+                i += 1;
+            } else if let Some(x) =
+                (self.world.zoo.shows.scripts.iter_mut()).find(|x| x.id == script)
+            {
+                x.items.remove(i);
+            }
         }
         if self.items(script) == 0 { 6 } else { 0 }
     }

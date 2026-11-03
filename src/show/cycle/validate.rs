@@ -3,7 +3,7 @@
 use super::Cycle;
 use crate::building::Species;
 use crate::exhibit::GROUNDS;
-use crate::show::{KEEPER, info_of, toy::find_toy};
+use crate::show::{info_of, toy::find_toy};
 use crate::unit::Part;
 
 impl Cycle<'_> {
@@ -37,7 +37,11 @@ impl Cycle<'_> {
         let own = self.world.exhibit_of(at);
         let keeper = match own {
             Some(x) if Some(x) == self.exhibit => self.has_keeper(),
-            Some(x) => info_of(self.world, x).is_none_or(|i| !i.units(KEEPER).is_empty()),
+            // Another tank's show reads the keeper type of its scheduled species (shows 3.2).
+            Some(x) => info_of(self.world, x).is_none_or(|i| {
+                !i.units(self.keeper_type(i.scheduled().unwrap_or(0)))
+                    .is_empty()
+            }),
             None => true,
         };
         if !keeper {

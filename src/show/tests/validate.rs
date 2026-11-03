@@ -1,7 +1,7 @@
 //! Whether the first animal can do an item of the script: the start removes the ones it cannot,
 //! the cue aborts them, and a toy item draws once each time (shows 23.6, 27 points 1 and 2).
 
-use super::cycle::{info_mut, info_of_show, item, record, show_tank, staged, tank_mut, tick};
+use super::cycle::{SEAL, info_mut, info_of_show, item, record, show_tank, staged, tank_mut, tick};
 use super::*;
 use crate::behaviour::NoData;
 use crate::sim::Rng;
@@ -71,6 +71,26 @@ fn the_start_asks_the_first_animal_of_the_list_and_keeps_the_items_it_can_do() {
         assert_eq!(start(&mut w, &cat, &mut seeded()), runs, "first {first}");
         assert_eq!(w.zoo.shows.scripts[0].items.len(), usize::from(runs));
     }
+}
+
+#[test]
+fn a_toy_item_is_searched_from_the_gate_of_the_show_tank() {
+    let (mut w, mut cat) = toy_world(vec![item(1, 3, 5)]);
+    // The first animal stands on the grounds and the toy lies in the tank: the toy is of the type
+    // whose users keep to no exhibit, so only the exhibit of the search start matters. The tank
+    // has a gate (the fence piece of its first tile).
+    cat.types.iter_mut().for_each(|t| {
+        if t.type_name == b"toy" {
+            t.name_id = 7059;
+        }
+    });
+    w.zoo.shows.scripts[0].items[0].building = 7059;
+    place(&mut w, 21, (1, 3));
+    tank_mut(&mut w).gate = Some(500);
+    let mut rng = seeded();
+    assert!(start(&mut w, &cat, &mut rng));
+    assert_eq!(w.zoo.shows.scripts[0].items.len(), 1);
+    assert_eq!(rng.rand(), drawn(1).rand());
 }
 
 #[test]
@@ -160,4 +180,42 @@ fn a_cue_aborts_an_item_the_animal_can_no_longer_do_and_the_pass_aborts_it_again
     // The cue aborts it, then the pass: two pairs for each animal.
     assert_eq!(aborted, 2);
     assert!(info_mut(&mut w).show.items.iter().all(|s| s.aborted));
+}
+
+#[test]
+fn validation_removes_a_failing_item_in_place_and_tests_the_next_at_the_same_index() {
+    // Two items of one trick id: the first is too deep for the tank and goes at once, so the
+    // second is the first one of that id left and is tested against the toy in the tank.
+    let deep = Item {
+        depth: 9,
+        ..item(0, 3, 5)
+    };
+    let (mut w, cat) = toy_world(vec![deep, item(1, 3, 5)]);
+    place(&mut w, 21, (6, 1));
+    // The toy item draws once, and only for the first item of its id left.
+    let mut rng = seeded();
+    assert!(start(&mut w, &cat, &mut rng));
+    let depths: Vec<i32> = w.zoo.shows.scripts[0]
+        .items
+        .iter()
+        .map(|i| i.depth)
+        .collect();
+    assert_eq!(depths, [1]);
+    assert_eq!(rng.rand(), drawn(1).rand());
+}
+
+#[test]
+fn another_tanks_keeper_test_reads_the_type_of_its_scheduled_species() {
+    // Seal 21 stands in the second tank, whose show has a specialist; the keeper type is that of
+    // the scheduled species: a seal gives it, an empty or non-animal schedule gives 0 (code 9).
+    for (schedule, runs) in [(vec![SEAL], true), (vec![], false), (vec![KEEPER], false)] {
+        let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+        place(&mut w, 21, (7, 1));
+        let mut other = info_of_show(&w).clone();
+        other.id = 1002;
+        other.schedule = schedule.clone();
+        other.records = vec![record(KEEPER, 0, &[30])];
+        w.zoo.shows.infos.push(Some(other));
+        assert_eq!(start(&mut w, &cat, &mut seeded()), runs, "{schedule:?}");
+    }
 }
