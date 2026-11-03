@@ -111,9 +111,27 @@ impl World {
             next
         };
         for (&x, (mine, shows)) in ids.iter().zip(&found) {
-            if let Some(e) = self.exhibits.get_mut(x) {
-                e.amphibious = keep(&e.amphibious, mine);
-                e.show_near = keep(&e.show_near, shows);
+            let Some(e) = self.exhibits.get_mut(x) else {
+                continue;
+            };
+            e.amphibious = keep(&e.amphibious, mine);
+            let now = keep(&e.show_near, shows);
+            let before = std::mem::replace(&mut e.show_near, now.clone());
+            // The show lists hear of each link of a plain tank made or dropped (shows 20.1).
+            if e.tank.is_some_and(|t| t.show) {
+                continue;
+            }
+            let made = now
+                .iter()
+                .filter(|y| !before.contains(y))
+                .map(|&y| (y, true));
+            let dropped = before
+                .iter()
+                .filter(|y| !now.contains(y))
+                .map(|&y| (y, false));
+            for (show, on) in made.chain(dropped) {
+                self.show_moves
+                    .push(crate::show::Move::Link { plain: x, show, on });
             }
         }
     }
