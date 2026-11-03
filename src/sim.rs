@@ -639,31 +639,12 @@ impl Sim {
         self.step_game(data, cat, world, &mut Money::default(), step, update)
     }
 
-    /// What the units asked of the status and the books during the step: the date of an escape
-    /// (animals 11.1), their spending, donations, concessions, recycling and the guest counts.
+    /// The date of an escape (animals 11.1), then the money the units collected.
     fn book_units(&mut self, world: &mut World, money: &mut Money) {
         if std::mem::take(&mut world.units.loose) {
             self.status.escape = crate::timing::file_time(world.units.now);
         }
-        for (category, cost) in std::mem::take(&mut world.units.spent) {
-            money.spend(category, cost);
-        }
-        for d in std::mem::take(&mut world.units.donated) {
-            money.refund(money::DONATIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.concessions) {
-            money.refund(money::CONCESSIONS, d);
-        }
-        for d in std::mem::take(&mut world.units.recycled) {
-            money.refund(money::CONSTRUCTION_REFUND, d);
-        }
-        for _ in 0..std::mem::take(&mut world.units.guests_gone) {
-            money.count(money::GUESTS_GONE);
-        }
-        for _ in 0..std::mem::take(&mut world.units.members_joined) {
-            money.count(money::MEMBERS);
-            money.count(money::MEMBERS_JOINED);
-        }
+        settle_money(world, money);
     }
 
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
@@ -889,5 +870,28 @@ impl Sim {
         let (say, log) = (&mut self.messages, &mut self.lines);
         self.status.donation(&mut self.rng, money, say, log);
         self.status.bars(step)
+    }
+}
+
+/// Moves the money the units collected in this step into the books.
+fn settle_money(world: &mut World, money: &mut Money) {
+    for (category, cost) in std::mem::take(&mut world.units.spent) {
+        money.spend(category, cost);
+    }
+    for d in std::mem::take(&mut world.units.donated) {
+        money.refund(money::DONATIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.concessions) {
+        money.refund(money::CONCESSIONS, d);
+    }
+    for d in std::mem::take(&mut world.units.recycled) {
+        money.refund(money::CONSTRUCTION_REFUND, d);
+    }
+    for _ in 0..std::mem::take(&mut world.units.guests_gone) {
+        money.count(money::GUESTS_GONE);
+    }
+    for _ in 0..std::mem::take(&mut world.units.members_joined) {
+        money.count(money::MEMBERS);
+        money.count(money::MEMBERS_JOINED);
     }
 }
