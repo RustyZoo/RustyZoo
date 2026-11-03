@@ -61,6 +61,9 @@ pub struct Flags {
     pub marketing_double: bool,
     /// `heal_changes_species`: a healed animal sometimes turns into another species.
     pub heal_changes_species: bool,
+    /// A species walk saw a lion, a tiger and a grizzly bear in one exhibit (habitat rating 9.1
+    /// point 4); the guest creation hook reads it ([`Season`]).
+    pub lions_tigers_bears: bool,
 }
 
 /// The name id of the grizzly bear (cheats 4.1), the species the bears' cheats act on.
@@ -69,6 +72,11 @@ pub const GRIZZLY: i32 = 5016;
 pub const BREEDERS: [i32; 2] = [5016, 5017];
 /// The name id of the scientist, the keeper type of Dinosaur Digs (cheats 4.5).
 pub const SCIENTIST: i32 = 9551;
+
+/// The name ids of the lion and the tiger; with the grizzly they make the exhibit that holds all
+/// three unlock the yellow brick path.
+pub const LION: i32 = 5006;
+pub const TIGER: i32 = 5007;
 
 impl Flags {
     /// What the effective rating of the guest arrival check gains from the flags (zoo status 8).
@@ -226,6 +234,65 @@ fn exhibit_and_staff_rows() -> Vec<Entry> {
     rows
 }
 
+/// The name ids of the seasonal items the date hooks make available (cheats 6): the holiday
+/// tree, the jack-o'-lantern, the snowman and the yellow brick path.
+pub const HOLIDAY_TREE: i32 = 7077;
+pub const JACK_O_LANTERN: i32 = 7078;
+pub const SNOWMAN: i32 = 7079;
+pub const YELLOW_BRICK: i32 = 9111;
+
+/// The date hooks' flags of the program run (cheats 6): not saved, not cleared by a load or a new
+/// game. The flying objects of the hooks (the sleigh, the witch, the biplane) are not made yet.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Season {
+    /// The snowman and the holiday tree are available for 25 December.
+    snow: bool,
+    /// The jack-o'-lantern is available for 31 October.
+    pumpkin: bool,
+    /// The yellow brick path was made available; never lowered.
+    brick: bool,
+}
+
+impl Season {
+    /// The hook of a guest created on the game date `month`/`day` (cheats 6); `trio` is
+    /// [`Flags::lions_tigers_bears`]. The availability it sets, in order: the items of the day
+    /// on the first creation of that day and not again after, the same items unavailable again on
+    /// the first creation of another day, and the yellow brick path once ever.
+    pub fn guest_created(&mut self, month: u32, day: u32, trio: bool) -> Vec<(i32, bool)> {
+        let mut set = Vec::new();
+        if (month, day) == (12, 25) {
+            if !self.snow {
+                self.snow = true;
+                set.extend([(SNOWMAN, true), (HOLIDAY_TREE, true)]);
+            }
+        } else if self.snow {
+            self.snow = false;
+            set.extend([(SNOWMAN, false), (HOLIDAY_TREE, false)]);
+        }
+        if (month, day) == (10, 31) {
+            if !self.pumpkin {
+                self.pumpkin = true;
+                set.push((JACK_O_LANTERN, true));
+            }
+        } else if self.pumpkin {
+            self.pumpkin = false;
+            set.push((JACK_O_LANTERN, false));
+        }
+        if trio && !self.brick {
+            self.brick = true;
+            set.push((YELLOW_BRICK, true));
+        }
+        set
+    }
+
+    /// The start of a game (cheats 6): the four items become unavailable. The day flags stay as
+    /// they are, as in the original: a game started on the day of the previous one keeps the
+    /// items unavailable until the date leaves and comes back.
+    pub fn game_started() -> [(i32, bool); 4] {
+        [HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK].map(|id| (id, false))
+    }
+}
+
 /// The bits of a guest's contagion byte (cheats 4.2 E), not saved.
 pub mod spread {
     pub const SICKNESS: u8 = 2;
@@ -278,6 +345,8 @@ pub struct Cheats {
     // The session flags of the guest-name cheats.
     /// `eggs_hatch_fast`.
     pub eggs_hatch_fast: bool,
+    /// The date hooks' flags.
+    pub season: Season,
 }
 
 impl Default for Cheats {
@@ -300,6 +369,7 @@ impl Default for Cheats {
             table,
             flags: Flags::default(),
             eggs_hatch_fast: false,
+            season: Season::default(),
         }
     }
 }
@@ -489,5 +559,66 @@ mod tests {
             assert_eq!(find(no), None, "{no:?}");
         }
         assert_eq!(c.find(Subject::Keeper, "Zed"), None);
+    }
+
+    const SNOW: [(i32, bool); 2] = [(SNOWMAN, true), (HOLIDAY_TREE, true)];
+
+    #[test]
+    fn christmas_day_makes_the_snow_items_available_once_and_the_next_day_takes_them_back() {
+        let mut s = Season::default();
+        assert_eq!(s.guest_created(12, 25, false), SNOW);
+        // Every other creation of the day does nothing.
+        assert_eq!(s.guest_created(12, 25, false), []);
+        assert_eq!(s.guest_created(12, 25, false), []);
+        // The first creation of another day takes them back, once.
+        let back = [(SNOWMAN, false), (HOLIDAY_TREE, false)];
+        assert_eq!(s.guest_created(12, 26, false), back);
+        assert_eq!(s.guest_created(12, 27, false), []);
+        // The same day of another month is no Christmas.
+        assert_eq!(s.guest_created(11, 25, false), []);
+        assert_eq!(s.guest_created(1, 25, false), []);
+    }
+
+    #[test]
+    fn the_last_day_of_october_makes_the_jack_o_lantern_available_for_the_day() {
+        let mut s = Season::default();
+        assert_eq!(s.guest_created(10, 30, false), []);
+        assert_eq!(s.guest_created(10, 31, false), [(JACK_O_LANTERN, true)]);
+        assert_eq!(s.guest_created(10, 31, false), []);
+        assert_eq!(s.guest_created(11, 1, false), [(JACK_O_LANTERN, false)]);
+        assert_eq!(s.guest_created(11, 1, false), []);
+        // Both days are independent: Christmas does not lower the pumpkin.
+        assert_eq!(s.guest_created(10, 31, false), [(JACK_O_LANTERN, true)]);
+        assert_eq!(
+            s.guest_created(12, 25, false),
+            [SNOW[0], SNOW[1], (JACK_O_LANTERN, false)]
+        );
+    }
+
+    #[test]
+    fn the_yellow_brick_path_comes_once_per_program_run_and_after_the_trio_only() {
+        let mut s = Season::default();
+        assert_eq!(s.guest_created(3, 3, false), []);
+        assert_eq!(s.guest_created(3, 3, true), [(YELLOW_BRICK, true)]);
+        assert_eq!(s.guest_created(3, 3, true), []);
+        // A start takes it away and nothing gives it back.
+        assert_eq!(Season::game_started()[3], (YELLOW_BRICK, false));
+        assert_eq!(s.guest_created(3, 4, true), []);
+    }
+
+    #[test]
+    fn a_start_makes_the_four_items_unavailable_and_keeps_the_day_flags() {
+        let ids: Vec<i32> = Season::game_started().iter().map(|a| a.0).collect();
+        assert_eq!(ids, [7077, 7078, 7079, 9111]);
+        assert!(Season::game_started().iter().all(|a| !a.1));
+        // A game restarted on the same day: the items stay unavailable until the date moves.
+        let mut s = Season::default();
+        s.guest_created(12, 25, false);
+        assert_eq!(s.guest_created(12, 25, false), []);
+        assert_eq!(
+            s.guest_created(12, 24, false),
+            [(SNOWMAN, false), (HOLIDAY_TREE, false)]
+        );
+        assert_eq!(s.guest_created(12, 25, false), SNOW);
     }
 }

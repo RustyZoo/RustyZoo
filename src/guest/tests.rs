@@ -683,6 +683,84 @@ fn ten_minutes_at_the_entrance_create_guests_at_the_rate_of_the_rating_and_the_p
 }
 
 #[test]
+fn the_step_reports_a_guest_created_for_the_date_hooks() {
+    let mut run = game("", true);
+    (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
+    run.sim.status.settings.create_chance = [100; 5];
+    let mut seen = (0, 0);
+    for _ in 0..120 {
+        let before = run.world.zoo.entities.len();
+        let report = run.sim.step_game(
+            &crate::behaviour::NoData,
+            &run.cat,
+            &mut run.world,
+            &mut run.money,
+            67,
+            |_, _, _| {},
+        );
+        let made = run.world.zoo.entities.len() > before;
+        assert_eq!(report.arrived, made);
+        seen.0 += usize::from(made);
+        seen.1 += usize::from(!made);
+        run.sim.status.rating = 85;
+    }
+    assert!(seen.0 > 0 && seen.1 > 0, "{seen:?}");
+}
+
+#[test]
+fn the_step_raises_the_trio_flag_when_an_exhibit_holds_a_lion_a_tiger_and_a_grizzly_bear() {
+    let run_with = |names: &[(&'static str, i32)], by_step: bool| {
+        let mut cat = types();
+        let calm = "[Characteristics/Integers]\ncInitialHappiness=0\ncHungryHealthChange=0\n\
+            cSickRandomChance=0\n";
+        for &(name, id) in names {
+            cat.push(kind("animals", name, calm, id));
+        }
+        let pen = world_with((8, 8), |zoo| {
+            zoo.entrance = (7, 7);
+            for i in 1..=3 {
+                for (at, d) in [((i, 1), 0), ((i, 3), 4), ((1, i), 6), ((3, i), 2)] {
+                    let id = 100 + zoo.entities.len() as u32;
+                    zoo.entities.push(entity("fences", "", id, centre(at), d));
+                }
+            }
+            for (i, &(name, _)) in names.iter().enumerate() {
+                let id = 500 + i as u32;
+                zoo.entities
+                    .push(entity("animals", name, id, centre((2, 2)), 0));
+            }
+        });
+        let mut run = Run::new(
+            (b"", ECONOMY),
+            (cat, Default::default()),
+            pen,
+            Money::default(),
+            1,
+        );
+        if by_step {
+            for _ in 0..150 {
+                run.step(67);
+            }
+        } else {
+            // A read of the exhibit's panel revises its list first.
+            let id = run.world.exhibits().list()[0].id;
+            let state = &mut run.world.exhibits_mut().list_mut()[0].rating;
+            (state.dirty, state.revise) = (true, true);
+            let rng = &mut run.sim.rng;
+            crate::exhibit::rating::refresh(&mut run.world, &run.cat, id, &mut || rng.rand());
+        }
+        run.world.units.cheat.lions_tigers_bears
+    };
+    let (lion, tiger, bear) = (("lion", 5006), ("tiger", 5007), ("grizzly", 5016));
+    for by_step in [true, false] {
+        assert!(run_with(&[lion, tiger, bear], by_step));
+        assert!(!run_with(&[lion, tiger], by_step));
+        assert!(!run_with(&[lion, lion, bear], by_step));
+        assert!(!run_with(&[], by_step));
+    }
+}
+
+#[test]
 fn no_guest_comes_while_no_exhibit_holds_an_animal() {
     let (run, log) = run_for(60_000, false, (85, 9.0));
     assert!(added(&log).is_empty());

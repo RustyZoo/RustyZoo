@@ -56,4 +56,36 @@ impl App<'_> {
         let (class, named) = found.unwrap_or((fallback, Named::default()));
         self.hook(class, &named, selected, &text);
     }
+
+    /// The hook of a guest created this step (cheats 6): the seasonal items of the game date and
+    /// the yellow brick path.
+    pub(super) fn guest_created(&mut self) {
+        let date = self.sim.calendar().date();
+        let Some(game) = &self.game else { return };
+        let trio = game.world.units.cheat.lions_tigers_bears;
+        let set = self.cheats.season.guest_created(date.month, date.day, trio);
+        self.make_available(&set);
+    }
+
+    /// The start of a game (cheats 6): the seasonal items and the yellow brick path are
+    /// unavailable until a hook makes them available.
+    pub(super) fn game_started(&mut self) {
+        self.make_available(&crate::cheat::Season::game_started());
+    }
+
+    /// Sets the availability of the types of each name id, and makes the open list again.
+    fn make_available(&mut self, set: &[(i32, bool)]) {
+        let Some(game) = &mut self.game else { return };
+        let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
+        match &mut self.ui {
+            Some(ui) => {
+                let mut log = Vec::new();
+                for &(id, on) in set {
+                    game.build.set_available(ui, vfs, cat, id, on, &mut log);
+                }
+                log.into_iter().for_each(|line| self.sim.note(line));
+            }
+            None => game.build.start_research(cat, set),
+        }
+    }
 }
