@@ -16,4 +16,4 @@ src/unit.rs 1206
 src/vfs.rs 1962
 src/world/exhibit.rs 1122
 src/world.rs 1528
-src/zoo.rs 1245
+src/zoo.rs 1295
