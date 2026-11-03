@@ -757,6 +757,8 @@ pub(crate) trait Hooks {
     fn typed(&mut self, _: &mut Unit, _: &mut World, _at: usize) {}
     /// The unit's first turn, before anything else (simulation 8.2: the creation of its state).
     fn start(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
+    /// The events read at the start of the turn (`Unit::events`), before the move.
+    fn events(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The move by the step (movement 3); not run while suspended.
     fn movement(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The status variables (the needs); at a status tick, not run while suspended.
@@ -915,6 +917,9 @@ impl Hooks for Standard<'_> {
     fn typed(&mut self, unit: &mut Unit, world: &mut World, at: usize) {
         movement::read_type(unit, self.data, &world.zoo.entities[at]);
     }
+    fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::guest::reaction::react(unit, world, ctx, at, self.data);
+    }
     fn start(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::animal::start(unit, world, ctx, at);
         swim::add_to_map(unit, world, at);
@@ -1035,6 +1040,7 @@ fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ct
         .listen(unit.id, unit.kind.channel())
         .cloned()
         .collect();
+    hooks.events(unit, world, ctx, at);
     if !unit.suspended() {
         hooks.movement(unit, world, ctx, at);
     }
