@@ -244,6 +244,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate,
         gated: fence,
         walkable: (false, false),
+        rubbleable: false,
         // The egg and crate footprints of the animals `an_animal_in_a_crate_or_an_egg_blocks...`
         // names (the render's shape reads them from the type).
         forms: match e.type_name.as_str() {
@@ -1730,6 +1731,77 @@ fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refuse
     let p = kiosk(&world((0, 0), heli(), |t| t[2 * 8 + 3].shape = 0x50));
     assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
     assert_eq!(p.blocking, [0]);
+}
+
+#[test]
+fn a_rampaging_animal_lets_a_rubbleable_object_through_and_a_rampaging_species_lets_rubble_through()
+{
+    use crate::unit::Part;
+    let cat = catalogue();
+    let kiosk = |w: &World| {
+        at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let mut elephant = entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    elephant.common.as_mut().unwrap().id = 77;
+    let mut w = world((0, 0), vec![elephant], |_| {});
+    // At rest it is in the way; rampaging, the kiosk (cRubbleable absent, so 1) is placed over it.
+    assert_eq!(kiosk(&w), Verdict::Invalid);
+    let rampage = |w: &mut World, on: bool, rampager: bool| {
+        let unit = w.units.get_mut(77).unwrap();
+        unit.mover.rampager = rampager;
+        if let Part::Animal(a) = &mut unit.part {
+            a.rampaging = on;
+        }
+    };
+    rampage(&mut w, true, false);
+    assert_eq!(kiosk(&w), Verdict::Valid);
+    // A species that rampages does not let a kiosk through while it is calm; it does let rubble.
+    rampage(&mut w, false, true);
+    assert_eq!(kiosk(&w), Verdict::Invalid);
+    let rubble = ty("rubble", "brubls1", "", [1, 1, 1]);
+    let through = |w: &World, ty: &EntityType| super::unit::lets_through_object(w, 0, ty);
+    assert!(through(&w, &rubble) && !through(&w, &cat.types[15]));
+    rampage(&mut w, false, false);
+    assert!(!through(&w, &rubble));
+    // A type with cRubbleable other than 1 is not let through even by a rampaging animal.
+    rampage(&mut w, true, true);
+    let stone = ty(
+        "building",
+        "stone",
+        "[Characteristics/Integers]\ncRubbleable=0\n",
+        [2, 2, 1],
+    );
+    assert!(!through(&w, &stone) && through(&w, &cat.types[15]));
+}
+
+#[test]
+fn a_tall_animal_lets_a_walkable_by_tall_object_through_the_placing_check() {
+    let mut cat = catalogue();
+    let rock = |name: &str, by_tall: u8| {
+        let ini = format!("[Characteristics/Integers]\ncRubbleable=0\nwalkableByTall={by_tall}\n");
+        ty("building", name, &ini, [2, 2, 1])
+    };
+    cat.push(rock("low", 0));
+    cat.push(rock("high", 1));
+    let (low, high) = (cat.types.len() - 2, cat.types.len() - 1);
+    let mut elephant = entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    elephant.common.as_mut().unwrap().id = 77;
+    let mut w = world((0, 0), vec![elephant], |_| {});
+    let verdict =
+        |w: &World, t: usize| at(w, &cat, t, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap().verdict;
+    for tall in [false, true] {
+        w.units.get_mut(77).unwrap().mover.tall = tall;
+        let (a, b) = (verdict(&w, low), verdict(&w, high));
+        assert_eq!(
+            (a, b),
+            (
+                Verdict::Invalid,
+                [Verdict::Invalid, Verdict::Valid][tall as usize]
+            )
+        );
+    }
 }
 
 #[test]

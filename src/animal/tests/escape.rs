@@ -81,7 +81,7 @@ fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
         }
         prepare(&mut unit);
         let mut rng = Rng::default();
-        crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+        crate::animal::escape::ambient_sets(&mut unit, &world, &data, &mut rng, at);
         let r = &unit.runner;
         (
             r.running().then(|| r.top()).flatten().map(str::to_string),
@@ -95,14 +95,17 @@ fn an_escaped_animal_on_dry_land_that_stands_starts_its_escaped_set() {
         set(|u| _ = u.runner.queue("bEscaped", true, true)),
         (escaped, None)
     );
-    // Moving, rampaging or not escaped, it starts nothing.
+    // Moving or not escaped, it starts nothing; rampaging, it starts the rampage set instead.
     assert_eq!(set(|u| u.moving = true), (None, None));
     fn change(u: &mut Unit, f: fn(&mut Animal)) {
         if let Part::Animal(a) = &mut u.part {
             f(a);
         }
     }
-    assert_eq!(set(|u| change(u, |a| a.rampaging = true)), (None, None));
+    assert_eq!(
+        set(|u| change(u, |a| a.rampaging = true)),
+        (Some("bEscapedRampage".to_string()), None)
+    );
     assert_eq!(set(|u| change(u, |a| a.escaped = false)), (None, None));
     assert_eq!(set(|u| change(u, |a| a.tranq = true)), (None, None));
 }
@@ -159,7 +162,7 @@ fn an_escaped_animal_that_sleeps_is_sick_or_hatches_keeps_its_set() {
                 unit.runner
                     .start(&mut unit.animation, &env, name, true, true, true);
             }
-            crate::animal::escape::escaped_set(&mut unit, &world, &data, &mut rng, at);
+            crate::animal::escape::ambient_sets(&mut unit, &world, &data, &mut rng, at);
             let r = &unit.runner;
             let top = r.running().then(|| r.top()).flatten();
             assert_ne!(top, Some("bEscaped"), "{name} {pending}");

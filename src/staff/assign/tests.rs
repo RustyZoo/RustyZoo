@@ -38,6 +38,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: fence,
         walkable: (false, false),
         forms: None,
+        rubbleable: false,
         tank: TankKind::NONE,
     })
 }
@@ -275,6 +276,7 @@ fn fixed() -> Shape {
         gated: false,
         walkable: (false, false),
         forms: None,
+        rubbleable: false,
         tank: TankKind::NONE,
     }
 }

@@ -307,7 +307,7 @@ pub fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
 
 /// The unit shows its idle animation again (8.2 step 1; the normal end of a walk keeps the move
 /// animation, step 3).
-fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+pub(crate) fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
     let name = swim::idle_name(unit);
     if data.timing(entity, name).is_some() {
@@ -545,6 +545,7 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
     m.avoid_edges = number("cAvoidEdges").max(0) as u32;
     (m.jumper, m.climber) = (number("cIsJumper") != 0, number("cIsClimber") != 0);
     (m.bash, m.crush) = (number("cBashStrength"), number("cCrushesFences"));
+    m.rampager = unit.kind == Kind::Animal && number("cRampageChance") > 0;
     // The guest's costs off the paths are the unit class file's; a missing key keeps the fallback.
     if unit.kind == Kind::Guest {
         let cost = |key, fallback: u32| data.unit_class(key).map_or(fallback, |v| v.max(0) as u32);
@@ -596,6 +597,7 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     task(&mut m, record.task, record.target.id);
     m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
     m.test |= matches!(&unit.part, Part::Animal(a) if a.walk.is_some());
+    m.rampaging = matches!(&unit.part, Part::Animal(a) if a.rampaging);
     m
 }
 

@@ -12,7 +12,9 @@ use crate::zoo::{Clocks, Common, Escape, Tile, UnitBlock, View, Zoo};
 mod boxed;
 mod breed;
 mod escape;
+mod fence;
 mod life;
+mod rampage;
 mod tank;
 
 fn keys() -> Keys {
@@ -457,6 +459,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: !gate && !unit,
         walkable: (gate, gate),
         forms: None,
+        rubbleable: false,
         tank: TankKind::NONE,
     })
 }

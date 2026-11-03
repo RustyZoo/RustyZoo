@@ -28,6 +28,7 @@ impl UiStrings for Texts {
             5 => "lion".into(),
             1 | 2 => format!("branch-{id}"),
             4001 => "status".into(),
+            10007 => "%s got out".into(),
             23020 => "done %r".into(),
             23021 => "all %s".into(),
             23030 => "Unfunded".into(),
@@ -986,6 +987,41 @@ fn a_research_completion_puts_the_exclamation_on_the_dialog_icon_and_a_question_
         assert!(icon_holds(app, QUESTION));
         app.interface().unwrap().answer(1);
         assert!(!shown(app, 45002));
+    });
+}
+
+#[test]
+fn an_animal_that_got_out_raises_the_alert_with_the_exclamation_and_its_name() {
+    const EXCLAIM: &str = "ui/sharedui/exclaim/exclaim";
+    let frames = crate::ui::draw::tests::two_frames("exclaim");
+    let (_, ani) = frames.iter().find(|(n, _)| n.ends_with(".ani")).unwrap();
+    let mut files = vec![(format!("{EXCLAIM}.ani"), ani.clone())];
+    files.extend(frames.iter().filter(|(n, _)| !n.ends_with(".ani")).cloned());
+    let files: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    with_game("escape-alert", "", &files, None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        // Another message of an animal opens no dialog.
+        app.game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .post_named(10028, 0, vec!["Zed".into()]);
+        app.animal_told();
+        assert!(!shown(app, 45000));
+        app.game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .post_named(10007, 0, vec!["Zed".into()]);
+        app.animal_told();
+        assert!(shown(app, 45000) && icon_holds(app, EXCLAIM));
+        let ui = app.interface().unwrap();
+        let i = ui.tree.find(45006).unwrap();
+        assert_eq!(ui.tree.elements[i].text, Some(b"Zed got out".to_vec()));
     });
 }
 

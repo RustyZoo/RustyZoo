@@ -508,15 +508,6 @@ impl<'a> App<'a> {
         }
     }
 
-    /// The text of the name id of each type of the catalogue, as `ui` shows it: the units name
-    /// their new animals, staff and objects with it.
-    fn type_names(&self, ui: &Interface) -> std::collections::HashMap<i32, String> {
-        (self.renderer.catalogue().types.iter())
-            .filter(|t| t.name_id != 0)
-            .map(|t| (t.name_id, ui.string(t.name_id)))
-            .collect()
-    }
-
     /// The interface, if the game has one.
     pub fn interface(&mut self) -> Option<&mut Interface> {
         self.ui.as_mut()

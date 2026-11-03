@@ -50,14 +50,23 @@ fn shape(e: &Entity) -> Option<Shape> {
         tank: TankKind::NONE,
         walkable: (gate, gate),
         forms: None,
+        rubbleable: false,
     };
     match (e.class.as_str(), e.type_name.as_str()) {
         ("fences", "low") => Some(thing(Class::Edge, (1, 1), false, false)),
         ("fences", _) => Some(thing(Class::Edge, (1, 1), true, false)),
         ("paths", _) => Some(thing(Class::Path, (2, 2), false, false)),
-        ("bush", _) | ("food", _) | ("building", _) => {
-            Some(thing(Class::Fixed, (1, 1), false, false))
-        }
+        // A building or a food pile a rampage turns to rubble (`tree`); rubble is never turned.
+        ("building" | "food", kind) => Some(Shape {
+            rubbleable: kind == "tree",
+            ..thing(Class::Fixed, (1, 1), false, false)
+        }),
+        ("bush" | "rubble", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        // Scenery a rampage turns to rubble (`tree`) and scenery it spares (`stone`).
+        ("scenery", kind) => Some(Shape {
+            rubbleable: kind == "tree",
+            ..thing(Class::Fixed, (1, 1), false, false)
+        }),
         // Show walls of a tank (`show`) and the others; units that let others through (`soft`).
         ("tankwall", kind) => Some(Shape {
             kind: Class::Wall,
@@ -71,6 +80,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         ("animals" | "guests", kind) => Some(Shape {
             walkable: (kind == "soft", kind == "soft"),
             forms: None,
+            rubbleable: false,
             ..thing(Class::Unit, (1, 1), false, false)
         }),
         ("gate", _) => Some(thing(Class::Fixed, (2, 2), false, true)),
@@ -319,6 +329,65 @@ fn a_tile_with_all_its_quarters_held_is_closed_to_a_keeper() {
 }
 
 #[test]
+fn a_rampaging_animal_walks_through_the_scenery_that_turns_to_rubble() {
+    let full = |kind: &str| {
+        world(|_, e| {
+            for (x, y) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
+                e.push(entity_at("scenery", kind, "", (5 * 64 + x, 5 * 64 + y), 0));
+            }
+        })
+    };
+    let enters = |w: &World, rampaging| {
+        let m = Mover {
+            rampaging,
+            ..unit(Kind::Animal, (4, 5))
+        };
+        cost::clear(w, &m, (t((4, 5)), t((5, 5))), 2, true, None)
+    };
+    let (trees, stones) = (full("tree"), full("stone"));
+    assert!(!enters(&trees, false));
+    assert!(enters(&trees, true));
+    assert!(!enters(&stones, true));
+}
+
+#[test]
+fn a_rampaging_animal_also_walks_through_buildings_and_food_but_rubble_is_for_rampaging_species() {
+    let full = |class: &str, kind: &str| {
+        world(|_, e| {
+            for (x, y) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
+                e.push(entity_at(class, kind, "", (5 * 64 + x, 5 * 64 + y), 0));
+            }
+        })
+    };
+    let enters = |w: &World, m: Mover| cost::clear(w, &m, (t((4, 5)), t((5, 5))), 2, true, None);
+    let animal = |rampaging, rampager| Mover {
+        rampaging,
+        rampager,
+        ..unit(Kind::Animal, (4, 5))
+    };
+    for class in ["building", "food"] {
+        let w = full(class, "tree");
+        assert!(
+            !enters(&w, animal(false, true)),
+            "{class} stops an animal at rest"
+        );
+        assert!(enters(&w, animal(true, false)), "{class}");
+        assert!(
+            !enters(&full(class, "stone"), animal(true, true)),
+            "{class} spared"
+        );
+    }
+    // Rubble: any animal of a species that rampages, rampaging or not; no other animal.
+    let rubble = full("rubble", "other");
+    assert!(enters(&rubble, animal(false, true)));
+    assert!(!enters(&rubble, animal(false, false)));
+    assert!(
+        !enters(&rubble, animal(true, false)),
+        "rubble is not rubbleable"
+    );
+}
+
+#[test]
 fn the_pair_cost_of_the_gate_choice_and_of_the_gate_tool() {
     let w = world(|tiles, e| {
         paths(e, &[(1, 1), (2, 1)]);
@@ -532,6 +601,7 @@ fn an_object_in_a_tank_blocks_only_its_own_levels() {
                 tank,
                 walkable: (false, false),
                 forms: None,
+                rubbleable: false,
             };
             w.add(e, Some(shape)).unwrap();
         }

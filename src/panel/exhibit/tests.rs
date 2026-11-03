@@ -36,6 +36,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gated: fence,
         walkable: (false, false),
         forms: None,
+        rubbleable: false,
         tank: TankKind::NONE,
     };
     match e.class.as_str() {

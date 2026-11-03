@@ -13,7 +13,6 @@ use std::collections::BTreeMap;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 use crate::path::{Finder, Settings};
-use crate::render::corner_elevation;
 use crate::render::order::{Held, Kind, Object, Scene, ground_height};
 use crate::strings::Language;
 use crate::unit::Units;
@@ -21,6 +20,7 @@ use crate::zoo::{Entity, Tile, Zoo};
 
 mod amphibious;
 mod areas;
+mod edges;
 mod exhibit;
 mod filter;
 mod save;
@@ -56,6 +56,9 @@ pub struct Shape {
     /// For an animal: its egg footprint (`cEggFootprintX/Y`) and its crate footprint
     /// (`cBoxFootprintX/Y`), in half tiles; `None` for the rest.
     pub forms: Option<[(i32, i32); 2]>,
+    /// A scenery item whose type has `cRubbleable` 1 (the default): a rampaging animal walks
+    /// through it and turns it to rubble (animals 11).
+    pub rubbleable: bool,
 }
 
 /// What a type says about tanks (exhibits and money 3.9).
@@ -1464,7 +1467,7 @@ impl World {
         let (tx, ty) = ((t % self.scene.width) as i32, (t / self.scene.width) as i32);
         for (dx, dy) in [(0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)] {
             if let Some(n) = self.tile_index(tx + dx, ty + dy) {
-                self.zoo.tiles[n].edges = edge_states(&self.zoo, n);
+                self.zoo.tiles[n].edges = edges::edge_states(&self.zoo, n);
             }
         }
     }
@@ -1546,50 +1549,6 @@ fn index(zoo: &Zoo, shapes: &[Option<Shape>]) -> (Scene, Vec<usize>) {
         objects,
     );
     (scene, owner)
-}
-
-/// The four edge states of tile `t` as the file packs them, computed with map drawing 3.5.
-fn edge_states(zoo: &Zoo, t: usize) -> u8 {
-    let width = zoo.width as usize;
-    let (tx, ty) = ((t % width) as i32, (t / width) as i32);
-    let mut edges = 0;
-    // For the edges 0, 2, 4, 6: the step to the neighbour and the two corners on the edge, of
-    // the tile and of the neighbour, in the order of increasing coordinate.
-    for (d, (dx, dy), own, other) in [
-        (0, (0, -1), (7, 1), (5, 3)),
-        (2, (1, 0), (1, 3), (7, 5)),
-        (4, (0, 1), (5, 3), (7, 1)),
-        (6, (-1, 0), (7, 5), (1, 3)),
-    ] {
-        let beside = u32::try_from(tx + dx)
-            .ok()
-            .zip(u32::try_from(ty + dy).ok())
-            .and_then(|(x, y)| zoo.tile(x, y));
-        let state = match beside {
-            Some(n) => {
-                let tile = &zoo.tiles[t];
-                let (t0, t1) = (corner_elevation(tile, own.0), corner_elevation(tile, own.1));
-                let (n0, n1) = (corner_elevation(n, other.0), corner_elevation(n, other.1));
-                if t1 - t0 == n1 - n0 {
-                    match (t0 == n0, t1 == t0) {
-                        (true, true) => 0,
-                        (true, false) => 1,
-                        (false, _) if n0 > t0 => 2,
-                        _ => 3,
-                    }
-                // The slopes differ: the edges 2 and 4 take the state 2 also when they meet at
-                // the first corner, as the tile later in row order sees them (3.5).
-                } else if t0 < n0 || (t0 == n0 && (d == 2 || d == 4)) {
-                    2
-                } else {
-                    3
-                }
-            }
-            _ => 0,
-        };
-        edges |= state << (2 * (3 - d / 2));
-    }
-    edges
 }
 
 #[cfg(test)]

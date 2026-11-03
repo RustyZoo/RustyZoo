@@ -50,16 +50,41 @@ pub fn shape(e: &Entity) -> Option<Shape> {
         tank: TankKind::NONE,
         walkable: (false, false),
         forms: None,
+        rubbleable: false,
     };
     match e.class.as_str() {
+        // An electrified fence: its piece is working while its life is above 2.
+        "fences" if e.type_name == "wire" => Some(Shape {
+            tank: TankKind {
+                electrified: true,
+                decayed: 2,
+                ..TankKind::NONE
+            },
+            ..thing(Class::Edge, (1, 1), true)
+        }),
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" if e.type_name == "grass" => Some(Shape {
             walkable: (true, false),
             forms: None,
+            rubbleable: false,
             ..thing(Class::Fixed, (1, 1), false)
         }),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
+        // Scenery a rampage turns to rubble: a `tree` takes a quadrant, a `wide` one a tile, a
+        // `stone` is spared.
+        "scenery" => Some(Shape {
+            rubbleable: e.type_name != "stone",
+            ..thing(
+                Class::Fixed,
+                if e.type_name == "wide" {
+                    (2, 2)
+                } else {
+                    (1, 1)
+                },
+                false,
+            )
+        }),
         "building" if e.type_name == "hall" => Some(thing(Class::Fixed, (2, 2), false)),
         // An underwater shelter: a tank takes it.
         "building" if e.type_name == "cave" => Some(Shape {
@@ -69,7 +94,11 @@ pub fn shape(e: &Entity) -> Option<Shape> {
             },
             ..thing(Class::Fixed, (1, 1), false)
         }),
-        "building" => Some(thing(Class::Fixed, (1, 1), false)),
+        // A building a rampage turns to rubble (`shed`) and one it spares.
+        "building" => Some(Shape {
+            rubbleable: e.type_name == "shed",
+            ..thing(Class::Fixed, (1, 1), false)
+        }),
         // A zoo wall: it stops the exterior fill.
         "zoowall" => Some(Shape {
             wall: true,

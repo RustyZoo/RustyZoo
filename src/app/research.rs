@@ -13,9 +13,18 @@ const COMPLETED: i32 = 23020;
 const ALL_DONE: i32 = 23021;
 
 /// The exclamation picture on the icon of the completion dialog, set before it is shown (5.4.1).
-fn exclaim(ui: &mut Interface, vfs: &Vfs) {
+pub(super) fn exclaim(ui: &mut Interface, vfs: &Vfs) {
     let picture = ui.tree.picture(vfs, EXCLAIM_PICTURE);
     ui.set_question_icon(QUESTION, picture);
+}
+
+/// An animal that got out raises the non-modal alert, with the exclamation picture and the text
+/// already in the message line (animals 11.4); any other message of an animal opens nothing.
+pub(super) fn alert(ui: &mut Interface, vfs: &Vfs, message: i32, text: &str) {
+    if message == crate::animal::ESCAPED {
+        exclaim(ui, vfs);
+        ui.notify(QUESTION, &to_cp1252(text), Buttons::OK);
+    }
 }
 
 /// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).

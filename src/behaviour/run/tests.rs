@@ -275,12 +275,19 @@ fn the_calls_of_the_other_issues_are_done_at_once_or_never() {
         ("fPlaySpecial(x)", true),
         ("fKeepControl()", false),
         ("fGuestRoutine()", false),
-        ("fTargetBuilding()", false),
     ] {
         let mut rig = Rig::new(&[("bAmbient", &[call, "fPlay(d)"])]);
         rig.tick(100);
         assert_eq!(rig.tick(100).0 == "d", finishes, "{call}");
     }
+}
+
+#[test]
+fn a_rampage_set_goes_on_past_its_target_building_call() {
+    // No target is found (animals 11.11 point 4): the call is done at once.
+    let mut rig = Rig::new(&[("bAmbient", &["fTargetBuilding()", "fPlay(d)"])]);
+    rig.tick(100);
+    assert_eq!(rig.tick(100).0, "d");
 }
 
 #[test]
