@@ -3,45 +3,12 @@
 use super::*;
 
 impl App<'_> {
-    #[allow(clippy::too_many_lines)] // #1045
     pub(super) fn apply(&mut self, command: Command) {
         if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
             self.start_busy();
         }
-        match command {
-            Command::Close => return self.close(),
-            // Escape closes the expansion selector's list without a choice (entity types 10.5).
-            Command::Key(Key::Escape, ..) if self.selector_open() && !self.question_open() => {
-                if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-                    game.build.close_selector(ui);
-                }
-                return;
-            }
-            Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
-                return self.close_list();
-            }
-            Command::Key(Key::Escape, ..)
-                if self.game.is_some() && self.ui.is_some() && self.map_keys() =>
-            {
-                return self.cancel(true);
-            }
-            Command::Fullscreen(on) => self.fullscreen = on,
-            Command::Load(file) => {
-                self.load_saved(file);
-                return;
-            }
-            Command::Save(file) => return self.save_game(file),
-            Command::Award(id) => {
-                if let Some(game) = &mut self.game {
-                    crate::award::add(&mut game.world.zoo.awards, id);
-                }
-                return;
-            }
-            Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
-                return self.save_key();
-            }
-            Command::Key(Key::L, true, _) if self.map_keys() => return self.load_pressed(),
-            _ => {}
+        if self.intercept(command) {
+            return;
         }
         let keys = self.map_keys();
         let following = self.following();
@@ -51,80 +18,11 @@ impl App<'_> {
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             (Command::Quit, _) => self.quit = true,
-            (Command::Mouse(mouse), game) => {
-                // A press or release that belongs to the map view is logged with the tile it is
-                // on, and the terrain tool, if it is the map view's tool, acts on the mouse.
-                let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse)) && !listing;
-                let phase = match mouse {
-                    Mouse::Down | Mouse::Double => Some("down"),
-                    Mouse::Up => Some("up"),
-                    _ => None,
-                };
-                if on_map && mouse == Mouse::Right {
-                    return self.cancel(false);
-                }
-                if let (true, Mouse::Down | Mouse::Double, Some(game)) =
-                    (on_map, mouse, game.as_mut())
-                {
-                    // The next operation starts a new undo list.
-                    game.world.begin();
-                    if let Some(ui) = &self.ui {
-                        let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
-                        let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
-                        game.build.press(self.renderer.catalogue(), tile, (x, y));
-                        game.build.sweep_press(tile, ui.pointer());
-                        if game.build.dragging() {
-                            game.selection = None;
-                        }
-                    }
-                }
-                // A release that does not end a press on the map ends a drag without buying.
-                if let (false, Mouse::Up, Some(game)) = (on_map, mouse, game.as_mut()) {
-                    game.build.end_drag();
-                    game.build.end_sweep();
-                    game.placing.run.clear();
-                }
-                if let (true, Some(phase), Some(game), Some(ui)) =
-                    (on_map, phase, game.as_mut(), &self.ui)
-                {
-                    let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
-                    let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
-                    self.lines.tool.push(format!("tool {phase} {tile}"));
-                }
-                if let Mouse::Move(..) = mouse {
-                    if let Some(game) = game.as_mut() {
-                        game.placing.hover = on_map;
-                    }
-                    self.aim(true);
-                } else if on_map && mouse == Mouse::Up {
-                    self.release();
-                }
-                self.terrain_mouse(mouse, on_map);
-            }
+            (Command::Mouse(mouse), _) => self.mouse(mouse, listing),
             (Command::Scroll(x, y), Some(game)) if keys && !following => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));
             }
-            (Command::Rotate(clockwise), Some(game)) if keys => {
-                let before = game.camera.clone();
-                game.camera.rotate(&game.world.zoo, None, clockwise);
-                // Restage from the new side. If that fails the view stays as it was.
-                let extra = Extra {
-                    marks: game.marks.clone(),
-                    shown: game.shown(),
-                    filters: game.world.filter_looks(),
-                    ..Extra::default()
-                };
-                match self
-                    .renderer
-                    .stage_with(&game.world.zoo, game.camera.rotation, false, &extra)
-                {
-                    Ok(staged) => {
-                        game.staged = staged;
-                        game.extra = extra;
-                    }
-                    Err(_) => game.camera = before,
-                }
-            }
+            (Command::Rotate(clockwise), Some(_)) if keys => self.rotate(clockwise),
             (Command::Zoom(zoom_in), Some(game)) if keys => {
                 game.camera.zoom(&game.world.zoo, None, zoom_in);
             }
@@ -215,6 +113,122 @@ impl App<'_> {
         // The view turned or zoomed under the pointer: the pending object is another one.
         if matches!(command, Command::Rotate(_) | Command::Zoom(_)) {
             self.aim(false);
+        }
+    }
+
+    /// The commands that act on the game as a whole, before the interface and the map see them:
+    /// closing, the escape key, saving and loading, awards. Gives whether the command is done (a
+    /// full screen change is noted and goes on to the camera).
+    fn intercept(&mut self, command: Command) -> bool {
+        match command {
+            Command::Close => self.close(),
+            // Escape closes the expansion selector's list without a choice (entity types 10.5).
+            Command::Key(Key::Escape, ..) if self.selector_open() && !self.question_open() => {
+                if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
+                    game.build.close_selector(ui);
+                }
+            }
+            Command::Key(Key::Escape, ..) if self.listing_open() && !self.question_open() => {
+                self.close_list();
+            }
+            Command::Key(Key::Escape, ..)
+                if self.game.is_some() && self.ui.is_some() && self.map_keys() =>
+            {
+                self.cancel(true);
+            }
+            Command::Fullscreen(on) => {
+                self.fullscreen = on;
+                return false;
+            }
+            Command::Load(file) => {
+                self.load_saved(file);
+            }
+            Command::Save(file) => self.save_game(file),
+            Command::Award(id) => {
+                if let Some(game) = &mut self.game {
+                    crate::award::add(&mut game.world.zoo.awards, id);
+                }
+            }
+            Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
+                self.save_key();
+            }
+            Command::Key(Key::L, true, _) if self.map_keys() => self.load_pressed(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// A mouse event. A press or release that belongs to the map view is logged with the tile it
+    /// is on, and the terrain tool, if it is the map view's tool, acts on the mouse.
+    fn mouse(&mut self, mouse: Mouse, listing: bool) {
+        let game = &mut self.game;
+        let on_map = self.ui.as_mut().is_some_and(|ui| ui.mouse(mouse)) && !listing;
+        let phase = match mouse {
+            Mouse::Down | Mouse::Double => Some("down"),
+            Mouse::Up => Some("up"),
+            _ => None,
+        };
+        if on_map && mouse == Mouse::Right {
+            return self.cancel(false);
+        }
+        if let (true, Mouse::Down | Mouse::Double, Some(game)) = (on_map, mouse, game.as_mut()) {
+            // The next operation starts a new undo list.
+            game.world.begin();
+            if let Some(ui) = &self.ui {
+                let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
+                let (x, y, _) = game.camera.pick(&game.world.zoo, ui.pointer());
+                game.build.press(self.renderer.catalogue(), tile, (x, y));
+                game.build.sweep_press(tile, ui.pointer());
+                if game.build.dragging() {
+                    game.selection = None;
+                }
+            }
+        }
+        // A release that does not end a press on the map ends a drag without buying.
+        if let (false, Mouse::Up, Some(game)) = (on_map, mouse, game.as_mut()) {
+            game.build.end_drag();
+            game.build.end_sweep();
+            game.placing.run.clear();
+        }
+        if let (true, Some(phase), Some(game), Some(ui)) = (on_map, phase, game.as_mut(), &self.ui)
+        {
+            let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());
+            let tile = tile.map_or("none".to_string(), |(x, y)| format!("{x},{y}"));
+            self.lines.tool.push(format!("tool {phase} {tile}"));
+        }
+        if let Mouse::Move(..) = mouse {
+            if let Some(game) = game.as_mut() {
+                game.placing.hover = on_map;
+            }
+            self.aim(true);
+        } else if on_map && mouse == Mouse::Up {
+            self.release();
+        }
+        self.terrain_mouse(mouse, on_map);
+    }
+
+    /// Turns the view and stages the map from the new side; if that fails the view stays as it was.
+    fn rotate(&mut self, clockwise: bool) {
+        let Some(game) = &mut self.game else {
+            return;
+        };
+        let before = game.camera.clone();
+        game.camera.rotate(&game.world.zoo, None, clockwise);
+        let extra = Extra {
+            marks: game.marks.clone(),
+            shown: game.shown(),
+            filters: game.world.filter_looks(),
+            ..Extra::default()
+        };
+        match self
+            .renderer
+            .stage_with(&game.world.zoo, game.camera.rotation, false, &extra)
+        {
+            Ok(staged) => {
+                game.staged = staged;
+                game.extra = extra;
+            }
+            Err(_) => game.camera = before,
         }
     }
 }

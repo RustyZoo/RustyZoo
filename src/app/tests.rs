@@ -2027,7 +2027,123 @@ fn a_gate_chosen_by_the_game_is_made_healthy() {
     assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
 }
 
-#[allow(clippy::too_many_lines)] // #1045
+/// The lines of the log of the pass, after the pass number, that start with one of `prefixes`.
+fn told(app: &App, prefixes: &[&str]) -> Vec<String> {
+    let all = app.log_lines(0, 0);
+    all.iter()
+        .filter_map(|l| l.splitn(4, ' ').nth(3))
+        .filter(|l| prefixes.iter().any(|p| l.starts_with(p)) && *l != "world stage")
+        .map(str::to_string)
+        .collect()
+}
+
+/// A click on the point `to`: the move, the press and the release.
+fn click(app: &mut App, n: u64, to: Command) {
+    app.pass(n, &[to]);
+    app.pass(n + 5, &[Command::Mouse(Mouse::Down)]);
+    app.pass(n + 10, &[Command::Mouse(Mouse::Up)]);
+}
+
+/// The fence of the entity `id`.
+fn fence_of(app: &App, id: u32) -> crate::zoo::Fence {
+    let world = &app.game.as_ref().unwrap().world;
+    world.zoo.entities[world.find(id).unwrap()]
+        .common
+        .as_ref()
+        .unwrap()
+        .fence
+        .unwrap()
+}
+
+/// A window point `d` pixels from the anchor of a piece.
+fn on(app: &App, camera: &Camera, id: u32, d: (i32, i32)) -> Command {
+    let world = &app.game.as_ref().unwrap().world;
+    let c = world.zoo.entities[world.find(id).unwrap()]
+        .common
+        .as_ref()
+        .unwrap();
+    let (x, y) = world_point(camera, c.x, c.y);
+    Command::Mouse(Mouse::Move(x + d.0, y + d.1))
+}
+
+/// The pieces of the square after the first gate: one of no exhibit does nothing, a decayed one
+/// costs the gate. Gives the cursor over a gate the cash cannot pay and the piece before and
+/// after it was made healthy.
+fn decayed_piece(
+    app: &mut App,
+    camera: &Camera,
+    (north, east, west, lone): (u32, u32, u32, u32),
+) -> (u32, (crate::zoo::Fence, crate::zoo::Fence)) {
+    // The fence of no exhibit: nothing happens and nothing is shown.
+    let to = on(app, camera, lone, (0, 0));
+    click(app, 260, to);
+    assert!(told(app, &["world", "exhibit", "tool message"]).is_empty());
+    // A decayed piece costs the gate: shown as the price, refused without the cash.
+    {
+        let game = app.game.as_mut().unwrap();
+        let at = game.world.find(east).unwrap();
+        game.world.zoo.entities[at]
+            .common
+            .as_mut()
+            .unwrap()
+            .fence
+            .as_mut()
+            .unwrap()
+            .life = 0;
+    }
+    app.pass(300, &[on(app, camera, east, (0, 0))]);
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
+    app.set_money(Money {
+        cash: 100.0,
+        ..Money::default()
+    });
+    let to = on(app, camera, east, (0, 0));
+    click(app, 310, to);
+    assert_eq!(
+        told(app, &["world", "tool message"]),
+        ["tool message 10002"]
+    );
+    assert_eq!(app.money().unwrap().cash, 100.0);
+    // The cash short when the pointer reaches the piece: the price is shown, the gate is not
+    // valid, and a click does nothing and says nothing (10002 needs a place valid on arrival).
+    app.pass(312, &[on(app, camera, west, (0, 0))]);
+    app.pass(314, &[on(app, camera, east, (0, 0))]);
+    assert_eq!(
+        told(app, &["tool pending"]),
+        ["tool pending fences/iron/g 20,20 q 3 invalid"]
+    );
+    let over_invalid = app.cursor();
+    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
+    click(app, 316, to);
+    assert!(told(app, &["world", "exhibit", "tool message"]).is_empty());
+    assert_eq!(app.money().unwrap().cash, 100.0);
+    // With the cash, the piece is made healthy and the price booked.
+    app.set_money(Money {
+        cash: 1_000.0,
+        ..Money::default()
+    });
+    app.pass(322, &[on(app, camera, west, (0, 0))]);
+    app.pass(324, &[on(app, camera, east, (0, 0))]);
+    let old_before = fence_of(app, north);
+    click(app, 330, to);
+    let old_gate = (old_before, fence_of(app, north));
+    assert_eq!(
+        told(app, &["world"]),
+        [
+            format!("world ungate fences/iron/f 20,20 side 0 id {north}"),
+            format!("world gate fences/iron/g 20,20 side 2 id {east}")
+        ]
+    );
+    assert_eq!(app.money().unwrap().cash, 875.0);
+    let game = app.game.as_ref().unwrap();
+    let piece = &game.world.zoo.entities[game.world.find(east).unwrap()];
+    let fence = piece.common.as_ref().unwrap().fence.unwrap();
+    assert_eq!(fence.life, 7);
+    // And it drew a wear interval, which the countdown starts at.
+    assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
+    (over_invalid, old_gate)
+}
+
 fn gate_tool_run() -> Seen {
     // Every fence piece is a square of 12 pixels around its anchor, which the gate tool picks.
     let mut square = Vec::new();
@@ -2071,28 +2187,6 @@ fn gate_tool_run() -> Seen {
         let (x, y) = world_point(&camera, 64 * tx + lx, 64 * ty + ly);
         Command::Mouse(Mouse::Move(x, y))
     };
-    let told = |app: &App, prefixes: &[&str]| -> Vec<String> {
-        let all = app.log_lines(0, 0);
-        all.iter()
-            .filter_map(|l| l.splitn(4, ' ').nth(3))
-            .filter(|l| prefixes.iter().any(|p| l.starts_with(p)) && *l != "world stage")
-            .map(str::to_string)
-            .collect()
-    };
-    let click = |app: &mut App, n: u64, to: Command| {
-        app.pass(n, &[to]);
-        app.pass(n + 5, &[Command::Mouse(Mouse::Down)]);
-        app.pass(n + 10, &[Command::Mouse(Mouse::Up)]);
-    };
-    let fence_of = |app: &App, id: u32| {
-        let world = &app.game.as_ref().unwrap().world;
-        world.zoo.entities[world.find(id).unwrap()]
-            .common
-            .as_ref()
-            .unwrap()
-            .fence
-            .unwrap()
-    };
     // A square on tile (20, 20), named at once (the gate goes on its last piece, side 6), and a
     // fence of no exhibit on tile (21, 21).
     for (n, (lx, ly)) in [(32, 12), (52, 32), (32, 52), (12, 32)]
@@ -2121,16 +2215,6 @@ fn gate_tool_run() -> Seen {
             .unwrap()
             .id
     };
-    // A window point `d` pixels from the anchor of a piece.
-    let on = |app: &App, id: u32, d: (i32, i32)| {
-        let world = &app.game.as_ref().unwrap().world;
-        let c = world.zoo.entities[world.find(id).unwrap()]
-            .common
-            .as_ref()
-            .unwrap();
-        let (x, y) = world_point(&camera, c.x, c.y);
-        Command::Mouse(Mouse::Move(x + d.0, y + d.1))
-    };
     let chosen_gate = fence_of(&app, west);
     let world = &app.game.as_ref().unwrap().world;
     assert_eq!(world.gate_slot(1), world.tile_index(20, 20).zip(Some(6)));
@@ -2139,7 +2223,7 @@ fn gate_tool_run() -> Seen {
     app.pass(190, &[]);
     assert!(app.game.as_ref().unwrap().build.gating());
     // Over the north piece: a valid gate, free, tinted valid, "$0".
-    app.pass(200, &[on(&app, north, (0, 0))]);
+    app.pass(200, &[on(&app, &camera, north, (0, 0))]);
     assert_eq!(
         told(&app, &["tool pending"]),
         ["tool pending fences/iron/g 20,20 q 1 valid"]
@@ -2161,91 +2245,25 @@ fn gate_tool_run() -> Seen {
     // and no cost text, however the pointer moves over it (placing 6.4).
     assert!(app.game.as_mut().unwrap().world.undo().is_empty());
     for (n, d) in [(1, 0), (2, 1)].into_iter().enumerate() {
-        app.pass(212 + n as u64, &[on(&app, north, d)]);
+        app.pass(212 + n as u64, &[on(&app, &camera, north, d)]);
         assert!(told(&app, &["tool pending"]).is_empty());
         assert_eq!(app.game.as_ref().unwrap().cost(), None);
     }
     // Over another piece and back: the gate is now the current gate, not valid again.
-    app.pass(216, &[on(&app, west, (0, 0))]);
+    app.pass(216, &[on(&app, &camera, west, (0, 0))]);
     assert_eq!(
         told(&app, &["tool pending"]),
         ["tool pending fences/iron/g 20,20 q 2 valid"]
     );
-    app.pass(220, &[on(&app, north, (0, 0))]);
+    app.pass(220, &[on(&app, &camera, north, (0, 0))]);
     assert_eq!(
         told(&app, &["tool pending"]),
         ["tool pending fences/iron/g 20,20 q 1 invalid"]
     );
-    let to = on(&app, north, (0, 0));
+    let to = on(&app, &camera, north, (0, 0));
     click(&mut app, 230, to);
     assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
-    // The fence of no exhibit: nothing happens and nothing is shown.
-    let to = on(&app, lone, (0, 0));
-    click(&mut app, 260, to);
-    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
-    // A decayed piece costs the gate: shown as the price, refused without the cash.
-    {
-        let game = app.game.as_mut().unwrap();
-        let at = game.world.find(east).unwrap();
-        game.world.zoo.entities[at]
-            .common
-            .as_mut()
-            .unwrap()
-            .fence
-            .as_mut()
-            .unwrap()
-            .life = 0;
-    }
-    app.pass(300, &[on(&app, east, (0, 0))]);
-    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
-    app.set_money(Money {
-        cash: 100.0,
-        ..Money::default()
-    });
-    let to = on(&app, east, (0, 0));
-    click(&mut app, 310, to);
-    assert_eq!(
-        told(&app, &["world", "tool message"]),
-        ["tool message 10002"]
-    );
-    assert_eq!(app.money().unwrap().cash, 100.0);
-    // The cash short when the pointer reaches the piece: the price is shown, the gate is not
-    // valid, and a click does nothing and says nothing (10002 needs a place valid on arrival).
-    app.pass(312, &[on(&app, west, (0, 0))]);
-    app.pass(314, &[on(&app, east, (0, 0))]);
-    assert_eq!(
-        told(&app, &["tool pending"]),
-        ["tool pending fences/iron/g 20,20 q 3 invalid"]
-    );
-    let over_invalid = app.cursor();
-    assert_eq!(app.game.as_ref().unwrap().cost(), Some(125));
-    click(&mut app, 316, to);
-    assert!(told(&app, &["world", "exhibit", "tool message"]).is_empty());
-    assert_eq!(app.money().unwrap().cash, 100.0);
-    // With the cash, the piece is made healthy and the price booked.
-    app.set_money(Money {
-        cash: 1_000.0,
-        ..Money::default()
-    });
-    app.pass(322, &[on(&app, west, (0, 0))]);
-    app.pass(324, &[on(&app, east, (0, 0))]);
-    let old_before = fence_of(&app, north);
-    click(&mut app, 330, to);
-    let old_gate = (old_before, fence_of(&app, north));
-    assert_eq!(
-        told(&app, &["world"]),
-        [
-            format!("world ungate fences/iron/f 20,20 side 0 id {north}"),
-            format!("world gate fences/iron/g 20,20 side 2 id {east}")
-        ]
-    );
-    assert_eq!(app.money().unwrap().cash, 875.0);
-    let game = app.game.as_ref().unwrap();
-    let piece = &game.world.zoo.entities[game.world.find(east).unwrap()];
-    let fence = piece.common.as_ref().unwrap().fence.unwrap();
-    assert_eq!(fence.life, 7);
-    // And it drew a wear interval, which the countdown starts at.
-    assert!(fence.timers[0] > 0 && fence.timers[0] == fence.timers[1]);
+    let (over_invalid, old_gate) = decayed_piece(&mut app, &camera, (north, east, west, lone));
     // Away from every piece the gate tool shows the normal cursor.
     app.pass(340, &[at(19, 19, 32, 32)]);
     Seen {

@@ -27,6 +27,7 @@ mod exhibit;
 mod filter;
 mod held;
 mod save;
+mod settle;
 mod tank;
 mod water;
 mod wear;

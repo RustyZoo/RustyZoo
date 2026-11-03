@@ -32,17 +32,19 @@ use rustyzoo::camera::Settings;
 use rustyzoo::config::Config;
 use rustyzoo::entity::Catalogue;
 use rustyzoo::money::Money;
+use rustyzoo::music::Music;
 use rustyzoo::render::MapRenderer;
 use rustyzoo::timing::Timers;
 use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 use rustyzoo::zoo::Zoo;
+use sdl3::EventPump;
 use sdl3::pixels::PixelFormat;
-use sdl3::render::ScaleMode;
+use sdl3::render::{ScaleMode, Texture};
 use sdl3::video::WindowFlags;
 
 use crate::CliError;
-use crate::boot::boot;
+use crate::boot::{Booted, boot};
 use crate::probe::{self, Timing};
 use cursor::Cursors;
 use events::{State, asleep, focused, maximised};
@@ -122,94 +124,49 @@ fn remember_cursors(on: bool) {
     }
 }
 
-/// Plays the map `loaded` (its types and the zoo), or, without one, starts up to the main menu.
-#[allow(clippy::too_many_lines)] // #1045
-pub fn run(
-    vfs: &Vfs,
-    loaded: Option<(Catalogue, Zoo, Money)>,
-    ini: &Config,
-    flags: Flags,
-) -> Result<(), CliError> {
-    let sdl = sdl3::init()?;
-    let video = sdl.video()?;
-    let mut screen = screen::open(&video, ini, flags.size)?;
-    let size = screen.size;
-    let textures = screen.canvas.texture_creator();
-    let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
-    texture.set_scale_mode(ScaleMode::Nearest);
+/// The commands of a script, in the order of their pass.
+type Script = std::iter::Peekable<std::vec::IntoIter<(u64, Command)>>;
 
-    // The busy cursor shows from the start-up until the first pass.
-    let cursors = Rc::new(RefCell::new(Cursors::new(vfs.root())));
-    let mut alternate = rustyzoo::cursor::alternate(ini);
-    let busy_number = |alternate| rustyzoo::cursor::number(rustyzoo::cursor::BUSY, alternate);
-    cursors.borrow_mut().show(busy_number(alternate));
-    let mut sound = Sound::open(&sdl, ini);
-    let mut pump = sdl.event_pump()?;
-    let scripted = !flags.script.is_empty();
-    let mut script = flags.script.into_iter().peekable();
-    let mut commands = Vec::new();
-    // The ini file starts the game in full screen; the camera is told before the first pass, so
-    // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
-    // is not written back: it is what the settings already say.
-    if ini_fullscreen(ini) && screen.request(true) {
-        screen.fullscreen = true;
-        commands.push(Command::Fullscreen(true));
+/// The intro movies, then the game data loaded behind the start-up picture, which is presented
+/// each time the bar moves; the menu music starts in the middle of it. Gives what the start-up
+/// made and the menu music, or none when the intro ended the run.
+fn start_up(
+    stage: &mut intro::Stage,
+    vfs: &Vfs,
+    ini: &Config,
+    log: &mut Option<BufWriter<File>>,
+    script: &mut Script,
+    pass: &mut u64,
+    flags: &Flags,
+) -> Result<Option<(Booted, Option<Music>)>, CliError> {
+    if intro::play(stage, vfs, ini, log, script, pass, flags.passes)? {
+        return Ok(None);
     }
-    let mut log = match flags.log {
-        Some(file) => {
-            let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
-            Some(BufWriter::new(out))
-        }
-        None => None,
-    };
-    if let Some(log) = &mut log {
-        writeln!(log, "size {}x{}", size.0, size.1)?;
-    }
-    let mut pass = 0;
-    let (mut menu, mut booted, mut start_lines) = (None, None, Vec::new());
-    if loaded.is_some() {
-        menu = sound.start_music(vfs, ini);
-    } else {
-        // The intro movies, then the game data loaded behind the start-up picture, which is
-        // presented each time the bar moves; the menu music starts in the middle of it.
-        let mut stage = intro::Stage {
-            sdl: &sdl,
-            screen: &mut screen,
-            texture: &mut texture,
-            pump: &mut pump,
-            sound: &mut sound,
-        };
-        if intro::play(
-            &mut stage,
-            vfs,
-            ini,
-            &mut log,
-            &mut script,
-            &mut pass,
-            flags.passes,
-        )? {
-            if let Some(mut log) = log {
-                log.flush()?;
-            }
-            return Ok(());
-        }
-        let mut present =
-            |frame: &rustyzoo::Framebuffer| intro::show(&mut screen, &mut texture, frame);
-        let mut music = || menu = sound.start_music(vfs, ini);
-        let made = boot(vfs, ini, size, flags.show, &mut present, &mut music)?;
-        start_lines = made.lines.clone();
-        booted = Some(made);
-    }
+    let size = stage.screen.size;
+    let (screen, texture, sound) = (&mut *stage.screen, &mut *stage.texture, &mut *stage.sound);
+    let mut menu = None;
+    let mut present = |frame: &rustyzoo::Framebuffer| intro::show(screen, texture, frame);
+    let mut music = || menu = sound.start_music(vfs, ini);
+    let made = boot(vfs, ini, size, flags.show, &mut present, &mut music)?;
+    Ok(Some((made, menu)))
+}
+
+/// The game: the map `loaded` (its types are kept in `catalogue`) with the menu music `menu`
+/// playing, or the main menu that the start-up `booted` made.
+fn make_app<'c>(
+    catalogue: &'c mut Option<Catalogue>,
+    vfs: &'c Vfs,
+    ini: &Config,
+    start: (Option<(Catalogue, Zoo, Money)>, Option<Booted>),
+    (size, menu): ((u32, u32), Option<Music>),
+    flags: &Flags,
+) -> Result<App<'c>, CliError> {
     let timers = Timers::from_config(ini);
-    let mut timing = flags
-        .timing
-        .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
-    let catalogue;
-    let mut app = match (loaded, booted) {
+    Ok(match start {
         (Some((owned, zoo, money)), _) => {
-            catalogue = owned;
+            let catalogue = catalogue.insert(owned);
             let mut app = App::new(
-                MapRenderer::new(vfs, &catalogue),
+                MapRenderer::new(vfs, catalogue),
                 zoo,
                 Settings::from_config(ini),
                 timers,
@@ -230,9 +187,9 @@ pub fn run(
             app
         }
         (None, Some(booted)) => {
-            catalogue = booted.catalogue;
+            let catalogue = catalogue.insert(booted.catalogue);
             let mut app = App::menu(
-                MapRenderer::new(vfs, &catalogue),
+                MapRenderer::new(vfs, catalogue),
                 Settings::from_config(ini),
                 timers,
                 size,
@@ -246,20 +203,240 @@ pub fn run(
             app
         }
         (None, None) => unreachable!("a run without a map boots"),
+    })
+}
+
+/// The changes of the window mode that the window makes or asks for: Alt+Enter and a script ask
+/// for the switch and the window makes it; a switch that the window makes on its own (a key of
+/// the window manager) is followed, and `seen` is the mode it was last seen in. The game is told.
+fn follow_mode(
+    screen: &mut Screen,
+    state: &mut State,
+    commands: &mut Vec<Command>,
+    seen: &mut bool,
+) {
+    let window_flags: WindowFlags = screen.canvas.window().window_flags().into();
+    if take(&mut state.toggle) && focused(window_flags) {
+        let on = !screen.fullscreen;
+        switch(screen, state, commands, on, true);
+    }
+    // The maximise button of the title bar goes to full screen (input 3.4). The window is
+    // restored first, so that leaving full screen gives a normal window, not a maximised one.
+    if maximised(window_flags, screen.fullscreen) {
+        let window = screen.canvas.window_mut();
+        window.restore();
+        window.sync();
+        switch(screen, state, commands, true, true);
+    }
+    let full = window_flags.contains(WindowFlags::FULLSCREEN);
+    if full != *seen {
+        *seen = full;
+        switch(screen, state, commands, full, false);
+    }
+}
+
+/// The commands of the script that are due at `pass`; a full screen switch goes to the window.
+fn run_script(
+    script: &mut Script,
+    pass: u64,
+    screen: &mut Screen,
+    state: &mut State,
+    commands: &mut Vec<Command>,
+) {
+    while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
+        match command {
+            Command::Fullscreen(on) => switch(screen, state, commands, on, true),
+            command => commands.push(command),
+        }
+    }
+}
+
+/// The edge scroll reads the cursor at its pass, not from motion events: a window that is not
+/// active gets none, one that gets the focus back under the pointer does. The game is told when
+/// the pointer moved from `pointer`.
+fn follow_pointer(
+    screen: &Screen,
+    pump: &EventPump,
+    pointer: &mut Option<(i32, i32)>,
+    commands: &mut Vec<Command>,
+) -> Result<(), CliError> {
+    let at = (screen.canvas.window().has_input_focus() && screen.canvas.window().has_mouse_focus())
+        .then(|| pump.mouse_state())
+        .map(|m| screen.pointer((m.x(), m.y())))
+        .transpose()?;
+    if at != *pointer {
+        *pointer = at;
+        commands.push(Command::Pointer(at));
+    }
+    Ok(())
+}
+
+/// What the pass left to hear and to log: the sound of the units (printed, not logged: the log is
+/// replayed headless, where nothing is heard), the log lines, the music and the clicks.
+fn sound_and_log(
+    sound: &mut Sound,
+    vfs: &Vfs,
+    app: &App,
+    log: &mut Option<BufWriter<File>>,
+    (pass, now): (u64, u64),
+) -> Result<(), CliError> {
+    sound.pause(app.paused());
+    for line in sound.units(vfs, app) {
+        println!("pass {pass} t={now} {line}");
+    }
+    if let Some(log) = log {
+        for line in app.log_lines(pass, now) {
+            writeln!(log, "{line}")?;
+        }
+    }
+    sound.fade(app);
+    sound.restart(vfs, app);
+    sound.clicks(vfs, app);
+    sound.loops(vfs, app);
+    Ok(())
+}
+
+/// Opens the log of `--log`, which starts with the game size.
+fn open_log(file: Option<&str>, size: (u32, u32)) -> Result<Option<BufWriter<File>>, CliError> {
+    let Some(file) = file else {
+        return Ok(None);
     };
+    let out = File::create(file).map_err(|e| format!("{file}: {e}"))?;
+    let mut log = BufWriter::new(out);
+    writeln!(log, "size {}x{}", size.0, size.1)?;
+    Ok(Some(log))
+}
+
+fn busy_number(alternate: bool) -> u32 {
+    rustyzoo::cursor::number(rustyzoo::cursor::BUSY, alternate)
+}
+
+/// A long operation of the game shows the busy cursor before it begins: the pass that ends it
+/// shows the cursor of the pointer again. Gives the cell where the loop puts the cursor set in use.
+fn show_busy<'a, 'v: 'a>(
+    app: &mut App<'a>,
+    cursors: &Rc<RefCell<Cursors<'v>>>,
+    alternate: bool,
+) -> Rc<Cell<bool>> {
+    let seen_alternate = Rc::new(Cell::new(alternate));
+    app.on_busy({
+        let (cursors, alternate) = (Rc::clone(cursors), Rc::clone(&seen_alternate));
+        move || cursors.borrow_mut().show(busy_number(alternate.get()))
+    });
+    seen_alternate
+}
+
+/// What the player did during the start-up is dropped, but not closing the window.
+fn drop_start_input(pump: &mut EventPump, state: &mut State, commands: &mut Vec<Command>) {
+    while let Some(event) = pump.poll_event() {
+        state.note(event, commands);
+    }
+    state.mouse.clear();
+    commands.retain(|c| matches!(c, Command::Quit | Command::Close | Command::Fullscreen(_)));
+}
+
+/// Shows the texture in the window.
+fn present(screen: &mut Screen, texture: &Texture) -> Result<(), CliError> {
+    screen.copy(texture)?;
+    if !screen.canvas.present() {
+        return Err(sdl3::get_error().into());
+    }
+    Ok(())
+}
+
+/// Writes the pixels of the last frame, as the renderer has them, to the PNG `file` (`--shot`).
+fn shot(screen: &mut Screen, texture: &Texture, file: &str) -> Result<(), CliError> {
+    // The texture goes to the renderer again, and its pixels are read before the present.
+    screen.copy(texture)?;
+    probe::shot(&screen.canvas, file)?;
+    screen.canvas.present();
+    Ok(())
+}
+
+/// Plays the map `loaded` (its types and the zoo), or, without one, starts up to the main menu.
+pub fn run(
+    vfs: &Vfs,
+    loaded: Option<(Catalogue, Zoo, Money)>,
+    ini: &Config,
+    mut flags: Flags,
+) -> Result<(), CliError> {
+    let sdl = sdl3::init()?;
+    let video = sdl.video()?;
+    let mut screen = screen::open(&video, ini, flags.size)?;
+    let size = screen.size;
+    let textures = screen.canvas.texture_creator();
+    let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
+    texture.set_scale_mode(ScaleMode::Nearest);
+
+    // The busy cursor shows from the start-up until the first pass.
+    let cursors = Rc::new(RefCell::new(Cursors::new(vfs.root())));
+    let mut alternate = rustyzoo::cursor::alternate(ini);
+    cursors.borrow_mut().show(busy_number(alternate));
+    let mut sound = Sound::open(&sdl, ini);
+    let mut pump = sdl.event_pump()?;
+    let scripted = !flags.script.is_empty();
+    let mut script = take(&mut flags.script).into_iter().peekable();
+    let mut commands = Vec::new();
+    // The ini file starts the game in full screen; the camera is told before the first pass, so
+    // it applies the zoom limit of a full screen to the stored zoom (camera 4.2, 8.3). The mode
+    // is not written back: it is what the settings already say.
+    if ini_fullscreen(ini) && screen.request(true) {
+        screen.fullscreen = true;
+        commands.push(Command::Fullscreen(true));
+    }
+    let mut log = open_log(flags.log, size)?;
+    let mut pass = 0;
+    let (mut booted, mut start_lines) = (None, Vec::new());
+    let menu;
+    if loaded.is_some() {
+        menu = sound.start_music(vfs, ini);
+    } else {
+        let mut stage = intro::Stage {
+            sdl: &sdl,
+            screen: &mut screen,
+            texture: &mut texture,
+            pump: &mut pump,
+            sound: &mut sound,
+        };
+        let Some((made, music)) = start_up(
+            &mut stage,
+            vfs,
+            ini,
+            &mut log,
+            &mut script,
+            &mut pass,
+            &flags,
+        )?
+        else {
+            if let Some(mut log) = log {
+                log.flush()?;
+            }
+            return Ok(());
+        };
+        start_lines = made.lines.clone();
+        booted = Some(made);
+        menu = music;
+    }
+    let timers = Timers::from_config(ini);
+    let mut timing = flags
+        .timing
+        .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
+    let mut catalogue = None;
+    let mut app = make_app(
+        &mut catalogue,
+        vfs,
+        ini,
+        (loaded, booted),
+        (size, menu),
+        &flags,
+    )?;
     let mut state = State {
         interface: app.interface().is_some(),
         alternate,
         scripted,
         ..State::default()
     };
-    // A long operation of the game shows the busy cursor before it begins: the pass that ends
-    // it shows the cursor of the pointer again.
-    let seen_alternate = Rc::new(Cell::new(alternate));
-    app.on_busy({
-        let (cursors, alternate) = (Rc::clone(&cursors), Rc::clone(&seen_alternate));
-        move || cursors.borrow_mut().show(busy_number(alternate.get()))
-    });
+    let seen_alternate = show_busy(&mut app, &cursors, alternate);
     if state.interface {
         // The window gets typed characters as text input events.
         // SAFETY: the window is open and owned by `screen` for the whole run.
@@ -270,12 +447,7 @@ pub fn run(
             writeln!(log, "startup {line}")?;
         }
     }
-    // What the player did during the start-up is dropped, but not closing the window.
-    while let Some(event) = pump.poll_event() {
-        state.note(event, &mut commands);
-    }
-    state.mouse.clear();
-    commands.retain(|c| matches!(c, Command::Quit | Command::Close | Command::Fullscreen(_)));
+    drop_start_input(&mut pump, &mut state, &mut commands);
     let start = sdl3::timer::ticks();
     let mut shown = false;
     let mut pointer = None;
@@ -302,43 +474,10 @@ pub fn run(
             state.note(pump.wait_event(), &mut commands);
             continue;
         }
-        // Alt+Enter and a script ask for the switch and the window makes it; a switch that the
-        // window makes on its own (a key of the window manager) is followed. The game is told.
-        let window_flags: WindowFlags = screen.canvas.window().window_flags().into();
-        if take(&mut state.toggle) && focused(window_flags) {
-            let on = !screen.fullscreen;
-            switch(&mut screen, &mut state, &mut commands, on, true);
-        }
-        // The maximise button of the title bar goes to full screen (input 3.4). The window is
-        // restored first, so that leaving full screen gives a normal window, not a maximised one.
-        if maximised(window_flags, screen.fullscreen) {
-            let window = screen.canvas.window_mut();
-            window.restore();
-            window.sync();
-            switch(&mut screen, &mut state, &mut commands, true, true);
-        }
-        let full = window_flags.contains(WindowFlags::FULLSCREEN);
-        if full != seen {
-            seen = full;
-            switch(&mut screen, &mut state, &mut commands, full, false);
-        }
-        while let Some((_, command)) = script.next_if(|&(at, _)| at <= pass) {
-            match command {
-                Command::Fullscreen(on) => switch(&mut screen, &mut state, &mut commands, on, true),
-                command => commands.push(command),
-            }
-        }
-        // The edge scroll reads the cursor at its pass, not from motion events: a window
-        // that is not active gets none, one that gets the focus back under the pointer does.
-        let at = (has_pointer
-            && screen.canvas.window().has_input_focus()
-            && screen.canvas.window().has_mouse_focus())
-        .then(|| pump.mouse_state())
-        .map(|m| screen.pointer((m.x(), m.y())))
-        .transpose()?;
-        if at != pointer {
-            pointer = at;
-            commands.push(Command::Pointer(at));
+        follow_mode(&mut screen, &mut state, &mut commands, &mut seen);
+        run_script(&mut script, pass, &mut screen, &mut state, &mut commands);
+        if has_pointer {
+            follow_pointer(&screen, &pump, &mut pointer, &mut commands)?;
         }
         seen_alternate.set(state.alternate);
         let now = sdl3::timer::ticks() - start;
@@ -355,30 +494,14 @@ pub fn run(
         }
         shown |= painted;
         if painted || (shown && std::mem::take(&mut state.exposed)) {
-            screen.copy(&texture)?;
-            if !screen.canvas.present() {
-                return Err(sdl3::get_error().into());
-            }
+            present(&mut screen, &texture)?;
         }
         (cursors.borrow_mut()).show(rustyzoo::cursor::number(app.cursor(), state.alternate));
         if state.alternate != alternate {
             alternate = state.alternate;
             remember_cursors(alternate);
         }
-        sound.pause(app.paused());
-        // Printed, not logged: the log is replayed headless, where nothing is heard.
-        for line in sound.units(vfs, &app) {
-            println!("pass {pass} t={now} {line}");
-        }
-        if let Some(log) = &mut log {
-            for line in app.log_lines(pass, now) {
-                writeln!(log, "{line}")?;
-            }
-        }
-        sound.fade(&app);
-        sound.restart(vfs, &app);
-        sound.clicks(vfs, &app);
-        sound.loops(vfs, &app);
+        sound_and_log(&mut sound, vfs, &app, &mut log, (pass, now))?;
         pass += 1;
         let timed = timing.as_ref().is_some_and(|t| t.done(now));
         if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {
@@ -394,10 +517,7 @@ pub fn run(
         timing.summary().iter().for_each(|line| println!("{line}"));
     }
     if let Some(file) = flags.shot {
-        // The texture goes to the renderer again, and its pixels are read before the present.
-        screen.copy(&texture)?;
-        probe::shot(&screen.canvas, file)?;
-        screen.canvas.present();
+        shot(&mut screen, &texture, file)?;
     }
     Ok(())
 }
