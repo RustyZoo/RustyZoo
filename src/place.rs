@@ -33,15 +33,15 @@ use crate::world::{Shape, World};
 use crate::zoo::{Common, Entity, Fence};
 
 /// The message of a place outside the zoo wall (or off the map).
-pub const NOT_IN_THE_ZOO: i32 = 10311;
+pub(crate) const NOT_IN_THE_ZOO: i32 = 10311;
 /// The message of an object that cannot be placed because another one stands in the way.
-pub const IN_THE_WAY: i32 = 10555;
+pub(crate) const IN_THE_WAY: i32 = 10555;
 /// The message of an object that is not a land object on a land tile.
-pub const NOT_ON_WATER: i32 = 10564;
+pub(crate) const NOT_ON_WATER: i32 = 10564;
 /// The message of a purchase the cash does not cover.
-pub const NO_FUNDS: i32 = 10002;
+pub(crate) const NO_FUNDS: i32 = 10002;
 /// The message of a tank filter that is not next to a finished tank without a filter.
-pub const NO_TANK: i32 = 10517;
+pub(crate) const NO_TANK: i32 = 10517;
 
 /// The `cLife` of a fence type that has none.
 pub(crate) const LIFE: f32 = 10.0;
@@ -54,7 +54,7 @@ const MAX_FOOTPRINT: i32 = 64;
 /// The tints of the pending object (sprite drawing 9.1), keys of the map view element of
 /// `ui/gamescrn.lyt`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Tints {
+pub(crate) struct Tints {
     pub valid: [u8; 3],
     pub overwrite: [u8; 3],
     pub invalid: [u8; 3],
@@ -79,7 +79,7 @@ impl Default for Tints {
 
 impl Tints {
     /// The colours the install's `ui/gamescrn.lyt` gives, the shipped ones for a missing key.
-    pub fn load(vfs: &Vfs) -> Tints {
+    pub(crate) fn load(vfs: &Vfs) -> Tints {
         let config = vfs
             .read("ui/gamescrn.lyt")
             .ok()
@@ -117,7 +117,7 @@ pub fn water(types: &[terrain::Type]) -> Vec<bool> {
 
 /// How a type is placed: by the way its class takes its place on the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Class {
+pub(crate) enum Class {
     /// Holds the quadrants of its footprint: scenery, buildings and the rest.
     Fixed,
     /// The path piece of a tile.
@@ -127,7 +127,7 @@ pub enum Class {
 }
 
 impl Class {
-    pub fn of(ty: &EntityType) -> Class {
+    pub(crate) fn of(ty: &EntityType) -> Class {
         match Kind::of_class(ty.class) {
             Kind::Path => Class::Path,
             Kind::Edge | Kind::Wall => Class::Fence,
@@ -138,7 +138,7 @@ impl Class {
 
 /// What the place under the mouse is worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Verdict {
+pub(crate) enum Verdict {
     Valid,
     /// Valid, and it replaces a piece (a path on a path, a fence on a held slot).
     Overwrite,
@@ -148,7 +148,7 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    pub fn word(self) -> &'static str {
+    pub(crate) fn word(self) -> &'static str {
         match self {
             Verdict::Valid => "valid",
             Verdict::Overwrite => "overwrite",
@@ -172,7 +172,7 @@ pub struct Pending {
     /// The tile under the snapped point and its quadrant there (`qy * 2 + qx`).
     pub tile: (i32, i32),
     pub quadrant: usize,
-    pub verdict: Verdict,
+    pub(crate) verdict: Verdict,
     /// The message the first failed check stores, shown when the player clicks.
     pub message: Option<i32>,
     /// What the pending object costs, 0 for the replacement of a piece of the same type; for a
@@ -189,7 +189,7 @@ pub struct Pending {
 
 impl Pending {
     /// What the cost text shows: minus the cost when the place is valid, 0 otherwise (placing 4.5).
-    pub fn amount(&self) -> i64 {
+    pub(crate) fn amount(&self) -> i64 {
         match self.verdict {
             Verdict::Invalid => 0,
             _ => whole_units(f64::from(self.price)).saturating_neg(),
@@ -198,13 +198,13 @@ impl Pending {
 
     /// The transient items the staging draws for it: the object itself, tinted by the verdict,
     /// and the objects in its way tinted red.
-    pub fn extra(&self, tints: &Tints) -> Extra {
+    pub(crate) fn extra(&self, tints: &Tints) -> Extra {
         extra_of(std::slice::from_ref(self), tints)
     }
 }
 
 /// The transient items of a list of pending pieces (a drag is one piece per tile).
-pub fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
+pub(crate) fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
     let mut extra = Extra::default();
     for p in pieces {
         let tint = match p.verdict {
@@ -232,7 +232,7 @@ pub fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
 }
 
 /// The cost text of a drag: minus the sum of the pieces that will be bought (placing 4.5).
-pub fn run_amount(pieces: &[Pending]) -> i64 {
+pub(crate) fn run_amount(pieces: &[Pending]) -> i64 {
     let sum: f32 = pieces
         .iter()
         .filter(|p| p.verdict != Verdict::Invalid)
@@ -244,7 +244,7 @@ pub fn run_amount(pieces: &[Pending]) -> i64 {
 /// Walks the pieces of a drag in order, adding up the cost of the valid ones: a valid piece that
 /// would bring the sum above the cash is not valid (it will not be bought) and stores no message
 /// (placing 6.2 items 3 and 4).
-pub fn afford(pieces: &mut [Pending], money: &Money) {
+pub(crate) fn afford(pieces: &mut [Pending], money: &Money) {
     let mut sum = 0.0;
     for p in pieces.iter_mut().filter(|p| p.verdict != Verdict::Invalid) {
         if money.can_pay(sum + p.price) {
@@ -296,7 +296,7 @@ pub fn path_run(start: (i32, i32), cell: (i32, i32), leg: &mut Option<Leg>) -> V
 }
 
 /// The middle of each side of a tile, by map direction 0, 2, 4, 6 (placing 4.2).
-pub const MIDDLE: [(i32, i32); 4] = [(32, 0), (63, 32), (32, 63), (0, 32)];
+pub(crate) const MIDDLE: [(i32, i32); 4] = [(32, 0), (63, 32), (32, 63), (0, 32)];
 
 /// The pieces `(tile, side)` of the L a fence drag lays, the start piece first (placing 6.2): the
 /// first leg runs along the side `first` chosen at the press on the tile `start`, the second
@@ -410,7 +410,7 @@ pub(crate) fn path_shape(shape: u8) -> bool {
 /// What painting a tile with dirt would be, for the path check on water: the terrain type and the
 /// price, or `None` where the terrain tool would refuse (placing 5.3; dirt is type 3, or type 0
 /// when fewer than 4 types are loaded).
-pub fn dirt<'a>(
+pub(crate) fn dirt<'a>(
     world: &'a World,
     types: &'a [terrain::Type],
     habits: Habits<'a>,
@@ -432,32 +432,32 @@ fn ui_switch(ini: &[u8], key: &str) -> bool {
 
 /// `[UI] smartFences` of the ini file, the test of fences against large objects (placing 6.3
 /// rule 5).
-pub fn smart_fences(ini: &[u8]) -> bool {
+pub(crate) fn smart_fences(ini: &[u8]) -> bool {
     ui_switch(ini, "smartFences")
 }
 
 /// `[UI] confirmSell` of the ini file, the question before a type that needs one is removed
 /// (placing 7.1).
-pub fn confirm_sell(ini: &[u8]) -> bool {
+pub(crate) fn confirm_sell(ini: &[u8]) -> bool {
     ui_switch(ini, "confirmSell")
 }
 
 /// The text of the cost at the pointer: an amount in whole units without grouping, `($25)` for
 /// minus 25 in US English (placing 4.5). `symbol` is string 22100.
-pub fn cost_text(symbol: String, amount: i64) -> String {
+pub(crate) fn cost_text(symbol: String, amount: i64) -> String {
     money(&Symbol::new(symbol), amount, false)
 }
 
 /// The map direction a pending object faces for the step `step` of its panel when the view is
 /// turned by `view` (placing 4.4): it keeps its facing on screen, `2 * step - 4`, so a turn of the
 /// view turns it on the map.
-pub fn facing(step: usize, view: u8) -> u32 {
+pub(crate) fn facing(step: usize, view: u8) -> u32 {
     (2 * (step as i32 % 4 - i32::from(view % 4)) - 4).rem_euclid(8) as u32
 }
 
 /// The side of a tile (0, 2, 4 or 6) that holds the point (`lx`, `ly`) of the tile, 0 to 63: the
 /// two diagonals cut the tile in four triangles (placing 4.2.1).
-pub fn side(lx: i32, ly: i32) -> u32 {
+pub(crate) fn side(lx: i32, ly: i32) -> u32 {
     if lx < ly {
         if lx + ly <= 64 { 6 } else { 4 }
     } else if lx + ly <= 64 {
@@ -469,7 +469,7 @@ pub fn side(lx: i32, ly: i32) -> u32 {
 
 /// The world position the pending object takes for the world point (`px`, `py`): `fp` is its
 /// placement footprint after the turn, `facing` the side of a fence (placing 4.2).
-pub fn snap(class: Class, (px, py): (i32, i32), fp: (i32, i32), facing: u32) -> (i32, i32) {
+pub(crate) fn snap(class: Class, (px, py): (i32, i32), fp: (i32, i32), facing: u32) -> (i32, i32) {
     let (tx, ty) = (px.div_euclid(64), py.div_euclid(64));
     let (lx, ly) = (px.rem_euclid(64), py.rem_euclid(64));
     let (x, y) = match class {
@@ -525,7 +525,7 @@ fn is_of(entity: &crate::zoo::Entity, ty: &EntityType) -> bool {
 /// type whether it is water, `dirt` what painting a tile with dirt would be (see [`dirt`]) and
 /// `smart` whether the smart fences test is on (see [`smart_fences`]).
 #[allow(clippy::too_many_arguments)]
-pub fn pending(
+pub(crate) fn pending(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
@@ -551,7 +551,7 @@ pub fn pending(
 /// The pending object of the building the player holds (unit placing 8.7), of the type `ty`
 /// facing `dir` on the map, for the world point `point`: the checks of a new object, the cost 0.
 #[allow(clippy::too_many_arguments)]
-pub fn moved(
+pub(crate) fn moved(
     world: &World,
     cat: &Catalogue,
     water: &[bool],
@@ -790,7 +790,7 @@ fn check(
 }
 
 /// Whether a tile of `tiles` is not flat or not at the height of the first (placing 5.2 item 5).
-fn uneven(world: &World, tiles: &[usize]) -> bool {
+pub(crate) fn uneven(world: &World, tiles: &[usize]) -> bool {
     let tile = |t: usize| world.zoo.tiles[t];
     tiles.first().is_some_and(|&first| {
         tiles
@@ -801,7 +801,7 @@ fn uneven(world: &World, tiles: &[usize]) -> bool {
 
 /// Whether a tile side inside the footprint of `fp` quarters whose first quarter is at
 /// `(x0, y0)` holds a fence or is a cliff (placing 5.2 item 6).
-fn fenced(world: &World, x0: i32, y0: i32, fp: (i32, i32)) -> bool {
+pub(crate) fn fenced(world: &World, x0: i32, y0: i32, fp: (i32, i32)) -> bool {
     let (tx0, ty0) = (x0.div_euclid(64), y0.div_euclid(64));
     let tx1 = (x0 + 32 * (fp.0 - 1)).div_euclid(64);
     let ty1 = (y0 + 32 * (fp.1 - 1)).div_euclid(64);
@@ -968,7 +968,7 @@ pub fn entity(ty: &EntityType, p: &Pending, colors: Vec<u8>, over: &Overlay, now
 
 /// What a release over a place came to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     /// The object was placed, with this id.
     Placed(u32),
     /// Nothing was placed; the message to show, if the place or the cash gave one.
@@ -984,7 +984,7 @@ pub enum Outcome {
 /// place (placing 5.3, 6.3).
 /// `shape` tells how the new entity takes its place, `water` which terrain types are water and
 /// `colors` the colour choices a new building starts with.
-pub fn place(
+pub(crate) fn place(
     world: &mut World,
     money: &mut Money,
     ty: &EntityType,

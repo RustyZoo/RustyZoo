@@ -57,7 +57,7 @@ const FULL_BAND: i32 = 2;
 const NARROW: i32 = 800;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Camera {
+pub(crate) struct Camera {
     /// -2, 0 or 2 from the interface; a file may store anything.
     pub zoom: i32,
     /// 0 to 3.
@@ -79,7 +79,7 @@ pub struct Camera {
 
 /// A view-space position at normal zoom, with the zoom of 2.4 applied: the zoom value is the
 /// factor, `trunc(p / -z)` below -1 and `p * z` above 1.
-pub fn zoom_view(zoom: i32, (px, py): (i32, i32)) -> (i64, i64) {
+pub(crate) fn zoom_view(zoom: i32, (px, py): (i32, i32)) -> (i64, i64) {
     let (px, py) = (i64::from(px), i64::from(py));
     let z = i64::from(zoom);
     match zoom {
@@ -101,7 +101,7 @@ fn to_i32(n: i64) -> i32 {
 impl Camera {
     /// The camera of a freshly opened map: the stored values as they are, no recentring and no
     /// range check (4.2). A rotation outside 0 to 3 is ignored.
-    pub fn open(view: &View, size: (i32, i32), settings: Settings) -> Self {
+    pub(crate) fn open(view: &View, size: (i32, i32), settings: Settings) -> Self {
         Camera {
             zoom: view.zoom,
             rotation: u8::try_from(view.rotation)
@@ -119,7 +119,7 @@ impl Camera {
     }
 
     /// The view as a file stores it.
-    pub fn view(&self) -> View {
+    pub(crate) fn view(&self) -> View {
         View {
             zoom: self.zoom,
             rotation: i32::from(self.rotation),
@@ -129,12 +129,12 @@ impl Camera {
     }
 
     /// The world point on the ground under the centre of the view (5), including its quirks.
-    pub fn centre_point(&self, map: &Zoo) -> (i64, i64, i32) {
+    pub(crate) fn centre_point(&self, map: &Zoo) -> (i64, i64, i32) {
         self.pick(map, (self.size.0 / 2, self.size.1 / 2))
     }
 
     /// The tile under a window point, if it is on the map.
-    pub fn tile_under(&self, map: &Zoo, at: (i32, i32)) -> Option<(u32, u32)> {
+    pub(crate) fn tile_under(&self, map: &Zoo, at: (i32, i32)) -> Option<(u32, u32)> {
         let (wx, wy, _) = self.pick(map, at);
         let tile = |w: i64| u32::try_from(w.div_euclid(64)).ok();
         let (x, y) = (tile(wx)?, tile(wy)?);
@@ -143,7 +143,7 @@ impl Camera {
 
     /// The view-space point at normal zoom of a window point: the scroll plus the point, with
     /// the zoom undone (map drawing 2.5, step 1; camera 5). Saturating.
-    pub fn view_point(&self, (x, y): (i32, i32)) -> (i64, i64) {
+    pub(crate) fn view_point(&self, (x, y): (i32, i32)) -> (i64, i64) {
         let px = i64::from(self.scroll.0) + i64::from(x);
         let py = i64::from(self.scroll.1) + i64::from(y);
         let z = i64::from(self.zoom);
@@ -157,7 +157,7 @@ impl Camera {
     /// The world point on the ground under a window point (map drawing 2.5): the trial heights
     /// from +192 down to -192 in steps of 4 are undone through the projection, and the one whose
     /// height is nearest to the ground at the point it gives wins.
-    pub fn pick(&self, map: &Zoo, at: (i32, i32)) -> (i64, i64, i32) {
+    pub(crate) fn pick(&self, map: &Zoo, at: (i32, i32)) -> (i64, i64, i32) {
         let bound = 1 << 40;
         let (px, py) = self.view_point(at);
         let (px, py) = (px.clamp(-bound, bound), py.clamp(-bound, bound));
@@ -187,7 +187,7 @@ impl Camera {
     }
 
     /// The range check (6.1): the centre point stays `k` tiles inside the map.
-    pub fn check_range(&mut self, map: &Zoo) {
+    pub(crate) fn check_range(&mut self, map: &Zoo) {
         let (wx, wy, wz) = self.centre_point(map);
         let k = match self.zoom {
             ..=-2 => 4,
@@ -212,7 +212,7 @@ impl Camera {
 
     /// Centres the view on the middle of tile `(tx, ty)` (10.1): no range check. A tile off the
     /// map is the height 0.
-    pub fn centre_on(&mut self, map: &Zoo, tx: u32, ty: u32) {
+    pub(crate) fn centre_on(&mut self, map: &Zoo, tx: u32, ty: u32) {
         let z = map.tile(tx, ty).map_or(0, |t| ground_height(t, 32, 32));
         let (wx, wy) = (64 * i64::from(tx) + 32, 64 * i64::from(ty) + 32);
         let (px, py) = project_zoomed(self.rotation, self.zoom, to_i32(wx), to_i32(wy), z);
@@ -221,7 +221,7 @@ impl Camera {
 
     /// Centres the view on the world point `(x, y, z)`, with no range check: the view follows an
     /// entity (10.3).
-    pub fn centre_on_point(&mut self, (x, y, z): (i32, i32, i32)) {
+    pub(crate) fn centre_on_point(&mut self, (x, y, z): (i32, i32, i32)) {
         let (px, py) = project_zoomed(self.rotation, self.zoom, x, y, z);
         self.scroll = self.scroll_for(px, py);
     }
@@ -239,7 +239,7 @@ impl Camera {
     }
 
     /// One key-down message (9.1); `dir` is -1, 0 or 1 on each axis.
-    pub fn key_scroll(&mut self, map: &Zoo, dir: (i32, i32)) {
+    pub(crate) fn key_scroll(&mut self, map: &Zoo, dir: (i32, i32)) {
         let (kx, ky) = self.settings.key;
         self.scroll_by(map, dir.0.wrapping_mul(kx), dir.1.wrapping_mul(ky));
     }
@@ -249,7 +249,7 @@ impl Camera {
     /// the follow mode or an inactive window forbid scrolling (6.2): the edge timer advances
     /// then too. Only an open modal dialog stops the pass before the timer, so skip the call
     /// for that.
-    pub fn edge_scroll(&mut self, map: &Zoo, now: u64, pointer: Option<(i32, i32)>) {
+    pub(crate) fn edge_scroll(&mut self, map: &Zoo, now: u64, pointer: Option<(i32, i32)>) {
         let now = i64::try_from(now).unwrap_or(i64::MAX);
         if now < self.next_edge {
             return;
@@ -273,14 +273,14 @@ impl Camera {
 
     /// A quarter turn: clockwise is rotation + 1 (8.2). `selected` is the world position
     /// `(x, y)` of the selected animal, guest or staff member, if any.
-    pub fn rotate(&mut self, map: &Zoo, selected: Option<(i32, i32)>, clockwise: bool) {
+    pub(crate) fn rotate(&mut self, map: &Zoo, selected: Option<(i32, i32)>, clockwise: bool) {
         let turn = if clockwise { 1 } else { 3 };
         self.change(map, selected, |c| c.rotation = (c.rotation + turn) % 4);
     }
 
     /// Zoom in (+2) or out (-2); nothing at the limit, as the disabled button (8.3). Full screen
     /// at a width of 800 also refuses zoom in at zoom 0.
-    pub fn zoom(&mut self, map: &Zoo, selected: Option<(i32, i32)>, zoom_in: bool) {
+    pub(crate) fn zoom(&mut self, map: &Zoo, selected: Option<(i32, i32)>, zoom_in: bool) {
         let (limit, step) = if zoom_in { (2, 2) } else { (-2, -2) };
         let refused = self.zoom == limit || (zoom_in && self.zoom == 0 && self.narrow());
         if !refused {
@@ -295,7 +295,7 @@ impl Camera {
 
     /// The window goes to full screen or back. A view at zoom 2 that full screen does not offer
     /// is zoomed out to 0 with the steps of 8.1 (8.3).
-    pub fn set_fullscreen(&mut self, map: &Zoo, fullscreen: bool) {
+    pub(crate) fn set_fullscreen(&mut self, map: &Zoo, fullscreen: bool) {
         self.fullscreen = fullscreen;
         if self.narrow() && self.zoom == 2 {
             self.change(map, None, |c| c.zoom = 0);

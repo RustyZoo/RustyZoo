@@ -28,28 +28,28 @@ use crate::world::World;
 
 // The layout of the panel, the exhibit list button that shows it, the name field and the list of
 // the exhibits.
-pub const LAYOUT: i32 = 30;
-pub const BUTTON: i32 = 1050;
-pub const NAME: i32 = 4304;
-pub const LIST: i32 = 4305;
+pub(crate) const LAYOUT: i32 = 30;
+pub(crate) const BUTTON: i32 = 1050;
+pub(crate) const NAME: i32 = 4304;
+pub(crate) const LIST: i32 = 4305;
 // The list of the animals, the thoughts and the tabs that can be selected without a click: status
 // and tank modification, each with its sub-layout.
-pub const ANIMALS: i32 = 4326;
+pub(crate) const ANIMALS: i32 = 4326;
 /// The animals tab button: a click fills the list at once (10.5).
-pub const ANIMALS_TAB: i32 = 4311;
+pub(crate) const ANIMALS_TAB: i32 = 4311;
 const THOUGHTS: i32 = 4330;
 const STATUS_TAB: i32 = 4310;
 /// The tank tab button: showing its layout shows all of it, so the panel is written again.
-pub const TANK_TAB: i32 = 4365;
+pub(crate) const TANK_TAB: i32 = 4365;
 // The tank tab (4.7): the wall buttons, the fill buttons, the drain button, the ground buttons, and
 // the texts of the wall price, the two fill prices, the salinity and the ground price.
-pub const WALL_DOWN: i32 = 4874;
-pub const WALL_UP: i32 = 4875;
-pub const SALT: i32 = 4869;
-pub const FRESH: i32 = 4870;
-pub const DRAIN: i32 = 4885;
-pub const GROUND_DOWN: i32 = 4879;
-pub const GROUND_UP: i32 = 4880;
+pub(crate) const WALL_DOWN: i32 = 4874;
+pub(crate) const WALL_UP: i32 = 4875;
+pub(crate) const SALT: i32 = 4869;
+pub(crate) const FRESH: i32 = 4870;
+pub(crate) const DRAIN: i32 = 4885;
+pub(crate) const GROUND_DOWN: i32 = 4879;
+pub(crate) const GROUND_UP: i32 = 4880;
 const WALL_COST: i32 = 4877;
 const FILL_COST: [i32; 2] = [4871, 4872];
 const SALINITY_TEXT: i32 = 4868;
@@ -91,10 +91,10 @@ const DONATIONS: [i32; 3] = [4319, 4317, 4321];
 /// The string of the date of an exhibit.
 const DATE_PATTERN: i32 = 22014;
 /// The interface clock time between two refreshes of the panel and of the plaque (ms).
-pub const PERIOD: u64 = 10_000;
+pub(crate) const PERIOD: u64 = 10_000;
 
 // The recommendations plaque: its layout, the name, the list, the background and the title.
-pub const PLAQUE: i32 = 28;
+pub(crate) const PLAQUE: i32 = 28;
 const PLAQUE_NAME: i32 = 26001;
 const PLAQUE_LIST: i32 = 26002;
 const PLAQUE_BACK: i32 = 26000;
@@ -189,7 +189,7 @@ fn tank_tab(
 }
 
 /// The picture of a popularity (0 to 100) in the image set of 11 stars by halves.
-pub fn stars(popularity: u32) -> usize {
+pub(crate) fn stars(popularity: u32) -> usize {
     (popularity.min(100) * 10 / 100) as usize
 }
 
@@ -208,7 +208,7 @@ fn tank_icon(tank: &Tank, murky: i32) -> String {
 
 /// The keeper kind of an animal type by its `cKeeper` (information panels 2): 1 for the
 /// scientist, 2 for the marine specialist, else the zookeeper's 0.
-pub fn keeper_kind(keeper: i32) -> usize {
+pub(crate) fn keeper_kind(keeper: i32) -> usize {
     match keeper {
         9551 => 1,
         9552 => 2,
@@ -218,7 +218,7 @@ pub fn keeper_kind(keeper: i32) -> usize {
 
 /// A line of the recommendations: its string, whether it is important, and for a line about
 /// scenery the name id of the object type.
-pub type Line = (i32, bool, Option<i32>);
+pub(crate) type Line = (i32, bool, Option<i32>);
 
 /// The lines of an animal's recommendations (habitat rating 7) from its two stored sets `bits`
 /// (`Animal::advice` and `important`): the important bits, the important scenery the species
@@ -226,7 +226,7 @@ pub type Line = (i32, bool, Option<i32>);
 /// nothing is added the exhibit is well suited. An animal in a show tank has its own line, and
 /// the salinity bit after it in red. An egg lists no scenery and ends with its own care line,
 /// which also keeps the exhibit from being well suited.
-pub fn recommendations(
+pub(crate) fn recommendations(
     (advice, important): (u64, u64),
     female: bool,
     show_tank: bool,
@@ -271,7 +271,7 @@ pub(crate) fn type_at<'a>(world: &World, cat: &'a Catalogue, at: usize) -> Optio
 /// The panel's fill of the animals tab (info-panels 10.5): exhibit `x` is recomputed when dirty,
 /// then its stored animal list is sorted in place by name (bytes, the shorter name first when one
 /// starts the other; a stable sort), which other readers then see until the next recomputation.
-pub fn sort_animals(world: &mut World, cat: &Catalogue, x: u32, rng: &mut crate::sim::Rng) {
+pub(crate) fn sort_animals(world: &mut World, cat: &Catalogue, x: u32, rng: &mut crate::sim::Rng) {
     rating::refresh(world, cat, x, &mut || rng.rand());
     let Some(mut list) = world
         .exhibits_mut()
@@ -292,7 +292,7 @@ pub fn sort_animals(world: &mut World, cat: &Catalogue, x: u32, rng: &mut crate:
 }
 
 /// The entities of class animals that stand in exhibit `id`, in the order of the entity list.
-pub fn animals_in(world: &World, id: u32) -> Vec<usize> {
+pub(crate) fn animals_in(world: &World, id: u32) -> Vec<usize> {
     let width = i64::from(world.zoo.width);
     let on = |c: &crate::zoo::Common| {
         let (x, y) = (i64::from(c.x.div_euclid(64)), i64::from(c.y.div_euclid(64)));
@@ -333,7 +333,7 @@ pub(super) fn list_icon(ty: &EntityType) -> Option<String> {
 
 /// The refresh clock of a panel (5.1): the due time and a refresh that is asked for.
 #[derive(Debug, Default)]
-pub struct Clock {
+pub(crate) struct Clock {
     due: u64,
     pub force: bool,
     /// The last [`Clock::due`] that said yes was a forced one: the panel sets what only a shown
@@ -346,7 +346,7 @@ impl Clock {
     /// `ticking` (the interface update runs and the game is not paused). A refresh that was
     /// asked for sets the due time to `period` itself, as a call with the clock at 0 does, so
     /// the next ordinary call refreshes again.
-    pub fn due(&mut self, now: u64, ticking: bool, period: u64) -> bool {
+    pub(crate) fn due(&mut self, now: u64, ticking: bool, period: u64) -> bool {
         self.forced = self.force;
         if self.force {
             (self.force, self.due) = (false, period);
@@ -362,7 +362,7 @@ impl Clock {
 
 /// What the panel and the plaque hold: the player's choices and the refresh clocks.
 #[derive(Debug, Default)]
-pub struct Panel {
+pub(crate) struct Panel {
     /// The layout was shown at the last look.
     pub shown: bool,
     /// The exhibit shown, and the exhibit of each row of the list.
@@ -385,7 +385,7 @@ pub struct Panel {
 
 impl Panel {
     /// The panel was just shown (4.2): no exhibit is current, nothing is selected.
-    pub fn opened(&mut self) {
+    pub(crate) fn opened(&mut self) {
         self.shown = true;
         self.current = None;
         self.laid = None;
@@ -393,7 +393,7 @@ impl Panel {
     }
 
     /// The panel was hidden: the lists are emptied and no exhibit is current.
-    pub fn closed(&mut self) {
+    pub(crate) fn closed(&mut self) {
         self.shown = false;
         self.current = None;
         self.laid = None;
@@ -402,25 +402,25 @@ impl Panel {
     }
 
     /// The plaque shows the animal with entity id `id` from now on, refreshed at once.
-    pub fn show_plaque(&mut self, id: u32) {
+    pub(crate) fn show_plaque(&mut self, id: u32) {
         self.plaque = Some(id);
         self.plaque_told.clear();
         self.plaque_clock.force = true;
     }
 
     /// The exhibit of row `row` of the list, if there is such a row.
-    pub fn exhibit_of(&self, row: usize) -> Option<u32> {
+    pub(crate) fn exhibit_of(&self, row: usize) -> Option<u32> {
         self.listed.get(row).copied()
     }
 
     /// The entity id of row `row` of the animal list.
-    pub fn animal_of(&self, row: usize) -> Option<u32> {
+    pub(crate) fn animal_of(&self, row: usize) -> Option<u32> {
         self.animals.get(row).copied()
     }
 
     /// Writes the panel from the world and returns the log lines of what changed since the last
     /// refresh: the exhibit, the status row, the donations row and the lists.
-    pub fn refresh(
+    pub(crate) fn refresh(
         &mut self,
         ui: &mut Interface,
         world: &World,
@@ -561,7 +561,7 @@ impl Panel {
     /// Writes the plaque for the animal `self.plaque`, if it is still in the world: its name, the
     /// background and title of its keeper kind, and its recommendations ([`plaque_lines`]),
     /// read from the animal's stored sets. Returns the log lines of what changed.
-    pub fn refresh_plaque(
+    pub(crate) fn refresh_plaque(
         &mut self,
         ui: &mut Interface,
         world: &World,
@@ -657,7 +657,7 @@ pub(crate) fn plaque_lines(world: &World, cat: &Catalogue, at: usize) -> Vec<Lin
 }
 
 /// The exhibit that the entity at `at` stands in, if it is an exhibit and not the grounds.
-pub fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
+pub(crate) fn animals_exhibit(world: &World, at: usize) -> Option<u32> {
     let c = world.zoo.entities.get(at)?.common.as_ref()?;
     let width = i64::from(world.zoo.width);
     let (x, y) = (i64::from(c.x.div_euclid(64)), i64::from(c.y.div_euclid(64)));

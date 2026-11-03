@@ -14,12 +14,12 @@ use crate::zoo::{Common, Entity, Rubble};
 /// The name id of the restroom, which leaves its own rubble.
 const RESTROOM: i32 = 8008;
 /// The string that names a piece, with `%s` for the name of the entity.
-pub const PIECE_NAME: i32 = 10512;
+pub(crate) const PIECE_NAME: i32 = 10512;
 /// The rubble types a building of at least 2 x 2 quadrants leaves, in the order of the pick.
 const BIG: [&str; 4] = ["brubble1", "brubble2", "brubble3", "brubble4"];
 
 /// What the routine needs besides the world.
-pub struct Kit<'a> {
+pub(crate) struct Kit<'a> {
     pub cat: &'a Catalogue,
     pub rng: &'a mut Rng,
     /// The text of [`PIECE_NAME`].
@@ -37,7 +37,7 @@ fn rubble<'a>(cat: &'a Catalogue, subtype: &str) -> Option<&'a EntityType> {
 
 /// Takes entity `id` off the map and leaves its rubble (4.6): a building lets its users go first
 /// (guest buildings 11.1). Whether there was such an entity.
-pub fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
+pub(crate) fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(at) = world.find(id) else {
         return false;
     };
@@ -57,7 +57,7 @@ pub fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
 /// The pieces of the rubble of item `id` (scenery or building), which stays in the list: a unit's
 /// turn cannot take an entity out, so the caller queues its removal for the next pass. A building
 /// lets its users go first. Whether it exists.
-pub fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
+pub(crate) fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(at) = world.find(id) else {
         return false;
     };

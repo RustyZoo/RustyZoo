@@ -40,13 +40,13 @@ const LEAVING: i32 = 10087;
 
 /// The needs of the seek parts, in the order of the checks: bathroom, hunger, thirst, energy and
 /// the wish for a gift.
-pub const SEEKS: [&str; 5] = ["bathroom", "food", "drink", "energy", "gift"];
+pub(crate) const SEEKS: [&str; 5] = ["bathroom", "food", "drink", "energy", "gift"];
 /// The index of the energy check in [`SEEKS`].
-pub const ENERGY_SEEK: usize = 3;
+pub(crate) const ENERGY_SEEK: usize = 3;
 
 /// What the checks of a tick ask of the caller.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct Out {
+pub(crate) struct Out {
     /// The seek parts that are due, by [`SEEKS`].
     pub seek: [bool; SEEKS.len()],
     /// The viewing check is due.
@@ -72,7 +72,7 @@ fn tick(c: &mut i32, period: i32) -> bool {
 }
 
 /// 5.3: the pending changes are added, the values kept between their limits, the changes cleared.
-pub fn update(g: &mut Guest, max_energy: i32) {
+pub(crate) fn update(g: &mut Guest, max_energy: i32) {
     let limits = [(-100, 100), (0, 100), (0, 100), (0, max_energy), (0, 100)];
     for ((v, p), (low, high)) in g.values.iter_mut().zip(&mut g.pending).zip(limits) {
         *v = v.saturating_add(*p).min(high).max(low);
@@ -81,7 +81,7 @@ pub fn update(g: &mut Guest, max_energy: i32) {
 }
 
 /// The status values at a status tick.
-pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     let Some(k) = (unit.kind == Kind::Guest)
         .then(|| keys(world, ctx.cat, at))
         .flatten()
@@ -104,7 +104,8 @@ pub fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// GuestResetInterval` is 0 in the shipped game) and saw-animal. `wandered` is the ladder's flag;
 /// `skip` is set while the guest is on water, in a tank or leaving, when checks 6.3 to 6.9 do
 /// nothing.
-pub fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
+#[cfg(test)]
+pub(crate) fn run(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng) -> Out {
     countdowns(g, k);
     let mut out = needs_part(g, k, wandered, skip, rng);
     trash(g, k, (wandered, skip), &mut out);
@@ -263,7 +264,13 @@ fn seeks(cx: &mut Cx, g: Guest, range: std::ops::Range<usize>, out: &Out) -> Gue
 }
 
 /// The checks of a status tick (guests 6.1).
-pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn checks(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+) {
     let Some(k) = (unit.kind == Kind::Guest)
         .then(|| keys(world, ctx.cat, at))
         .flatten()

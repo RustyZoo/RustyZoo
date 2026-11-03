@@ -15,7 +15,9 @@ pub mod order;
 mod pick;
 mod shape;
 mod stage;
-pub use shape::shape_of;
+pub(crate) use shape::shape_of;
+#[cfg(test)]
+use stage::{add_ripples, bubbles};
 mod tank;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -41,7 +43,7 @@ use crate::zoom::{Zoom, origin_offset, piece_anchor};
 use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
 
 /// The most pixels of the picture; a 150 by 150 map with its relief needs about 55 million.
-pub const MAX_PIXELS: u64 = 100_000_000;
+pub(crate) const MAX_PIXELS: u64 = 100_000_000;
 
 /// Why a map could not be drawn.
 #[derive(Debug)]
@@ -76,7 +78,7 @@ type Sprites = (Option<String>, Option<String>, Option<String>);
 
 /// A tile drawn with the highlight sprite of this colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Mark {
+pub(crate) struct Mark {
     pub tile: usize,
     pub color: [u8; 3],
 }
@@ -141,7 +143,7 @@ impl Summary {
 
 /// The transient items of the map view, given to the staging (placing 4.5).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Extra {
+pub(crate) struct Extra {
     /// The pending objects: one, or a piece for each tile of a drag.
     pub ghosts: Vec<Ghost>,
     /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.
@@ -166,7 +168,7 @@ pub struct Extra {
 
 /// What a tank filter shows besides its health.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FilterLook {
+pub(crate) struct FilterLook {
     /// The id of the filter.
     pub id: u32,
     /// It is switched off: it faces no water.
@@ -178,7 +180,7 @@ pub struct FilterLook {
 
 /// What an animal is, as far as its footprint goes: its plain one, its egg's or its crate's.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Form {
+pub(crate) enum Form {
     #[default]
     Plain,
     Egg,
@@ -187,7 +189,7 @@ pub enum Form {
 
 /// The animation and frame a unit of the zoo holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Shown {
+pub(crate) struct Shown {
     /// The id of the entity.
     pub id: u32,
     pub animation: String,
@@ -198,7 +200,7 @@ pub struct Shown {
 /// An object that is not on the map: a pending object. It is painted like the temporary
 /// entities of the tile under it (map drawing 9.5), tinted.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ghost {
+pub(crate) struct Ghost {
     /// The type, a position in the catalogue.
     pub ty: usize,
     pub x: i32,
@@ -474,13 +476,14 @@ impl Staged {
     }
 
     /// The view-space point of the top left pixel of the picture of the whole map at normal zoom.
-    pub fn origin(&self) -> (i32, i32) {
+    #[cfg(test)]
+    pub(crate) fn origin(&self) -> (i32, i32) {
         (self.bounds[0] as i32, self.bounds[1] as i32)
     }
 
     /// The box `[left, top, right, bottom)` of the whole map in the view space of the zoom value
     /// `zoom`.
-    pub fn bounds_at(&self, zoom: i32) -> [i64; 4] {
+    pub(crate) fn bounds_at(&self, zoom: i32) -> [i64; 4] {
         let level = Zoom::from_value(zoom);
         if level == Zoom::Normal {
             return self.bounds;
@@ -506,7 +509,14 @@ impl Staged {
     /// only when `grid` is set (those a cliff forces are always drawn). The anchors are the camera's
     /// view positions at the zoom, the tile pieces' those of map drawing 8, and the blitter has
     /// the variant of the zoom level.
-    pub fn draw(&self, target: &mut Framebuffer, view_x: i32, view_y: i32, zoom: i32, grid: bool) {
+    pub(crate) fn draw(
+        &self,
+        target: &mut Framebuffer,
+        view_x: i32,
+        view_y: i32,
+        zoom: i32,
+        grid: bool,
+    ) {
         target.fill([0, 0, 0, 255]);
         let level = Zoom::from_value(zoom);
         let (left, top) = (i64::from(view_x), i64::from(view_y));
@@ -543,7 +553,7 @@ impl Staged {
     /// staging `old` of the same map, which was drawn there before: the boxes of the pictures
     /// that are in one and not in the other. `None` when that cannot be told (another rotation or
     /// ground, pictures that changed their order) or the rectangles cover too much to be worth it.
-    pub fn changes(
+    pub(crate) fn changes(
         &self,
         old: &Staged,
         (width, height): (u32, u32),
@@ -628,7 +638,7 @@ impl Staged {
     /// Draws again only the rectangles `rects` (as [`Staged::changes`] gives them) of `target`,
     /// which holds a drawing of the window `view_x`, `view_y`, `zoom`, `grid` from another staging
     /// of the same map: the result is what [`Staged::draw`] gives.
-    pub fn redraw(
+    pub(crate) fn redraw(
         &self,
         target: &mut Framebuffer,
         view_x: i32,
@@ -888,12 +898,12 @@ enum Entry {
 
 impl<'a> MapRenderer<'a> {
     /// The files of the game this renders from.
-    pub fn vfs(&self) -> &'a Vfs {
+    pub(crate) fn vfs(&self) -> &'a Vfs {
         self.vfs
     }
 
     /// The entity types this renders with.
-    pub fn catalogue(&self) -> &'a Catalogue {
+    pub(crate) fn catalogue(&self) -> &'a Catalogue {
         self.catalogue
     }
 
@@ -905,7 +915,7 @@ impl<'a> MapRenderer<'a> {
     /// The colour choices a new building of the type starts with, one byte per colour group (sprite
     /// drawing 8.1): the position of the `defaultpal` of each group among its variants. Empty for a
     /// type that is not recoloured.
-    pub fn default_colors(&self, ty: &EntityType) -> Vec<u8> {
+    pub(crate) fn default_colors(&self, ty: &EntityType) -> Vec<u8> {
         let Some(config) = ty.config.as_deref() else {
             return Vec::new();
         };
@@ -1083,7 +1093,8 @@ impl<'a> MapRenderer<'a> {
     }
 
     /// Draws the map seen from `rotation` (0 to 3), whole, on a black background.
-    pub fn render(
+    #[cfg(test)]
+    pub(crate) fn render(
         &mut self,
         zoo: &Zoo,
         rotation: u8,
@@ -1767,115 +1778,4 @@ fn bubble_frame(age: u32, delay: u32, count: usize) -> usize {
     (age.checked_div(delay).unwrap_or(0) as usize)
         .checked_rem(count)
         .unwrap_or(0)
-}
-
-/// The bubbles of the filters of `extra` that show some (tank staff 7.7), as transient objects of
-/// the tank tile their filter faces, with their type `tankbub1` (none without it), that tile and
-/// their age. They face away from the filter and stand at the middle of the edge of the tank tile
-/// that faces it, or at the centre of the tile when the edge has no tank wall. Their height is the
-/// floor, or three elevation steps below the water surface and no higher than the filter once that
-/// differs from the filter's. A filter that is off, that has no record or that faces no tank has
-/// none.
-fn bubbles<'a>(
-    scene: &Scene,
-    zoo: &Zoo,
-    catalogue: &'a Catalogue,
-    extra: &Extra,
-) -> Vec<(&'a EntityType, usize, u32, Object)> {
-    let mut found = Vec::new();
-    let Some(ty) = catalogue.find("objects", b"other", b"tankbub1") else {
-        return found;
-    };
-    for look in &extra.filters {
-        let Some(age) = look.bubbles.filter(|_| !look.off) else {
-            continue;
-        };
-        let Some(e) =
-            (zoo.entities.iter()).find(|e| e.common.as_ref().is_some_and(|c| c.id == look.id))
-        else {
-            continue;
-        };
-        let Some(c) = &e.common else { continue };
-        let faced = (scene.tile_at(c.x, c.y)).and_then(|t| scene.neighbour(t, c.rotation as usize));
-        let Some((tile, k)) = faced.and_then(|t| Some((t, scene.tank_of(t)?))) else {
-            continue;
-        };
-        // The edge of the tank tile that faces the filter.
-        let side = (c.rotation as usize + 4) % 8;
-        let piece = (scene
-            .edge_object(tile, side)
-            .filter(|_| side.is_multiple_of(2)))
-        .filter(|&w| scene.wall_tank(w) == Some(k));
-        let (dx, dy) = match (piece, side) {
-            (None, _) => (32, 32),
-            (_, 0) => (32, 0),
-            (_, 2) => (63, 32),
-            (_, 4) => (32, 63),
-            _ => (0, 32),
-        };
-        let origin = |v: usize| i32::try_from(v).unwrap_or(0) * 64;
-        let floor = match piece {
-            Some(w) => scene.objects[w].z,
-            None => order::ground_height(&scene.tiles[tile], 32, 32),
-        };
-        // The water surface over the first tile of the tank, 16 per step of elevation and level.
-        let first = scene.tanks[k].tile;
-        let first = scene.index(first.0, first.1).unwrap_or(tile);
-        let z = match floor == c.z {
-            true => floor,
-            false => (scene.surface(first).map_or(c.z, |s| s - 48)).min(c.z),
-        };
-        found.push((
-            ty,
-            tile,
-            age,
-            Object {
-                kind: Kind::Unit,
-                x: origin(tile % scene.width) + dx,
-                y: origin(tile / scene.width) + dy,
-                z,
-                facing: side as u32,
-                footprint: (1, 1),
-                late: false,
-                height: 0,
-            },
-        ));
-    }
-    found
-}
-
-/// Adds a ripple, a transient object at the surface, against every active wall of every tank that
-/// holds clean water (map drawing 9.7.8); the number added. They are made at each staging, so
-/// they come and go with the level and the purity.
-fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize) -> usize {
-    let mut added = 0;
-    for (k, (tank, look)) in scene.tanks.clone().iter().zip(looks).enumerate() {
-        if tank.level == 0 || !look.is_clean() {
-            continue;
-        }
-        let inside: Vec<usize> = (0..tiles)
-            .filter(|&t| scene.tank_of(t) == Some(k))
-            .collect();
-        for t in inside {
-            for d in [0, 2, 4, 6] {
-                let wall = scene
-                    .edge_object(t, d)
-                    .filter(|&w| scene.wall_tank(w) == Some(k))
-                    .map(|w| scene.objects[w]);
-                let Some(wall) = wall else { continue };
-                let z = scene.surface(t).unwrap_or(0);
-                let ripple = Object {
-                    kind: Kind::Unit,
-                    z,
-                    footprint: (1, 1),
-                    late: false,
-                    height: 0,
-                    ..wall
-                };
-                scene.add_transient(t, ripple);
-                added += 1;
-            }
-        }
-    }
-    added
 }

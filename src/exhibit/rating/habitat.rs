@@ -360,7 +360,7 @@ fn water_quality(rec: &mut Record, l: &Likes, site: &Site, nb: &Neighbours) {
 /// Rates the exhibit for each species in it, in the order the species first appear, then for
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
-pub fn rate(input: &Input) -> Vec<Record> {
+pub(crate) fn rate(input: &Input) -> Vec<Record> {
     let site = &input.site;
     let tank = site.water.is_some();
     let all: Vec<&Likes> = (input.species.iter())

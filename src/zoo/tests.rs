@@ -1600,9 +1600,11 @@ fn again(bytes: &[u8]) -> (Zoo, Vec<u8>, Zoo) {
     (zoo, out, back)
 }
 
-/// What a zoo read in `from` equals once written as 106: the version, the sizes and the bytes of the records.
+/// What a zoo read in `from` equals once written as 106: the version, the sizes and the bytes of the
+/// records. The kept bytes are taken from `back`: an older file gets the layout of 106.
 fn upgraded(mut zoo: Zoo, back: &Zoo) -> Zoo {
     zoo.version = MAX_VERSION;
+    zoo.kept = back.kept.clone();
     for (e, b) in zoo.entities.iter_mut().zip(&back.entities) {
         e.body_size = b.body_size;
         // The bytes of an animal are those of its record, not of the file.
@@ -1620,9 +1622,7 @@ fn a_file_is_written_as_version_106_and_reads_the_same() {
     for v in WRITTEN {
         let (zoo, out, back) = again(&lean(v));
         assert_eq!(back.version, 106, "version {v}");
-        let (mut a, mut b) = (upgraded(zoo, &back), back.clone());
-        (a.kept, b.kept) = (Kept::default(), Kept::default());
-        let (a, b) = (format!("{a:?}"), format!("{b:?}"));
+        let (a, b) = (format!("{:?}", upgraded(zoo, &back)), format!("{back:?}"));
         let at = a
             .chars()
             .zip(b.chars())

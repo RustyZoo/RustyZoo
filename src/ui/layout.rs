@@ -29,39 +29,39 @@ use super::resolve::Placed;
 use super::widgets::{Bar, Caret, Rows};
 
 /// State flag: not drawn, not hit. Every element starts with it.
-pub const HIDDEN: u32 = 1;
+pub(crate) const HIDDEN: u32 = 1;
 /// State flag: a button is drawn grayed and gets no mouse input.
-pub const DISABLED: u32 = 2;
+pub(crate) const DISABLED: u32 = 2;
 /// State flag: the pointer is over the element.
 pub const HIGHLIGHTED: u32 = 4;
 /// State flag: a button is drawn pressed.
 pub const SELECTED: u32 = 8;
 /// State flag: not shown when its layout is shown.
-pub const NEVER_SHOWN: u32 = 16;
+pub(crate) const NEVER_SHOWN: u32 = 16;
 /// State flag: hit testing never returns the element (the tooltip).
-pub const NOT_HIT: u32 = 32;
+pub(crate) const NOT_HIT: u32 = 32;
 /// State flag: the canvas must be drawn again.
 pub const DIRTY: u32 = 128;
 /// State flag: never drawn nor hit.
-pub const TEMPLATE: u32 = 256;
+pub(crate) const TEMPLATE: u32 = 256;
 /// State flag: the element has the keyboard focus.
-pub const FOCUSED: u32 = 512;
+pub(crate) const FOCUSED: u32 = 512;
 /// State flag: set by the `timed` key.
-pub const TIMED: u32 = 1024;
+pub(crate) const TIMED: u32 = 1024;
 /// State flags: a toggle button, a sticky button.
-pub const TOGGLE: u32 = 2048;
-pub const STICKY: u32 = 4096;
+pub(crate) const TOGGLE: u32 = 2048;
+pub(crate) const STICKY: u32 = 4096;
 /// State flag: the element gets the keyboard focus when clicked.
-pub const TAKES_FOCUS: u32 = 32768;
+pub(crate) const TAKES_FOCUS: u32 = 32768;
 /// State flag of a list box: the keys that move the selection also run its select action.
-pub const SELECT_ON_KEYS: u32 = 131_072;
+pub(crate) const SELECT_ON_KEYS: u32 = 131_072;
 /// State flag of a list box: no mouse input.
-pub const READ_ONLY: u32 = 262_144;
+pub(crate) const READ_ONLY: u32 = 262_144;
 /// State flag of a selected toggle button held with the pointer over it: drawn unselected.
-pub const RELEASING: u32 = 8192;
+pub(crate) const RELEASING: u32 = 8192;
 /// State flag of an unselected toggle or sticky button held with the pointer over it: drawn
 /// pressed.
-pub const PRESSING: u32 = 16384;
+pub(crate) const PRESSING: u32 = 16384;
 
 /// The deepest chain of layouts naming layouts. The shipped files go 4 deep.
 const MAX_DEPTH: usize = 16;
@@ -70,7 +70,7 @@ const MAX_ELEMENTS: usize = 50_000;
 
 /// A position as the file wrote it. The words are resolved against the reference rectangle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Pos {
+pub(crate) enum Pos {
     Num(i32),
     Left,
     Right,
@@ -81,7 +81,7 @@ pub enum Pos {
 
 /// A size as the file wrote it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Dim {
+pub(crate) enum Dim {
     Num(i32),
     Whole,
     Half,
@@ -92,7 +92,7 @@ pub enum Dim {
 
 impl Pos {
     /// The number the original keeps for a word, and for a number the number itself.
-    pub fn code(self) -> i64 {
+    pub(crate) fn code(self) -> i64 {
         match self {
             Pos::Num(n) => i64::from(n),
             Pos::Left => -30001,
@@ -114,7 +114,7 @@ impl Pos {
 
 impl Dim {
     /// As [`Pos::code`].
-    pub fn code(self) -> i64 {
+    pub(crate) fn code(self) -> i64 {
         match self {
             Dim::Num(n) => i64::from(n),
             Dim::Whole => -31001,
@@ -168,7 +168,7 @@ fn dim(value: &[u8]) -> Option<Dim> {
 }
 
 /// Red, green, blue.
-pub type Rgb = [u8; 3];
+pub(crate) type Rgb = [u8; 3];
 
 /// A picture of the cache of the tree.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -180,7 +180,7 @@ pub enum Picture {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Justify {
+pub(crate) enum Justify {
     #[default]
     Left,
     Center,
@@ -189,7 +189,7 @@ pub enum Justify {
 
 /// Where a scroll bar sits next to its text or list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Side {
+pub(crate) enum Side {
     Left,
     #[default]
     Right,
@@ -199,7 +199,7 @@ pub enum Side {
 
 /// What a control shows and how: the keys of every type but `UILayout`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Look {
+pub(crate) struct Look {
     /// The `animation` values in order, `None` where one could not be loaded. For a button the
     /// first is the animation of the four states.
     pub animation: Vec<Option<Picture>>,
@@ -227,9 +227,9 @@ pub struct Look {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Button {
     /// The images of the states without an animation; each defaults to `normal`.
-    pub highlighted: Option<Picture>,
-    pub selected: Option<Picture>,
-    pub grayed: Option<Picture>,
+    pub(crate) highlighted: Option<Picture>,
+    pub(crate) selected: Option<Picture>,
+    pub(crate) grayed: Option<Picture>,
     pub select_color: Rgb,
     pub gray_color: Rgb,
     /// Any value of the key turns it on, `repeating=0` too, as in the original.
@@ -242,7 +242,7 @@ pub struct Text {
     pub show_border: bool,
     /// The id of the scroll bar, 0 for none.
     pub scroll_bar: i32,
-    pub scroll_bar_pos: Side,
+    pub(crate) scroll_bar_pos: Side,
     /// The first line shown, when a scroll bar scrolls the text.
     pub top: usize,
 }
@@ -254,24 +254,24 @@ pub struct Edit {
     pub char_limit: i32,
     /// Whether the text may be wider than the field (no width check); set at run time.
     pub wide: bool,
-    pub caret: Caret,
+    pub(crate) caret: Caret,
     /// The text when the field got the focus: Escape puts it back.
     pub saved: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScrollBar {
-    pub up_arrow: Option<Picture>,
-    pub down_arrow: Option<Picture>,
-    pub thumb: Option<Picture>,
+    pub(crate) up_arrow: Option<Picture>,
+    pub(crate) down_arrow: Option<Picture>,
+    pub(crate) thumb: Option<Picture>,
     pub horizontal: bool,
-    pub bar: Bar,
+    pub(crate) bar: Bar,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListBox {
     pub scroll_bar: i32,
-    pub scroll_bar_pos: Side,
+    pub(crate) scroll_bar_pos: Side,
     pub spacing: i32,
     /// The left offsets of the columns.
     pub columns: Vec<i32>,
@@ -285,7 +285,7 @@ pub struct ListBox {
     pub toggle_select: bool,
     pub highlight_selection: bool,
     pub handle_double_clicks: bool,
-    pub rows: Rows,
+    pub(crate) rows: Rows,
 }
 
 /// A scrolling region: a grid of buttons made from a template, filled by the game's code (ui
@@ -308,7 +308,7 @@ pub struct Region {
 /// The pictures and percentages of `UIStatusImage` and `UIImageSet`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Levels {
-    pub images: Vec<Option<Picture>>,
+    pub(crate) images: Vec<Option<Picture>>,
     pub transitions: Vec<i32>,
     /// The `animation` an image set shows (the game's code chooses it).
     pub shown: usize,
@@ -377,12 +377,12 @@ pub struct Element {
     pub id: i32,
     /// The state flags: 1 (hidden) and every value of `state`, and 1024 for `timed`.
     pub state: u32,
-    pub x: Pos,
-    pub y: Pos,
-    pub alt_x: Pos,
-    pub alt_y: Pos,
-    pub dx: Dim,
-    pub dy: Dim,
+    pub(crate) x: Pos,
+    pub(crate) y: Pos,
+    pub(crate) alt_x: Pos,
+    pub(crate) alt_y: Pos,
+    pub(crate) dx: Dim,
+    pub(crate) dy: Dim,
     pub x_is_percent: bool,
     pub y_is_percent: bool,
     /// `anchor1` if present, else `anchor`; 0 for none.
@@ -403,7 +403,7 @@ pub struct Element {
     pub dynamic_height: bool,
     pub timer_duration: i32,
     pub string_data: Vec<u8>,
-    pub look: Look,
+    pub(crate) look: Look,
     /// The text the program gave the element, which shows instead of its `textid` or `textname`.
     pub text: Option<Vec<u8>>,
     /// The program switched the element to its alternative position.
@@ -413,7 +413,7 @@ pub struct Element {
     pub countdown: Option<i64>,
     /// The numbers the words of the file resolve to for a window size; `None` before
     /// [`Tree::resolve`].
-    pub placed: Option<Placed>,
+    pub(crate) placed: Option<Placed>,
 }
 
 /// The cache of pictures, owned by the tree. A name is loaded once, found or not.
@@ -426,7 +426,7 @@ pub struct Pictures {
 
 impl Pictures {
     /// The width and height of a picture: the box of an animation, the size of an image.
-    pub fn size(&self, picture: Picture) -> (i32, i32) {
+    pub(crate) fn size(&self, picture: Picture) -> (i32, i32) {
         let side =
             |lo: i32, hi: i32| (i64::from(hi) - i64::from(lo)).clamp(0, i64::from(i32::MAX)) as i32;
         match picture {
@@ -537,13 +537,13 @@ pub fn installed_expansions(vfs: &Vfs) -> i32 {
 /// An expansion of the selector of the purchase panels: the `id` of an `xpac*.cfg` and the string
 /// of its row (`listid`; entity types 10.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Expansion {
+pub(crate) struct Expansion {
     pub id: i32,
     pub list: i32,
 }
 
 /// The `xpac*.cfg` files with an `[expansion] id` and `listid`, by ascending id (one per id).
-pub fn expansion_entries(vfs: &Vfs) -> Vec<Expansion> {
+pub(crate) fn expansion_entries(vfs: &Vfs) -> Vec<Expansion> {
     let mut entries: Vec<Expansion> = vfs
         .list(Some("xpac*.cfg"))
         .iter()
@@ -613,7 +613,7 @@ impl Tree {
 
     /// The picture the game's files have under `name` (an animation without its extension, or a
     /// `.tga` image), loaded once. A failure is a warning, once per name, and `None`.
-    pub fn picture(&mut self, vfs: &Vfs, name: &str) -> Option<Picture> {
+    pub(crate) fn picture(&mut self, vfs: &Vfs, name: &str) -> Option<Picture> {
         let before = self.warnings.len();
         let picture = self.pictures.get(vfs, name.as_bytes(), &mut self.warnings);
         for warning in &self.warnings[before..] {

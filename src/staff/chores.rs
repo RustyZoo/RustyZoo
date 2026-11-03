@@ -14,7 +14,7 @@ use crate::world::{World, piece_event};
 use crate::zoo::{Entity, Event};
 
 /// Whether the entity is a piece of litter (`objects/other/trash`).
-pub fn is_litter(e: &Entity) -> bool {
+pub(crate) fn is_litter(e: &Entity) -> bool {
     (e.class.as_str(), e.type_name.as_str(), e.subtype.as_str()) == ("objects", "other", "trash")
 }
 
@@ -27,7 +27,7 @@ fn held(world: &World, t: usize) -> Vec<usize> {
 }
 
 /// Whether the entity is a pile of dung (`objects/other/poo` or `dinopoo`).
-pub fn is_poo(e: &Entity) -> bool {
+pub(crate) fn is_poo(e: &Entity) -> bool {
     (e.class.as_str(), e.type_name.as_str()) == ("objects", "other")
         && matches!(e.subtype.as_str(), "poo" | "dinopoo")
 }
@@ -40,14 +40,14 @@ fn tile_of(world: &World, e: &Entity) -> Option<usize> {
 
 /// The rated animal count of exhibit `x` (habitat rating 5.1 point 5), which is recomputed first
 /// when it is dirty: the count getter of the dung job (staff 8.6).
-pub fn rated(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
+pub(crate) fn rated(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
     crate::exhibit::rating::refresh(world, cat, x, rand);
     world.exhibits().get(x).map_or(0, |e| e.rating.counts.1)
 }
 
 /// The rated animal count of exhibit `x` and of its amphibious neighbours added (staff 8.6,
 /// failure A), each read recomputed first when it is dirty.
-pub fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
+pub(crate) fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> usize {
     let mut total = rated(world, cat, x, &mut *rand);
     let near = (world.exhibits().get(x)).map_or_else(Vec::new, |e| e.amphibious.clone());
     for n in near {
@@ -61,7 +61,7 @@ pub fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) -> u
 /// exhibit with no rated animal, unless it is the target tile of another worker. A pile in an
 /// exhibit counts for nothing. The scan has no early exit: it meets every food object and
 /// recomputes each dirty exhibit before it answers.
-pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool {
+pub(crate) fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool {
     let others: Vec<usize> = (world.units.iter())
         .filter(|u| u.id != me && u.kind == Kind::Worker)
         .filter_map(|u| match &u.part {
@@ -95,7 +95,7 @@ pub fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool
 
 /// The object in the centre slot of tile `t` (staff 8.6): its id, whether it is dinosaur dung and
 /// whether it is food.
-pub fn centre(world: &World, t: usize) -> Option<(u32, bool, bool)> {
+pub(crate) fn centre(world: &World, t: usize) -> Option<(u32, bool, bool)> {
     let e = &world.zoo.entities[world.quadrant(t, 3)?];
     let id = e.common.as_ref()?.id;
     Some((id, e.subtype == "dinopoo", e.class == "food"))
@@ -104,7 +104,7 @@ pub fn centre(world: &World, t: usize) -> Option<(u32, bool, bool)> {
 /// The compost pays for a pile of dung taken off tile `t` (staff 8.6): the nearest compost
 /// building (Manhattan distance from the tile) gets the income of one use, and the cash the
 /// recycling amount; both twice for dinosaur dung. With no compost, nothing happens.
-pub fn recycle(world: &mut World, cat: &Catalogue, t: usize, dino: bool) {
+pub(crate) fn recycle(world: &mut World, cat: &Catalogue, t: usize, dino: bool) {
     let w = world.zoo.width.max(1) as i64;
     let (x, y) = (t as i64 % w, t as i64 / w);
     let default = world.units.prices.default;
@@ -147,7 +147,7 @@ fn leaves(cat: &Catalogue, e: &Entity) -> bool {
 /// The objects that call a worker when the exhibit with these tiles is emptied or destroyed
 /// (staff 8.2): the object in the centre slot of each tile, when it stinks or is food. Their ids
 /// and tiles, in tile order; an object that holds the centre slot of two tiles comes twice.
-pub fn leftovers(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, usize)> {
+pub(crate) fn leftovers(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, usize)> {
     let slot = |&t| {
         let e = &world.zoo.entities[world.quadrant(t, 3)?];
         let id = e.common.as_ref()?.id;
@@ -159,7 +159,7 @@ pub fn leftovers(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(u32, u
 /// The events a zoo just loaded posts for what it left behind (staff 8.2): each object that
 /// stinks or is food, on a tile of the zoo grounds (the tiles beyond the zoo wall too) or of an
 /// exhibit with no animals. In entity list order, the tile of the object as data.
-pub fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
+pub(crate) fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
     let empty = |x: u32| {
         let near = world
             .exhibits()
@@ -181,7 +181,7 @@ pub fn loaded_leftovers(world: &World, cat: &Catalogue) -> Vec<Event> {
 }
 
 /// The ids of the trash cans of tile `t`.
-pub fn cans(world: &World, cat: &Catalogue, t: usize) -> Vec<u32> {
+pub(crate) fn cans(world: &World, cat: &Catalogue, t: usize) -> Vec<u32> {
     let default = world.units.prices.default;
     let can = |&at: &usize| {
         let e = &world.zoo.entities[at];
@@ -193,33 +193,33 @@ pub fn cans(world: &World, cat: &Catalogue, t: usize) -> Vec<u32> {
 }
 
 /// The pieces of litter the cans of tile `t` hold.
-pub fn trash_in(world: &World, cat: &Catalogue, t: usize) -> u32 {
+pub(crate) fn trash_in(world: &World, cat: &Catalogue, t: usize) -> u32 {
     let fill = |id: &u32| world.units.buildings.get(id).map_or(0, |l| l.fill);
     cans(world, cat, t).iter().map(fill).sum()
 }
 
 /// Empties every trash can of tile `t` (staff 8.4, job 10).
-pub fn empty(world: &mut World, cat: &Catalogue, t: usize) {
+pub(crate) fn empty(world: &mut World, cat: &Catalogue, t: usize) {
     for id in cans(world, cat, t) {
         building::set_fill(world, id, 0);
     }
 }
 
 /// The ids of the litter on tile `t`.
-pub fn litter_in(world: &World, t: usize) -> Vec<u32> {
+pub(crate) fn litter_in(world: &World, t: usize) -> Vec<u32> {
     let ids = held(world, t).into_iter().map(|at| &world.zoo.entities[at]);
     let litter = ids.filter(|e| is_litter(e));
     litter.filter_map(|e| Some(e.common.as_ref()?.id)).collect()
 }
 
 /// Whether any litter lies on the map.
-pub fn litter_left(world: &World) -> bool {
+pub(crate) fn litter_left(world: &World) -> bool {
     world.zoo.entities.iter().any(is_litter)
 }
 
 /// The tiles a sweep covers (staff 8.5): the tile and its four sides, or all its neighbours when
 /// the worker's type has a `cCleanTrashRadius`.
-pub fn swept(world: &World, t: usize, wide: bool) -> Vec<usize> {
+pub(crate) fn swept(world: &World, t: usize, wide: bool) -> Vec<usize> {
     let w = world.zoo.width as i32;
     let (x, y) = (t as i32 % w, t as i32 / w);
     let near = (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy)));
@@ -231,7 +231,7 @@ pub fn swept(world: &World, t: usize, wide: bool) -> Vec<usize> {
 /// The decayed fence piece to mend near tile `t` (staff 8.7): among the pieces on the four edges
 /// of the tile and on the facing edges of its neighbours, the one of the lowest strength. Its id
 /// and position in the entity list.
-pub fn decayed_near(world: &World, cat: &Catalogue, t: usize) -> Option<(u32, usize)> {
+pub(crate) fn decayed_near(world: &World, cat: &Catalogue, t: usize) -> Option<(u32, usize)> {
     let mut pieces = Vec::new();
     for d in (0..8).step_by(2) {
         pieces.push(world.edge(t, d));
@@ -259,7 +259,7 @@ pub fn decayed_near(world: &World, cat: &Catalogue, t: usize) -> Option<(u32, us
 /// The pieces a repair makes healthy (staff 8.7): the piece and the one across the same line, and
 /// with `neighbours` the two lines at a right angle on the tile, each with its other side. Their
 /// ids, the piece first.
-pub fn mended(world: &World, at: usize, neighbours: bool) -> Vec<u32> {
+pub(crate) fn mended(world: &World, at: usize, neighbours: bool) -> Vec<u32> {
     let Some((t, d)) = world.slot(at) else {
         return world.zoo.entities[at].common.iter().map(|c| c.id).collect();
     };

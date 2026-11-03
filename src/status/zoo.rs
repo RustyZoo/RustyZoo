@@ -54,7 +54,7 @@ const BAR_PERIOD: u32 = 1001;
 /// The settings of the economy file with the built-in values (zoo status 3.2). Only the keys this
 /// module uses are kept.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Settings {
+pub(crate) struct Settings {
     /// Periods of the three checks, in milliseconds.
     pub rating: i32,
     pub message: i32,
@@ -119,7 +119,7 @@ const CHANCE_KEYS: [&str; 5] = [
 
 impl Settings {
     /// The values the program has before it reads a file.
-    pub fn builtin() -> Settings {
+    pub(crate) fn builtin() -> Settings {
         Settings {
             rating: 10_000,
             message: 10_000,
@@ -151,7 +151,7 @@ impl Settings {
 
     /// Reads an economy file over the settings: a key that is missing leaves its value, names
     /// ignore case, numbers are read as the game's files are.
-    pub fn apply(&mut self, file: &Config) {
+    pub(crate) fn apply(&mut self, file: &Config) {
         let int = |section: &str, key: &str, value: &mut i32| {
             if let Some(n) = ini_value(file, section, key).and_then(to_int) {
                 *value = n;
@@ -215,7 +215,7 @@ impl Settings {
 
 /// What the rating check counts (zoo status 5).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Sums {
+pub(crate) struct Sums {
     pub animals: i32,
     pub sick: i32,
     pub animal_happiness: i32,
@@ -273,7 +273,7 @@ fn ui_threshold(catalogue: &Catalogue, guest: &Entity) -> i32 {
 impl Sums {
     /// The sums over the entities of `world` with `cash` in hand and `research` percent of the
     /// research done. The state of animals and guests is read from the units.
-    pub fn of(world: &World, catalogue: &Catalogue, cash: f32, research: i32) -> Sums {
+    pub(crate) fn of(world: &World, catalogue: &Catalogue, cash: f32, research: i32) -> Sums {
         let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
         let mut sums = Sums {
             zoo_value: cash as i64,
@@ -346,11 +346,11 @@ impl Sums {
         if count == 0 { 0 } else { sum / count }
     }
 
-    pub fn animal_average(&self) -> i32 {
+    pub(crate) fn animal_average(&self) -> i32 {
         Sums::average(self.animal_happiness, self.animals)
     }
 
-    pub fn guest_average(&self) -> i32 {
+    pub(crate) fn guest_average(&self) -> i32 {
         Sums::average(self.guest_happiness, self.guests)
     }
 }
@@ -374,7 +374,7 @@ fn piece(ty: &EntityType, e: &Entity, wall: bool, b: f32) -> f32 {
 
 /// The zoo status: timers, the last sums, the rating and the counters the files save.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Status {
+pub(crate) struct Status {
     pub settings: Settings,
     /// Milliseconds since the rating, message and new guest checks.
     pub timers: [u32; 3],
@@ -408,19 +408,19 @@ impl Default for Status {
 
 /// The checks a step runs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Due {
+pub(crate) struct Due {
     pub rating: bool,
     pub message: bool,
     pub new_guest: bool,
 }
 
 /// What a check says: the text number and, for a donation, its amount in whole units.
-pub type Say = (u32, Option<i32>);
+pub(crate) type Say = (u32, Option<i32>);
 
 impl Status {
     /// The status of a game on a file that stores `record`, with the built-in settings and then
     /// the `economy` file over them (3.1).
-    pub fn start(record: &StatusRecord, economy: Option<&Config>) -> Status {
+    pub(crate) fn start(record: &StatusRecord, economy: Option<&Config>) -> Status {
         let mut status = Status {
             timers: record.timers,
             rating: record.rating as i32,
@@ -437,20 +437,20 @@ impl Status {
     }
 
     /// An economy file over the settings, then the price in the range again (3.1, 11).
-    pub fn economy(&mut self, file: &Config) {
+    pub(crate) fn economy(&mut self, file: &Config) {
         self.settings.apply(file);
         self.limit_price();
     }
 
     /// The adult admission price limited to the range of the settings (11).
-    pub fn limit_price(&mut self) {
+    pub(crate) fn limit_price(&mut self) {
         let (min, max) = (self.settings.min_price, self.settings.max_price);
         let top = self.price.min(max);
         self.price = if top <= min { min } else { top };
     }
 
     /// What a file stores of the status (the inverse of [`Status::start`]).
-    pub fn record(&self) -> StatusRecord {
+    pub(crate) fn record(&self) -> StatusRecord {
         StatusRecord {
             timers: self.timers,
             rating: self.rating as u32,
@@ -462,7 +462,7 @@ impl Status {
 
     /// Adds a step to the timers and says which checks are due (4): the rating check also when
     /// the month flag is set. The bar counter is [`Status::bars`]'.
-    pub fn due(&mut self, step: u32, month_flag: bool) -> Due {
+    pub(crate) fn due(&mut self, step: u32, month_flag: bool) -> Due {
         let over = |timer: &mut u32, period: i32| {
             *timer = timer.saturating_add(step);
             i64::from(*timer) > i64::from(period)
@@ -493,7 +493,7 @@ impl Status {
     }
 
     /// The rating of the sums (6.1) at the game time `now` in milliseconds.
-    pub fn compute(&self, sums: &Sums, now: i64) -> i32 {
+    pub(crate) fn compute(&self, sums: &Sums, now: i64) -> i32 {
         let s = &self.settings;
         let mut r = 0i64;
         if sums.animals > 0 {
@@ -513,7 +513,13 @@ impl Status {
     }
 
     /// The rating check (6): the sums again, the rating, the statistics, the timer back to 0.
-    pub fn rating_check(&mut self, sums: Sums, now: i64, money: &mut Money, log: &mut Vec<String>) {
+    pub(crate) fn rating_check(
+        &mut self,
+        sums: Sums,
+        now: i64,
+        money: &mut Money,
+        log: &mut Vec<String>,
+    ) {
         // A loose animal moves the date of the last escape to now before the penalty is read.
         if sums.loose > 0 {
             self.escape = file_time(now);
@@ -534,7 +540,7 @@ impl Status {
     }
 
     /// The message check (7): the advice lines for the last sums and the cash.
-    pub fn message_check(&mut self, cash: f32, say: &mut Vec<Say>, log: &mut Vec<String>) {
+    pub(crate) fn message_check(&mut self, cash: f32, say: &mut Vec<Say>, log: &mut Vec<String>) {
         self.timers[1] = 0;
         let (s, p) = (&self.sums, &self.settings.percent);
         let over = |count: i32, fraction: f32, number: i32| count as f32 * fraction < number as f32;
@@ -567,7 +573,12 @@ impl Status {
     /// the column decides with one draw (none when the chance is 0). Says whether a guest is to
     /// be created and whether the creation posts the advice about the fee. `bonus` is added to the
     /// rating (the effective rating, zoo status 8).
-    pub fn new_guest_check(&mut self, occupied: bool, bonus: i32, rng: &mut Rng) -> Option<bool> {
+    pub(crate) fn new_guest_check(
+        &mut self,
+        occupied: bool,
+        bonus: i32,
+        rng: &mut Rng,
+    ) -> Option<bool> {
         self.timers[2] = 0;
         if !occupied {
             return None;
@@ -600,7 +611,7 @@ impl Status {
 
     /// The advice about the entrance fee (message 10017) after a guest was created, posted when
     /// the last sums counted more than ten guests.
-    pub fn advise(&self, say: &mut Vec<Say>, log: &mut Vec<String>) {
+    pub(crate) fn advise(&self, say: &mut Vec<Say>, log: &mut Vec<String>) {
         if self.sums.guests > MANY_GUESTS {
             say.push((10017, None));
             log.push("message 10017".into());
@@ -609,7 +620,7 @@ impl Status {
 
     /// The donation (10): at every step with the cash below 1000 and the chance, the next of
     /// the foundations gives, then they run out.
-    pub fn donation(
+    pub(crate) fn donation(
         &mut self,
         rng: &mut Rng,
         money: &mut Money,
@@ -641,7 +652,7 @@ impl Status {
     /// one draw each (0 to 100), and a member leaves when the rating is below the draw less the
     /// factor; then, when members remain, one draw for the gift, `(low + draw * (high - low) /
     /// 100)` per member that stays, booked as the endowment. The log tells each draw and the gift.
-    pub fn endowment(&mut self, rng: &mut Rng, money: &mut Money, log: &mut Vec<String>) {
+    pub(crate) fn endowment(&mut self, rng: &mut Rng, money: &mut Money, log: &mut Vec<String>) {
         let members = money.total[money::MEMBERS];
         if members.is_nan() || members <= 0.0 {
             return;
@@ -673,7 +684,7 @@ impl Status {
 
     /// The bars (12): once the counter passes 1001 ms, the animal and guest happiness and the
     /// rating, each 0 to 100; an empty zoo shows 0 for its happiness.
-    pub fn bars(&mut self, step: u32) -> Option<[i32; 3]> {
+    pub(crate) fn bars(&mut self, step: u32) -> Option<[i32; 3]> {
         self.bar_ms = self.bar_ms.saturating_add(step);
         if self.bar_ms <= BAR_PERIOD {
             return None;

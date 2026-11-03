@@ -11,7 +11,7 @@ use crate::world::World;
 /// nearest of those with a show soon that it has not seen, if within `reach` (`maxDistToGoToShow`):
 /// the distance in tiles plus one draw of 0 to 14, drawn for each grandstand with its flag up
 /// before it is asked whether the guest has seen the show.
-pub fn find(
+pub(crate) fn find(
     world: &World,
     cat: &Catalogue,
     rng: &mut Rng,
@@ -78,7 +78,7 @@ fn seen_show(world: &World, ground: &Ground, at: usize, seen: &[usize]) -> bool 
 
 /// The price `r` of a seat in a grandstand of show `show` is booked in the show's figures (shows
 /// 7.3 point 3 steps 1 and 2). Whether the show exists, so that the caller books the income.
-pub fn pay(world: &mut World, show: u16, r: f32) -> bool {
+pub(crate) fn pay(world: &mut World, show: u16, r: f32) -> bool {
     let date = crate::timing::file_time(world.units.now);
     let Some(info) = habitat_of(world, show).and_then(|n| world.zoo.shows.infos[n].as_mut()) else {
         return false;

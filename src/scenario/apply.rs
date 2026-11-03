@@ -9,7 +9,7 @@ use crate::vfs::Vfs;
 
 /// The built text of a goal line (4.2, 4.5): the template of its string filled in with `value`,
 /// `arga` and `argb`, where a `%r` takes the string of the value in its place (the name of `arga`).
-pub fn built_line(ui: &Interface, line: Line) -> String {
+pub(crate) fn built_line(ui: &Interface, line: Line) -> String {
     /// The strings of the values' ids, the only ones a `%r` of the line can name.
     struct Names(Vec<(u32, String)>);
     impl format::Strings for Names {
@@ -36,7 +36,7 @@ const TEXT2: i32 = 8;
 
 /// What the triggers changed in the interface, so that it can be given back (8.4).
 #[derive(Debug, Default)]
-pub struct Marks {
+pub(crate) struct Marks {
     disabled: Vec<i32>,
     hidden: Vec<i32>,
     /// The last popup, which the hint's button shows again, and the layout of the hint on screen.
@@ -46,7 +46,13 @@ pub struct Marks {
 
 impl Marks {
     /// Does what a trigger asked of the interface. Each change is told in `log`.
-    pub fn apply(&mut self, effect: Effect, ui: &mut Interface, vfs: &Vfs, log: &mut Vec<String>) {
+    pub(crate) fn apply(
+        &mut self,
+        effect: Effect,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        log: &mut Vec<String>,
+    ) {
         let (popup, show) = match effect {
             Effect::Popup(p) => (Some(p), true),
             Effect::Press(id, popup) => {
@@ -92,7 +98,7 @@ impl Marks {
     }
 
     /// The hint's button was pressed: the last popup shows again.
-    pub fn again(&mut self, id: i32, ui: &mut Interface, vfs: &Vfs, log: &mut Vec<String>) {
+    pub(crate) fn again(&mut self, id: i32, ui: &mut Interface, vfs: &Vfs, log: &mut Vec<String>) {
         if let Some(last) = self.last.clone().filter(|p| p.hint.button == id) {
             self.show(last, ui, vfs, log);
         }
@@ -159,7 +165,7 @@ impl Marks {
 
     /// Gives back what the triggers changed and hides the hint (8.4). An element a trigger hid
     /// stays hidden: only its mark goes, so the next show of its layout brings it back.
-    pub fn clean(&mut self, ui: &mut Interface) {
+    pub(crate) fn clean(&mut self, ui: &mut Interface) {
         for id in self.disabled.drain(..) {
             ui.disable(id, false);
         }

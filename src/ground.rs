@@ -19,10 +19,10 @@ use crate::tga::Texture;
 use crate::vfs::Vfs;
 
 /// The width and height of the image a picture is rendered into, before it is cut.
-pub const SIZE: usize = 64;
+pub(crate) const SIZE: usize = 64;
 
 /// The shape bytes that tiles have; the game never asks for another.
-pub const SHAPES: [u8; 19] = [
+pub(crate) const SHAPES: [u8; 19] = [
     0x00, 0x01, 0x04, 0x05, 0x10, 0x11, 0x14, 0x15, 0x19, 0x40, 0x41, 0x44, 0x45, 0x46, 0x50, 0x51,
     0x54, 0x64, 0x91,
 ];

@@ -44,7 +44,7 @@ impl Interface {
     /// Shows `text` in the message line (`ZTMessageQueue`) for the `timerDuration` the element
     /// has: a text already there is replaced and the count starts again. `false` if the tree has
     /// no message line.
-    pub fn message(&mut self, text: &[u8]) -> bool {
+    pub(crate) fn message(&mut self, text: &[u8]) -> bool {
         let Some(i) = self
             .tree
             .elements
@@ -72,7 +72,7 @@ impl Interface {
     }
 
     /// Gives an element the colour of its text; `false` if there is no such element.
-    pub fn set_fore_color(&mut self, id: i32, color: crate::ui::layout::Rgb) -> bool {
+    pub(crate) fn set_fore_color(&mut self, id: i32, color: crate::ui::layout::Rgb) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -82,14 +82,14 @@ impl Interface {
     }
 
     /// The text of an element as it is shown now; `None` if there is no such element.
-    pub fn text(&self, id: i32) -> Option<Vec<u8>> {
+    pub(crate) fn text(&self, id: i32) -> Option<Vec<u8>> {
         let e = &self.tree.elements[self.tree.find(id)?];
         Some(element_text(e, &self.strings))
     }
 
     /// Shows `picture` in the picture element `id`, which takes its size; none hides the element.
     /// `false` if there is no such element.
-    pub fn set_picture(&mut self, id: i32, picture: Option<Picture>) -> bool {
+    pub(crate) fn set_picture(&mut self, id: i32, picture: Option<Picture>) -> bool {
         let Some(i) = self
             .tree
             .find(id)
@@ -117,7 +117,7 @@ impl Interface {
 
     /// Makes the image set `id` show its picture number `n` (an `animation` of the layout);
     /// `false` if there is no such element or it has no such picture.
-    pub fn set_image(&mut self, id: i32, n: usize) -> bool {
+    pub(crate) fn set_image(&mut self, id: i32, n: usize) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -135,7 +135,7 @@ impl Interface {
 
     /// Gives the status bar `id` its value, 0 to 100 (a value outside is held to it when drawn);
     /// `false` if there is no such bar.
-    pub fn set_status(&mut self, id: i32, value: i32) -> bool {
+    pub(crate) fn set_status(&mut self, id: i32, value: i32) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -149,7 +149,7 @@ impl Interface {
 
     /// Makes the status bar `id` show its picture number `level` whatever its value says (none
     /// gives the picture of the value back); `false` if there is no such bar.
-    pub fn set_level(&mut self, id: i32, level: Option<usize>) -> bool {
+    pub(crate) fn set_level(&mut self, id: i32, level: Option<usize>) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -162,7 +162,7 @@ impl Interface {
     }
 
     /// Gives the button `id` this icon (none removes it); `false` if there is no such element.
-    pub fn set_icon(&mut self, id: i32, icon: Option<Picture>) -> bool {
+    pub(crate) fn set_icon(&mut self, id: i32, icon: Option<Picture>) -> bool {
         self.set_icon_file(id, icon, None)
     }
 
@@ -180,7 +180,7 @@ impl Interface {
     }
 
     /// Moves the element `id` to its alternative position or back; `false` if there is none.
-    pub fn set_alt(&mut self, id: i32, alt: bool) -> bool {
+    pub(crate) fn set_alt(&mut self, id: i32, alt: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -192,12 +192,12 @@ impl Interface {
     }
 
     /// Whether the button `id` is down (selected).
-    pub fn is_down(&self, id: i32) -> bool {
+    pub(crate) fn is_down(&self, id: i32) -> bool {
         (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & SELECTED != 0)
     }
 
     /// Hides or shows an element on its own; `false` if there is none.
-    pub fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
+    pub(crate) fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -207,7 +207,7 @@ impl Interface {
 
     /// Selects or deselects the button `id` without running its actions, and enables or disables
     /// it; `false` if there is no such element.
-    pub fn set_button(&mut self, id: i32, selected: bool, enabled: bool) -> bool {
+    pub(crate) fn set_button(&mut self, id: i32, selected: bool, enabled: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -218,7 +218,7 @@ impl Interface {
 
     /// Enables or disables the element `id`, leaving the rest of its state; `false` if there is
     /// no such element.
-    pub fn set_enabled(&mut self, id: i32, enabled: bool) -> bool {
+    pub(crate) fn set_enabled(&mut self, id: i32, enabled: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -228,7 +228,7 @@ impl Interface {
 
     /// Limits the text field `id` to `limit` characters (0: no limit); `false` if it is not a
     /// field.
-    pub fn set_char_limit(&mut self, id: i32, limit: i32) -> bool {
+    pub(crate) fn set_char_limit(&mut self, id: i32, limit: i32) -> bool {
         let field = self.tree.find(id).map(|i| &mut self.tree.elements[i].kind);
         match field {
             Some(Kind::EditableText(f)) => {
@@ -240,7 +240,7 @@ impl Interface {
     }
 
     /// Lets the text field `id` take text wider than the field; `false` if it is not a field.
-    pub fn set_wide_text(&mut self, id: i32, wide: bool) -> bool {
+    pub(crate) fn set_wide_text(&mut self, id: i32, wide: bool) -> bool {
         let field = self.tree.find(id).map(|i| &mut self.tree.elements[i].kind);
         match field {
             Some(Kind::EditableText(f)) => {
@@ -252,7 +252,7 @@ impl Interface {
     }
 
     /// The text resource of the game under this name (empty if there is none).
-    pub fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+    pub(crate) fn text_entry(&self, name: &[u8]) -> Vec<u8> {
         Strings::text_entry(&self.strings, name)
     }
 
@@ -264,7 +264,7 @@ impl Interface {
 
     /// Like [`Interface::set_rows`], but the first row shown stays where it was, as far as the
     /// new rows allow.
-    pub fn refill_rows(&mut self, id: i32, rows: Vec<Row>) -> bool {
+    pub(crate) fn refill_rows(&mut self, id: i32, rows: Vec<Row>) -> bool {
         self.put_rows(id, rows, true)
     }
 
@@ -306,7 +306,7 @@ impl Interface {
 
     /// Selects a row of a list box, or none, and scrolls to show it. Does not run the select
     /// action. `false` if the element is not a list box or has no such row.
-    pub fn select_row(&mut self, id: i32, row: Option<usize>) -> bool {
+    pub(crate) fn select_row(&mut self, id: i32, row: Option<usize>) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
@@ -325,7 +325,7 @@ impl Interface {
     }
 
     /// The selected row of a list box.
-    pub fn selected_row(&self, id: i32) -> Option<usize> {
+    pub(crate) fn selected_row(&self, id: i32) -> Option<usize> {
         match &self.tree.elements[self.tree.find(id)?].kind {
             Kind::ListBox(list) => list.rows.selected,
             _ => None,
@@ -334,7 +334,7 @@ impl Interface {
 
     /// Gives the keyboard focus to a text field or a list box; `false` if the element is not one
     /// or cannot take it.
-    pub fn focus(&mut self, id: i32) -> bool {
+    pub(crate) fn focus(&mut self, id: i32) -> bool {
         match self.tree.find(id).filter(|&i| self.takes_focus(i)) {
             Some(i) => {
                 self.set_focus(Some(i));
@@ -345,14 +345,14 @@ impl Interface {
     }
 
     /// Whether the element `id` has the keyboard focus.
-    pub fn has_focus(&self, id: i32) -> bool {
+    pub(crate) fn has_focus(&self, id: i32) -> bool {
         self.tree
             .find(id)
             .is_some_and(|i| self.tree.elements[i].state & FOCUSED != 0)
     }
 
     /// Takes the keyboard focus from the element `id`, if it has it.
-    pub fn unfocus(&mut self, id: i32) {
+    pub(crate) fn unfocus(&mut self, id: i32) {
         if self.has_focus(id) {
             self.set_focus(None);
         }
@@ -879,7 +879,7 @@ impl Interface {
     }
 
     /// A typed character (a Windows-1252 byte) for the focused field; whether it handled it.
-    pub fn char(&mut self, byte: u8) -> bool {
+    pub(crate) fn char(&mut self, byte: u8) -> bool {
         let Some(i) = self
             .focused()
             .filter(|&i| matches!(self.tree.elements[i].kind, Kind::EditableText(_)))
@@ -943,7 +943,7 @@ impl Interface {
 
     /// A key of the interface, `shift` meaning the Shift key is held: the focused text field or
     /// list box reads it. Whether it handled it.
-    pub fn key(&mut self, key: Key, shift: bool) -> bool {
+    pub(crate) fn key(&mut self, key: Key, shift: bool) -> bool {
         let handled = match self.focused() {
             Some(i) => match self.tree.elements[i].kind {
                 Kind::EditableText(_) => self.field_key(i, key, shift),

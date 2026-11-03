@@ -66,7 +66,7 @@ pub struct AnimSet {
 impl AnimSet {
     /// Reads the text of an `.ani` file. Fails if the file is too large for the dialect reader,
     /// if `dir0` or `dir1` is missing or empty, or if there is no `animation` entry.
-    pub fn parse(bytes: &[u8]) -> Result<AnimSet, AnimError> {
+    pub(crate) fn parse(bytes: &[u8]) -> Result<AnimSet, AnimError> {
         let config = Config::parse(bytes).map_err(|e| AnimError(e.to_string()))?;
         let section = config.section("animation");
         let text = |key: &str| {
@@ -136,7 +136,7 @@ pub fn resolve_path(root: &str, value: &str) -> String {
 
 /// The screen direction `0..8` (N, NE, E, SE, S, SW, W, NW) of an entity with `facing` (`0..8`,
 /// numbered like the map directions) when the map is turned by `rotation` (`0..4`).
-pub fn screen_direction(facing: u8, rotation: u8) -> u8 {
+pub(crate) fn screen_direction(facing: u8, rotation: u8) -> u8 {
     (i32::from(facing) - 1 + 2 * i32::from(rotation)).rem_euclid(8) as u8
 }
 
@@ -225,7 +225,7 @@ impl Animation {
     }
 
     /// The view for an entity with `facing` on a map turned by `rotation`.
-    pub fn view_of(&self, facing: u8, rotation: u8) -> View {
+    pub(crate) fn view_of(&self, facing: u8, rotation: u8) -> View {
         self.view(screen_direction(facing, rotation))
     }
 
@@ -240,35 +240,10 @@ impl Animation {
         self.draw_inner(view, frame, target, (x, y), None, None, Zoom::Normal);
     }
 
-    /// As [`Animation::draw`], with `palette` in place of the palette of the sprite file.
-    pub fn draw_with(
-        &self,
-        view: View,
-        frame: usize,
-        target: &mut Framebuffer,
-        x: i32,
-        y: i32,
-        palette: Option<&Palette>,
-    ) {
-        self.draw_inner(view, frame, target, (x, y), palette, None, Zoom::Normal);
-    }
-
-    /// As [`Animation::draw`], blended with what is behind it.
-    pub fn draw_blended(
-        &self,
-        view: View,
-        frame: usize,
-        target: &mut Framebuffer,
-        at: (i32, i32),
-        blend: Blend,
-    ) {
-        self.draw_inner(view, frame, target, at, None, Some(blend), Zoom::Normal);
-    }
-
-    /// As [`Animation::draw_with`] or [`Animation::draw_blended`] at a zoom, `at` being the
+    /// As [`Animation::draw`], with a palette or a blend, at a zoom, `at` being the
     /// anchor already at the zoom ([`crate::sprite::Frame::draw_zoomed`]).
     #[allow(clippy::too_many_arguments)]
-    pub fn draw_zoomed(
+    pub(crate) fn draw_zoomed(
         &self,
         view: View,
         frame: usize,

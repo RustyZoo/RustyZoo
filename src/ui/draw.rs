@@ -83,7 +83,7 @@ struct Made {
 const FORCED: u8 = 254;
 
 /// A rectangle as left, top, width, height.
-pub type Rect4 = (i32, i32, i32, i32);
+pub(crate) type Rect4 = (i32, i32, i32, i32);
 
 /// Draws the tree. It keeps the fonts, the canvases of the elements and the pictures cut for
 /// drawing.
@@ -123,7 +123,7 @@ impl Painter {
     /// whether some frame changed, so the interface has to be painted again. The animated icon of
     /// a button (information panels 4.3.1) has its own clock, which [`Painter::restart_icon`]
     /// starts over, and the same pause rule.
-    pub fn animate(&mut self, tree: &Tree, now: u64, paused: bool) -> bool {
+    pub(crate) fn animate(&mut self, tree: &Tree, now: u64, paused: bool) -> bool {
         let mut changed = false;
         for i in shown(tree) {
             let e = &tree.elements[i];
@@ -172,7 +172,7 @@ impl Painter {
     }
 
     /// Starts the icon clock of element `i` over: its next frame is the first.
-    pub fn restart_icon(&mut self, i: usize) {
+    pub(crate) fn restart_icon(&mut self, i: usize) {
         self.icons.remove(&i);
     }
 
@@ -398,7 +398,7 @@ impl Painter {
     /// its current picture (for a button, the set of its state) or, for a widget with a canvas,
     /// its canvas. `None` if it shows nothing yet. Transparent is an animation's pixel without a
     /// run, an image's or canvas's pixel equal to its top left one (to (1, 1) for a framed text).
-    pub fn opaque_at(&mut self, tree: &Tree, i: usize, (x, y): (i32, i32)) -> Option<bool> {
+    pub(crate) fn opaque_at(&mut self, tree: &Tree, i: usize, (x, y): (i32, i32)) -> Option<bool> {
         let e = &tree.elements[i];
         let (sx, sy) = tree.screen(i);
         let (w, h) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
@@ -672,7 +672,7 @@ impl Painter {
     /// The height of each row of a list: its wrapped text or its icon's slot, whichever is taller
     /// (the slot being `miniconheight` or the icon's own height if that is more), with the space
     /// between rows and the height inside the borders.
-    pub fn row_heights(
+    pub(crate) fn row_heights(
         &mut self,
         pictures: &Pictures,
         e: &Element,
@@ -778,7 +778,7 @@ impl Painter {
 
     /// A text over the frame whose left is `x` and whose line starts at the row `y`, in the font and
     /// the shadow of the element `e` (or none), as the map view writes a cost next to the pointer.
-    pub fn text_at(
+    pub(crate) fn text_at(
         &mut self,
         e: &Element,
         strings: &dyn Strings,
@@ -812,18 +812,18 @@ impl Painter {
     }
 
     /// The width of a text on one line in the element's font.
-    pub fn text_width(&mut self, e: &Element, strings: &dyn Strings, text: &[u8]) -> i32 {
+    pub(crate) fn text_width(&mut self, e: &Element, strings: &dyn Strings, text: &[u8]) -> i32 {
         self.font(e, strings).width(text)
     }
 
     /// The height of a line of the element's font.
-    pub fn line_height(&mut self, e: &Element, strings: &dyn Strings) -> i32 {
+    pub(crate) fn line_height(&mut self, e: &Element, strings: &dyn Strings) -> i32 {
         self.font(e, strings).line_height()
     }
 
     /// How many lines a text takes in a `UIText` of the element's size, and how many of them fit
     /// in its height (at least one).
-    pub fn text_lines(
+    pub(crate) fn text_lines(
         &mut self,
         e: &Element,
         strings: &dyn Strings,
@@ -841,7 +841,7 @@ impl Painter {
 
     /// The size of a tooltip of `text` in the element's font, borders included, at most
     /// `max_width` wide before it wraps (text 5.5).
-    pub fn tooltip_size(
+    pub(crate) fn tooltip_size(
         &mut self,
         e: &Element,
         strings: &dyn Strings,
@@ -898,7 +898,7 @@ fn justify(e: &Element) -> text::Justify {
 
 /// The text of an element: the one the program gave it, else its `TEXT` entry, else its first
 /// string, as Windows-1252 bytes.
-pub fn element_text(e: &Element, strings: &dyn Strings) -> Vec<u8> {
+pub(crate) fn element_text(e: &Element, strings: &dyn Strings) -> Vec<u8> {
     if let Some(text) = &e.text {
         return text.clone();
     }

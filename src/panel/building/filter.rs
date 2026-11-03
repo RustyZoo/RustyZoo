@@ -17,9 +17,9 @@ use crate::vfs::Vfs;
 use crate::world::{Wear, World, filter_months_since, filter_wear};
 
 /// The layout of the panel, its name field and its sell button.
-pub const LAYOUT: i32 = 46;
-pub const NAME: i32 = 4904;
-pub const SELL: i32 = 4906;
+pub(crate) const LAYOUT: i32 = 46;
+pub(crate) const NAME: i32 = 4904;
+pub(crate) const SELL: i32 = 4906;
 const PICTURE: i32 = 4903;
 const STATE: i32 = 4913;
 const SERVICE: i32 = 4916;

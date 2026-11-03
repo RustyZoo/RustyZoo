@@ -31,7 +31,7 @@ fn hundredth(hundredths: i32) -> f32 {
 
 /// A change of the life counter of the live animals of a type (6.4): its type, the way and the
 /// value. A percent change leaves a counter that is not above 0.
-pub struct Life {
+pub(crate) struct Life {
     key: Key,
     how: i32,
     value: i32,
@@ -39,13 +39,13 @@ pub struct Life {
 
 impl Life {
     /// Whether the animal of this entity is of the type.
-    pub fn reaches(&self, e: &Entity) -> bool {
+    pub(crate) fn reaches(&self, e: &Entity) -> bool {
         let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
         self.key == (bytes(&e.type_name), bytes(&e.subtype))
     }
 
     /// The counter after the change.
-    pub fn of(&self, life: i32) -> i32 {
+    pub(crate) fn of(&self, life: i32) -> i32 {
         if self.how == 2 && life <= 0 {
             return life;
         }
@@ -101,7 +101,7 @@ impl Overlay {
 
     /// `base`, the value of characteristic `name` of the type without research, changed by the
     /// completed programs.
-    pub fn int(&self, ty: &EntityType, name: &str, base: i32) -> i32 {
+    pub(crate) fn int(&self, ty: &EntityType, name: &str, base: i32) -> i32 {
         match self.changes.is_empty() {
             true => base,
             false => self.fold(&key_of(ty), name, base),
@@ -109,7 +109,7 @@ impl Overlay {
     }
 
     /// [`Overlay::int`] for the type of a map entity.
-    pub fn int_of(&self, e: &Entity, name: &str, base: i32) -> i32 {
+    pub(crate) fn int_of(&self, e: &Entity, name: &str, base: i32) -> i32 {
         if self.changes.is_empty() {
             return base;
         }
@@ -118,7 +118,7 @@ impl Overlay {
     }
 
     /// The purchase price of a food type: the changes work on hundredths (6.4).
-    pub fn price(&self, ty: &EntityType, base: f32) -> f32 {
+    pub(crate) fn price(&self, ty: &EntityType, base: f32) -> f32 {
         if self.changes.is_empty() {
             return base;
         }
@@ -132,12 +132,12 @@ impl Overlay {
     }
 
     /// The training mask of a staff type (6.5).
-    pub fn training(&self, ty: &EntityType) -> u16 {
+    pub(crate) fn training(&self, ty: &EntityType) -> u16 {
         self.training.get(&key_of(ty)).copied().unwrap_or(0)
     }
 
     /// [`Overlay::training`] for a type that may be unknown: 0.
-    pub fn training_of(&self, ty: Option<&EntityType>) -> u16 {
+    pub(crate) fn training_of(&self, ty: Option<&EntityType>) -> u16 {
         ty.map_or(0, |t| self.training(t))
     }
 
@@ -149,7 +149,7 @@ impl Overlay {
 
     /// Applies the effect 2, 4 or 5 of a completed program (6.4): `target` and `vals`
     /// (`effectval1` to 3). The changes of the life counter are returned for the live animals.
-    pub fn apply(
+    pub(crate) fn apply(
         &mut self,
         cat: &Catalogue,
         effect: i32,
@@ -214,7 +214,7 @@ impl Overlay {
     }
 
     /// Effect 6 (6.6): the trick `trick` of the animal types of name id `target` is available.
-    pub fn unlock_trick(&mut self, cat: &Catalogue, target: i32, trick: i32) {
+    pub(crate) fn unlock_trick(&mut self, cat: &Catalogue, target: i32, trick: i32) {
         let hit = cat
             .types
             .iter()
@@ -224,12 +224,12 @@ impl Overlay {
 
     /// Whether the show editor offers trick `trick` of an animal type (6.6): the trick's own
     /// `defaultavailable` flag, or research made it available. A tree load does not clear it.
-    pub fn trick_available(&self, ty: &EntityType, trick: i32, default: bool) -> bool {
+    pub(crate) fn trick_available(&self, ty: &EntityType, trick: i32, default: bool) -> bool {
         default || self.tricks.contains(&(key_of(ty), trick))
     }
 
     /// Marks the staff types of name id `staff` with training bit `mark - 1` (6.7).
-    pub fn train(&mut self, cat: &Catalogue, staff: i32, mark: i32) {
+    pub(crate) fn train(&mut self, cat: &Catalogue, staff: i32, mark: i32) {
         for ty in cat.types.iter().filter(|t| t.name_id == staff) {
             if let Some(bit) = mark.checked_sub(1).and_then(|b| u32::try_from(b).ok()) {
                 self.mark(ty, bit);

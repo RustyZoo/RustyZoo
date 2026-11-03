@@ -19,7 +19,7 @@ const FALLBACK_UPDATE_PERIOD: u32 = 100;
 /// Period of the draw timer when `DrawRate` is absent or out of range: 30 per second.
 const FALLBACK_DRAW_PERIOD: u32 = 33;
 /// The default and the replacement of 0 for `MaxSimTick`.
-pub const DEFAULT_MAX_SIM_TICK: u32 = 200;
+pub(crate) const DEFAULT_MAX_SIM_TICK: u32 = 200;
 
 /// What the caller must do after one pass, in this order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub struct Pass {
 
 /// The speed factor of the simulation and the developer mode that unlocks its keys (main loop 5.2).
 #[derive(Debug, Clone, Copy)]
-pub struct Speed {
+pub(crate) struct Speed {
     /// `[advanced] devModeEnabled` is not 0: Ctrl+D may switch the developer mode on.
     enabled: bool,
     developer: bool,
@@ -43,7 +43,7 @@ pub struct Speed {
 
 impl Speed {
     /// Speed 1.0, developer mode off.
-    pub fn new(enabled: bool) -> Self {
+    pub(crate) fn new(enabled: bool) -> Self {
         Self {
             enabled,
             developer: false,
@@ -51,16 +51,16 @@ impl Speed {
         }
     }
 
-    pub fn factor(&self) -> f64 {
+    pub(crate) fn factor(&self) -> f64 {
         self.factor
     }
 
-    pub fn developer(&self) -> bool {
+    pub(crate) fn developer(&self) -> bool {
         self.developer
     }
 
     /// Ctrl+D: switches the developer mode, if the ini allows it. Whether it changed.
-    pub fn toggle(&mut self) -> bool {
+    pub(crate) fn toggle(&mut self) -> bool {
         self.developer ^= self.enabled;
         self.enabled
     }
@@ -68,7 +68,7 @@ impl Speed {
     /// A character key: `.` adds 0.1, `,` subtracts 0.1 and `/` sets 1.0, in developer mode.
     /// Each sum is rounded to `f32` (main loop 5.2, 5.4): 1.2000000476837158 after two `.`, and
     /// `,` stops at 0.09999992698431015, which is not above 0.1. Whether the key acted.
-    pub fn key(&mut self, byte: u8) -> bool {
+    pub(crate) fn key(&mut self, byte: u8) -> bool {
         if !self.developer {
             return false;
         }
@@ -86,7 +86,7 @@ impl Speed {
 #[derive(Debug, Clone)]
 pub struct Timers {
     /// The speed factor `pass` is called with.
-    pub speed: Speed,
+    pub(crate) speed: Speed,
     update_period: u32,
     draw_period: u32,
     cap: u32,
@@ -98,7 +98,7 @@ pub struct Timers {
 
 impl Timers {
     /// Periods and cap in milliseconds. The cap is unsigned: `u32::MAX` means no cap.
-    pub fn new(update_period: u32, draw_period: u32, cap: u32) -> Self {
+    pub(crate) fn new(update_period: u32, draw_period: u32, cap: u32) -> Self {
         Self {
             speed: Speed::new(false),
             update_period,
@@ -175,13 +175,13 @@ impl Timers {
 
     /// Forgets when the simulation last ran: its next step is the cap, as after a load that took
     /// longer than the cap (main loop 3.5).
-    pub fn forget_simulation(&mut self) {
+    pub(crate) fn forget_simulation(&mut self) {
         self.last_simulation = None;
     }
 
     /// Milliseconds from `now` to the earliest time at which a pass can fire a timer: 0 when
     /// one is due. A caller that sleeps this long runs the same firings as one that spins.
-    pub fn next_due(&self, now: u64) -> u64 {
+    pub(crate) fn next_due(&self, now: u64) -> u64 {
         let draw = self.last_draw.map(|l| l + u64::from(self.draw_period));
         let interface = self
             .last_interface
@@ -199,13 +199,13 @@ impl Timers {
 }
 
 /// The value of a key of a section of the ini file; section and key names ignore case.
-pub fn ini_value<'a>(ini: &'a Config, section: &str, key: &str) -> Option<&'a [u8]> {
+pub(crate) fn ini_value<'a>(ini: &'a Config, section: &str, key: &str) -> Option<&'a [u8]> {
     ini_values(ini, section, key).first().map(Vec::as_slice)
 }
 
 /// All values of a key of a section of the ini file, in file order; section and key names ignore
 /// case. Empty if the key is missing.
-pub fn ini_values<'a>(ini: &'a Config, section: &str, key: &str) -> &'a [Vec<u8>] {
+pub(crate) fn ini_values<'a>(ini: &'a Config, section: &str, key: &str) -> &'a [Vec<u8>] {
     ini.sections()
         .filter(|(name, _)| name.eq_ignore_ascii_case(section.as_bytes()))
         .find_map(|(_, section)| {
@@ -265,7 +265,7 @@ fn period_of(value: &[u8], fallback: u32) -> u32 {
 
 /// Game milliseconds per millisecond of step: 7.2 seconds.
 const GAME_MS_PER_STEP_MS: u64 = 7200;
-pub const DAY_MS: u64 = 86_400_000;
+pub(crate) const DAY_MS: u64 = 86_400_000;
 /// Days from 1970-01-01 to 2001-01-01.
 const DAYS_TO_2001: i64 = 11_323;
 /// Days from 1601-01-01 to 1970-01-01.
@@ -273,7 +273,7 @@ const DAYS_1601_TO_1970: i64 = 134_774;
 
 /// A date and time of day of the proleptic Gregorian calendar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Date {
+pub(crate) struct Date {
     pub year: u32,
     /// 1 to 12.
     pub month: u32,
@@ -290,7 +290,7 @@ pub struct Date {
 /// The game's calendar: starts on Monday 1 January 2001, 00:00, and advances by 7.2 seconds
 /// per millisecond of step, in whole numbers. A saved date before the start is a negative time.
 #[derive(Debug, Clone, Default)]
-pub struct Calendar {
+pub(crate) struct Calendar {
     /// Game milliseconds since the start (negative before it).
     elapsed: i64,
     /// Raised by the step that changed the month; acted on by the next one.
@@ -298,12 +298,12 @@ pub struct Calendar {
 }
 
 impl Calendar {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// A calendar that stands at `elapsed` game milliseconds after the start (a saved zoo's date).
-    pub fn at(elapsed: i64) -> Self {
+    pub(crate) fn at(elapsed: i64) -> Self {
         Self {
             elapsed,
             month_changed: false,
@@ -313,7 +313,7 @@ impl Calendar {
     /// Advances by one simulation step. Returns whether the previous step changed the month:
     /// the month-end work (the finance check) belongs to this step, one late. A step that
     /// changes the month raises the flag for the next one.
-    pub fn advance(&mut self, step: u32) -> bool {
+    pub(crate) fn advance(&mut self, step: u32) -> bool {
         let month_end = std::mem::take(&mut self.month_changed);
         let before = self.date().month;
         self.elapsed += i64::from(step) * GAME_MS_PER_STEP_MS as i64;
@@ -322,17 +322,17 @@ impl Calendar {
     }
 
     /// The game milliseconds since the start and the month flag, for the state hash.
-    pub fn state(&self) -> (i64, bool) {
+    pub(crate) fn state(&self) -> (i64, bool) {
         (self.elapsed, self.month_changed)
     }
 
     /// The game milliseconds the timers count from the start, negative before it: a stamp taken
     /// before 2001 ages from its own date, and the difference of two timers is the time between.
-    pub fn elapsed_ms(&self) -> i64 {
+    pub(crate) fn elapsed_ms(&self) -> i64 {
         self.elapsed
     }
 
-    pub fn date(&self) -> Date {
+    pub(crate) fn date(&self) -> Date {
         let day_ms = DAY_MS as i64;
         let days = self.elapsed.div_euclid(day_ms) + DAYS_TO_2001;
         Date::from_days(days, self.elapsed.rem_euclid(day_ms) as u32)
@@ -377,7 +377,7 @@ impl Date {
     }
 
     /// Milliseconds from 1 January 1970 to this date and time of day.
-    pub fn millis(&self) -> i64 {
+    pub(crate) fn millis(&self) -> i64 {
         let y = i64::from(self.year) - i64::from(self.month <= 2);
         let era = y.div_euclid(400);
         let yoe = y - era * 400;
@@ -394,7 +394,7 @@ impl Date {
     /// Game milliseconds from the calendar's start to this date, negative before it. A date the
     /// system's conversion refuses (a field out of range, a day the month does not have, a year
     /// before 1601 or after 30827) is the start, 0.
-    pub fn game_ms(&self) -> i64 {
+    pub(crate) fn game_ms(&self) -> i64 {
         let ok = (1..=12).contains(&self.month)
             && (1..=days_in_month(self.year, self.month)).contains(&self.day)
             && self.hour < 24
@@ -407,7 +407,7 @@ impl Date {
     }
 
     /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
-    pub fn from_file_time(t: u64) -> Date {
+    pub(crate) fn from_file_time(t: u64) -> Date {
         let ms = t / 10_000;
         Date::from_days(
             (ms / DAY_MS) as i64 - DAYS_1601_TO_1970,
@@ -418,7 +418,7 @@ impl Date {
 
 /// The file time (100 ns steps since 1 January 1601, zoo format 1) of a game date in game
 /// milliseconds from the calendar's start; 0 before 1601.
-pub fn file_time(game_ms: i64) -> u64 {
+pub(crate) fn file_time(game_ms: i64) -> u64 {
     let ms = game_ms.saturating_add((DAYS_TO_2001 + DAYS_1601_TO_1970) * DAY_MS as i64);
     u64::try_from(ms).map_or(0, |ms| ms.saturating_mul(10_000))
 }

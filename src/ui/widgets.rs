@@ -3,7 +3,7 @@
 
 /// A part of a scroll bar, along its length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Part {
+pub(crate) enum Part {
     Up,
     Down,
     Track,
@@ -12,7 +12,7 @@ pub enum Part {
 
 /// The lengths along a bar: the bar, its two arrows and its thumb, in pixels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Lengths {
+pub(crate) struct Lengths {
     pub bar: i32,
     pub up: i32,
     pub down: i32,
@@ -21,7 +21,7 @@ pub struct Lengths {
 
 /// The value of a scroll bar and what it shows of the mouse.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Bar {
+pub(crate) struct Bar {
     pub min: i32,
     pub max: i32,
     /// How far a press on the track moves.
@@ -51,24 +51,25 @@ impl Default for Bar {
 
 impl Bar {
     /// Sets the range (`max` is at least `min`, `page` at least 1) and keeps the position in it.
-    pub fn set_range(&mut self, min: i32, max: i32, page: i32) {
+    pub(crate) fn set_range(&mut self, min: i32, max: i32, page: i32) {
         (self.min, self.max, self.page) = (min, max.max(min), page.max(1));
         self.position = self.position.clamp(self.min, self.max);
     }
 
     /// Whether there is anything to scroll: a bar whose range is empty is not shown.
-    pub fn scrollable(&self) -> bool {
+    pub(crate) fn scrollable(&self) -> bool {
         self.max > self.min
     }
 
     /// Moves to `position` within the range; whether that changed it.
-    pub fn set_position(&mut self, position: i64) -> bool {
+    pub(crate) fn set_position(&mut self, position: i64) -> bool {
         let to = position.clamp(i64::from(self.min), i64::from(self.max)) as i32;
         std::mem::replace(&mut self.position, to) != to
     }
 
     /// Moves by `delta`; whether that changed the position.
-    pub fn step(&mut self, delta: i64) -> bool {
+    #[cfg(test)]
+    pub(crate) fn step(&mut self, delta: i64) -> bool {
         self.set_position(i64::from(self.position) + delta)
     }
 
@@ -79,14 +80,14 @@ impl Bar {
 
     /// The first and the last place where the thumb can start: under the up arrow, and its
     /// travel further.
-    pub fn thumb_range(&self, l: &Lengths) -> (i32, i32) {
+    pub(crate) fn thumb_range(&self, l: &Lengths) -> (i32, i32) {
         let last = i64::from(l.up) + self.travel(l);
         (l.up, last.min(i64::from(i32::MAX)) as i32)
     }
 
     /// Where the thumb starts along the bar: just after the up arrow, plus its share of the
     /// travel by the position.
-    pub fn thumb_start(&self, l: &Lengths) -> i32 {
+    pub(crate) fn thumb_start(&self, l: &Lengths) -> i32 {
         let range = i64::from(self.max) - i64::from(self.min);
         let share = match range {
             0 => 0,
@@ -96,7 +97,7 @@ impl Bar {
     }
 
     /// The part at a distance `at` from the start of the bar.
-    pub fn part_at(&self, l: &Lengths, at: i32) -> Part {
+    pub(crate) fn part_at(&self, l: &Lengths, at: i32) -> Part {
         let thumb = i64::from(self.thumb_start(l));
         let at = i64::from(at);
         if at < i64::from(l.up) {
@@ -111,7 +112,7 @@ impl Bar {
     }
 
     /// The position for a thumb that starts at `start`: the one it has reached, rounded down.
-    pub fn position_for(&self, l: &Lengths, start: i32) -> i64 {
+    pub(crate) fn position_for(&self, l: &Lengths, start: i32) -> i64 {
         let (travel, range) = (self.travel(l), i64::from(self.max) - i64::from(self.min));
         if travel == 0 {
             return i64::from(self.min);
@@ -121,7 +122,7 @@ impl Bar {
     }
 
     /// The step of a press at `at` on the track: a page toward it.
-    pub fn page_toward(&self, l: &Lengths, at: i32) -> i64 {
+    pub(crate) fn page_toward(&self, l: &Lengths, at: i32) -> i64 {
         match at < self.thumb_start(l) {
             true => -i64::from(self.page),
             false => i64::from(self.page),
@@ -142,7 +143,7 @@ pub struct Row {
 
 /// A key a list reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ListKey {
+pub(crate) enum ListKey {
     Up,
     Down,
     PageUp,
@@ -153,7 +154,7 @@ pub enum ListKey {
 
 /// The rows of a list box, the first one shown, the selected one and the hovered one.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Rows {
+pub(crate) struct Rows {
     pub rows: Vec<Row>,
     /// The colour of the text of a row that is neither selected nor disabled, where the game's
     /// code gives it one instead of the list's own.
@@ -166,7 +167,7 @@ pub struct Rows {
 /// The heights of the rows of a list, the space between two rows and the height inside the
 /// borders: how many whole rows are shown from a first one, and which row is at a distance.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Heights {
+pub(crate) struct Heights {
     pub rows: Vec<i32>,
     pub spacing: i32,
     pub inner: i32,
@@ -174,12 +175,12 @@ pub struct Heights {
 
 impl Heights {
     /// How many whole rows fit from `top` on, at least one.
-    pub fn fit_from(&self, top: usize) -> usize {
+    pub(crate) fn fit_from(&self, top: usize) -> usize {
         self.fit(self.rows.get(top..).unwrap_or_default().iter())
     }
 
     /// The first row of the last screenful: the largest `top` there is.
-    pub fn max_top(&self) -> usize {
+    pub(crate) fn max_top(&self) -> usize {
         let last = self.fit(self.rows.iter().rev());
         self.rows.len().saturating_sub(last)
     }
@@ -198,7 +199,7 @@ impl Heights {
 
     /// The row at distance `y` below the top of the list when `top` is the first one shown; `None`
     /// above the first, between two rows and below the last.
-    pub fn row_at(&self, top: usize, y: i32) -> Option<usize> {
+    pub(crate) fn row_at(&self, top: usize, y: i32) -> Option<usize> {
         let mut y = i64::from(y);
         if y < 0 {
             return None;
@@ -218,7 +219,7 @@ impl Heights {
 
 impl Rows {
     /// Scrolls the least that shows the selected row.
-    pub fn show_selection(&mut self, fit: &Heights) {
+    pub(crate) fn show_selection(&mut self, fit: &Heights) {
         if let Some(row) = self.selected {
             if row < self.top {
                 self.top = row;
@@ -233,7 +234,7 @@ impl Rows {
     /// Moves the selection by a key: one row, or a page of the rows shown less one, or to an end.
     /// With nothing selected, Down and the page keys down start at the first row, Up and End at
     /// the last. Returns whether the selection changed.
-    pub fn select_by_key(&mut self, key: ListKey, fit: &Heights) -> bool {
+    pub(crate) fn select_by_key(&mut self, key: ListKey, fit: &Heights) -> bool {
         let Some(last) = self.rows.len().checked_sub(1) else {
             return false;
         };
@@ -253,7 +254,7 @@ impl Rows {
     }
 
     /// The value the select action gets: the selected row, or -1 for none and for a disabled one.
-    pub fn action_value(&self) -> i32 {
+    pub(crate) fn action_value(&self) -> i32 {
         match self.selected.and_then(|r| self.rows.get(r)) {
             Some(row) if !row.disabled => self
                 .selected
@@ -266,13 +267,13 @@ impl Rows {
 /// The caret of a text field: where it is, and where the selection started. They are equal when
 /// nothing is selected; the selection is between them, whichever is first.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Caret {
+pub(crate) struct Caret {
     pub at: usize,
     pub anchor: usize,
 }
 
 impl Caret {
-    pub fn at_end(len: usize) -> Caret {
+    pub(crate) fn at_end(len: usize) -> Caret {
         Caret {
             at: len,
             anchor: len,
@@ -280,7 +281,7 @@ impl Caret {
     }
 
     /// The selected range of a text of `len` bytes.
-    pub fn range(&self, len: usize) -> (usize, usize) {
+    pub(crate) fn range(&self, len: usize) -> (usize, usize) {
         let (a, b) = (self.at.min(len), self.anchor.min(len));
         (a.min(b), a.max(b))
     }
@@ -288,7 +289,7 @@ impl Caret {
 
 /// A key a text field reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EditKey {
+pub(crate) enum EditKey {
     Left,
     Right,
     Home,
@@ -301,7 +302,7 @@ pub enum EditKey {
 
 /// What a key did to a field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Edited {
+pub(crate) enum Edited {
     /// The field does not handle it (a control character the field refuses, a character over the
     /// limit or not a digit in a numeric field).
     Ignored,
@@ -313,7 +314,7 @@ pub enum Edited {
 
 /// What a field accepts: a number only; at most `limit` bytes (0: any number).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Limits {
+pub(crate) struct Limits {
     pub numeric: bool,
     pub limit: usize,
 }
@@ -337,7 +338,7 @@ fn numeric_byte(before: &[u8], byte: u8, after: &[u8]) -> bool {
 /// the ends (extending with Shift). Delete and Backspace remove the selection, or the byte after
 /// or before the caret. A printable byte replaces the selection; a numeric field takes digits, a
 /// leading minus and one point.
-pub fn edit(
+pub(crate) fn edit(
     text: &mut Vec<u8>,
     caret: &mut Caret,
     key: EditKey,
@@ -400,7 +401,7 @@ pub fn edit(
 
 /// The caret position for a click at distance `x` from the start of the text: the byte boundary
 /// nearest to it, given the advance of each byte.
-pub fn caret_for(text: &[u8], advance: impl Fn(u8) -> i32, x: i32) -> usize {
+pub(crate) fn caret_for(text: &[u8], advance: impl Fn(u8) -> i32, x: i32) -> usize {
     let mut pen = 0i64;
     for (i, &byte) in text.iter().enumerate() {
         let next = pen + i64::from(advance(byte));

@@ -15,7 +15,6 @@ mod tooltip;
 mod widgets;
 
 pub use dialog::Buttons;
-pub use region::MAX_ITEMS;
 use std::collections::HashMap;
 pub use tooltip::Settings;
 
@@ -28,7 +27,7 @@ use crate::app::Key;
 /// [`Interface::take_selected`]): the list, bar and field actions the player's input ran, in
 /// order, to be taken with [`Interface::take_actions`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Action {
+pub(crate) enum Action {
     /// The select action of a list box: its id and the row selected, -1 for none or a disabled
     /// one.
     Row(i32, i32),
@@ -145,30 +144,30 @@ impl Interface {
     }
 
     /// Whether something changed since the last [`paint`](Interface::paint).
-    pub fn dirty(&self) -> bool {
+    pub(crate) fn dirty(&self) -> bool {
         self.dirty
     }
 
     /// Marks the interface as changed.
-    pub fn touch(&mut self) {
+    pub(crate) fn touch(&mut self) {
         self.dirty = true;
     }
 
     /// Whether the map view is on the screen and no other element holds the keyboard focus: the
     /// keys of the map view act only then.
-    pub fn map_view_has_the_keys(&self) -> bool {
+    pub(crate) fn map_view_has_the_keys(&self) -> bool {
         self.map_view_shown()
             && self.modal.is_none()
             && self.tree.elements.iter().all(|e| e.state & FOCUSED == 0)
     }
 
     /// Whether the map view is on the screen.
-    pub fn map_view_shown(&self) -> bool {
+    pub(crate) fn map_view_shown(&self) -> bool {
         self.map_view.is_some_and(|i| self.visible(i))
     }
 
     /// Whether the element `id` and its layouts are all shown; `false` if there is no such element.
-    pub fn shown(&self, id: i32) -> bool {
+    pub(crate) fn shown(&self, id: i32) -> bool {
         self.tree.find(id).is_some_and(|i| self.visible(i))
     }
 
@@ -217,14 +216,18 @@ impl Interface {
 
     /// Paints the whole interface into `frame`. `map` draws the map into the rectangle of the map
     /// view when it is reached.
-    pub fn paint(&mut self, frame: &mut Framebuffer, map: &mut dyn FnMut(&mut Framebuffer, Rect4)) {
+    pub(crate) fn paint(
+        &mut self,
+        frame: &mut Framebuffer,
+        map: &mut dyn FnMut(&mut Framebuffer, Rect4),
+    ) {
         self.painter.draw(&mut self.tree, frame, &self.strings, map);
         self.dirty = false;
     }
 
     /// Writes `text` (Windows-1252) over `frame` at `dx` pixels right of the pointer, in the map
     /// view's font and `forecolor`. Call it after [`Interface::paint`].
-    pub fn pointer_text(&mut self, frame: &mut Framebuffer, text: &[u8], dx: i32) {
+    pub(crate) fn pointer_text(&mut self, frame: &mut Framebuffer, text: &[u8], dx: i32) {
         let Some(i) = self.map_view else { return };
         let e = &self.tree.elements[i];
         let (x, y) = self.input.pointer;
@@ -242,7 +245,7 @@ impl Interface {
     /// Writes `text` (Windows-1252) in white without shadow, 35 pixels from the left edge of
     /// `frame` and at its top, in the map view's font (the debug text of main loop 5.2). Call it
     /// after [`Interface::paint`].
-    pub fn corner_text(&mut self, frame: &mut Framebuffer, text: &[u8]) {
+    pub(crate) fn corner_text(&mut self, frame: &mut Framebuffer, text: &[u8]) {
         let Some(i) = self.map_view else { return };
         let e = &self.tree.elements[i];
         self.painter
@@ -250,17 +253,17 @@ impl Interface {
     }
 
     /// The text of string `id` as the elements show it.
-    pub fn string(&self, id: i32) -> String {
+    pub(crate) fn string(&self, id: i32) -> String {
         self.strings.string(id)
     }
 
     /// The text of string `id` as the game's libraries have it, whatever was set in its place.
-    pub fn template(&self, id: i32) -> String {
+    pub(crate) fn template(&self, id: i32) -> String {
         self.strings.base.string(id)
     }
 
     /// Shows `text` wherever string `id` is shown, from now on.
-    pub fn set_string(&mut self, id: i32, text: String) {
+    pub(crate) fn set_string(&mut self, id: i32, text: String) {
         self.strings.replaced.insert(id, text);
         for e in &mut self.tree.elements {
             if e.look.text_id.first() == Some(&id) {
@@ -271,43 +274,43 @@ impl Interface {
     }
 
     /// The ids of the buttons whose action ran since the last call, in order.
-    pub fn take_selected(&mut self) -> Vec<i32> {
+    pub(crate) fn take_selected(&mut self) -> Vec<i32> {
         std::mem::take(&mut self.selected)
     }
 
     /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,
     /// `sound uiclick`, `show 32`, ...), without the `ui ` the log puts before them.
-    pub fn take_events(&mut self) -> Vec<String> {
+    pub(crate) fn take_events(&mut self) -> Vec<String> {
         std::mem::take(&mut self.events)
     }
 
     /// The actions the input ran since the last call, for the game's code.
-    pub fn take_actions(&mut self) -> Vec<Action> {
+    pub(crate) fn take_actions(&mut self) -> Vec<Action> {
         std::mem::take(&mut self.actions)
     }
 
     /// The sounds the interface asked for since the last call, by file name without the
     /// extension (`uiclick`): the shell plays them.
-    pub fn take_sounds(&mut self) -> Vec<&'static str> {
+    pub(crate) fn take_sounds(&mut self) -> Vec<&'static str> {
         std::mem::take(&mut self.sounds)
     }
 
     /// Advances the animations that are shown at a drawn frame, `now` ms on the clock (see
     /// [`Painter::animate`]): the interface is dirty when one of them changed its frame.
-    pub fn animate(&mut self, now: u64, paused: bool) {
+    pub(crate) fn animate(&mut self, now: u64, paused: bool) {
         if self.painter.animate(&self.tree, now, paused) {
             self.dirty = true;
         }
     }
 
     /// Where the pointer is, in window pixels, as the last `mouse X Y` put it.
-    pub fn pointer(&self) -> (i32, i32) {
+    pub(crate) fn pointer(&self) -> (i32, i32) {
         self.input.pointer
     }
 
     /// Tells the interface the clock (ms) at which the input that follows happens: a held button
     /// repeats from the time it was pressed.
-    pub fn set_time(&mut self, now: u64) {
+    pub(crate) fn set_time(&mut self, now: u64) {
         self.input.clock = now;
     }
 
@@ -316,7 +319,7 @@ impl Interface {
     /// It repeats held buttons and scroll bar parts, runs the tooltip's delay, and hides a timed
     /// element `timerDuration` after it was shown (the first update after showing only starts
     /// the count).
-    pub fn update(&mut self, now: u64) {
+    pub(crate) fn update(&mut self, now: u64) {
         let elapsed = match self.updated {
             Some(last) if now < last.saturating_add(UPDATE_GAP) => return,
             Some(last) => now - last,

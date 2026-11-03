@@ -19,13 +19,13 @@ use crate::world::World;
 use crate::zoo::StaffRecord;
 
 /// Whether the type is a staff member the player hires.
-pub fn is_staff(ty: &EntityType) -> bool {
+pub(crate) fn is_staff(ty: &EntityType) -> bool {
     wages(ty).is_some()
 }
 
 /// The category the type's hiring charge is booked in (staff 5.1), `None` for a type that is not
 /// staff.
-pub fn wages(ty: &EntityType) -> Option<usize> {
+pub(crate) fn wages(ty: &EntityType) -> Option<usize> {
     match ty.class {
         "keeper" => Some(KEEPER_WAGES),
         "tour" => Some(GUIDE_WAGES),
@@ -36,25 +36,25 @@ pub fn wages(ty: &EntityType) -> Option<usize> {
 
 /// The category the type's monthly wage is booked in (staff 5.2): the keeper class and the
 /// helicopter in keeper wages, then the guide and the worker; `None` for a type of no staff class.
-pub fn monthly_wages(ty: &EntityType) -> Option<usize> {
+pub(crate) fn monthly_wages(ty: &EntityType) -> Option<usize> {
     wages(ty).or((ty.class == "helicopter").then_some(KEEPER_WAGES))
 }
 
 /// The monthly cost of the type: `cMonthlyCost`, which is `cPurchaseCost` when the file has none
 /// (staff 3).
-pub fn monthly(ty: &EntityType) -> f32 {
+pub(crate) fn monthly(ty: &EntityType) -> f32 {
     number(ty, "cMonthlyCost").unwrap_or_else(|| cost(ty))
 }
 
 /// The string of the duties the Hire panel shows, 0 when the type has none.
-pub fn duties(ty: &EntityType) -> i32 {
+pub(crate) fn duties(ty: &EntityType) -> i32 {
     number(ty, "cDutiesTextID").map_or(0, |n| n as i32)
 }
 
 /// The keys of a tour guide type (tour guide 3) that its group reads, with the program's value
 /// for a missing key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Crowd {
+pub(crate) struct Crowd {
     /// `cTourGuideBonus`, the happiness a viewing area under the guide gives.
     pub bonus: i32,
     /// `cCrowdCheck`: status ticks between two gatherings.
@@ -67,7 +67,7 @@ pub struct Crowd {
 }
 
 impl Crowd {
-    pub fn of(ty: Option<&EntityType>, over: &Overlay) -> Crowd {
+    pub(crate) fn of(ty: Option<&EntityType>, over: &Overlay) -> Crowd {
         let key =
             |k: &str, fallback: i32| ty.and_then(|t| number(t, k)).map_or(fallback, |v| v as i32);
         let bonus = key("cTourGuideBonus", 5);
@@ -93,7 +93,7 @@ fn counter(ty: Option<&EntityType>, key: &str, fallback: f32, rng: &mut Rng) -> 
 /// The duty kinds the game allows a maintenance worker (staff 8.1, O6): the trash cans, the litter
 /// and dung and the fences, and the tank filters when the aqua expansion data is installed (a
 /// marine specialist is in the catalogue).
-pub fn duty_kinds(cat: &Catalogue) -> usize {
+pub(crate) fn duty_kinds(cat: &Catalogue) -> usize {
     let marine = (cat.types.iter()).any(|t| t.class == "keeper" && t.type_name == b"trainer");
     3 + usize::from(marine)
 }
@@ -104,7 +104,7 @@ const COLOURS: usize = 2;
 /// The creation of a staff member of type `ty` and kind `kind`: one draw per replaceable colour,
 /// the work counter and then the chase counter, one draw each (staff 4.2), and a tour guide's crowd
 /// countdown (tour guide 4). The counters are kept; only the guide reads them.
-pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
+pub(crate) fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
     let colours = crate::unit::draw_colours(ty, COLOURS, rng);
     let work = counter(ty, "cWorkCheck", 5.0, rng);
     let chase = counter(ty, "cChaseCheck", 2.0, rng);
@@ -128,7 +128,7 @@ pub fn create(ty: Option<&EntityType>, kind: Kind, rng: &mut Rng) -> Staff {
 /// The record of a new helicopter of type `ty` for the base `base` (staff 4.2): no colour, the work
 /// and the chase counter, one draw each; its own fields are the base, not flying and no flight
 /// direction (zoo format 6.13).
-pub fn helicopter(ty: &EntityType, base: u32, rng: &mut Rng) -> StaffRecord {
+pub(crate) fn helicopter(ty: &EntityType, base: u32, rng: &mut Rng) -> StaffRecord {
     let work = counter(Some(ty), "cWorkCheck", 5.0, rng);
     let chase = counter(Some(ty), "cChaseCheck", 2.0, rng);
     let own = [base, 0, u32::MAX]
@@ -147,7 +147,7 @@ pub fn helicopter(ty: &EntityType, base: u32, rng: &mut Rng) -> StaffRecord {
 /// order with the animals and the guests.
 /// Nothing for an entity that is not staff. The unit counts as started, so its first turn draws
 /// nothing.
-pub fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
+pub(crate) fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
     let Some(entity) = world.zoo.entities.get(at) else {
         return;
     };
@@ -180,7 +180,7 @@ fn exhibit_at(world: &World, [x, y]: [i32; 2]) -> Option<u32> {
 /// The tile inside the gate of exhibit `x`, as the file stores an assignment (the gate's own tile
 /// when it belongs to the exhibit, even if the tile across is off the map); `None` for an exhibit
 /// without a gate.
-pub fn gate_tile(world: &World, x: u32) -> Option<[i32; 2]> {
+pub(crate) fn gate_tile(world: &World, x: u32) -> Option<[i32; 2]> {
     let (tile, side) = world.gate_slot(x)?;
     let inside = match world.exhibits().region(tile) == Some(x) {
         true => tile,
@@ -194,7 +194,7 @@ impl Staff {
     /// Overwrites what the record of a loaded map stores (zoo format 6.13); a guide's crowd
     /// countdown of a version below 54 keeps the draw. `assigned` and `members` are the exhibits
     /// and guests the record's tiles and ids stand for, in the record's order.
-    pub fn restore(&mut self, r: &StaffRecord, assigned: Vec<u32>, members: Vec<u32>) {
+    pub(crate) fn restore(&mut self, r: &StaffRecord, assigned: Vec<u32>, members: Vec<u32>) {
         (self.work, self.chase) = (r.work, r.chase);
         self.captured = r.captured;
         self.crowd = r.crowd.unwrap_or(self.crowd);
@@ -214,7 +214,7 @@ impl Staff {
     /// engine does not model stays as it was. `tiles` are the tiles of the assigned exhibits. A
     /// duty kind the data lacks (past `kinds`) is off and not counted (staff 8.1). Only a guide
     /// (`guide`) writes its crowd countdown (zoo format 6.13); the others keep the record's.
-    pub fn record(
+    pub(crate) fn record(
         &self,
         base: StaffRecord,
         tiles: Vec<[i32; 2]>,
@@ -242,7 +242,7 @@ impl Staff {
 
 /// The first turn of a staff member that was not created by [`make`] or the Hire panel (one a test
 /// world added): the same draws as [`create`].
-pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
     if !matches!(unit.part, Part::Staff(_)) {
         return;
     }
@@ -258,7 +258,13 @@ pub fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
 /// go; then every member's chase counter, which looks for a predator when it fires (unless he
 /// avoids one already) and raises or lowers his frightened flag; then a guide's gathering
 /// countdown (tour guide 4).
-pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn checks(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+) {
     let Part::Staff(s) = &unit.part else {
         return;
     };
@@ -291,7 +297,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
 /// The keeper `id` stops going to the exhibit of his own target tile, which is lowered by one, and
 /// closes the gate he remembers (movement 6.2): he is picked up or removed. A guide lets its group
 /// go, a worker gives his task back, and a member capturing an animal frees it.
-pub fn leaves(world: &mut World, id: u32) {
+pub(crate) fn leaves(world: &mut World, id: u32) {
     // A member who was capturing an animal releases its claim (unit placing 8.2).
     if let Some(Part::Staff(s)) = world.units.get_mut(id).map(|u| &mut u.part) {
         let caught = std::mem::take(&mut s.captured);

@@ -14,13 +14,13 @@ use crate::timing::Date;
 use std::collections::{HashMap, HashSet};
 
 /// The message that the exhibit is inaccessible to the staff.
-pub const INACCESSIBLE: i32 = 11000;
+pub(crate) const INACCESSIBLE: i32 = 11000;
 /// The message that the entrance of the exhibit is blocked.
-pub const BLOCKED: i32 = 11001;
+pub(crate) const BLOCKED: i32 = 11001;
 
 /// What happened to the exhibits, for the game to log, to ask the name and to tell the player.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
+pub(crate) enum Event {
     /// A new exhibit with its default name; the player names it unless `ask` is false (an undo).
     New { id: u32, ask: bool },
     /// An exhibit was cut in two: this part kept its name and gate.
@@ -69,13 +69,13 @@ impl World {
     }
 
     /// Whether the entity at `at` is the gate of an exhibit fence (its subtype starts with `g`).
-    pub fn is_door(&self, at: usize) -> bool {
+    pub(crate) fn is_door(&self, at: usize) -> bool {
         let e = &self.zoo.entities[at];
         matches!(e.class.as_str(), "fences" | "tankwall") && e.subtype.starts_with('g')
     }
 
     /// The tile and side of the gate of exhibit `id`, if it has one.
-    pub fn gate_slot(&self, id: u32) -> Option<(usize, usize)> {
+    pub(crate) fn gate_slot(&self, id: u32) -> Option<(usize, usize)> {
         let gate = self.exhibits.get(id)?.gate?;
         self.slot_of(self.find(gate)?)
     }
@@ -145,7 +145,7 @@ impl World {
     /// is on the map and its slot on the line is empty, one tile of the line is in the zoo
     /// grounds (the exterior is part of the original's grounds region) and the other in an
     /// exhibit, and the piece is not already that exhibit's gate.
-    pub fn gate_for(&self, at: usize) -> Option<u32> {
+    pub(crate) fn gate_for(&self, at: usize) -> Option<u32> {
         self.shapes
             .get(at)
             .copied()
@@ -171,7 +171,7 @@ impl World {
     /// the piece's tile and the tile across gives code 0 and a cost below 10 (placing 6.4, exhibits
     /// and money 3.4), for the keeper of the path finder that is not relaxed (pathfinding 8): the
     /// marine specialist when the piece's tile is in a tank, else the zookeeper.
-    pub fn keeper_passes(&self, at: usize) -> bool {
+    pub(crate) fn keeper_passes(&self, at: usize) -> bool {
         let Some((t, d)) = self.slot_of(at) else {
             return false;
         };
@@ -185,7 +185,7 @@ impl World {
 
     /// Whether a quadrant of the tank tile of the fence piece at `at` holds an object: item 4 of
     /// the gate tool's validity (placing 6.4), which refuses the gate and hides its cost text.
-    pub fn tank_holds_object(&self, at: usize) -> bool {
+    pub(crate) fn tank_holds_object(&self, at: usize) -> bool {
         self.slot_of(at).is_some_and(|(t, _)| {
             self.tank_at(t).is_some() && (0..4).any(|q| self.quadrant(t, q).is_some())
         })
@@ -194,7 +194,7 @@ impl World {
     /// Moves the gate of exhibit `id` to the fence piece with id `piece` (placing 6.4): the old
     /// gate becomes a fence piece again, the piece a gate made healthy (`life` and `strength` of
     /// its new type), and the undo list is cleared. Whether the piece could become a gate.
-    pub fn move_gate(&mut self, id: u32, piece: u32, life: i32, strength: u32) -> bool {
+    pub(crate) fn move_gate(&mut self, id: u32, piece: u32, life: i32, strength: u32) -> bool {
         let Some(at) = self.find(piece) else {
             return false;
         };
@@ -224,7 +224,7 @@ impl World {
     }
 
     /// Gives exhibit `id` this name.
-    pub fn rename(&mut self, id: u32, name: String) {
+    pub(crate) fn rename(&mut self, id: u32, name: String) {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.name = name;
         }
@@ -254,7 +254,7 @@ impl World {
 
     /// The names the load of a saved game sets again on its exhibits, for the name hook (cheats
     /// 2.2): none when the file's locale is not the install language.
-    pub fn loaded_names(&self) -> Vec<String> {
+    pub(crate) fn loaded_names(&self) -> Vec<String> {
         if self.zoo.locale != self.language.number {
             return Vec::new();
         }
@@ -266,7 +266,7 @@ impl World {
     }
 
     /// Records that exhibit `id` was made on this date.
-    pub fn set_created(&mut self, id: u32, date: Date) {
+    pub(crate) fn set_created(&mut self, id: u32, date: Date) {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.stats.created = Some(date);
         }
@@ -274,7 +274,7 @@ impl World {
 
     /// The words before the number of a default name: exhibit, tank and show tank (strings 6208
     /// to 6210 of the language library); a missing one (empty) stays as it was.
-    pub fn set_exhibit_words(&mut self, words: [String; 3]) {
+    pub(crate) fn set_exhibit_words(&mut self, words: [String; 3]) {
         for (word, new) in self.words.iter_mut().zip(words) {
             if !new.is_empty() {
                 *word = new;
@@ -289,7 +289,7 @@ impl World {
 
     /// Makes the piece with id `piece` the gate of exhibit `id`, for a test.
     #[cfg(test)]
-    pub fn set_gate(&mut self, id: u32, piece: u32) {
+    pub(crate) fn set_gate(&mut self, id: u32, piece: u32) {
         let at = self.find(piece).unwrap();
         assert!(self.make_door(at));
         self.exhibits.get_mut(id).unwrap().gate = Some(piece);
@@ -297,12 +297,12 @@ impl World {
 
     /// The new exhibits that wait for their gate: the name dialog is open for them (exhibits and
     /// money 3.6).
-    pub fn waiting(&self) -> Vec<u32> {
+    pub(crate) fn waiting(&self) -> Vec<u32> {
         self.waiting.iter().map(|w| w.0).collect()
     }
 
     /// The new exhibit `id` was named: its gate is chosen now (exhibits and money 3.2, 3.4).
-    pub fn give_gate(&mut self, id: u32) {
+    pub(crate) fn give_gate(&mut self, id: u32) {
         if let Some(i) = self.waiting.iter().position(|w| w.0 == id) {
             let (id, start, placed) = self.waiting.remove(i);
             self.choose_gate(id, start, placed);
@@ -310,7 +310,7 @@ impl World {
     }
 
     /// What happened to the exhibits since the last call.
-    pub fn take_events(&mut self) -> Vec<Event> {
+    pub(crate) fn take_events(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.events)
     }
 
@@ -370,18 +370,18 @@ impl World {
     }
 
     /// The tank of exhibit `id`, if it is one.
-    pub fn tank(&self, id: u32) -> Option<Tank> {
+    pub(crate) fn tank(&self, id: u32) -> Option<Tank> {
         self.exhibits.get(id)?.tank
     }
 
     /// The floor level of tank `id`: the level of the first tile of its list (tank fauna 2).
-    pub fn floor(&self, id: u32) -> Option<i32> {
+    pub(crate) fn floor(&self, id: u32) -> Option<i32> {
         let first = *self.exhibits.get(id)?.order.first()?;
         Some(self.zoo.tiles[first].elevation)
     }
 
     /// The tiles of exhibit `id`, in the original's order (3.1).
-    pub fn tiles_of(&self, id: u32) -> Vec<usize> {
+    pub(crate) fn tiles_of(&self, id: u32) -> Vec<usize> {
         self.exhibits
             .get(id)
             .map_or_else(Vec::new, |e| e.order.clone())
@@ -668,7 +668,7 @@ impl World {
     }
 
     /// Whether tile `t` has a terrain type that is water.
-    pub fn is_water(&self, t: usize) -> bool {
+    pub(crate) fn is_water(&self, t: usize) -> bool {
         let terrain = usize::from(self.zoo.tiles[t].terrain);
         self.water.get(terrain).copied().unwrap_or(false)
     }

@@ -14,14 +14,14 @@ mod tank;
 
 /// The tallest elevation a tile may have; the shipped maps stay below 13. Larger values (a
 /// damaged file) are cut so that the picture stays bounded.
-pub const MAX_ELEVATION: i32 = 64;
+pub(crate) const MAX_ELEVATION: i32 = 64;
 
 /// The biggest footprint side accepted, in half tiles; a bigger object is dropped.
 const MAX_FOOTPRINT: i32 = 64;
 
 /// How an object takes its place on the map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
+pub(crate) enum Kind {
     /// Stands anywhere on a tile and holds no quadrant: animals, guests, staff.
     Unit,
     /// The path piece of a tile.
@@ -39,7 +39,7 @@ pub enum Kind {
 
 impl Kind {
     /// The way the objects of a class take their place.
-    pub fn of_class(class: &str) -> Kind {
+    pub(crate) fn of_class(class: &str) -> Kind {
         match class {
             "paths" => Kind::Path,
             "fences" => Kind::Edge,
@@ -55,7 +55,7 @@ impl Kind {
 
 /// One object of the map.
 #[derive(Debug, Clone, Copy)]
-pub struct Object {
+pub(crate) struct Object {
     pub kind: Kind,
     /// World position; a tile is 64 units wide.
     pub x: i32,
@@ -73,7 +73,7 @@ pub struct Object {
 
 /// A tank exhibit as the painter needs it.
 #[derive(Debug, Clone, Copy)]
-pub struct TankSpec {
+pub(crate) struct TankSpec {
     /// The first tile of the exhibit and its second (gate) tile; (-1, -1) for none.
     pub tile: (i32, i32),
     pub gate: (i32, i32),
@@ -85,7 +85,7 @@ pub struct TankSpec {
 /// The glass pane of a wall seen from a side of the tank (the `lgrey`, `bgrey`, `rgrey` and
 /// `fgrey` pictures).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Glass {
+pub(crate) enum Glass {
     UpperLeft,
     UpperRight,
     LowerRight,
@@ -94,7 +94,7 @@ pub enum Glass {
 
 /// One thing to paint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Item {
+pub(crate) enum Item {
     /// The ground of a tile (index `y * width + x`) with its cliffs and grid lines.
     Terrain(usize),
     /// The path piece, an object of kind [`Kind::Path`].
@@ -126,7 +126,7 @@ pub enum Item {
 }
 
 /// The map as the painter sees it.
-pub struct Scene {
+pub(crate) struct Scene {
     pub width: usize,
     pub height: usize,
     pub rotation: u8,
@@ -163,7 +163,7 @@ pub struct Scene {
 
 /// How a unit object is held off the map, which a rebuild of the index keeps.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Held {
+pub(crate) enum Held {
     /// Painted, but on no tile list (see [`Scene::unlist_unit`]).
     Unlisted,
     /// On its tile's list, not painted (see [`Scene::hide_unit`]).
@@ -185,7 +185,7 @@ const STEP: [(i32, i32); 8] = [
 ];
 
 /// The projection of a world point to view space at normal zoom (map drawing 2.2).
-pub fn project(rotation: u8, wx: i32, wy: i32, wz: i32) -> (i32, i32) {
+pub(crate) fn project(rotation: u8, wx: i32, wy: i32, wz: i32) -> (i32, i32) {
     let (a, b) = [(0, 1), (1, 0), (0, -1), (-1, 0)][usize::from(rotation % 4)];
     let (wx, wy, wz) = (i64::from(wx), i64::from(wy), i64::from(wz));
     let u = wx * a + wy * b;
@@ -200,7 +200,7 @@ pub fn project(rotation: u8, wx: i32, wy: i32, wz: i32) -> (i32, i32) {
 }
 
 /// The `(row, pos)` pair of a tile for sorting (map drawing 9.2).
-pub fn sort_key(rotation: u8, tx: i32, ty: i32) -> (i32, i32) {
+pub(crate) fn sort_key(rotation: u8, tx: i32, ty: i32) -> (i32, i32) {
     match rotation % 4 {
         0 => (-tx, ty),
         1 => (ty, tx),
@@ -225,7 +225,7 @@ fn quadrant_order(rotation: u8) -> [usize; 4] {
 impl Scene {
     /// Places the objects on the tiles. `tiles` has `width * height` entries; the elevations
     /// are cut to [`MAX_ELEVATION`].
-    pub fn new(
+    pub(crate) fn new(
         width: usize,
         height: usize,
         rotation: u8,
@@ -267,18 +267,18 @@ impl Scene {
     }
 
     /// The tile index under a world point, if it is on the map.
-    pub fn tile_at(&self, x: i32, y: i32) -> Option<usize> {
+    pub(crate) fn tile_at(&self, x: i32, y: i32) -> Option<usize> {
         let (tx, ty) = (x.div_euclid(64), y.div_euclid(64));
         self.index(tx, ty)
     }
 
-    pub fn index(&self, tx: i32, ty: i32) -> Option<usize> {
+    pub(crate) fn index(&self, tx: i32, ty: i32) -> Option<usize> {
         (tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height)
             .then(|| ty as usize * self.width + tx as usize)
     }
 
     /// Whether the object stands on the map (its position is over a tile).
-    pub fn is_placed(&self, o: usize) -> bool {
+    pub(crate) fn is_placed(&self, o: usize) -> bool {
         self.placed[o]
     }
 
@@ -319,7 +319,7 @@ impl Scene {
     /// are the tiles that contain the points `(x - 16 fx + 64 a, y - 16 fy + 64 b)` for `0 <= a <
     /// ceil(fx / 2)` and `0 <= b < ceil(fy / 2)`, a point's tile being its coordinates divided by
     /// 64 and cut towards zero; points off the map are left out. Not the quadrants of the object.
-    pub fn large_tiles(&self, o: usize) -> Vec<usize> {
+    pub(crate) fn large_tiles(&self, o: usize) -> Vec<usize> {
         let obj = &self.objects[o];
         self.tiles_under(obj.x, obj.y, self.turned(o))
     }
@@ -335,7 +335,7 @@ impl Scene {
 
     /// The tiles of [`Scene::large_tiles`] for something at `(x, y)` whose footprint, already
     /// turned with its facing, is `(fx, fy)`.
-    pub fn tiles_under(&self, x: i32, y: i32, (fx, fy): (i32, i32)) -> Vec<usize> {
+    pub(crate) fn tiles_under(&self, x: i32, y: i32, (fx, fy): (i32, i32)) -> Vec<usize> {
         match fx <= 2 && fy <= 2 {
             true => Vec::new(),
             false => self.tiles_of(x, y, (fx, fy)),
@@ -343,7 +343,7 @@ impl Scene {
     }
 
     /// The tiles under object `o`, whatever its size: the points of [`Scene::large_tiles`].
-    pub fn footprint_tiles(&self, o: usize) -> Vec<usize> {
+    pub(crate) fn footprint_tiles(&self, o: usize) -> Vec<usize> {
         let obj = &self.objects[o];
         self.tiles_of(obj.x, obj.y, self.turned(o))
     }
@@ -362,12 +362,12 @@ impl Scene {
     }
 
     /// The units standing on tile `t`.
-    pub fn units_on(&self, t: usize) -> &[usize] {
+    pub(crate) fn units_on(&self, t: usize) -> &[usize] {
         &self.list[t]
     }
 
     /// Puts the unit object `o` at a new point and facing; its tile list follows.
-    pub fn move_unit(&mut self, o: usize, (x, y, z): (i32, i32, i32), facing: u32) {
+    pub(crate) fn move_unit(&mut self, o: usize, (x, y, z): (i32, i32, i32), facing: u32) {
         let (from, to) = (
             self.tile_at(self.objects[o].x, self.objects[o].y),
             self.tile_at(x, y),
@@ -395,7 +395,7 @@ impl Scene {
 
     /// Takes unit object `o` off the map: it is on no tile list and is not painted, until
     /// [`Scene::move_unit`] puts it down.
-    pub fn lift_unit(&mut self, o: usize) {
+    pub(crate) fn lift_unit(&mut self, o: usize) {
         if let Some(t) = self.tile_at(self.objects[o].x, self.objects[o].y) {
             self.list[t].retain(|&u| u != o);
         }
@@ -404,20 +404,20 @@ impl Scene {
 
     /// Stops painting unit object `o`, which stays on its tile's list (a user hidden in a
     /// building); [`Scene::move_unit`] paints it again.
-    pub fn hide_unit(&mut self, o: usize) {
+    pub(crate) fn hide_unit(&mut self, o: usize) {
         self.placed[o] = false;
     }
 
     /// Takes unit object `o` off its tile's list only: it stays painted if it was, and goes back on
     /// a list at its first change of tile ([`Scene::move_unit`]).
-    pub fn unlist_unit(&mut self, o: usize) {
+    pub(crate) fn unlist_unit(&mut self, o: usize) {
         if let Some(t) = self.tile_at(self.objects[o].x, self.objects[o].y) {
             self.list[t].retain(|&u| u != o);
         }
     }
 
     /// The unit objects held off the map, with how (see [`Held`]).
-    pub fn held(&self) -> impl Iterator<Item = (usize, Held)> + '_ {
+    pub(crate) fn held(&self) -> impl Iterator<Item = (usize, Held)> + '_ {
         (0..self.objects.len()).filter_map(|o| {
             let obj = &self.objects[o];
             if obj.kind != Kind::Unit {
@@ -436,7 +436,7 @@ impl Scene {
     }
 
     /// Paints unit object `o` where it is without putting it on a tile list.
-    pub fn paint_unit(&mut self, o: usize) {
+    pub(crate) fn paint_unit(&mut self, o: usize) {
         self.placed[o] = true;
     }
 
@@ -487,32 +487,33 @@ impl Scene {
     /// The state of the edge of tile `t` in map direction `d` (even): 0 and 1 mean the ground
     /// is joined, 2 and 3 a step. The file stores the four states in the order of the
     /// directions 6, 4, 2, 0 from the low bits up.
-    pub fn edge_state(&self, t: usize, d: usize) -> u8 {
+    pub(crate) fn edge_state(&self, t: usize, d: usize) -> u8 {
         (self.tiles[t].edges >> (2 * (3 - d / 2))) & 3
     }
 
     /// The object on the edge of tile `t` in map direction `d`.
-    pub fn edge_object(&self, t: usize, d: usize) -> Option<usize> {
+    pub(crate) fn edge_object(&self, t: usize, d: usize) -> Option<usize> {
         self.edge[t][d / 2]
     }
 
     /// The number of quadrants the object holds.
-    pub fn quadrants(&self, o: usize) -> u32 {
+    #[cfg(test)]
+    pub(crate) fn quadrants(&self, o: usize) -> u32 {
         self.covers[o]
     }
 
     /// The path piece of a tile.
-    pub fn path_of(&self, t: usize) -> Option<usize> {
+    pub(crate) fn path_of(&self, t: usize) -> Option<usize> {
         self.path[t]
     }
 
     /// The object that holds quadrant `q` (`qy * 2 + qx`) of tile `t`.
-    pub fn quadrant_object(&self, t: usize, q: usize) -> Option<usize> {
+    pub(crate) fn quadrant_object(&self, t: usize, q: usize) -> Option<usize> {
         self.quad[t][q]
     }
 
     /// Adds a transient entity on tile `t` of a tank (map drawing 9.7.4); returns its index.
-    pub fn add_transient(&mut self, t: usize, obj: Object) -> usize {
+    pub(crate) fn add_transient(&mut self, t: usize, obj: Object) -> usize {
         self.objects.push(obj);
         self.covers.push(0);
         self.placed.push(true);
@@ -525,7 +526,7 @@ impl Scene {
     /// of a tank is what the original fills from the first tile of its record: every tile
     /// reachable through edges where neither slot holds a habitat fence, whatever the heights. A
     /// tile that is already in another exhibit is taken over.
-    pub fn set_tanks(&mut self, tanks: &[TankSpec], fences: &[bool]) {
+    pub(crate) fn set_tanks(&mut self, tanks: &[TankSpec], fences: &[bool]) {
         self.tanks = tanks.to_vec();
         self.tank = vec![None; self.tiles.len()];
         let fence = |t: usize, d: usize| {
@@ -562,13 +563,13 @@ impl Scene {
     }
 
     /// The tank exhibit (an index in [`Scene::tanks`]) that tile `t` belongs to.
-    pub fn tank_of(&self, t: usize) -> Option<usize> {
+    pub(crate) fn tank_of(&self, t: usize) -> Option<usize> {
         self.tank[t]
     }
 
     /// The tank an active wall belongs to: a tank wall of a tank taller than 0, standing on a
     /// tile of the tank or on the edge of one.
-    pub fn wall_tank(&self, o: usize) -> Option<usize> {
+    pub(crate) fn wall_tank(&self, o: usize) -> Option<usize> {
         let obj = &self.objects[o];
         if obj.kind != Kind::Wall || !self.placed[o] {
             return None;
@@ -581,13 +582,13 @@ impl Scene {
     }
 
     /// The height of the water surface over tile `t`: the ground at its centre plus the level.
-    pub fn surface(&self, t: usize) -> Option<i32> {
+    pub(crate) fn surface(&self, t: usize) -> Option<i32> {
         let tank = &self.tanks[self.tank_of(t)?];
         Some(ground_height(&self.tiles[t], 32, 32) + 16 * tank.level)
     }
 
     /// The tile across the edge or corner in map direction `d`.
-    pub fn neighbour(&self, t: usize, d: usize) -> Option<usize> {
+    pub(crate) fn neighbour(&self, t: usize, d: usize) -> Option<usize> {
         let (dx, dy) = STEP[d % 8];
         self.index((t % self.width) as i32 + dx, (t / self.width) as i32 + dy)
     }
@@ -595,7 +596,7 @@ impl Scene {
 
 /// The height in world units of the ground at the local point (`lx`, `ly`), 0 to 64, of a tile
 /// (map drawing 3.4); each term is cut towards zero on its own.
-pub fn ground_height(tile: &Tile, lx: i32, ly: i32) -> i32 {
+pub(crate) fn ground_height(tile: &Tile, lx: i32, ly: i32) -> i32 {
     let (a, b) = (lx / 4, ly / 4);
     let rise = match tile.shape {
         0x50 => a,
@@ -627,7 +628,7 @@ pub fn ground_height(tile: &Tile, lx: i32, ly: i32) -> i32 {
 
 /// The map direction of a screen direction (0 upper left edge, 1 top corner, 2 upper right edge,
 /// ...) at a rotation.
-pub fn map_direction(rotation: u8, screen: usize) -> usize {
+pub(crate) fn map_direction(rotation: u8, screen: usize) -> usize {
     (screen + 8 - 2 * usize::from(rotation % 4)) % 8
 }
 
@@ -892,7 +893,7 @@ impl Painter<'_> {
 }
 
 /// The things to paint, back to front, for a whole map.
-pub fn paint_order(scene: &Scene) -> Vec<Item> {
+pub(crate) fn paint_order(scene: &Scene) -> Vec<Item> {
     // The recursion follows chains of tiles; give it room on big maps.
     std::thread::scope(|s| {
         std::thread::Builder::new()

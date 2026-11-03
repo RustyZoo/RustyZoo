@@ -46,7 +46,7 @@ impl<'a> MapRenderer<'a> {
     /// order but not in the zoo. The marks of `extra` give a tile (an index into the tiles) the
     /// highlight sprite in their colour, after its ground and grid lines (map drawing 7); a tile
     /// that has a mark takes the grid lines off the two tiles behind it.
-    pub fn stage_with(
+    pub(crate) fn stage_with(
         &mut self,
         zoo: &Zoo,
         rotation: u8,
@@ -406,4 +406,115 @@ fn set_tanks(scene: &mut Scene, zoo: &Zoo, metas: &[Meta]) {
             .map(|m| habitat_fence(m.ty))
             .collect::<Vec<_>>(),
     );
+}
+
+/// The bubbles of the filters of `extra` that show some (tank staff 7.7), as transient objects of
+/// the tank tile their filter faces, with their type `tankbub1` (none without it), that tile and
+/// their age. They face away from the filter and stand at the middle of the edge of the tank tile
+/// that faces it, or at the centre of the tile when the edge has no tank wall. Their height is the
+/// floor, or three elevation steps below the water surface and no higher than the filter once that
+/// differs from the filter's. A filter that is off, that has no record or that faces no tank has
+/// none.
+pub(super) fn bubbles<'a>(
+    scene: &Scene,
+    zoo: &Zoo,
+    catalogue: &'a Catalogue,
+    extra: &Extra,
+) -> Vec<(&'a EntityType, usize, u32, Object)> {
+    let mut found = Vec::new();
+    let Some(ty) = catalogue.find("objects", b"other", b"tankbub1") else {
+        return found;
+    };
+    for look in &extra.filters {
+        let Some(age) = look.bubbles.filter(|_| !look.off) else {
+            continue;
+        };
+        let Some(e) =
+            (zoo.entities.iter()).find(|e| e.common.as_ref().is_some_and(|c| c.id == look.id))
+        else {
+            continue;
+        };
+        let Some(c) = &e.common else { continue };
+        let faced = (scene.tile_at(c.x, c.y)).and_then(|t| scene.neighbour(t, c.rotation as usize));
+        let Some((tile, k)) = faced.and_then(|t| Some((t, scene.tank_of(t)?))) else {
+            continue;
+        };
+        // The edge of the tank tile that faces the filter.
+        let side = (c.rotation as usize + 4) % 8;
+        let piece = (scene
+            .edge_object(tile, side)
+            .filter(|_| side.is_multiple_of(2)))
+        .filter(|&w| scene.wall_tank(w) == Some(k));
+        let (dx, dy) = match (piece, side) {
+            (None, _) => (32, 32),
+            (_, 0) => (32, 0),
+            (_, 2) => (63, 32),
+            (_, 4) => (32, 63),
+            _ => (0, 32),
+        };
+        let origin = |v: usize| i32::try_from(v).unwrap_or(0) * 64;
+        let floor = match piece {
+            Some(w) => scene.objects[w].z,
+            None => order::ground_height(&scene.tiles[tile], 32, 32),
+        };
+        // The water surface over the first tile of the tank, 16 per step of elevation and level.
+        let first = scene.tanks[k].tile;
+        let first = scene.index(first.0, first.1).unwrap_or(tile);
+        let z = match floor == c.z {
+            true => floor,
+            false => (scene.surface(first).map_or(c.z, |s| s - 48)).min(c.z),
+        };
+        found.push((
+            ty,
+            tile,
+            age,
+            Object {
+                kind: Kind::Unit,
+                x: origin(tile % scene.width) + dx,
+                y: origin(tile / scene.width) + dy,
+                z,
+                facing: side as u32,
+                footprint: (1, 1),
+                late: false,
+                height: 0,
+            },
+        ));
+    }
+    found
+}
+
+/// Adds a ripple, a transient object at the surface, against every active wall of every tank that
+/// holds clean water (map drawing 9.7.8); the number added. They are made at each staging, so
+/// they come and go with the level and the purity.
+pub(super) fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize) -> usize {
+    let mut added = 0;
+    for (k, (tank, look)) in scene.tanks.clone().iter().zip(looks).enumerate() {
+        if tank.level == 0 || !look.is_clean() {
+            continue;
+        }
+        let inside: Vec<usize> = (0..tiles)
+            .filter(|&t| scene.tank_of(t) == Some(k))
+            .collect();
+        for t in inside {
+            for d in [0, 2, 4, 6] {
+                let wall = scene
+                    .edge_object(t, d)
+                    .filter(|&w| scene.wall_tank(w) == Some(k))
+                    .map(|w| scene.objects[w]);
+                let Some(wall) = wall else { continue };
+                let z = scene.surface(t).unwrap_or(0);
+                let ripple = Object {
+                    kind: Kind::Unit,
+                    z,
+                    footprint: (1, 1),
+                    late: false,
+                    height: 0,
+                    ..wall
+                };
+                scene.add_transient(t, ripple);
+                added += 1;
+            }
+        }
+    }
+    added
 }

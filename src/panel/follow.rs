@@ -7,7 +7,7 @@ use crate::ui::layout::Picture;
 use crate::vfs::Vfs;
 
 /// The animation of an animal's follow button: its egg's, its crate's, else the idle one.
-pub fn animal_animation(egg: bool, crated: bool) -> &'static str {
+pub(crate) fn animal_animation(egg: bool, crated: bool) -> &'static str {
     match (egg, crated) {
         (true, _) => "egg_idle",
         (_, true) => "box_idle",
@@ -20,7 +20,7 @@ pub fn animal_animation(egg: bool, crated: bool) -> &'static str {
 /// base one) seen from the south-east at rotation 0, never mirrored, whatever the unit does and
 /// the camera shows; the button centres it, clips it and plays it from its first frame, looping,
 /// on its own clock. A type without such an animation keeps its list icon, if it has one.
-pub fn set_follow_icon(
+pub(crate) fn set_follow_icon(
     ui: &mut Interface,
     vfs: &Vfs,
     button: i32,

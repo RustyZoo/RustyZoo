@@ -21,8 +21,8 @@ use crate::world::{Shape, TankKind, World};
 use crate::zoo::{Common, Entity};
 
 /// The messages "has given birth" (it names the mother) and "has hatched".
-pub const BIRTH: i32 = 10032;
-pub const HATCHED: i32 = 10322;
+pub(crate) const BIRTH: i32 = 10032;
+pub(crate) const HATCHED: i32 = 10322;
 
 /// The failed attempts to place one young animal that destroy it (11.4 point 3).
 const ATTEMPTS: u32 = 10;
@@ -33,7 +33,7 @@ const NO_MATE: u32 = 15;
 
 /// Where an animal's mate is (animals-needs 11.2 point 1).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Mate {
+pub(crate) enum Mate {
     /// It has none, or it is in the same exhibit or on the zoo grounds.
     #[default]
     Here,
@@ -45,7 +45,7 @@ pub enum Mate {
 
 /// What the birth makes of the young, called when the roll succeeded: whether at least one young
 /// animal was put in the exhibit.
-pub type Birth<'a> = &'a mut dyn FnMut(&mut Animal, &mut Rng) -> bool;
+pub(crate) type Birth<'a> = &'a mut dyn FnMut(&mut Animal, &mut Rng) -> bool;
 
 /// The hatch counter of an egg laid under the `eggs_hatch_fast` cheat (cheats 4.2 C).
 const EGG_HATCH_FAST: i32 = 5;
@@ -62,7 +62,7 @@ fn threshold(k: &Keys) -> i32 {
 impl Animal {
     /// `setEgg` (13.1) for a new animal: the hatch countdown, and the health that gives a keeper
     /// something to heal. `sickly` is the keeper's `cSicklyAnimalPct`.
-    pub fn set_egg(&mut self, k: &Keys, sickly: i64) {
+    pub(crate) fn set_egg(&mut self, k: &Keys, sickly: i64) {
         self.egg = true;
         self.hatch = k.time_to_hatch;
         let start = i64::from(threshold(k)) - 1 + i64::from(self.hatch);
@@ -77,7 +77,7 @@ impl Animal {
 
 /// The egg check (13.2), before the egg branch of the order: the time to hatch counts down while
 /// the egg keeps its health, and once it is spent an egg in an exhibit hatches.
-pub fn egg_check(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
+pub(crate) fn egg_check(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
     if !a.egg || (!a.dying && a.health < threshold(k)) {
         return;
     }
@@ -94,7 +94,7 @@ pub fn egg_check(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
 
 /// The check of a young animal growing up (12): the counter runs at every tick, and when it ends a
 /// young animal becomes an adult.
-pub fn grow(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
+pub(crate) fn grow(a: &mut Animal, k: &Keys, env: &Env, out: &mut Out) {
     if fire(&mut a.baby, k.baby_to_adult) && env.baby {
         out.grow = true;
     }
@@ -124,7 +124,7 @@ fn find(a: &mut Animal, env: &mut Env, rng: &mut Rng, out: &mut Out, read: Reade
 /// The reproduction check (11) with old age before it: the birth interval counts up at every
 /// tick; when the check is due, the life counter runs (10), and an adult that is not dying looks
 /// after its mate and, a male in good spirits that is ready, rolls for young.
-pub fn reproduction(
+pub(crate) fn reproduction(
     a: &mut Animal,
     k: &Keys,
     class: &Class,
@@ -190,7 +190,7 @@ pub fn reproduction(
 /// exhibit's list (the tiles in the exhibit's order, then each tile's unit list): the ones of its
 /// species in its exhibit that are adults (`m` or `f`, not a young animal or its egg) of the other
 /// sex, have no mate and are neither its parents nor its young.
-pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
+pub(crate) fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
     let own = &world.zoo.entities[at];
     let mine = own.common.as_ref().map(|c| c.id);
     crate::animal::exhibit_animals(world, x)
@@ -215,7 +215,7 @@ pub fn candidates(world: &World, at: usize, x: u32, me: &Animal) -> Vec<u32> {
 }
 
 /// Where the animal at position `at`'s mate stands, for the check of 11.2 point 1.
-pub fn mate_of(world: &World, at: usize, mate: u32) -> Mate {
+pub(crate) fn mate_of(world: &World, at: usize, mate: u32) -> Mate {
     let region = |c: &Common| {
         let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
         tile.and_then(|t| world.exhibits().region(t))
@@ -234,7 +234,7 @@ pub fn mate_of(world: &World, at: usize, mate: u32) -> Mate {
 
 /// The other animal learns of the pair: it takes the id, and the lines about a missing mate go
 /// (11.3). `unpair` is the animal that lost its mate.
-pub fn pair(world: &mut World, id: u32, out: &Out) {
+pub(crate) fn pair(world: &mut World, id: u32, out: &Out) {
     if let Some(mate) = out.pair {
         if let Some(Part::Animal(m)) = world.units.get_mut(mate).map(|u| &mut u.part) {
             m.mate = id;
@@ -264,7 +264,7 @@ fn sickly(cat: &Catalogue) -> i64 {
 }
 
 /// How an animal of the type takes its place on the map.
-pub fn shape(ty: &EntityType) -> Shape {
+pub(crate) fn shape(ty: &EntityType) -> Shape {
     Shape {
         kind: Kind::of_class("animals"),
         footprint: (ty.footprint[0], ty.footprint[1]),
@@ -308,7 +308,7 @@ pub(super) fn suitable(world: &World, x: u32, ty: &EntityType, egg: bool) -> Vec
 /// suitable tiles of its exhibit, until `cOffspring` are there or no tile suits. Every animal of
 /// the species in the exhibit takes the happiness change `bonus` (`cBabyBornChange`), the father
 /// apart (the caller does it), and the birth is told. Whether a young animal was put there.
-pub fn born(
+pub(crate) fn born(
     father: &mut Animal,
     id: u32,
     (world, cat, data): (&mut World, &Catalogue, &dyn Data),
@@ -474,7 +474,13 @@ fn put(
 /// A young animal becomes an adult (12): its type changes to the species' `m` or `f` by its sex
 /// (the `m` one when the species has no `f`), keeping its needs, name, mate and parents; it stops
 /// everything it does, and reads its type again.
-pub fn grow_up(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+pub(crate) fn grow_up(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+) {
     let Part::Animal(a) = &unit.part else {
         return;
     };
@@ -506,7 +512,7 @@ pub fn grow_up(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, dat
 }
 
 /// `finishHatch` (13.3): the egg is an animal, shows its idle picture and the hatching is told.
-pub fn hatch(unit: &mut Unit, world: &mut World, at: usize, data: &dyn Data) {
+pub(crate) fn hatch(unit: &mut Unit, world: &mut World, at: usize, data: &dyn Data) {
     let Part::Animal(a) = &mut unit.part else {
         return;
     };

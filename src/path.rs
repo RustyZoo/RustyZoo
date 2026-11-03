@@ -16,12 +16,12 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::{SLOT, in_reach, step, terrain};
+pub(crate) use cost::{SLOT, in_reach, step, terrain};
 use search::open_deep;
-pub use search::search;
+pub(crate) use search::search;
 
 /// The cost of a closed step: 20 or more is closed.
-pub const MAX: u32 = 20;
+pub(crate) const MAX: u32 = 20;
 
 /// The class that decides the costs of a unit.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +114,7 @@ pub struct Mover {
 impl Mover {
     /// The guest's non-path cost as it stands: the one it was loaded with, the emergency one, or its
     /// type's (6.5).
-    pub fn cost_word(&self) -> u32 {
+    pub(crate) fn cost_word(&self) -> u32 {
         match (self.word, self.emergency) {
             (Some(w), _) => w,
             (_, true) => self.emergency_cost,
@@ -136,7 +136,7 @@ impl Mover {
     }
 
     /// The temporary keeper of the exhibits' tests: a marine specialist for a tank (`diver`).
-    pub fn keeper(diver: bool, relaxed: bool) -> Mover {
+    pub(crate) fn keeper(diver: bool, relaxed: bool) -> Mover {
         let mut keeper = Mover::new(Kind::Keeper, None);
         (keeper.swims, keeper.underwater, keeper.relaxed) = (diver, diver, relaxed);
         keeper
@@ -187,7 +187,7 @@ impl Settings {
 /// 4.2: whether a unit may take the tile step `(a, b, d)` from tile `a` to its neighbour `b` in
 /// direction `d`. With `building` (or the unit's own flag: it goes in or out of a building) only
 /// the edge cost is looked at, not the terrain cost of `b`.
-pub fn allowed(
+pub(crate) fn allowed(
     w: &World,
     m: &Mover,
     s: &Settings,
@@ -198,7 +198,7 @@ pub fn allowed(
 }
 
 /// 4.2 in a depth search: the same for the step from level `za` of `a` to level `zb` of `b`.
-pub fn allowed_deep(
+pub(crate) fn allowed_deep(
     w: &World,
     m: &Mover,
     s: &Settings,
@@ -264,7 +264,7 @@ impl Finder {
 
     /// The AI update at AI tick `now` (the whole ticks of the AI clock, which the step driver owns):
     /// once the clearing time is reached the unreachable list is emptied.
-    pub fn tick(&mut self, now: u64) {
+    pub(crate) fn tick(&mut self, now: u64) {
         if now >= self.clear_at {
             self.unreachable.clear();
             self.clear_at = now.saturating_add(self.settings.clear_every);
@@ -273,7 +273,7 @@ impl Finder {
 
     /// The clearing time, the width, the switch and the unreachable list in tile order, as words
     /// for the hash of a run.
-    pub fn state(&self) -> Vec<u64> {
+    pub(crate) fn state(&self) -> Vec<u64> {
         let mut list: Vec<_> = self.unreachable.iter().collect();
         list.sort();
         let head = [self.clear_at, self.width.map_or(0, |w| w as u64 + 1)];
@@ -284,7 +284,7 @@ impl Finder {
 
     /// The settings with the diagonal switch as the last search of any unit left it: the gate
     /// choice of the exhibits searches with these (pathfinding 8).
-    pub fn last(&self) -> Settings {
+    pub(crate) fn last(&self) -> Settings {
         Settings {
             diagonal: self.switch.unwrap_or(self.settings.diagonal),
             ..self.settings.clone()
@@ -294,7 +294,7 @@ impl Finder {
     /// The search of an exhibit's reachability test (habitat rating 5.8) from the unit's tile to
     /// tile `to`: the search alone, with no partial path and no unreachable list, after the
     /// diagonal switch takes the unit's rule. Whether it reaches `to`.
-    pub fn test(&mut self, w: &World, m: &Mover, to: usize) -> bool {
+    pub(crate) fn test(&mut self, w: &World, m: &Mover, to: usize) -> bool {
         let Some(from) =
             m.at.filter(|&s| s < w.zoo.tiles.len() && to < w.zoo.tiles.len())
         else {
@@ -305,7 +305,8 @@ impl Finder {
     }
 
     /// The failures held for destination tile `t`.
-    pub fn failures(&self, t: usize) -> Option<i8> {
+    #[cfg(test)]
+    pub(crate) fn failures(&self, t: usize) -> Option<i8> {
         self.unreachable.get(&t).copied()
     }
 
@@ -433,6 +434,6 @@ impl Finder {
 /// The cost of the pair of tiles `(a, b)` of an exhibit's boundary for a keeper with the line's
 /// pieces taken off (8): the edge costs 1, so it is one more than the larger terrain cost of the
 /// two, 20 at most.
-pub fn pair_cost(w: &World, m: &Mover, a: usize, b: usize) -> u32 {
+pub(crate) fn pair_cost(w: &World, m: &Mover, a: usize, b: usize) -> u32 {
     (1 + terrain(w, m, a, None).max(terrain(w, m, b, None))).min(MAX)
 }

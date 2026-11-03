@@ -11,7 +11,7 @@ use crate::zoo::Tile;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// The corners stay between these elevations.
-pub const LIMIT: i32 = 12;
+pub(crate) const LIMIT: i32 = 12;
 /// The shape bytes there are (map drawing 3.3).
 const LEGAL: [u8; 19] = [
     0x00, 0x01, 0x04, 0x05, 0x10, 0x11, 0x14, 0x15, 0x19, 0x40, 0x41, 0x44, 0x45, 0x46, 0x50, 0x51,
@@ -24,7 +24,7 @@ const ORDER: [usize; 4] = [0, 1, 3, 2];
 
 /// What a step asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Request {
+pub(crate) enum Request {
     Raise,
     Lower,
     /// Bring the brush to this elevation.
@@ -40,10 +40,10 @@ enum Action {
     Cut,
 }
 
-pub type Corners = [i32; 4];
+pub(crate) type Corners = [i32; 4];
 
 /// The elevations of the corners 7, 1, 3, 5 of a tile.
-pub fn corners(tile: &Tile) -> Corners {
+pub(crate) fn corners(tile: &Tile) -> Corners {
     [7, 1, 3, 5].map(|c| corner_elevation(tile, c))
 }
 
@@ -175,7 +175,7 @@ fn under(world: &World, brush: &[usize]) -> BTreeSet<usize> {
 
 /// The tiles outside the brush that a non-contiguous step takes along, inside the zoo, in index
 /// order (terrain editing 5.5).
-pub fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
+pub(crate) fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
     let mut tiles = under(world, brush);
     tiles.retain(|t| !brush.contains(t) && world.in_zoo(*t));
     tiles.into_iter().collect()
@@ -184,7 +184,7 @@ pub fn carried(world: &World, brush: &[usize]) -> Vec<usize> {
 /// The tiles a non-contiguous step adds to the snapshot unchanged, so that they are drawn again:
 /// the ring of one tile around the brush and the rectangle that bounds the tiles taken along,
 /// grown by one tile (terrain editing 5.5), clipped to the map, in index order.
-pub fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
+pub(crate) fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
     let width = world.zoo.width as usize;
     let mut rings = BTreeSet::new();
     let mut grow = |tiles: &mut dyn Iterator<Item = usize>| {
@@ -213,7 +213,7 @@ pub fn ring(world: &World, brush: &[usize]) -> Vec<usize> {
 /// One step of `request` over the `brush` tiles, in rows (terrain editing 5.2). The tiles that
 /// changed, in index order, with their new elevation and shape byte; none when the step does
 /// nothing. Only tiles inside the zoo change.
-pub fn run(
+pub(crate) fn run(
     world: &World,
     types: &[Type],
     brush: &[usize],
