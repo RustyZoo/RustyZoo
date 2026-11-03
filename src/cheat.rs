@@ -245,6 +245,9 @@ pub(crate) const YELLOW_BRICK: i32 = 9111;
 /// game. The flying objects of the hooks (the sleigh, the witch, the biplane) are not made yet.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Season {
+    /// The permanent Halloween flag (a start on the real 31 October): while up, the jack-o'-lantern
+    /// step of the guest hook is skipped. Never lowered.
+    pub(crate) halloween: bool,
     /// The snowman and the holiday tree are available for 25 December.
     snow: bool,
     /// The jack-o'-lantern is available for 31 October.
@@ -257,7 +260,8 @@ impl Season {
     /// The hook of a guest created on the game date `month`/`day` (cheats 6); `trio` is
     /// [`Flags::lions_tigers_bears`]. The availability it sets, in order: the items of the day
     /// on the first creation of that day and not again after, the same items unavailable again on
-    /// the first creation of another day, and the yellow brick path once ever.
+    /// the first creation of another day (the jack-o'-lantern only while the permanent Halloween flag
+    /// is down), and the yellow brick path once ever.
     pub(crate) fn guest_created(&mut self, month: u32, day: u32, trio: bool) -> Vec<(i32, bool)> {
         let mut set = Vec::new();
         if (month, day) == (12, 25) {
@@ -269,7 +273,9 @@ impl Season {
             self.snow = false;
             set.extend([(SNOWMAN, false), (HOLIDAY_TREE, false)]);
         }
-        if (month, day) == (10, 31) {
+        if self.halloween {
+            // Neither available nor taken back, and the day flag is left alone (cheats 6.2.4).
+        } else if (month, day) == (10, 31) {
             if !self.pumpkin {
                 self.pumpkin = true;
                 set.push((JACK_O_LANTERN, true));
@@ -578,6 +584,28 @@ mod tests {
         // The same day of another month is no Christmas.
         assert_eq!(s.guest_created(11, 25, false), []);
         assert_eq!(s.guest_created(1, 25, false), []);
+    }
+
+    #[test]
+    fn the_permanent_halloween_flag_skips_the_jack_o_lantern_step_and_its_day_flag() {
+        // Up and 7078 on a day other than 31 October: not taken back.
+        let mut s = Season {
+            pumpkin: true,
+            halloween: true,
+            ..Season::default()
+        };
+        assert_eq!(s.guest_created(11, 1, false), []);
+        assert!(s.pumpkin);
+        // Up on 31 October: not made available, and the day flag is not read or written.
+        s.pumpkin = false;
+        assert_eq!(s.guest_created(10, 31, false), []);
+        assert!(!s.pumpkin);
+        // The other steps still run.
+        assert_eq!(s.guest_created(12, 25, false), SNOW);
+        // Down again: the day flag was left alone, so 31 October makes it available.
+        s.halloween = false;
+        let set = s.guest_created(10, 31, false);
+        assert_eq!(set.last(), Some(&(JACK_O_LANTERN, true)));
     }
 
     #[test]

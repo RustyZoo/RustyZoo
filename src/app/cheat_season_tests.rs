@@ -5,6 +5,7 @@ use super::*;
 use crate::cheat::{HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
+use crate::render::tests::tile_with;
 use crate::timing::Date;
 use crate::zoo::Clocks;
 
@@ -53,13 +54,104 @@ fn today(app: &mut App, month: u32, day: u32) {
     app.sim.start_game(0, clocks);
 }
 
+/// A game after a scenario start, which runs the start hook.
 fn run(body: impl FnOnce(&mut App, &Catalogue)) {
-    with_world("cheat-season", (false, false), (items(), &[]), body);
+    with_world(
+        "cheat-season",
+        (false, false),
+        (items(), &[]),
+        |app, cat| {
+            app.open_zoo(tile_with(&[]), Money::default(), false)
+                .unwrap();
+            body(app, cat);
+        },
+    );
+}
+
+/// A map with the scenario block naming `scenario`, or an empty block.
+fn zoo(scenario: Option<&str>) -> Zoo {
+    Zoo::parse(&crate::zoo::tests::naming(
+        crate::zoo::tests::file(106, 2, 2, &[], &[]),
+        scenario,
+    ))
+    .unwrap()
+}
+
+/// The items made available again after a start.
+fn all_on(app: &mut App) {
+    app.make_available(&IDS.map(|id| (id, true)));
 }
 
 #[test]
-fn a_game_opens_with_the_four_items_unavailable() {
-    run(|app, cat| assert_eq!(on(app, cat), [false; 4]));
+fn a_scenario_or_freeform_start_makes_the_four_items_unavailable() {
+    run(|app, cat| {
+        assert_eq!(on(app, cat), [false; 4]);
+        all_on(app);
+        app.open_zoo(tile_with(&[]), Money::default(), false)
+            .unwrap();
+        assert_eq!(on(app, cat), [false; 4]);
+    });
+}
+
+#[test]
+fn a_bare_map_does_not_run_the_start_hook() {
+    run(|app, cat| {
+        all_on(app);
+        app.open_game(tile_with(&[]), Money::default()).unwrap();
+        assert_eq!(on(app, cat), [true; 4]);
+    });
+}
+
+#[test]
+fn a_saved_game_with_a_scenario_block_runs_the_start_hook() {
+    run(|app, cat| {
+        all_on(app);
+        app.open_zoo(zoo(Some("s/a.scn")), Money::default(), true)
+            .unwrap();
+        assert_eq!(on(app, cat), [false; 4]);
+    });
+}
+
+#[test]
+fn a_saved_game_with_an_empty_scenario_block_does_not_run_the_start_hook() {
+    run(|app, cat| {
+        all_on(app);
+        app.open_zoo(zoo(None), Money::default(), true).unwrap();
+        assert_eq!(on(app, cat), [true; 4]);
+    });
+}
+
+#[test]
+fn a_saved_game_whose_scenario_block_fails_is_refused_and_runs_no_start_hook() {
+    run(|app, cat| {
+        all_on(app);
+        let refused = app.open_zoo(zoo(Some("s/missing.scn")), Money::default(), true);
+        assert!(refused.is_err());
+        assert_eq!(on(app, cat), [true; 4]);
+        // The same block opened straight (no refusal) still runs no hook.
+        app.open_game_as(zoo(Some("s/missing.scn")), Money::default(), true)
+            .unwrap();
+        assert_eq!(on(app, cat), [true; 4]);
+    });
+}
+
+#[test]
+fn the_permanent_halloween_flag_keeps_the_jack_o_lantern_over_a_guest_hook() {
+    run(|app, cat| {
+        app.cheats.season.halloween = true;
+        app.make_available(&[(JACK_O_LANTERN, true)]);
+        today(app, 11, 1);
+        app.guest_created();
+        assert_eq!(on(app, cat), [false, true, false, false]);
+        app.make_available(&[(JACK_O_LANTERN, false)]);
+        today(app, 10, 31);
+        app.guest_created();
+        assert_eq!(on(app, cat), [false; 4]);
+        // The flag down: the day flag was left alone, so the day makes it available.
+        app.cheats.season.halloween = false;
+        app.guest_created();
+        assert_eq!(on(app, cat), [false, true, false, false]);
+    });
 }
 
 #[test]
@@ -103,7 +195,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
         app.guest_created();
         assert_eq!(on(app, cat), [false, false, false, true]);
         // A new game takes it away; the hook has spent its one time.
-        app.open_game(crate::render::tests::tile_with(&[]), Money::default())
+        app.open_zoo(tile_with(&[]), Money::default(), false)
             .unwrap();
         assert_eq!(on(app, cat), [false; 4]);
         app.game

@@ -7,8 +7,10 @@ impl App<'_> {
     /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
     /// the cap, as after the original's blocking load (main loop 3.5). A failure leaves the app
     /// as it was.
+    ///
+    /// This is a bare map: the start hook of the date hooks does not run (cheats 6.4 point 6).
     pub(super) fn open_game(&mut self, zoo: Zoo, money: Money) -> Result<(), RenderError> {
-        self.open_game_as(zoo, money, false)
+        self.open_game_with(zoo, money, false, false)
     }
 
     /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) whose scenario cannot
@@ -27,12 +29,24 @@ impl App<'_> {
     }
 
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
-    /// tree and its research section is read (research 7.2, before the entities' own steps).
+    /// tree and its research section is read (research 7.2, before the entities' own steps). A
+    /// start, or a saved game whose scenario block loads, runs the start hook (cheats 6.4).
     pub(super) fn open_game_as(
         &mut self,
         zoo: Zoo,
         money: Money,
         saved: bool,
+    ) -> Result<(), RenderError> {
+        self.open_game_with(zoo, money, saved, true)
+    }
+
+    /// [`App::open_game_as`]; `start` is false for a bare map, which never runs the start hook.
+    fn open_game_with(
+        &mut self,
+        zoo: Zoo,
+        money: Money,
+        saved: bool,
+        start: bool,
     ) -> Result<(), RenderError> {
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
@@ -146,11 +160,16 @@ impl App<'_> {
             carry: None,
             held: None,
         });
-        // The start of a game comes before the scenario's triggers and the research (cheats 6).
-        self.game_started();
+        // The start of a game comes before the scenario's triggers and the research (cheats 6.3).
+        // A saved game runs it only when its scenario block loads: none, an empty or a failed
+        // block does not (6.4 points 5 to 7).
+        let scenario = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f));
+        if start && (!saved || scenario.is_some()) {
+            self.game_started();
+        }
         // The scenario resumes first (its triggers, then the goal states), then the research
         // section completes the programs over their availability, then the ini rewards (7.3).
-        if let Some(scenario) = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f)) {
+        if let Some(scenario) = scenario {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
             // The research section replaces what a forced research would do (7.3).
             if let Some(s) = self.sim.scenario() {
