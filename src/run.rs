@@ -351,8 +351,102 @@ fn create_out_dir(out: &Path) -> Result<(), CliError> {
     std::fs::create_dir_all(out).map_err(|e| format!("cannot create {}: {e}", out.display()).into())
 }
 
+/// Loads the map `member` and the types it needs, with `cash` instead of its own if given.
+fn load_game(
+    vfs: &Vfs,
+    member: &str,
+    cash: Option<f32>,
+) -> Result<(Catalogue, Zoo, rustyzoo::money::Money), CliError> {
+    let catalogue = Catalogue::load(vfs)?;
+    let (zoo, mut money) = Zoo::parse_money(&vfs.read(member)?)
+        .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
+        .map_err(|e| format!("{member}: {e}"))?;
+    if let Some(cash) = cash {
+        money.set_cash(cash);
+    }
+    Ok((catalogue, zoo, money))
+}
+
+/// What a windowed run takes of the flags, with the commands of the script.
+fn window_flags(flags: &Flags, script: Vec<(u64, Command)>) -> crate::window::Flags<'_> {
+    crate::window::Flags {
+        size: flags.size,
+        log: flags.log.as_deref(),
+        passes: flags.passes,
+        script,
+        timing: flags.timing,
+        shot: flags.shot.as_deref(),
+        show: &flags.show,
+        fill: &flags.fill,
+        bare: flags.bare,
+        seed: flags.seed,
+    }
+}
+
+/// Plays the intro movies on the passes of the clock, until the end of each or a command that
+/// skips it. Gives true when the run ended (the passes ran out or a command closed the game).
+fn play_intros(
+    intros: &[intro::Intro],
+    size: (u32, u32),
+    passes: &mut Passes,
+    report: &mut Report,
+    png: &impl Fn(u64, &Framebuffer) -> Result<(), CliError>,
+) -> Result<bool, CliError> {
+    let mut window = Framebuffer::new(size.0, size.1);
+    for intro in intros {
+        let movie = &intro.movie;
+        let (w, h) = movie.size();
+        report.line(format_args!(
+            "startup movie {} {} frames {} ms {w}x{h}",
+            intro.file,
+            movie.frame_count(),
+            movie.duration_ms()
+        ));
+        let mut player = Player::new(movie);
+        let mut started = None;
+        loop {
+            let Some((pass, now, due)) = passes.next() else {
+                return Ok(true);
+            };
+            let lead = format!("pass {pass} t={now}");
+            for command in &due {
+                report.line(format_args!("{lead} {command}"));
+            }
+            if due
+                .iter()
+                .any(|c| matches!(c, Command::Quit | Command::Close))
+            {
+                return Ok(true);
+            }
+            if due.iter().any(|c| {
+                matches!(
+                    c,
+                    Command::Skip | Command::Key(..) | Command::Mouse(Mouse::Down)
+                )
+            }) {
+                report.line(format_args!("{lead} movie {} skipped", intro.file));
+                break;
+            }
+            let ms = now.saturating_sub(*started.get_or_insert(now));
+            if let Some((n, picture)) = player.at(ms) {
+                intro::compose(&mut window, &picture);
+                report.line(format_args!(
+                    "{lead} movie {} frame {n} {:016x}",
+                    intro.file,
+                    frame_hash(&window)
+                ));
+                png(pass, &window)?;
+            }
+            if player.done(ms) {
+                report.line(format_args!("{lead} movie {} end", intro.file));
+                break;
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// Plays `member`, or, without one, starts up to the main menu.
-#[allow(clippy::too_many_lines)] // #1045
 pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
     let flags = flags(words)?;
     // Only a game that opens with the run has a main panel to leave out.
@@ -376,32 +470,11 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
     .peekable();
     let ini = Config::parse(vfs.ini())?;
     let loaded = match member {
-        Some(member) => {
-            let catalogue = Catalogue::load(vfs)?;
-            let (zoo, mut money) = Zoo::parse_money(&vfs.read(member)?)
-                .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
-                .map_err(|e| format!("{member}: {e}"))?;
-            if let Some(cash) = flags.cash {
-                money.set_cash(cash);
-            }
-            Some((catalogue, zoo, money))
-        }
+        Some(member) => Some(load_game(vfs, member, flags.cash)?),
         None => None,
     };
     if !flags.headless {
-        let window = crate::window::Flags {
-            size: flags.size,
-            log: flags.log.as_deref(),
-            passes: flags.passes,
-            script: commands.collect(),
-            timing: flags.timing,
-            shot: flags.shot.as_deref(),
-            show: &flags.show,
-            fill: &flags.fill,
-            bare: flags.bare,
-            seed: flags.seed,
-        };
-        return crate::window::run(vfs, loaded, &ini, window);
+        return crate::window::run(vfs, loaded, &ini, window_flags(&flags, commands.collect()));
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
@@ -466,56 +539,8 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             for why in skipped {
                 eprintln!("rustyzoo: warning: {why}");
             }
-            let mut window = Framebuffer::new(size.0, size.1);
-            for intro in &intros {
-                let movie = &intro.movie;
-                let (w, h) = movie.size();
-                report.line(format_args!(
-                    "startup movie {} {} frames {} ms {w}x{h}",
-                    intro.file,
-                    movie.frame_count(),
-                    movie.duration_ms()
-                ));
-                let mut player = Player::new(movie);
-                let mut started = None;
-                loop {
-                    let Some((pass, now, due)) = passes.next() else {
-                        return report.finish();
-                    };
-                    let lead = format!("pass {pass} t={now}");
-                    for command in &due {
-                        report.line(format_args!("{lead} {command}"));
-                    }
-                    if due
-                        .iter()
-                        .any(|c| matches!(c, Command::Quit | Command::Close))
-                    {
-                        return report.finish();
-                    }
-                    if due.iter().any(|c| {
-                        matches!(
-                            c,
-                            Command::Skip | Command::Key(..) | Command::Mouse(Mouse::Down)
-                        )
-                    }) {
-                        report.line(format_args!("{lead} movie {} skipped", intro.file));
-                        break;
-                    }
-                    let ms = now.saturating_sub(*started.get_or_insert(now));
-                    if let Some((n, picture)) = player.at(ms) {
-                        intro::compose(&mut window, &picture);
-                        report.line(format_args!(
-                            "{lead} movie {} frame {n} {:016x}",
-                            intro.file,
-                            frame_hash(&window)
-                        ));
-                        png(pass, &window)?;
-                    }
-                    if player.done(ms) {
-                        report.line(format_args!("{lead} movie {} end", intro.file));
-                        break;
-                    }
-                }
+            if play_intros(&intros, size, &mut passes, &mut report, &png)? {
+                return report.finish();
             }
             let booted = boot(vfs, &ini, size, &flags.show, &mut |_| Ok(()), &mut || {})?;
             menu_catalogue = booted.catalogue;
