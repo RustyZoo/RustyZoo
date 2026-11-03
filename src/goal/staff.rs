@@ -48,7 +48,7 @@ impl<'c> Cx<'_, 'c> {
     }
 
     /// The exhibit under the keeper; none on the zoo grounds.
-    fn exhibit(&self) -> Option<u32> {
+    pub(super) fn exhibit(&self) -> Option<u32> {
         food::exhibit_of(self.world, self.tile()?)
     }
 

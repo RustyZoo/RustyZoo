@@ -12,9 +12,12 @@
 # The seed 46 draws women for the three hires (see the hire panel below). The hires come before the
 # adoption: an animal placed rates its exhibit at once (habitat rating 9.4), which draws from the
 # shared stream.
+# The ray 25039 never eats (issue 1013, which the original has too): it gets the food task on the
+# tile next to the food while still swimming, and is carried past the food.
 #run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12000 --clock 200
 #exhibit 16,35,21,40
 #months 6
+#unfed 25039 1013
 #expect 1 exhibit gate [0-9]+
 #expect 2 unit add [0-9]+ animal
 #expect 1 unit add [0-9]+ keeper

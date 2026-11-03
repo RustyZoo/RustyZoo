@@ -10,7 +10,7 @@
 //! task by chance and is sick on the spot ([`Cx::sick_ladder`]). The log lines are those of the
 //! `guest` family of [`crate::guest`].
 
-use super::{Cx, SICK};
+use super::{Cx, DROWN, SICK};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
@@ -23,10 +23,9 @@ mod sites;
 const EGG: i32 = 10250;
 /// The leave task.
 pub const LEAVE: u8 = 113;
-/// The avoid and exit tasks, which keep a guest from leaving, and the drowning task.
+/// The avoid and exit tasks, which keep a guest from leaving.
 const AVOID: u8 = 117;
 const EXIT: u8 = 127;
-const DROWN: u8 = 132;
 /// The tasks of using a building: entering, leaving and using it.
 pub const IN_BUILDING: std::ops::RangeInclusive<u8> = 104..=106;
 
@@ -76,7 +75,7 @@ impl Cx<'_, '_> {
     }
 
     /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) loses its
-    /// fright, gets the exit task, mode 0, and thinks 10568, unless it has the task already or is
+    /// fright, stops everything, gets the exit task, mode 0, and thinks 10568, unless it has the task already or is
     /// drowning or avoiding. Whether it did.
     pub(super) fn exit_ladder(&mut self) -> bool {
         let task = self.record().task;
@@ -86,9 +85,7 @@ impl Cx<'_, '_> {
         {
             return false;
         }
-        self.unit.frightened = false;
-        self.think(10568, None);
-        self.set_task(EXIT, 0, 0, None);
+        self.stop_and_exit();
         true
     }
 
@@ -195,7 +192,7 @@ impl Cx<'_, '_> {
         if let Some(entrance) = self.entrance() {
             // The way out is searched at the normal cost; only an afraid guest then pays the
             // emergency one and runs.
-            self.unit.mover.emergency = false;
+            self.cost_back();
             if self.path_to(entrance, true) {
                 self.unit.mover.emergency = afraid;
                 let started = match afraid {

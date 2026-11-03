@@ -31,6 +31,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 pub mod birth;
+pub mod dead;
 pub mod items;
 pub mod leave;
 pub mod upgrade;
@@ -220,6 +221,8 @@ pub struct Kind {
     pub removes: Vec<String>,
     pub used: Vec<i32>,
     pub slots: Vec<Slot>,
+    /// The keys that decide the dead state (11.1.1).
+    pub dead: dead::Keys,
 }
 
 impl Kind {
@@ -313,6 +316,13 @@ impl Kind {
                 .filter_map(|v| to_int(v))
                 .collect(),
             slots,
+            dead: dead::Keys {
+                on_land: flag("cDeadOnLand", false),
+                on_flat_water: flag("cDeadOnFlatWater", false),
+                underwater: flag("cDeadUnderwater", false),
+                surface: flag("cSurface", false),
+                height: int("cHeight", 0),
+            },
         }
     }
 
@@ -390,6 +400,9 @@ pub struct Live {
     pub show_id: u16,
     /// The draw place each user of a slot with draw places sits on (shows 4.3); not saved.
     pub seats: Vec<Seat>,
+    /// The building is in its dead state: it refuses new users (6.1 point 1) and, found dead
+    /// outside a load, it has put its users out (11.1.1); not saved, decided again at the load.
+    pub dead: bool,
 }
 
 /// A user on a draw place of a slot.
@@ -482,6 +495,7 @@ pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
             .units
             .buildings
             .insert(id, Live { built: now, ..live });
+        dead::decide(world, ty, id);
     }
 }
 
@@ -552,6 +566,7 @@ pub fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
                 built: now,
                 // A start with reset leaves the show id of a grandstand alone (shows 3.5).
                 show_id: live.show_id,
+                dead: live.dead,
                 ..Live::default()
             };
         }
@@ -615,7 +630,13 @@ pub fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -> Optio
 }
 
 /// Sets the held building down at `point` facing `facing`, with the figures it had.
-pub fn set_down(world: &mut World, held: Held, point: (i32, i32, i32), facing: u32) {
+pub fn set_down(
+    world: &mut World,
+    ty: &EntityType,
+    held: Held,
+    point: (i32, i32, i32),
+    facing: u32,
+) {
     let Held {
         at,
         mut entity,
@@ -629,6 +650,7 @@ pub fn set_down(world: &mut World, held: Held, point: (i32, i32, i32), facing: u
     world.put_back(at, entity, shape);
     if let Some((id, live)) = id.zip(live) {
         world.units.buildings.insert(id, live);
+        dead::decide(world, ty, id);
     }
 }
 
@@ -842,6 +864,9 @@ pub fn can_add(
     slot: usize,
     who: Option<&Species>,
 ) -> bool {
+    if live.is_some_and(|l| l.dead) {
+        return false;
+    }
     let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
     let Some(s) = kind.slots.get(slot) else {
         return false;

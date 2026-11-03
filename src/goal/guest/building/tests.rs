@@ -12,6 +12,8 @@ use crate::unit::{Ctx, Unit};
 use crate::world::World;
 use std::sync::Arc;
 
+mod placed;
+
 const STAND: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeInside=3\n\
     [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Sells]\nhotdog\n\
     [Satisfies]\nbuilding\nfood\n[slots]\nname=slot\n[slot]\nslotpos=-16\nslotpos=48\n\
@@ -1303,6 +1305,7 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     live.price = 4.5;
     w.units.buildings.insert(7, live);
     let at = w.find(7).unwrap();
+    let stand = w.zoo.entities[at].clone();
     let held = crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).unwrap();
     // The customer paid and stands at the first entrance; the stand is off the map and no
     // undo records it; there is nothing to lift twice.
@@ -1313,7 +1316,8 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     assert!(crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).is_none());
     // Set down elsewhere, facing another way: the same id, the same place in the list, the
     // price it had, and the figures the customer left.
-    crate::building::set_down(&mut w, held, (352, 160, 0), 2);
+    let ty = crate::place::bulldozer::type_of(&cat, &stand).unwrap();
+    crate::building::set_down(&mut w, ty, held, (352, 160, 0), 2);
     assert_eq!(w.find(7), Some(at));
     let c = w.zoo.entities[at].common.clone().unwrap();
     assert_eq!((c.x, c.y, c.rotation), (352, 160, 2));
@@ -2088,6 +2092,78 @@ fn a_guest_entering_a_grandstand_is_put_on_the_draw_place_the_first_draw_gives()
     assert_eq!((c.x, c.y, c.z), (352 + want.0, 224 + want.1, want.2));
     let seats = &w.units.buildings[&9].seats;
     assert_eq!((seats.len(), seats[0].unit), (1, 1));
+}
+
+/// Gives guest 1 the non-path cost 9 it was loaded with (and the emergency one).
+fn loaded(cx: &mut Cx) {
+    cx.unit.mover.word = Some(9);
+    cx.unit.mover.emergency = true;
+}
+
+fn cost(cx: &Cx) -> (Option<u32>, bool) {
+    (cx.unit.mover.word, cx.unit.mover.emergency)
+}
+
+#[test]
+fn a_site_goal_writes_the_cost_back_over_the_saved_one() {
+    let (cat, mut w) = (types(), at_the_ride());
+    with_cx(&cat, &mut w, |cx| {
+        loaded(cx);
+        cx.site_decide();
+        assert_eq!((cx.record().task, cost(cx)), (GO, (None, false)));
+        // The arrival of the viewing tile and of the scenery goal.
+        let own = cx.tile();
+        loaded(cx);
+        cx.set_task(crate::goal::HABITAT, 0, 0, own);
+        cx.run_goal();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (crate::goal::GAWK, (None, false))
+        );
+        loaded(cx);
+        cx.scenery_arrived();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (crate::goal::DO_SCENERY, (None, false))
+        );
+    });
+}
+
+#[test]
+fn a_guest_inside_a_building_keeps_its_saved_cost_when_the_tiles_update() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        for task in IN_BUILDING {
+            loaded(cx);
+            cx.set_task(task, 0, 8, w_tile((5, 9)));
+            assert!(cx.head_for(8, "bathroom"));
+            assert_eq!(cost(cx), (Some(9), true), "{task}");
+        }
+    });
+}
+
+#[test]
+fn a_building_goal_writes_the_cost_back_over_the_saved_one() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        // The completion of the building goal, then the entrance goal (done and decide).
+        loaded(cx);
+        cx.set_task(GO, 0, 8, w_tile((5, 9)));
+        cx.run_goal();
+        assert_eq!((cx.record().task, cost(cx)), (ENTRANCE, (None, false)));
+        loaded(cx);
+        cx.set_task(ENTRANCE, 0, 8, w_tile((5, 9)));
+        cx.run_goal();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (ENTER_BUILDING, (None, false))
+        );
+        // The update of the building tiles, for a guest outside.
+        loaded(cx);
+        cx.set_task(0, 0, 0, None);
+        assert!(cx.head_for(8, "bathroom"));
+        assert_eq!(cost(cx), (None, false));
+    });
 }
 
 #[test]

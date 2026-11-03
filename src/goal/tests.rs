@@ -11,6 +11,7 @@ use std::collections::HashMap;
 mod avoid;
 mod capture;
 mod contagion;
+mod dropped;
 mod shelter;
 mod surface;
 

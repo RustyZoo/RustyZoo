@@ -26,6 +26,7 @@ impl Cx<'_, '_> {
 
     /// 0x80, complete: gawk at the object.
     pub(in crate::goal) fn scenery_arrived(&mut self) {
+        self.cost_back();
         let id = self.record().target.id;
         self.set_task(DO_SCENERY, 0, id, None);
     }

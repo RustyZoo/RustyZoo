@@ -61,6 +61,14 @@ pub fn shape(e: &Entity) -> Option<Shape> {
         }),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
         "building" if e.type_name == "hall" => Some(thing(Class::Fixed, (2, 2), false)),
+        // An underwater shelter: a tank takes it.
+        "building" if e.type_name == "cave" => Some(Shape {
+            tank: TankKind {
+                underwater: true,
+                ..TankKind::NONE
+            },
+            ..thing(Class::Fixed, (1, 1), false)
+        }),
         "building" => Some(thing(Class::Fixed, (1, 1), false)),
         // A zoo wall: it stops the exterior fill.
         "zoowall" => Some(Shape {
@@ -70,6 +78,7 @@ pub fn shape(e: &Entity) -> Option<Shape> {
         "tankwall" => Some(Shape {
             tank: TankKind {
                 wall: true,
+                underwater: true,
                 ..TankKind::NONE
             },
             ..thing(Class::Wall, (1, 1), true)

@@ -60,7 +60,7 @@ impl Cx<'_, '_> {
     }
 
     /// The type of the unit, which the slots of a building test (guest buildings 6.1 point 7).
-    fn species(&self) -> Option<building::Species> {
+    pub(in crate::goal) fn species(&self) -> Option<building::Species> {
         let e = self.world.zoo.entities.get(self.at)?;
         let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
         building::Species::of(self.ctx.cat, e, egg)
@@ -168,6 +168,8 @@ impl Cx<'_, '_> {
         if IN_BUILDING.contains(&self.record().task) {
             return true;
         }
+        // The building target and its tiles are set: the cost is written back (pathfinding 6.5).
+        self.cost_back();
         let Some((slot, p)) = self.open_slot(b) else {
             return false;
         };
@@ -251,6 +253,7 @@ impl Cx<'_, '_> {
     /// 0x66 complete: the guest is near the building; with an open slot it goes to its entrance
     /// (0x67), else it finds the building crowded.
     pub(in crate::goal) fn building_arrived(&mut self) {
+        self.cost_back();
         let id = self.target().0;
         let slot = self.open_slot(id);
         let tile = slot.and_then(|(_, p)| self.tile_at(p));
@@ -270,6 +273,7 @@ impl Cx<'_, '_> {
     /// guest takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
     /// walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
+        self.cost_back();
         let Some(id) = self.aim().map(|(b, _, _)| *b) else {
             return;
         };

@@ -592,6 +592,7 @@ pub fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> Option<
         view,
     };
     let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+    world.show_moved(at, false);
     world.lift_unit(at);
     if let Some(t) = tile {
         world.mark_rating(t);
@@ -641,6 +642,7 @@ pub fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32)
         return false;
     };
     world.place_unit(at, point, facing);
+    world.show_moved(at, true);
     if let Some(unit) = world.units.get_mut(id) {
         unit.carried = false;
         // A guest put down has lost its wish to leave (guests 8) and its return building

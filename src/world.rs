@@ -20,6 +20,7 @@ use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod amphibious;
+mod areas;
 mod exhibit;
 mod filter;
 mod save;
@@ -254,6 +255,9 @@ pub struct World {
     paused: bool,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
+    /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
+    /// objects on their tiles are validated again (guest buildings 11.1.1; not saved).
+    wet: Vec<u32>,
     /// What each tank filter shows besides its record: switched off, or showing bubbles (not
     /// saved, not hashed).
     filter_view: BTreeMap<u32, filter::View>,
@@ -262,6 +266,9 @@ pub struct World {
     language: Language,
     /// What the completed research programs did to the entity types of this game (research 6.4).
     pub research: crate::research::Overlay,
+    /// The animals that came onto the map or left it, and the show-neighbour links made or dropped,
+    /// that the show lists have not seen yet (shows 20; not saved, not hashed).
+    show_moves: Vec<crate::show::Move>,
 }
 
 impl World {
@@ -300,18 +307,24 @@ impl World {
             edits: 0,
             paused: false,
             told_water: BTreeMap::new(),
+            wet: Vec::new(),
             filter_view: BTreeMap::new(),
             words: language.exhibit_words.clone(),
             language,
             research: Default::default(),
+            show_moves: Vec::new(),
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
+        let all: Vec<u32> = world.exhibits.list().iter().map(|e| e.id).collect();
+        world.resize_areas(&all);
         world.load_gates();
         world.load_tanks();
         world.retank(false);
         world.name_loaded();
         world.relink();
+        // The loaded animals join the show lists at the first rating of their exhibits.
+        world.show_moves.clear();
         for at in 0..world.zoo.entities.len() {
             world.filter_added(at);
         }
@@ -319,6 +332,7 @@ impl World {
         world.units.sync(&world.zoo.entities);
         world.load_thoughts();
         world.dirty = false;
+        world.wet.clear();
         world
     }
 
@@ -597,6 +611,43 @@ impl World {
             .collect()
     }
 
+    /// The exhibit the entity at position `at` stands in, if it stands in one.
+    pub fn exhibit_of(&self, at: usize) -> Option<u32> {
+        let c = self.zoo.entities.get(at)?.common.as_ref()?;
+        let t = self.tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?;
+        let x = self.exhibits.region(t)?;
+        self.exhibits.get(x).map(|_| x)
+    }
+
+    /// Notes for the show lists that the animal at position `at` came onto the map (`on`) or is
+    /// about to leave it (shows 20.1); any other entity is no news.
+    pub fn show_moved(&mut self, at: usize, on: bool) {
+        let e = &self.zoo.entities[at];
+        let Some(id) = e
+            .common
+            .as_ref()
+            .map(|c| c.id)
+            .filter(|_| e.class == "animals")
+        else {
+            return;
+        };
+        let m = match on {
+            true => crate::show::Move::On(id),
+            false => crate::show::Move::Off {
+                id,
+                type_name: e.type_name.clone(),
+                subtype: e.subtype.clone(),
+                exhibit: self.exhibit_of(at),
+            },
+        };
+        self.show_moves.push(m);
+    }
+
+    /// The moves the show lists have not seen yet.
+    pub fn take_moves(&mut self) -> Vec<crate::show::Move> {
+        std::mem::take(&mut self.show_moves)
+    }
+
     /// Sets the escape check flag of the exhibit that tile `t` belongs to (habitat rating 5.8);
     /// the zoo grounds have none.
     pub fn escape_check(&mut self, t: usize) {
@@ -674,6 +725,17 @@ impl World {
         (self.scene.edge_object(t, d) == Some(o)).then_some((t, d))
     }
 
+    /// The own tile and the footprint tiles of the object at position `e` of the entity list
+    /// (guest buildings 11.1.1); `None` for an entity the map index does not hold.
+    pub fn footprint(&self, e: usize) -> Option<(Option<usize>, Vec<usize>)> {
+        let o = self.owner.iter().position(|&owner| owner == e)?;
+        let obj = &self.scene.objects[o];
+        Some((
+            self.scene.tile_at(obj.x, obj.y),
+            self.scene.footprint_tiles(o),
+        ))
+    }
+
     /// The position of the entity with this id.
     pub fn find(&self, id: u32) -> Option<usize> {
         self.zoo
@@ -722,6 +784,7 @@ impl World {
         notes.into_iter().for_each(|note| self.record(note));
         self.record(Action::Placed { id, price: 0.0 });
         self.filter_added(self.zoo.entities.len() - 1);
+        self.show_moved(self.zoo.entities.len() - 1, true);
         Some(id)
     }
 
@@ -742,7 +805,7 @@ impl World {
     }
 
     /// The unit at position `at` of the list takes another subtype of its type and the shape that
-    /// goes with it (a young animal grows up).
+    /// goes with it (a young animal grows up). It does not join the show lists (shows 20).
     pub fn retype(&mut self, at: usize, subtype: &str, shape: Shape) {
         self.zoo.entities[at].subtype = subtype.into();
         self.shapes[at] = Some(shape);
@@ -781,6 +844,9 @@ impl World {
             self.note_opening(slot, false);
         }
         let rated = self.rated_tiles(at);
+        if !self.is_carried(id) {
+            self.show_moved(at, false);
+        }
         // A fence piece removed sets the escape check flag on both sides (habitat rating 5.8).
         if fence {
             rated.iter().for_each(|&t| self.escape_check(t));
@@ -1355,7 +1421,9 @@ impl World {
                 Some((id, held))
             })
             .collect();
+        let paths = self.path_tiles();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        self.follow_paths(&paths);
         for (id, held) in held {
             let Some(at) = self.find(id) else {
                 continue;
