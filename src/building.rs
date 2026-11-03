@@ -26,7 +26,7 @@ use crate::place::path_shape;
 use crate::sim::Rng;
 use crate::timing::Date;
 use crate::world::{Shape, World};
-use crate::zoo::Entity;
+use crate::zoo::{BuildingRecord, Entity};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
@@ -421,6 +421,26 @@ impl Live {
         }
     }
 
+    /// The record a save writes (zoo format 6.9): the figures, the price and the users now, over
+    /// `base`, which keeps the fill of a type that is not a trash can (a grandstand's flag is not
+    /// modelled) and the members.
+    pub fn record(&self, mut base: BuildingRecord, trash: bool) -> BuildingRecord {
+        let users: Vec<(u32, u32)> = (self.users.iter())
+            .map(|&(u, s, _)| (u, s as u32))
+            .collect();
+        base.users_now = (users.len() as u32).saturating_add(self.extra);
+        base.users = users;
+        base.guests = self.guests;
+        base.income = self.income.map(f32::to_bits);
+        base.upkeep = Some(self.upkeep.to_bits());
+        base.price = self.price.to_bits();
+        base.built = crate::timing::file_time(self.built);
+        if trash {
+            base.fill = self.fill;
+        }
+        base
+    }
+
     /// Seats `unit` on a free draw place of slot `slot` and returns the place and its position
     /// relative to the building (shows 4.3): `pick(capacity)` is drawn until the place is free (a
     /// draw per try), over the `capacity` seats of the slot. Nothing is drawn when the slot has no
@@ -465,17 +485,24 @@ impl Live {
 }
 
 /// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
-/// building starts its live state, with the date its months open are counted from (guest
+/// building or a compost starts its live state, with the date its months open are counted from (guest
 /// buildings 4).
 pub fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
-    if crate::month::is_guest_building(ty) {
-        let live = Live::new(&Kind::of(ty, world.units.prices.default));
+    let kind = Kind::of(ty, world.units.prices.default);
+    if keeps_figures(ty, &kind) {
+        let live = Live::new(&kind);
         world
             .units
             .buildings
             .insert(id, Live { built: now, ..live });
         dead::decide(world, ty, id);
     }
+}
+
+/// Whether a building of this type has figures of its own: a guest building, and the compost,
+/// which earns from the dung it recycles (zoo format 6.9).
+fn keeps_figures(ty: &EntityType, kind: &Kind) -> bool {
+    crate::month::is_guest_building(ty) || kind.satisfies("compost")
 }
 
 /// The building at position `at` of the entity list of a zoo just loaded takes the figures its
@@ -491,10 +518,10 @@ pub fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
         return;
     };
-    if !crate::month::is_guest_building(ty) {
+    let kind = Kind::of(ty, world.units.prices.default);
+    if !keeps_figures(ty, &kind) {
         return;
     }
-    let kind = Kind::of(ty, world.units.prices.default);
     let id = e.common.as_ref().map_or(0, |c| c.id);
     let built = Date::from_file_time(record.built).game_ms();
     let live = Live {

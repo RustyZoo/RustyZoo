@@ -52,6 +52,9 @@ pub struct Shape {
     pub tank: TankKind,
     /// `walkable` and `walkableByTall` (pathfinding 4.3): units walk through the object.
     pub walkable: (bool, bool),
+    /// For an animal: its egg footprint (`cEggFootprintX/Y`) and its crate footprint
+    /// (`cBoxFootprintX/Y`), in half tiles; `None` for the rest.
+    pub forms: Option<[(i32, i32); 2]>,
 }
 
 /// What a type says about tanks (exhibits and money 3.9).
@@ -453,18 +456,49 @@ impl World {
     /// under each unit of the tile, when it is bigger than one tile; and, whatever the tile
     /// held, every tile of the tank it belongs to.
     pub fn carried(&self, t: usize) -> Vec<usize> {
-        let objects = match self.scene.quadrant_object(t, 0) {
-            Some(o) => vec![o],
-            None => self.scene.units_on(t).to_vec(),
+        let mut tiles = match self.scene.quadrant_object(t, 0) {
+            Some(o) => self.scene.large_tiles(o),
+            None => (self.scene.units_on(t).iter())
+                .flat_map(|&o| self.unit_tiles(o))
+                .collect(),
         };
-        let mut tiles: Vec<usize> = objects
-            .into_iter()
-            .flat_map(|o| self.scene.large_tiles(o))
-            .collect();
         if let Some(tank) = self.tank_at(t) {
             tiles.extend(self.tiles_of(tank));
         }
         tiles
+    }
+
+    /// The tiles under the unit object `o` (terrain editing 5.5): its egg, crate or plain footprint
+    /// turned with its facing.
+    fn unit_tiles(&self, o: usize) -> Vec<usize> {
+        let at = self.owner[o];
+        let (Some(c), Some((fx, fy))) = (&self.zoo.entities[at].common, self.unit_footprint(at))
+        else {
+            return self.scene.large_tiles(o);
+        };
+        let turned = if c.rotation % 4 == 0 {
+            (fx, fy)
+        } else {
+            (fy, fx)
+        };
+        self.scene.tiles_under(c.x, c.y, turned)
+    }
+
+    /// The footprint in half tiles, along its own axes, of the unit at `at` of `zoo.entities`: an
+    /// animal in its egg takes its type's egg footprint, else one in its crate the crate's, else the
+    /// shape's (placing 5.2 item 4). `None` for an entity without a shape.
+    pub fn unit_footprint(&self, at: usize) -> Option<(i32, i32)> {
+        let shape = self.shape(at)?;
+        let form = (self.zoo.entities[at].common.as_ref())
+            .and_then(|c| self.units.get(c.id))
+            .and_then(|u| match &u.part {
+                crate::unit::Part::Animal(a) if a.egg || a.crated => Some(a.egg),
+                _ => None,
+            });
+        Some(match (form, shape.forms) {
+            (Some(egg), Some(forms)) => forms[usize::from(!egg)],
+            _ => shape.footprint,
+        })
     }
 
     /// The entities (positions in `zoo.entities`) of the units the map index holds on tile `t`.

@@ -1814,8 +1814,10 @@ fn new_animal() -> AnimalRecord {
         interval: 1600,
         mate_delay: Some(2),
         boxed: 1,
+        claim: 21,
+        tranq: true,
         home: [30, 40],
-        spare: (1..=73).collect(),
+        spare: (1..=68).collect(),
     }
 }
 
@@ -2850,8 +2852,8 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
         (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
-    let ones: Vec<usize> = (0..73).filter(|&i| back.spare[i] != 0).collect();
-    assert_eq!((back.spare.len(), ones), (73, vec![1, 6, 10, 14, 18, 22]));
+    let ones: Vec<usize> = (0..68).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (68, vec![1, 6, 10, 14, 18, 22]));
     assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
 }
 
@@ -2877,12 +2879,12 @@ fn an_animal_record_of_any_size_is_written_whole() {
     );
     assert_eq!(back.breath, Some(i32::MAX));
     assert_eq!(back.spare[..3], [9, 1, 0]);
-    assert_eq!(back.spare.len(), 73);
+    assert_eq!(back.spare.len(), 68);
     let long = AnimalRecord {
         spare: vec![1; 500],
         ..full
     };
-    assert_eq!(animal_back(&long).spare, vec![1; 73]);
+    assert_eq!(animal_back(&long).spare, vec![1; 68]);
     // An escape record is kept only with the flag 1.
     let none = AnimalRecord {
         escape: None,
@@ -3089,6 +3091,43 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
         .checked(&cat)
         .unwrap();
     assert!(z.entities.is_empty());
+}
+
+#[test]
+fn a_loaded_building_is_written_from_its_record() {
+    for v in [70, 74, 75, 106] {
+        let mut b = W::default();
+        b.z(4);
+        base(&mut b, v, 4, 9, "House");
+        b.u32(2).u32(40).u32(0).u32(0);
+        b.u32(2).u32(77).u32(2).u32(78).u32(1);
+        b.u32(14).z(16).z(8).u32(100);
+        if v >= 74 {
+            b.u32(5);
+        }
+        if v >= 75 {
+            b.u32(0);
+        }
+        let bytes = file(v, 1, 1, &[], &[("building", "building", "shop", b.0)]);
+        let (mut zoo, money) = Zoo::parse_money(&bytes).unwrap();
+        let record = zoo.entities[0].common.as_mut().unwrap().building.as_mut();
+        let b = record.unwrap();
+        *b = BuildingRecord {
+            guests: [1, 2, 3],
+            income: [4, 5, 6],
+            upkeep: Some(7),
+            price: 8,
+            users: vec![(9, 1)],
+            users_now: 10,
+            fill: 11,
+            built: 12,
+            ..b.clone()
+        };
+        let want = b.clone();
+        let back = parse_to_the_end(&zoo.write(&money).unwrap());
+        let got = back.entities[0].common.as_ref().unwrap().building.clone();
+        assert_eq!(got, Some(want), "version {v}");
+    }
 }
 
 /// A show info of version 106 with a different number in every field.

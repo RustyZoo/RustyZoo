@@ -49,12 +49,14 @@ pub fn shape(e: &Entity) -> Option<Shape> {
         gated: fence,
         tank: TankKind::NONE,
         walkable: (false, false),
+        forms: None,
     };
     match e.class.as_str() {
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" if e.type_name == "grass" => Some(Shape {
             walkable: (true, false),
+            forms: None,
             ..thing(Class::Fixed, (1, 1), false)
         }),
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),

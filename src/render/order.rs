@@ -320,11 +320,8 @@ impl Scene {
     /// ceil(fx / 2)` and `0 <= b < ceil(fy / 2)`, a point's tile being its coordinates divided by
     /// 64 and cut towards zero; points off the map are left out. Not the quadrants of the object.
     pub fn large_tiles(&self, o: usize) -> Vec<usize> {
-        let (fx, fy) = self.turned(o);
-        match fx <= 2 && fy <= 2 {
-            true => Vec::new(),
-            false => self.footprint_tiles(o),
-        }
+        let obj = &self.objects[o];
+        self.tiles_under(obj.x, obj.y, self.turned(o))
     }
 
     /// The footprint of object `o` in half tiles after its turn.
@@ -336,16 +333,28 @@ impl Scene {
         }
     }
 
+    /// The tiles of [`Scene::large_tiles`] for something at `(x, y)` whose footprint, already
+    /// turned with its facing, is `(fx, fy)`.
+    pub fn tiles_under(&self, x: i32, y: i32, (fx, fy): (i32, i32)) -> Vec<usize> {
+        match fx <= 2 && fy <= 2 {
+            true => Vec::new(),
+            false => self.tiles_of(x, y, (fx, fy)),
+        }
+    }
+
     /// The tiles under object `o`, whatever its size: the points of [`Scene::large_tiles`].
     pub fn footprint_tiles(&self, o: usize) -> Vec<usize> {
         let obj = &self.objects[o];
-        let (fx, fy) = self.turned(o);
+        self.tiles_of(obj.x, obj.y, self.turned(o))
+    }
+
+    fn tiles_of(&self, x: i32, y: i32, (fx, fy): (i32, i32)) -> Vec<usize> {
         let at = |v: i32, f: i32, k: i32| {
             i32::try_from((i64::from(v) - 16 * i64::from(f) + 64 * i64::from(k)) / 64).ok()
         };
         let mut tiles: Vec<usize> = (0..(fy + 1) / 2)
             .flat_map(|b| (0..(fx + 1) / 2).map(move |a| (a, b)))
-            .filter_map(|(a, b)| self.index(at(obj.x, fx, a)?, at(obj.y, fy, b)?))
+            .filter_map(|(a, b)| self.index(at(x, fx, a)?, at(y, fy, b)?))
             .collect();
         tiles.sort_unstable();
         tiles.dedup();

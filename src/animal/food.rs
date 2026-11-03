@@ -42,7 +42,7 @@ pub fn max_units(cat: &Catalogue, e: &Entity) -> i32 {
 }
 
 /// The kind of food a type holds or an animal eats (`cKeeperFoodType`).
-fn kind(cat: &Catalogue, e: &Entity) -> i32 {
+pub fn kind(cat: &Catalogue, e: &Entity) -> i32 {
     find(cat, e)
         .and_then(|t| number(t, "cKeeperFoodType"))
         .unwrap_or(0.0) as i32
@@ -132,7 +132,7 @@ pub fn hunger(
         && !(a.wants_food || env.food_task || a.rampaging)
     {
         read(Read::Food, a, &out.meal, env, rng);
-        match env.food_total - out.meal.bites >= 1 {
+        match env.food_total >= 1 {
             true if !a.in_show => (a.wants_food, a.thirsty, a.drinking) = (true, false, false),
             true => {}
             false => no_food(a, k, out),
