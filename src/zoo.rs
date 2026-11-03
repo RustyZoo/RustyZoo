@@ -36,7 +36,11 @@
 
 mod animal;
 mod body;
+mod habitat;
+use habitat::{HABITAT_MIN, habitat};
 pub(crate) mod fresh;
+#[cfg(test)]
+mod parity;
 mod show;
 mod staff;
 #[cfg(test)]
@@ -600,6 +604,17 @@ impl Zoo {
 
     /// Reads a file as [`Zoo::parse`] does and keeps the cash and the accounts it stores.
     pub fn parse_money(bytes: &[u8]) -> Result<(Zoo, Money), ZooError> {
+        Zoo::parse_marked(bytes, false).map(|(zoo, money, _)| (zoo, money))
+    }
+
+    /// Where each section of a file ends (a name and the offset in the file, an entity as
+    /// `entity/CLASS`), for the parity report of the full-game tests.
+    #[cfg(test)]
+    pub fn sections(bytes: &[u8]) -> Result<Marks, ZooError> {
+        Zoo::parse_marked(bytes, true).map(|(_, _, marks)| marks)
+    }
+
+    fn parse_marked(bytes: &[u8], marked: bool) -> Result<(Zoo, Money, Marks), ZooError> {
         if bytes.get(..4) != Some(b"TZFB") {
             return Err(ZooError::NotASavedGame);
         }
@@ -617,13 +632,17 @@ impl Zoo {
             return Err(ZooError::Corrupted("file too big".into()));
         }
         let mut r = Reader::new(&bytes[8..], version);
+        r.marks = marked.then(Vec::new);
         let mut section = "header";
         let mut money = Money::default();
         read(&mut r, &mut section, &mut money)
-            .map(|zoo| (zoo, money))
+            .map(|zoo| (zoo, money, r.marks.take().unwrap_or_default()))
             .map_err(|Bad(why)| ZooError::Corrupted(format!("{section}: {why}")))
     }
 }
+
+/// The end of each section of a file read: a name and an offset.
+type Marks = Vec<(String, usize)>;
 
 /// Why a read failed, in a few words.
 struct Bad(String);
@@ -664,6 +683,8 @@ struct Reader<'a> {
     /// The copy of the fields before the unit block or the entity base, and after them.
     pre: Vec<u8>,
     post: Vec<u8>,
+    /// The end of each section read, when asked for ([`Zoo::sections`]).
+    marks: Option<Marks>,
 }
 
 /// The map of a file, for the heights of the positions an old file stores as tiles.
@@ -705,6 +726,15 @@ impl<'a> Reader<'a> {
             copy: false,
             pre: Vec::new(),
             post: Vec::new(),
+            marks: None,
+        }
+    }
+
+    /// Notes that section `name` ends here.
+    fn mark(&mut self, name: &str) {
+        let at = 8 + self.total - self.data.len();
+        if let Some(marks) = &mut self.marks {
+            marks.push((name.into(), at));
         }
     }
 
@@ -846,6 +876,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let locale = if v >= 69 { r.u32()? } else { 0 };
     let locale = if locale == 0 { 1033 } else { locale };
     let expansion = if v >= 82 { r.u32()? } else { 0 };
+    r.mark("header");
 
     *section = "habitats";
     let (width, height) = (r.u32()?, r.u32()?);
@@ -875,13 +906,16 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         r.skip(4)?;
     }
     let habitats = taken(from, r);
+    r.mark("habitats");
     if v >= 97 {
         *section = "shows";
         shows.read_section(r)?;
+        r.mark("shows");
     }
 
     *section = "id counter";
     let id_counter = r.u32()?;
+    r.mark("id counter");
 
     *section = "tiles";
     let n = u64::from(width) * u64::from(height);
@@ -899,6 +933,7 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
         });
     }
 
+    r.mark("tiles");
     r.ground = Some(Rc::new(Ground {
         width,
         height,
@@ -918,6 +953,9 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
     let mut entities = Vec::with_capacity(count);
     for i in 0..count {
         let entity = entity(r).map_err(|Bad(why)| Bad(format!("entity {i}: {why}")))?;
+        if r.marks.is_some() {
+            r.mark(&format!("entity/{}", entity.class));
+        }
         entities.push(entity);
     }
 
@@ -954,81 +992,6 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 /// The bytes `r` has read since `from` was its data.
 fn taken(from: &[u8], r: &Reader) -> Vec<u8> {
     from[..from.len() - r.data.len()].to_vec()
-}
-
-/// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
-const HABITAT_MIN: usize = 76;
-
-type Habitat = (
-    (i32, i32),
-    ((i32, i32), i32),
-    Option<Tank>,
-    HabitatInfo,
-    usize,
-    (usize, usize),
-    (Option<ShowInfo>, Option<(usize, usize)>),
-);
-
-/// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
-/// values are where the record's statistics and its name start and end in them.
-fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
-    let v = r.v;
-    let tile = (r.i32()?, r.i32()?);
-    let name_at = size - r.data.len();
-    let name = latin1(r.string()?);
-    let name_to = size - r.data.len();
-    let gate = (r.i32()?, r.i32()?);
-    let side = r.i32()?;
-    let at = size - r.data.len();
-    let mut stats = [0; 9];
-    for s in &mut stats {
-        *s = r.u32()?;
-    }
-    let created = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
-    let viewing = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
-    let serviced = if v >= 83 { r.u32()? } else { 0 };
-    let info = HabitatInfo {
-        name,
-        stats,
-        created,
-        viewing,
-        serviced,
-    };
-    let is_tank = v >= 85 && r.u8()? != 0;
-    let show_from = size - r.data.len();
-    let has_show = v >= 90 && r.u8()? != 0;
-    let show = has_show.then(|| ShowInfo::read(r)).transpose()?;
-    let show_at = (v >= 90).then_some((show_from, size - r.data.len()));
-    let show = (show, show_at);
-    if !is_tank {
-        return Ok((tile, (gate, side), None, info, at, (name_at, name_to), show));
-    }
-    let (height, level) = (r.u32()?, r.u32()?);
-    if v >= 88 {
-        r.skip(1)?;
-    }
-    let (mut salt, mut purity) = (100, 100);
-    if v >= 100 {
-        salt = r.u32()?;
-        r.skip(4)?;
-        purity = r.u32()?;
-    }
-    Ok((
-        tile,
-        (gate, side),
-        Some(Tank {
-            tile,
-            gate,
-            height,
-            level,
-            salt: salt != 0,
-            purity,
-        }),
-        info,
-        at,
-        (name_at, name_to),
-        show,
-    ))
 }
 
 fn entity(r: &mut Reader) -> R<Entity> {
@@ -1102,6 +1065,7 @@ fn after_entities(
         scroll: (r.i32()?, r.i32()?),
         brush: r.u32()?,
     };
+    r.mark("entities end, view");
 
     // Scenario: a size, then (from 51, unless the size is 0) a name and the goal states, one
     // `u32` each. The original skips the block by its size when it starts a scenario and reads
@@ -1124,6 +1088,7 @@ fn after_entities(
         r.skip(size as usize)?;
     }
     kept.scenario = taken(from, r);
+    r.mark("scenario");
 
     // Name counters: type name and number.
     let mut names = BTreeMap::new();
@@ -1131,6 +1096,7 @@ fn after_entities(
         let name = latin1(r.string()?);
         names.insert(name, r.u32()?);
     }
+    r.mark("name counters");
 
     // Game and finances: the zoo status' timers, rating and donation counter first.
     let from = r.data;
@@ -1190,6 +1156,7 @@ fn after_entities(
         clocks.play_time = r.u32()?;
     }
     kept.finances = taken(from, r);
+    r.mark("finances");
 
     kept.thoughts = (0..r.count(20)?)
         .map(|_| Ok([r.u32()?, r.u32()?, r.u32()?, r.u32()?, r.u32()?]))
@@ -1201,6 +1168,7 @@ fn after_entities(
         clocks.queue.second = r.events()?;
         clocks.queue.next_is_first = r.u8()? != 0;
     }
+    r.mark("thoughts, ai clock, events");
     let from = r.data;
     if v >= 40 {
         r.skip(4)?;
@@ -1218,11 +1186,13 @@ fn after_entities(
         }
     }
     kept.research = taken(from, r);
+    r.mark("research");
     if v >= 59 {
         for _ in 0..r.count(4)? {
             crate::award::add(awards, r.i32()?);
         }
     }
+    r.mark("awards");
     let from = r.data;
     if v >= 60 {
         r.skip(4)?; // marketing
@@ -1231,15 +1201,18 @@ fn after_entities(
     if (89..=96).contains(&v) {
         shows.read_section(r)?;
     }
+    r.mark("marketing, shows");
     if v >= 104 {
         let from = r.data;
         r.skip_strings()?; // cheats
         kept.cheats = taken(from, r);
     }
+    r.mark("cheats");
     if v >= 58 {
         // The world clock: the milliseconds left over, then the whole seconds (7.11).
         (clocks.world_rem, clocks.world_secs) = (r.u32()?, r.u32()?);
         r.skip(if v <= 66 { 4 } else { 0 })?;
     }
+    r.mark("world clock");
     Ok((view, clocks, names, kept))
 }
