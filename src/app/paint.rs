@@ -70,12 +70,13 @@ impl App<'_> {
         playing!(self, game);
         // The pending object and the terrain highlights are transient items: the picture is made
         // again when they changed.
-        let mut want = match game.run.is_empty() {
+        let mut want = match game.placing.run.is_empty() {
             true => game
+                .placing
                 .pending
                 .as_ref()
-                .map_or_else(Extra::default, |p| p.extra(&game.tints)),
-            false => place::extra_of(&game.run, &game.tints),
+                .map_or_else(Extra::default, |p| p.extra(&game.placing.tints)),
+            false => place::extra_of(&game.placing.run, &game.placing.tints),
         };
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();

@@ -14,7 +14,7 @@ impl App<'_> {
     /// without one).
     pub(super) fn adopt(&mut self) {
         playing!(self, game, ui);
-        let Some(p) = game.pending.clone() else {
+        let Some(p) = game.placing.pending.clone() else {
             return;
         };
         let renderer = &self.renderer;
@@ -47,7 +47,7 @@ impl App<'_> {
                     .map(|c| c.name.clone())
                     .unwrap_or_default();
                 // The hired unit is the pending staff member, with the counters it drew.
-                let made = game.made.take_if(|m| m.0 == p.ty);
+                let made = game.placing.made.take_if(|m| m.0 == p.ty);
                 if let (Some((_, made)), Some(at)) = (&made, game.world.find(id)) {
                     let c = game.world.zoo.entities[at].common.as_mut();
                     c.expect("placed").colors.clone_from(&made.colours);

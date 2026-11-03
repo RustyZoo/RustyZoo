@@ -172,7 +172,7 @@ impl App<'_> {
     /// message, as a placement does.
     pub(super) fn drop_carried(&mut self) {
         playing!(self, game, ui);
-        let (Some(carry), Some(p)) = (game.carry.clone(), game.pending.clone()) else {
+        let (Some(carry), Some(p)) = (game.carry.clone(), game.placing.pending.clone()) else {
             return;
         };
         if p.verdict == place::Verdict::Invalid {

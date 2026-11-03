@@ -168,7 +168,7 @@ impl App<'_> {
     /// its terrain type (terrain editing 7.3). A stroke released on another tile shows it too.
     pub(super) fn terrain_help(&mut self) {
         playing!(self, game, ui);
-        if !game.hover {
+        if !game.placing.hover {
             return;
         }
         let tile = game.camera.tile_under(&game.world.zoo, ui.pointer());

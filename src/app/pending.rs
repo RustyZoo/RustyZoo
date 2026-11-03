@@ -3,6 +3,25 @@
 
 use super::*;
 
+/// What the tool places at the pointer, and the drag that buys it.
+pub(super) struct Placing {
+    /// The pending object: the tool at the place under the pointer, while the pointer (as the
+    /// last move left it) is over the map view and a tool is chosen.
+    pub(super) pending: Option<Pending>,
+    /// The pending staff member made when its item was chosen (staff 4.2): the type and the
+    /// counters it drew; the hire gives them to the unit.
+    pub(super) made: Option<(usize, crate::unit::Staff)>,
+    /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
+    pub(super) gate: Option<place::gate::Gate>,
+    /// The fence piece the gate tool last judged under the pointer (placing 6.4: the pending gate
+    /// is made again only when the piece under the pointer changes).
+    pub(super) gate_over: Option<u32>,
+    /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
+    pub(super) run: Vec<Pending>,
+    pub(super) hover: bool,
+    pub(super) tints: Tints,
+}
+
 impl App<'_> {
     /// Works out the pending object from the tool, the panel's rotation step and the pointer, and
     /// has the next draw show it. With `log`, a move over the map tells it: `tool pending TYPE
@@ -19,7 +38,7 @@ impl App<'_> {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         game.build.set_month(self.sim.calendar().date().month);
-        let before = game.pending.take();
+        let before = game.placing.pending.take();
         let habits = |e: &Entity| habit(cat, e);
         let dirt = place::dirt(&game.world, game.terrain.types(), &habits);
         let (step, view) = (game.build.step(), game.camera.rotation);
@@ -46,10 +65,10 @@ impl App<'_> {
                 point,
             )
         };
-        game.pending = game
+        game.placing.pending = game
             .build
             .tool()
-            .filter(|_| game.hover)
+            .filter(|_| game.placing.hover)
             .and_then(|ty| at(ty, (point.0, point.1)));
         // The unit the player carries follows the pointer with the same checks (8.3).
         // (A unit that was taken from the zoo meanwhile, by an undo, is no longer carried.)
@@ -58,9 +77,9 @@ impl App<'_> {
         {
             game.carry = None;
         }
-        if let Some(carry) = game.carry.as_ref().filter(|_| game.hover) {
+        if let Some(carry) = game.carry.as_ref().filter(|_| game.placing.hover) {
             let water = &game.water;
-            game.pending = match game.held {
+            game.placing.pending = match game.held {
                 // A building held (8.7) is judged as a new one, facing as the view keeps it.
                 Some(_) => place::moved(
                     &game.world,
@@ -89,15 +108,15 @@ impl App<'_> {
             .and_then(|id| game.world.find(id));
         let over = hovered
             .and_then(|at| place::gate::over(&game.world, at))
-            .filter(|_| game.build.gating() && game.hover);
-        if over != game.gate_over || over.is_none() {
-            game.gate_over = over;
-            game.gate = hovered
+            .filter(|_| game.build.gating() && game.placing.hover);
+        if over != game.placing.gate_over || over.is_none() {
+            game.placing.gate_over = over;
+            game.placing.gate = hovered
                 .filter(|_| over.is_some())
                 .and_then(|at| place::gate::pending(&game.world, cat, &game.money, at));
         }
-        if let Some(g) = &game.gate {
-            game.pending = Some(g.pending.clone());
+        if let Some(g) = &game.placing.gate {
+            game.placing.pending = Some(g.pending.clone());
         }
         // A pending fence selects the tile under the pointer, before snapping; a fence drag in
         // progress does not draw it (placing 4.5, 6.2 items 1 and 2).
@@ -106,7 +125,7 @@ impl App<'_> {
             .tool()
             .and_then(|ty| cat.types.get(ty))
             .is_some_and(|t| Class::of(t) == Class::Fence);
-        game.selection = (fence && game.hover && !game.build.dragging())
+        game.selection = (fence && game.placing.hover && !game.build.dragging())
             .then(|| {
                 let (x, y) = (point.0.div_euclid(64), point.1.div_euclid(64));
                 let tile = game
@@ -119,16 +138,19 @@ impl App<'_> {
             })
             .flatten();
         // A drag lays a piece on each tile of its L; the pieces stay while the pointer is away.
-        if let (Some(ty), Some(p), true) = (game.build.tool(), &game.pending, game.build.dragging())
-        {
+        if let (Some(ty), Some(p), true) = (
+            game.build.tool(),
+            &game.placing.pending,
+            game.build.dragging(),
+        ) {
             let points = game.build.run(p.tile, (point.0, point.1), point.2);
             let mut run: Vec<Pending> = points.iter().filter_map(|&p| at(ty, p)).collect();
             place::afford(&mut run, &game.money);
-            game.run = run;
+            game.placing.run = run;
         } else if !game.build.dragging() {
-            game.run.clear();
+            game.placing.run.clear();
         }
-        if let (true, Some(p)) = (log, &game.pending) {
+        if let (true, Some(p)) = (log, &game.placing.pending) {
             let ty = &cat.types[p.ty];
             self.lines.tool.push(format!(
                 "tool pending {}/{}/{} {},{} q {} {}",
@@ -142,7 +164,7 @@ impl App<'_> {
             ));
         }
         // The cost text follows the pointer: the frame is painted again.
-        if before.is_some() || game.pending.is_some() {
+        if before.is_some() || game.placing.pending.is_some() {
             ui.touch();
         }
     }
@@ -186,10 +208,10 @@ impl App<'_> {
         }
         let dragging = game.build.dragging();
         game.build.end_drag();
-        let run = std::mem::take(&mut game.run);
+        let run = std::mem::take(&mut game.placing.run);
         let pieces = match dragging && !run.is_empty() {
             true => run,
-            false => game.pending.clone().into_iter().collect(),
+            false => game.placing.pending.clone().into_iter().collect(),
         };
         self.buy(pieces, false);
     }
@@ -389,7 +411,8 @@ impl App<'_> {
         for ty in game.build.take_made() {
             let t = &cat.types[ty];
             if let Some(kind) = crate::unit::Kind::of_class(t.class) {
-                game.made = Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));
+                game.placing.made =
+                    Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));
             }
         }
     }

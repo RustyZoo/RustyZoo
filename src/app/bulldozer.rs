@@ -82,9 +82,12 @@ impl Game {
     /// The transient items of the bulldozer: what it would remove, tinted, and the outline of
     /// the rectangle of a drag.
     pub(super) fn dozer_extra(&self, extra: &mut Extra) {
-        extra
-            .tinted
-            .extend(self.dozer.at.iter().map(|&e| (e, self.tints.delete)));
+        extra.tinted.extend(
+            self.dozer
+                .at
+                .iter()
+                .map(|&e| (e, self.placing.tints.delete)),
+        );
         if let Some((a, b)) = self.dozer.rect {
             for ty in a.1.min(b.1)..=a.1.max(b.1) {
                 for tx in a.0.min(b.0)..=a.0.max(b.0) {
@@ -109,7 +112,7 @@ impl App<'_> {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let before = std::mem::take(&mut game.dozer);
-        if game.build.bulldozing() && game.hover {
+        if game.build.bulldozing() && game.placing.hover {
             let world = &game.world;
             let pointer = ui.pointer();
             let tile = game

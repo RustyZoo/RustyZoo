@@ -160,8 +160,11 @@ impl App<'_> {
             }
             Cheat::EggsHatchFast => self.cheats.eggs_hatch_fast = true,
             Cheat::CarsToRubble => {
-                let (carry, selected, pending) =
-                    (&mut game.carry, &mut game.selected, &mut game.pending);
+                let (carry, selected, pending) = (
+                    &mut game.carry,
+                    &mut game.selected,
+                    &mut game.placing.pending,
+                );
                 let held = &mut game.held;
                 let template = (self.ui.as_ref()).map_or(String::new(), |u| u.string(PIECE_NAME));
                 let renderer = &self.renderer;

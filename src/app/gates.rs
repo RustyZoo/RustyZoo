@@ -12,7 +12,7 @@ impl App<'_> {
     /// in the message line (`tool message 10002`).
     pub(super) fn gate_release(&mut self) {
         playing!(self, game, ui);
-        let Some(gate) = game.gate.clone() else {
+        let Some(gate) = game.placing.gate.clone() else {
             return;
         };
         let world = &mut game.world;
@@ -43,7 +43,7 @@ impl App<'_> {
                     self.lines.world.push(format!("gate {line}"));
                 }
                 self.ui_sounds.push("place");
-                game.gate = None;
+                game.placing.gate = None;
             }
             Outcome::Refused(Some(id)) => {
                 self.ui_sounds.push("noplace");

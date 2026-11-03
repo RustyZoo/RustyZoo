@@ -315,7 +315,7 @@ impl App<'_> {
                 .extend(game.animal.refresh(ui, &game.world, cat, vfs, when));
         }
         if ui.shown(staff::LAYOUT) && game.staff.clock.due(now, ticking, staff::PERIOD) {
-            let placing = game.pending.is_some() || game.carry.is_some();
+            let placing = game.placing.pending.is_some() || game.carry.is_some();
             self.lines
                 .panel
                 .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));

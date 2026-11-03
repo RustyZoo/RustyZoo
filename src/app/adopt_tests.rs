@@ -270,7 +270,7 @@ fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
             (g.pick(5) as i32, g.pick(2) as i32)
         };
         let made = |app: &App| {
-            let made = app.game.as_ref().unwrap().made.clone();
+            let made = app.game.as_ref().unwrap().placing.made.clone();
             made.map(|(ty, s)| (ty, s.work, s.chase))
         };
         // The Hire panel opens on the sex drawn: its first item, the zookeeper (3 or 4), is chosen
@@ -331,7 +331,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
         // The panel opens on a woman and draws no sex.
         app.sim.hire_male = false;
         app.pass(1, &[]);
-        assert!(app.game.as_ref().unwrap().made.is_some());
+        assert!(app.game.as_ref().unwrap().placing.made.is_some());
         assert!(!app.sim.hire_male);
         while !app.sim.hire_male {
             assert!(n < 40, "no man drawn");
@@ -347,7 +347,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
             0,
             "the empty label shows"
         );
-        let pending = game.made.as_ref().map(|m| m.0);
+        let pending = game.placing.made.as_ref().map(|m| m.0);
         assert!(pending.is_some(), "pending kept");
         assert!(game.build.tool().is_some(), "tool kept");
         // The next placement hires the pending woman and draws the sex again.
@@ -357,7 +357,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
         assert_eq!(game.world.units.len(), units + 1);
         assert_ne!(app.sim.rng, state, "the hire drew the next sex");
         assert!(
-            game.made.is_some(),
+            game.placing.made.is_some(),
             "the hire made the next pending staff member"
         );
     });

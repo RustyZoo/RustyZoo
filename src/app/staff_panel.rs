@@ -218,7 +218,7 @@ impl App<'_> {
     pub(super) fn assign_aim(&mut self) {
         let over = match (
             self.assigning(),
-            self.game.as_ref().is_some_and(|g| g.hover),
+            self.game.as_ref().is_some_and(|g| g.placing.hover),
         ) {
             (Some(id), true) => self.exhibit_under(id),
             _ => None,

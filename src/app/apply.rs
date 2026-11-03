@@ -82,7 +82,7 @@ impl App<'_> {
                 if let (false, Mouse::Up, Some(game)) = (on_map, mouse, game.as_mut()) {
                     game.build.end_drag();
                     game.build.end_sweep();
-                    game.run.clear();
+                    game.placing.run.clear();
                 }
                 if let (true, Some(phase), Some(game), Some(ui)) =
                     (on_map, phase, game.as_mut(), &self.ui)
@@ -93,7 +93,7 @@ impl App<'_> {
                 }
                 if let Mouse::Move(..) = mouse {
                     if let Some(game) = game.as_mut() {
-                        game.hover = on_map;
+                        game.placing.hover = on_map;
                     }
                     self.aim(true);
                 } else if on_map && mouse == Mouse::Up {

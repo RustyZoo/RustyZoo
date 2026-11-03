@@ -113,21 +113,8 @@ struct Game {
     awards_page: Awards,
     /// The building panels and the tool they choose.
     build: Build,
-    /// The pending object: the tool at the place under the pointer, while the pointer (as the
-    /// last move left it) is over the map view and a tool is chosen.
-    pending: Option<Pending>,
-    /// The pending staff member made when its item was chosen (staff 4.2): the type and the
-    /// counters it drew; the hire gives them to the unit.
-    made: Option<(usize, crate::unit::Staff)>,
-    /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
-    gate: Option<place::gate::Gate>,
-    /// The fence piece the gate tool last judged under the pointer (placing 6.4: the pending gate
-    /// is made again only when the piece under the pointer changes).
-    gate_over: Option<u32>,
-    /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
-    run: Vec<Pending>,
-    hover: bool,
-    tints: Tints,
+    /// The pending object and the drag that buys it.
+    placing: pending::Placing,
     /// Which terrain types are water.
     water: Vec<bool>,
     /// The smart fences test is on (`[UI] smartFences`).
@@ -232,19 +219,20 @@ impl Game {
         if self.build.bulldozing() {
             return self.dozer_amount();
         }
-        if self.gate.as_ref().is_some_and(|g| g.hidden) {
+        if self.placing.gate.as_ref().is_some_and(|g| g.hidden) {
             return None;
         }
-        match self.run.is_empty() {
+        match self.placing.run.is_empty() {
             true => self
+                .placing
                 .pending
                 .as_ref()
-                .map(|p| match &self.gate {
+                .map(|p| match &self.placing.gate {
                     Some(g) => g.amount(),
                     None => p.amount(),
                 })
-                .or_else(|| self.terrain.pointer_amount().filter(|_| self.hover)),
-            false => Some(place::run_amount(&self.run)),
+                .or_else(|| self.terrain.pointer_amount().filter(|_| self.placing.hover)),
+            false => Some(place::run_amount(&self.placing.run)),
         }
     }
 }
@@ -781,16 +769,16 @@ impl<'a> App<'a> {
         let b = &game.build;
         match () {
             _ if b.bulldozing() => c::BULLDOZER,
-            _ if b.dragging() || !game.run.is_empty() => c::DRAG,
+            _ if b.dragging() || !game.placing.run.is_empty() => c::DRAG,
             // The gate tool's pending gate is the hover, not a pending object.
             _ if b.gating() => {
-                if game.gate.is_some() {
+                if game.placing.gate.is_some() {
                     c::HOVER
                 } else {
                     c::NORMAL
                 }
             }
-            _ if game.pending.is_some() => c::PLACING,
+            _ if game.placing.pending.is_some() => c::PLACING,
             _ if over => c::HOVER,
             _ => c::NORMAL,
         }
