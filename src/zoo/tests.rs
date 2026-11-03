@@ -1844,9 +1844,8 @@ fn new_guest() -> GuestRecord {
     }
 }
 
-#[test]
-#[allow(clippy::too_many_lines)] // #1045
-fn an_entity_made_in_play_is_written_and_read_back() {
+/// One entity of each class made in play, the units with and without a record.
+fn made_in_play() -> Vec<Entity> {
     let fence = Fence {
         strength: 30,
         life: -20,
@@ -1879,7 +1878,7 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         f(&mut c);
         c
     };
-    let made = [
+    vec![
         made("objects", "bush", at.clone()),
         made("objects", "poo", with(&|c| c.food = 4)),
         made("objects", "bush", with(&|c| c.food = 4)),
@@ -1946,7 +1945,12 @@ fn an_entity_made_in_play_is_written_and_read_back() {
         // A new unit without a record is written with the values of a new one.
         made("animals", "m", at.clone()),
         made("guests", "", at.clone()),
-    ];
+    ]
+}
+
+#[test]
+fn an_entity_made_in_play_is_written_and_read_back() {
+    let made = made_in_play();
     for v in [70, 106] {
         let (mut zoo, money) = Zoo::parse_money(&lean(v)).unwrap();
         let before = zoo.entities.len();
