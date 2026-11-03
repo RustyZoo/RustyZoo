@@ -12,6 +12,8 @@ use crate::world::World;
 
 /// The thought of a guest that finds itself in the water.
 const IN_WATER: i32 = 10568;
+/// The needs a building may serve, in the order a dropped guest tests them.
+const NEEDS: [&str; 4] = ["drink", "food", "bathroom", "energy"];
 
 /// Runs `f` on the goal update context of the unit `id`, taken out of the table for it.
 pub(super) fn with_unit<R>(
@@ -57,9 +59,15 @@ fn run(
     with_unit(world, &mut ctx, data, id, f);
 }
 
-/// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1).
+/// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1) and
+/// loses its fright (the clearing of the state variables, simulation 8.2).
 pub fn picked_up(world: &mut World, cat: &Catalogue, rng: &mut Rng, data: &dyn Data, id: u32) {
-    run(world, cat, rng, data, id, |cx| cx.reset());
+    run(world, cat, rng, data, id, |cx| {
+        cx.reset();
+        cx.unit.frightened = false;
+        cx.unit.afraid = false;
+        cx.unit.predator = 0;
+    });
 }
 
 /// Unit placing 8.5: the drop rule of the unit `id`, put down on the map.
@@ -80,17 +88,84 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// A guest dropped on water outside a tank starts the recovery from water and thinks 10568
-    /// (tank fauna 13); it then chooses a new goal (guests 8: the wandered flag).
+    /// A guest dropped on water outside a tank leaves its leave flag down, starts the recovery
+    /// from water in mode 1, thinks 10568 and is done (tank fauna 13). Any other drop: with a
+    /// pressing need it takes the nearest satisfier within 10 tiles as its building target, else
+    /// it chooses a new goal (guests 8: the wandered flag).
     fn guest_dropped(&mut self) {
         let Some(tile) = self.tile() else { return };
         let region = self.world.exhibits().region(tile);
         let tank = region.is_some_and(|r| self.world.tank(r).is_some());
         if self.world.is_water(tile) && !tank {
-            self.set_task(RECOVER, 0, 0, None);
+            if let Part::Guest(g) = &mut self.unit.part {
+                g.leave = false;
+            }
+            self.set_task(RECOVER, 1, 0, None);
             self.think(IN_WATER, None);
+            return;
         }
-        self.unit.goal.wandered = true;
+        if !self.pressing() || !self.take_satisfier(tile) {
+            self.unit.goal.wandered = true;
+        }
+    }
+
+    /// Whether the guest has a pressing need: hunger, thirst, energy or bathroom at or above its
+    /// threshold.
+    fn pressing(&self) -> bool {
+        let (Part::Guest(g), Some(k)) = (
+            &self.unit.part,
+            crate::guest::keys(self.world, self.ctx.cat, self.at),
+        ) else {
+            return false;
+        };
+        g.pressing(&k)
+    }
+
+    /// Unit placing 8.5 point 3: the nearest building within 10 tiles in the guest's exhibit, with
+    /// an open slot, that serves one of `drink`, `food`, `bathroom`, `energy` (the first in that
+    /// order is the need); one draw among the equally near ones. It becomes the building target.
+    fn take_satisfier(&mut self, here: usize) -> bool {
+        let (world, width) = (&*self.world, self.world.zoo.width as usize);
+        let (area, who) = (world.exhibits().region(here), self.species());
+        let prices = world.units.prices;
+        let (mut best, mut near) = (101, Vec::new());
+        for e in &world.zoo.entities {
+            let (Some(kind), Some(c)) = (
+                crate::building::kind_of(self.ctx.cat, e, prices.default),
+                e.common.as_ref(),
+            ) else {
+                continue;
+            };
+            let Some(t) = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)) else {
+                continue;
+            };
+            let Some(need) = NEEDS.into_iter().find(|n| kind.satisfies(n)) else {
+                continue;
+            };
+            let live = world.units.buildings.get(&c.id);
+            if world.exhibits().region(t) != area
+                || !crate::building::has_open_slot(world, e, &kind, live, who.as_ref())
+            {
+                continue;
+            }
+            let dx = (t % width) as i64 - (here % width) as i64;
+            let dy = (t / width) as i64 - (here / width) as i64;
+            let d = dx * dx + dy * dy;
+            if d < best {
+                (best, near) = (d, Vec::new());
+            }
+            if d == best {
+                near.push((c.id, need));
+            }
+        }
+        if near.is_empty() {
+            return false;
+        }
+        let (id, need) = near[self.ctx.rng.pick(near.len() as u32) as usize];
+        if let Part::Guest(g) = &mut self.unit.part {
+            (g.need, g.building) = (Some(need), id);
+        }
+        true
     }
 
     /// A staff member forgets its two lists of targets it could not reach; the assigned exhibits

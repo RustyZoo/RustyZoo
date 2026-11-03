@@ -290,7 +290,7 @@ impl Cx<'_, '_> {
             return;
         };
         let occupied = busy(self.world.units.get(id).map_or(0, |u| u.goal.record.task));
-        let pressing = (0..4).any(|i| g.values[1 + i] >= k.needs[i][1]);
+        let pressing = g.pressing(&k);
         let (known, member) = (g.guide == 0 || g.guide == guide, g.guide == guide);
         if !known || occupied || g.sick || g.leave || pressing {
             return;

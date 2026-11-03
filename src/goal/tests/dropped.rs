@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::guest::Guest;
-use crate::unit::Staff;
 use crate::unit::testing::{Walker, tank_world_with, world_with};
+use crate::unit::{Ctx, Staff};
 
 const GUEST: u32 = 1;
 const KEEPER: u32 = 2;
@@ -67,7 +67,42 @@ fn a_guest_dropped_on_water_outside_a_tank_recovers_and_thinks_10568() {
     drop_at(&mut w, GUEST, (5, 7));
     assert_eq!(task(&w, GUEST), RECOVER);
     assert_eq!(w.units.thoughts.of(GUEST)[0].text, 10568);
-    assert!(wandered(&w));
+}
+
+fn set_leave(w: &mut World, on: bool) {
+    let Part::Guest(g) = &mut w.units.get_mut(GUEST).unwrap().part else {
+        panic!("not a guest");
+    };
+    g.leave = on;
+}
+
+#[test]
+fn a_guest_dropped_on_water_starts_the_recover_task_in_mode_1_and_lowers_its_leave_flag() {
+    let mut w = pond();
+    set_leave(&mut w, true);
+    drop_at(&mut w, GUEST, (5, 7));
+    let r = &w.units.get(GUEST).unwrap().goal.record;
+    assert_eq!((r.task, r.mode), (RECOVER, 1));
+    let Part::Guest(g) = &w.units.get(GUEST).unwrap().part else {
+        panic!("not a guest");
+    };
+    assert!(!g.leave);
+}
+
+#[test]
+fn a_guest_dropped_on_water_is_not_marked_wandered() {
+    let mut w = pond();
+    drop_at(&mut w, GUEST, (5, 7));
+    assert!(!wandered(&w));
+}
+
+#[test]
+fn a_frightened_guest_picked_up_is_no_longer_frightened() {
+    let mut w = pond();
+    w.units.get_mut(GUEST).unwrap().frightened = true;
+    let (cat, data) = (Catalogue::default(), NoData);
+    super::super::picked_up(&mut w, &cat, &mut Rng::default(), &data, GUEST);
+    assert!(!w.units.get(GUEST).unwrap().frightened);
 }
 
 #[test]
@@ -169,7 +204,7 @@ fn a_guest_in_the_water_walks_out_to_dry_land_and_goes_on() {
     };
     assert!(dry(&w), "{log:?}");
     assert!(
-        log.iter().any(|l| l == "goal 1 recoverfromwater 0 - -"),
+        log.iter().any(|l| l == "goal 1 recoverfromwater 1 - -"),
         "{log:?}"
     );
     assert!(task(&w, GUEST) != RECOVER && task(&w, GUEST) != DROWN);
@@ -186,4 +221,73 @@ fn a_guest_that_cannot_get_out_uses_its_tries_and_takes_the_drowning_task() {
     let (mut s, data) = (sim(), Walker::new("fWalk(0,0)"));
     let log = run_with(&mut w, &mut s, &data, 2000);
     assert_eq!(task(&w, GUEST), DROWN, "{log:?}");
+}
+
+/// The pen is a pond of its own: the guest in it is fenced from every dry tile.
+fn bog() -> World {
+    let mut w = pond();
+    for y in 1..=3 {
+        for x in 1..=3 {
+            w.zoo.tiles[y * 10 + x].terrain = 1;
+        }
+    }
+    drop_at(&mut w, GUEST, (2, 2));
+    w
+}
+
+/// The draws taken from `Rng::default()` to reach the state `after`.
+fn draws(after: &Rng) -> u32 {
+    let mut r = Rng::default();
+    (0..2000)
+        .take_while(|_| {
+            let same = r == *after;
+            r.rand();
+            !same
+        })
+        .count() as u32
+}
+
+/// Runs `f` on the goal context of the guest; the rng it used.
+fn on_guest(w: &mut World, f: impl FnOnce(&mut Cx)) -> Rng {
+    let (mut rng, mut removals) = (Rng::default(), Vec::new());
+    let events = Events::default();
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 0,
+        cat: &Catalogue::default(),
+    };
+    super::super::dropped::with_unit(w, &mut ctx, &NoData, GUEST, f);
+    rng
+}
+
+/// Runs the decide of the recover goal of the guest with `tries` left.
+fn decide(w: &mut World, tries: u8) -> Rng {
+    w.units.get_mut(GUEST).unwrap().goal.tries = Some(tries);
+    on_guest(w, |cx| cx.recover_decide())
+}
+
+#[test]
+fn a_recover_round_ends_at_the_first_enterable_dry_tile_even_when_unreachable() {
+    let mut w = bog();
+    let rng = decide(&mut w, 3);
+    // Ten rounds of a few tries each, not ten rounds of thirty.
+    assert!(draws(&rng) < 150, "{}", draws(&rng));
+}
+
+#[test]
+fn a_guest_with_its_last_try_spent_does_not_walk_at_random_and_takes_the_drowning_task() {
+    let mut w = bog();
+    decide(&mut w, 2);
+    let u = w.units.get(GUEST).unwrap();
+    assert_eq!(u.goal.tries, Some(1));
+    assert!(!u.path.is_empty(), "walks at random while a try is left");
+    let mut w = bog();
+    decide(&mut w, 1);
+    let u = w.units.get(GUEST).unwrap();
+    assert_eq!(u.goal.tries, Some(0));
+    assert!(u.path.is_empty());
+    on_guest(&mut w, |cx| cx.recover_check_done());
+    assert_eq!(task(&w, GUEST), DROWN);
 }

@@ -31,8 +31,8 @@ impl Cx<'_, '_> {
     }
 
     /// Decide, while the guest is not on its way: a dry tile it may enter and reach, drawn near
-    /// it, else the first one east along the water; without one a try is spent and the guest
-    /// walks at random.
+    /// it, else the first one east along the water; without one a try is spent and, with
+    /// tries left, the guest walks at random.
     pub(super) fn recover_decide(&mut self) {
         if self.record().target.tile.is_some() {
             return;
@@ -52,13 +52,15 @@ impl Cx<'_, '_> {
                 let Some(t) = self.world.tile_index(x + dx, y + dy) else {
                     continue;
                 };
-                let dry = !self.world.is_water(t);
-                if dry
+                // The first enterable dry tile ends the round, reachable or not.
+                if !self.world.is_water(t)
                     && crate::unit::walk::fits(self.unit, self.world, here, t, true)
-                    && self.path_to(t, false)
                 {
-                    found = Some(t);
-                    break 'rounds;
+                    if self.path_to(t, false) {
+                        found = Some(t);
+                        break 'rounds;
+                    }
+                    break;
                 }
             }
         }
@@ -75,10 +77,15 @@ impl Cx<'_, '_> {
         if found.is_some() && self.start_walk(false, false, true) {
             return;
         }
-        if let Some(t) = &mut self.unit.goal.tries {
+        let tries = self.unit.goal.tries.as_mut().map(|t| {
             *t = t.saturating_sub(1);
-        }
+            *t
+        });
         self.unit.path.clear();
+        // With no try left it does not walk at random (the drowning task follows).
+        if tries == Some(0) {
+            return;
+        }
         let (unit, world) = (&mut *self.unit, &mut *self.world);
         if crate::unit::walk::random_walk(unit, world, self.ctx.cat, self.ctx.rng, self.at) {
             self.start_walk(false, false, true);
