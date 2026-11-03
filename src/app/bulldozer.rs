@@ -82,9 +82,12 @@ impl Game {
     /// The transient items of the bulldozer: what it would remove, tinted, and the outline of
     /// the rectangle of a drag.
     pub(super) fn dozer_extra(&self, extra: &mut Extra) {
-        extra
-            .tinted
-            .extend(self.dozer.at.iter().map(|&e| (e, self.tints.delete)));
+        extra.tinted.extend(
+            self.dozer
+                .at
+                .iter()
+                .map(|&e| (e, self.placing.tints.delete)),
+        );
         if let Some((a, b)) = self.dozer.rect {
             for ty in a.1.min(b.1)..=a.1.max(b.1) {
                 for tx in a.0.min(b.0)..=a.0.max(b.0) {
@@ -106,12 +109,10 @@ impl App<'_> {
     /// id N refund R name=NAME`, `tool bulldoze area X,Y X,Y objects N refund R`) and has the
     /// first hovered object's name shown as a tooltip.
     pub(super) fn dozer_aim(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let before = std::mem::take(&mut game.dozer);
-        if game.build.bulldozing() && game.hover {
+        if game.build.bulldozing() && game.placing.hover {
             let world = &game.world;
             let pointer = ui.pointer();
             let tile = game
@@ -184,20 +185,20 @@ impl App<'_> {
             ),
             (None, None) => "bulldoze none".to_string(),
         };
-        self.tool_lines.push(format!("tool {line}"));
+        self.lines.tool.push(format!("tool {line}"));
         ui.touch();
     }
 
     /// The release of a bulldozer press on the map: the hovered object, or the objects of the
     /// dragged rectangle, are removed one after the other, each after its question if it has one.
     pub(super) fn bulldoze_release(&mut self) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         game.build.end_sweep();
         if game.dozer.mixed {
             if let Some(ui) = &mut self.ui {
                 ui.message(&to_cp1252(&ui.string(NOT_MERGED)));
             }
-            self.tool_lines.push(format!("tool message {NOT_MERGED}"));
+            self.lines.tool.push(format!("tool message {NOT_MERGED}"));
         }
         let queue: VecDeque<u32> = game
             .dozer
@@ -231,7 +232,7 @@ impl App<'_> {
     /// selection is cleared first, which closes the panel, so the entity a No keeps is no longer
     /// selected (placing 7.1).
     pub(super) fn remove_one(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         game.selected = None;
         game.sweep = Some(Sweep {
             queue: VecDeque::from([id]),
@@ -280,7 +281,7 @@ impl App<'_> {
                         && sweep.area
                         && sweep.removed > 0
                     {
-                        self.tool_lines.push(format!(
+                        self.lines.tool.push(format!(
                             "tool bulldoze removed {} refund {}",
                             sweep.removed,
                             whole_units(f64::from(sweep.refund))
@@ -292,7 +293,7 @@ impl App<'_> {
                     self.bulldoze_remove(id);
                     // A removal that makes a tank with objects in it asks about them: the rest
                     // of the removal is dropped.
-                    if let Some(game) = self.game.as_mut().filter(|g| g.refused.is_some()) {
+                    if let Some(game) = self.game.as_mut().filter(|g| g.naming.refused.is_some()) {
                         game.sweep = None;
                         return;
                     }
@@ -311,7 +312,8 @@ impl App<'_> {
                             sweep.asked.extend(question.pair());
                         }
                         self.asked = Some(Asked::Sweep);
-                        self.tool_lines
+                        self.lines
+                            .tool
                             .push(format!("tool bulldoze ask {question:?}"));
                         return;
                     }
@@ -326,7 +328,7 @@ impl App<'_> {
     /// Removes the entity with this id, books its refund and logs it (`world remove CLASS/TYPE/
     /// SUBTYPE X,Y [side S] id N refund R`), then tells what happened to the exhibits.
     pub(super) fn bulldoze_remove(&mut self, id: u32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         // The animals of the exhibit react to an object, a fence piece, an animal or a staff
         // member removed (habitat rating 9.4); an object or an animal decides an unchanged sum by
@@ -374,7 +376,7 @@ impl App<'_> {
             rating::react(&mut game.world, cat, before, change, rand);
         }
         let side = r.side.map_or(String::new(), |s| format!(" side {s}"));
-        self.world_lines.push(format!(
+        self.lines.world.push(format!(
             "remove {} {},{}{side} id {} refund {}",
             r.name,
             r.tile.0,
@@ -393,11 +395,11 @@ impl App<'_> {
     /// between the same two exhibits stay, their pair being stored already), anything else stops
     /// the removal.
     pub(super) fn sweep_answered(&mut self, code: i32) {
-        let Some(game) = &mut self.game else { return };
+        playing!(self, game);
         let Some(id) = game.sweep.as_mut().and_then(|s| s.asking.take()) else {
             return;
         };
-        self.tool_lines.push(format!(
+        self.lines.tool.push(format!(
             "tool bulldoze answer {}",
             match code {
                 6 => "yes",

@@ -17,7 +17,7 @@ impl App<'_> {
         for &id in buttons {
             gui.pressed(id, None);
             self.marks
-                .again(id, ui, self.renderer.vfs(), &mut self.scenario_lines);
+                .again(id, ui, self.renderer.vfs(), &mut self.lines.scenario);
         }
         for action in actions {
             if let &(Action::Row(id, row) | Action::Double(id, row)) = action
@@ -53,14 +53,14 @@ impl App<'_> {
                                 effect,
                                 ui,
                                 self.renderer.vfs(),
-                                &mut self.scenario_lines,
+                                &mut self.lines.scenario,
                             );
                         }
                     }
                 }
             }
         }
-        for line in self.scenario_lines.drain(..) {
+        for line in self.lines.scenario.drain(..) {
             self.sim.note(line);
         }
     }
@@ -86,7 +86,7 @@ impl App<'_> {
         let (gui, cat, log) = (
             scenario.gui(),
             self.renderer.catalogue(),
-            &mut self.scenario_lines,
+            &mut self.lines.scenario,
         );
         for deed in deeds {
             let popup = match deed {
@@ -141,8 +141,11 @@ impl App<'_> {
                     None
                 }
                 Deed::Remove { by, id, popup } => {
-                    let (carry, selected, pending) =
-                        (&mut game.carry, &mut game.selected, &mut game.pending);
+                    let (carry, selected, pending) = (
+                        &mut game.carry,
+                        &mut game.selected,
+                        &mut game.placing.pending,
+                    );
                     let held = &mut game.held;
                     let n = scenario::remove(&mut game.world, cat, by, id, |gone| {
                         // The map view lets it go: its move is cancelled, it is no longer

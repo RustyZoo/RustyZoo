@@ -13,10 +13,8 @@ impl App<'_> {
     /// plays the refusal sound and shows its message (`tool message N`, or `tool refused`
     /// without one).
     pub(super) fn adopt(&mut self) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
-        let Some(p) = game.pending.clone() else {
+        playing!(self, game, ui);
+        let Some(p) = game.placing.pending.clone() else {
             return;
         };
         let renderer = &self.renderer;
@@ -49,7 +47,7 @@ impl App<'_> {
                     .map(|c| c.name.clone())
                     .unwrap_or_default();
                 // The hired unit is the pending staff member, with the counters it drew.
-                let made = game.made.take_if(|m| m.0 == p.ty);
+                let made = game.placing.made.take_if(|m| m.0 == p.ty);
                 if let (Some((_, made)), Some(at)) = (&made, game.world.find(id)) {
                     let c = game.world.zoo.entities[at].common.as_mut();
                     c.expect("placed").colors.clone_from(&made.colours);
@@ -58,7 +56,7 @@ impl App<'_> {
                     unit.part = crate::unit::Part::Staff(made);
                     unit.started = true;
                 }
-                self.world_lines.push(format!(
+                self.lines.world.push(format!(
                     "add {}/{}/{} {},{} id {id} name={name}",
                     ty.class,
                     String::from_utf8_lossy(&ty.type_name),
@@ -78,14 +76,14 @@ impl App<'_> {
                     if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
                         game.build.set_hire(self.sim.hire_male);
                         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-                        game.build.rehire(ui, vfs, cat, &mut self.tool_lines);
+                        game.build.rehire(ui, vfs, cat, &mut self.lines.tool);
                     }
                     self.make_pending();
                 }
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                super::carry::refusal(ui, &mut self.tool_lines, message);
+                super::carry::refusal(ui, &mut self.lines.tool, message);
             }
         }
         self.aim(false);

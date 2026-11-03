@@ -1359,6 +1359,7 @@ fn the_pending_object_follows_the_pointer_with_its_cost_and_is_staged_when_it_ch
         app.game
             .as_ref()
             .unwrap()
+            .placing
             .pending
             .as_ref()
             .map(|p| p.facing)
@@ -1418,6 +1419,7 @@ fn a_release_places_the_object_pays_for_it_and_makes_a_new_pending_object() {
         app.game
             .as_ref()
             .unwrap()
+            .placing
             .pending
             .as_ref()
             .map(|p| p.facing)

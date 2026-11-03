@@ -135,9 +135,7 @@ impl App<'_> {
     /// available, the building upgrades and the changes of the types are laid, as for a program
     /// the step completed. With `progress` the progress is also set to the cost.
     pub(super) fn force_research(&mut self, progress: bool) {
-        let Some(game) = &mut self.game else {
-            return;
-        };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let (forced, life) = self
             .sim
@@ -148,9 +146,7 @@ impl App<'_> {
     /// The research cheat of one category (cheats 5): every program of the categories with this
     /// name id is completed with no dialog, no progress and no current program changed.
     pub(super) fn complete_category(&mut self, name: i32) {
-        let Some(game) = &mut self.game else {
-            return;
-        };
+        playing!(self, game);
         let cat = self.renderer.catalogue();
         let (done, life) = self
             .sim
@@ -162,9 +158,7 @@ impl App<'_> {
     /// life counters follow the changed types, the targets become available and the building
     /// upgrades are added; the open lists and panels follow.
     fn research_laid(&mut self, done: &[Done], life: &[Life]) {
-        let Some(game) = &mut self.game else {
-            return;
-        };
+        playing!(self, game);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         crate::animal::lengthen(&mut game.world, life);
         let mut flags = Vec::new();
@@ -202,11 +196,9 @@ impl App<'_> {
     /// A row of the expansion selector was chosen (entity types 10.2): the purchase list is made
     /// again and the research panel follows (research 8.3).
     pub(super) fn expansion_row(&mut self, row: i32) {
-        let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
-            return;
-        };
+        playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
-        game.build.pick_row(ui, vfs, cat, row, &mut self.tool_lines);
+        game.build.pick_row(ui, vfs, cat, row, &mut self.lines.tool);
         game.research.clock.force = true;
     }
 
