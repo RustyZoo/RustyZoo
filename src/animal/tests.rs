@@ -53,7 +53,6 @@ fn in_exhibit() -> Env {
         adults: 3,
         all_adults: 3,
         unhappy: 0,
-        sick: 0,
     };
     Env {
         exhibit: true,
@@ -1502,13 +1501,8 @@ fn the_social_counts_take_in_the_amphibious_neighbours() {
 }
 
 #[test]
-fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_around_it() {
+fn the_census_counts_species_in_the_exhibit_and_adults_around_it() {
     let mut world = pens();
-    // 510 belongs to the other pen; make 500 very unhappy.
-    let Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part else {
-        panic!("not an animal");
-    };
-    a.very_unhappy = true;
     let ids: Vec<u32> = world.exhibits().list().iter().map(|e| e.id).collect();
     // The census reads the stored lists, which a recomputation fills.
     let cat = zebras();
@@ -1523,15 +1517,11 @@ fn the_census_counts_species_and_unhappy_animals_in_the_exhibit_and_adults_aroun
             species: 2,
             adults: 2,
             all_adults: 2,
-            unhappy: 1,
-            sick: 0
+            unhappy: 0,
         }
     );
     let both = census(&world, ids[0], &ids, "zebra");
-    assert_eq!(
-        (both.species, both.adults, both.all_adults, both.unhappy),
-        (2, 4, 4, 1)
-    );
+    assert_eq!((both.species, both.adults, both.all_adults), (2, 4, 4));
     assert_eq!(census(&world, ids[0], &ids, "lion").adults, 0);
 }
 
@@ -2333,6 +2323,77 @@ fn the_walk_to_keeper_food_ends_on_the_pile_or_on_a_neighbour_where_the_animal_e
     );
 }
 
+/// The path of zebra 500 and the target of its walk to the pile at tile (3, 2) when the walk
+/// starts, with the extra zebra keys `keys`, for each seed from 1 to 39.
+fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
+    use crate::sim::drive::{Command, Run};
+    let mut found = vec![];
+    for seed in 1..40 {
+        let mut run = Run::new(
+            (b"", b""),
+            (feeding_of(keys), Class::default()),
+            pens(),
+            Default::default(),
+            seed,
+        );
+        let data = Eats::new();
+        step_log(&mut run, &data);
+        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        for _ in 0..40 * 15 {
+            let log = step_log(&mut run, &data);
+            if log.iter().any(|l| l == "unit set 500 bFindKeeperFood") {
+                let unit = run.world.units.get(500).unwrap();
+                let target = unit.goal.record.target.tile.unwrap();
+                found.push((unit.path.clone(), target));
+                break;
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn a_keep_moving_animal_goes_on_over_the_pile_and_one_step_past_it() {
+    let width = usize::try_from(SIZE).unwrap();
+    let pile = 2 * width + 3;
+    let mut beside = 0;
+    for (path, target) in walks_to_the_pile("cKeepMoving=1\n") {
+        if target == pile {
+            assert_eq!(path.last(), Some(&pile), "straight onto the pile");
+            continue;
+        }
+        beside += 1;
+        // The goal's target stays the neighbour; the path goes over the pile to the tile past it.
+        let past = 2 * pile - target;
+        let n = path.len();
+        assert_eq!(path[n - 3..], [target, pile, past], "{path:?}");
+    }
+    assert!(beside > 0);
+}
+
+#[test]
+fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
+    let width = usize::try_from(SIZE).unwrap();
+    let pile = 2 * width + 3;
+    for keys in ["", "cKeepMoving=0\n", "cKeepMoving=-1\n", "cKeepMoving=2\n"] {
+        let walks = walks_to_the_pile(keys);
+        assert!(walks.iter().any(|&(_, target)| target != pile), "{keys}");
+        for (path, target) in walks {
+            assert_eq!(path.last(), Some(&target), "{keys}: {path:?}");
+        }
+    }
+    let huge = format!("cKeepMoving={}\n", i32::MAX);
+    assert!(
+        walks_to_the_pile(&huge)
+            .iter()
+            .all(|(p, t)| p.last() == Some(t))
+    );
+}
+
 #[test]
 fn the_bite_that_empties_a_pile_stops_every_animal_that_aims_at_it_at_once() {
     use crate::sim::drive::{Command, Run};
@@ -2945,4 +3006,95 @@ fn a_free_life_program_changes_the_animals_the_map_placed() {
     assert_eq!(changes.len(), 1, "only the free program is complete");
     lengthen(&mut world, &changes);
     assert_eq!(life(&world), 6250);
+}
+
+/// A rated pen under the zebra 500, then `edit` the animals' state without marking anything dirty.
+fn rated(edit: impl FnOnce(&mut Animal)) -> (World, Catalogue, u32, usize) {
+    let (mut world, cat) = (pens(), feeding());
+    let x = world.exhibits().list()[0].id;
+    crate::exhibit::rating::refresh(&mut world, &cat, x, &mut || 0);
+    let Part::Animal(a) = &mut world.units.get_mut(501).unwrap().part else {
+        panic!("not an animal");
+    };
+    edit(a);
+    let at = world.find(500).unwrap();
+    (world, cat, x, at)
+}
+
+/// What the check `read` of the animal 500 reads of exhibit `x` after the edit.
+fn read_of(world: &mut World, cat: &Catalogue, (read, x, at): (Read, u32, usize)) -> Env {
+    let (a, meal, mut env) = (animal(), Meal::default(), in_exhibit());
+    let mut rng = Rng::default();
+    read_exhibit(
+        world,
+        cat,
+        (read, x, at),
+        (&a, &meal, "zebra"),
+        &mut env,
+        &mut rng,
+    );
+    env
+}
+
+#[test]
+fn the_health_check_counts_the_sick_animals_of_the_last_rating_pass() {
+    let (mut world, cat, x, at) = rated(|a| a.at_minimum_health = true);
+    let read = (Read::Sick, x, at);
+    // Falling ill marks nothing dirty: the pass has not seen it yet (animals needs 9 point 5).
+    assert_eq!(read_of(&mut world, &cat, read).sick_near, 0);
+    world.exhibits_mut().get_mut(x).unwrap().rating.dirty = true;
+    assert_eq!(read_of(&mut world, &cat, read).sick_near, 1);
+}
+
+#[test]
+fn the_other_check_counts_the_very_unhappy_animals_of_the_last_rating_pass() {
+    let (mut world, cat, x, at) = rated(|a| a.very_unhappy = true);
+    let read = (Read::Exhibit, x, at);
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 0);
+    world.exhibits_mut().get_mut(x).unwrap().rating.dirty = true;
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 1);
+}
+
+#[test]
+fn the_other_check_counts_the_amphibious_neighbours() {
+    let (mut world, cat, x, at) = rated(|_| ());
+    let next = world.exhibits().list()[1].id;
+    crate::exhibit::rating::refresh(&mut world, &cat, next, &mut || 0);
+    world.exhibits_mut().get_mut(x).unwrap().amphibious = vec![next];
+    let Part::Animal(a) = &mut world.units.get_mut(511).unwrap().part else {
+        panic!("not an animal");
+    };
+    a.very_unhappy = true;
+    let read = (Read::Exhibit, x, at);
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 0);
+    world.exhibits_mut().get_mut(next).unwrap().rating.dirty = true;
+    assert_eq!(read_of(&mut world, &cat, read).census.unhappy, 1);
+}
+
+#[test]
+fn the_hunger_check_counts_the_food_of_the_last_rating_pass() {
+    use crate::sim::drive::{Command, Run};
+    let mut run = Run::new(
+        (b"", b""),
+        (feeding(), Class::default()),
+        pens(),
+        Default::default(),
+        1,
+    );
+    assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+    let (x, at) = (
+        run.world.exhibits().list()[0].id,
+        run.world.find(500).unwrap(),
+    );
+    let read = (Read::Food, x, at);
+    assert_eq!(read_of(&mut run.world, &run.cat, read).food_total, 45);
+    // A pile that shrinks without marking the exhibit is still counted whole.
+    let pile = (run.world.zoo.entities.iter_mut())
+        .find(|e| e.class == "food")
+        .and_then(|e| e.common.as_mut())
+        .unwrap();
+    pile.food = 5;
+    assert_eq!(read_of(&mut run.world, &run.cat, read).food_total, 45);
+    run.world.exhibits_mut().get_mut(x).unwrap().rating.dirty = true;
+    assert_eq!(read_of(&mut run.world, &run.cat, read).food_total, 5);
 }

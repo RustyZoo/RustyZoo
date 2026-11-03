@@ -109,6 +109,7 @@ pub fn load(world: &mut World, now: u32) {
         let flag = block.pending_flag != 0;
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
+        let cost = block.w4;
         let task = u8::try_from(block.target.goal).ok();
         let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
         let here = tile
@@ -119,6 +120,10 @@ pub fn load(world: &mut World, now: u32) {
         let present = here.is_some_and(|t| building_on(world, t));
         if let Some(unit) = world.units.get_mut(id) {
             (unit.frightened, unit.predator) = fright;
+            // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
+            if unit.kind == crate::unit::Kind::Guest {
+                unit.mover.word = Some(cost);
+            }
         }
         if inside && present {
             continue;
@@ -166,6 +171,7 @@ mod tests {
             let mut block = UnitBlock::default();
             (block.target.goal, block.target.active) = (task, held[i]);
             block.building = tile;
+            block.w4 = 3;
             block.behaviour.levels[0] = Level {
                 name: "bWalk".into(),
                 list_b: vec!["fWalk(0,0)".into(), "fPlay(a)".into()],
@@ -189,6 +195,16 @@ mod tests {
             let r = &w.units.get(id).unwrap().runner;
             assert_eq!(r.top(), Some("bWalk"), "{id}");
         }
+    }
+
+    #[test]
+    fn a_loaded_guest_runs_with_its_saved_non_path_cost() {
+        let w = loaded([-1; 4], [-1, -1], [1, 0, 0, 0]);
+        let words: Vec<_> = (1..=4)
+            .map(|id| w.units.get(id).unwrap().mover.word)
+            .collect();
+        assert_eq!(words, [Some(3), None, None, Some(3)]);
+        assert_eq!(w.units.get(1).unwrap().mover.cost_word(), 3);
     }
 
     #[test]
