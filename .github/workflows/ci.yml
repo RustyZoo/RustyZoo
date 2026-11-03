@@ -111,6 +111,10 @@ jobs:
       # The two documents merge as a union, so a row or bullet can end up twice.
       - if: runner.os == 'Linux'
         run: ci/check-doc-rows.sh
+
+      # No source file over 1000 lines grows (ci/file-size-allow.txt lists today's).
+      - if: runner.os == 'Linux'
+        run: ci/check-file-size.sh
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test

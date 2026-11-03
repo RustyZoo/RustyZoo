@@ -11,6 +11,7 @@ use std::collections::HashMap;
 mod avoid;
 mod capture;
 mod contagion;
+mod dropped;
 mod shelter;
 mod surface;
 
@@ -687,6 +688,21 @@ fn the_wander_is_done_on_the_target_tile_with_fewer_than_two_calls_left() {
         cx.set_task(RANDOM, 1, 0, Some(tile(6, 5)));
         cx.check_done();
         assert!(!cx.record().done && cx.record().target.tile == Some(tile(6, 5)));
+    });
+}
+
+#[test]
+fn a_held_unit_starts_no_walk_even_forced() {
+    let data = Sets::new(&[("bWalk", &["fKeepControl()"])]);
+    let mut w = map("animals");
+    let mut rng = Rng::default();
+    with_data(&mut w, &mut rng, &data, |cx| {
+        assert!(cx.path_to(tile(7, 5), false));
+        cx.unit.held = true;
+        assert!(!cx.start_walk(false, false, true));
+        assert!(!cx.record().target.is_set());
+        cx.unit.held = false;
+        assert!(cx.start_walk(false, false, true));
     });
 }
 

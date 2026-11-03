@@ -48,7 +48,7 @@ impl<'c> Cx<'_, 'c> {
     }
 
     /// The exhibit under the keeper; none on the zoo grounds.
-    fn exhibit(&self) -> Option<u32> {
+    pub(super) fn exhibit(&self) -> Option<u32> {
         food::exhibit_of(self.world, self.tile()?)
     }
 
@@ -145,10 +145,10 @@ impl<'c> Cx<'_, 'c> {
         }
         if let Some(a) = self.world.units.get_mut(id) {
             if on {
-                (a.destination, a.wait) = (None, i32::MAX);
+                (a.destination, a.held) = (None, true);
                 movement::stop(a);
             } else {
-                a.wait = 0;
+                a.held = false;
             }
         }
     }

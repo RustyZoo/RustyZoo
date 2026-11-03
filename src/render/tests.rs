@@ -932,7 +932,7 @@ fn marker_install(name: &str, marker: u16) -> Install {
         ),
         (
             "animals/Lion/lion.pal".into(),
-            palette_file(&[[255, 0, 255], [1, 2, 3]]),
+            palette_file(&[[255, 0, 255], [200, 100, 50]]),
         ),
     ];
     for name in ["small", "mid", "big", "huge"] {
@@ -1348,6 +1348,30 @@ fn the_faces_offset_is_in_pixels_of_the_zoom() {
         let [unit, face] = [0, 1].map(|i| staged.own[i].0.anchor(0, zoom, level));
         assert_eq!((unit.0, unit.1 - face.1), (face.0, 20), "zoom {zoom}");
     }
+}
+
+#[test]
+fn a_raised_face_is_drawn_when_its_lifted_box_meets_the_window() {
+    let install = marker_install("render-faces-cull", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let extra = Extra {
+        faces: vec![(1, true, 0)],
+        ..Extra::default()
+    };
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&tile_with(&[("guests", "mid", "")]), 0, false, &extra)
+        .unwrap();
+    let (face, b) = &staged.own[1];
+    assert_eq!(face.lift, 20);
+    // The frame is one pixel at the anchor, which is already raised.
+    let (x, y) = (b[0] as i32, face.anchor(0, 0, Zoom::Normal).1 as i32);
+    // A window of that row, far above where the unraised face would be.
+    let (mut window, mut whole) = (Framebuffer::new(1, 1), Framebuffer::new(1, 41));
+    staged.draw(&mut window, x, y, 0, false);
+    staged.draw(&mut whole, x, y, 0, false);
+    assert!(window.pixels.chunks(4).any(|p| p != [0, 0, 0, 255]));
+    assert!(window.pixels == whole.pixels[..window.pixels.len()]);
 }
 
 /// A small deterministic pseudo-random sequence.

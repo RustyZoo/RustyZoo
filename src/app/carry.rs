@@ -61,6 +61,13 @@ impl App<'_> {
         if let Some(carry) = place::unit::pick_up(&mut game.world, cat, id, game.camera.rotation) {
             // A tour guide picked up lets its group go at once (tour guide 12.1).
             crate::goal::release_group(&mut game.world, cat, &mut self.sim.rng, id);
+            // The unit stops its goal (8.2 point 3).
+            let data = Library {
+                catalogue: cat,
+                vfs: self.renderer.vfs(),
+                timings: &self.timings,
+            };
+            crate::goal::picked_up(&mut game.world, cat, &mut self.sim.rng, &data, id);
             game.selected = None;
             game.carry = Some(carry);
             self.world_lines.push(format!("carry {id}"));
@@ -72,32 +79,57 @@ impl App<'_> {
     /// Plays the sound the entity's type names with `key` in its `[Sounds]` section (a selection
     /// asks for `placesound`, a pick-up for `pickupsound`, unit placing 8.1, 8.2), as a plain
     /// one-shot. A type without it, an egg and a building (none shipped has one) are silent.
-    pub(super) fn type_sound(&mut self, id: u32, key: &str) {
-        let Some(game) = &self.game else { return };
+    /// Whether a sound was asked for.
+    pub(super) fn type_sound(&mut self, id: u32, key: &str) -> bool {
+        let Some(game) = &self.game else {
+            return false;
+        };
         let world = &game.world;
         let egg = world
             .units
             .get(id)
             .is_some_and(|u| matches!(&u.part, UnitPart::Animal(a) if a.egg));
         let Some(at) = world.find(id).filter(|_| !egg) else {
-            return;
+            return false;
         };
         let data = Library {
             catalogue: self.renderer.catalogue(),
             vfs: self.renderer.vfs(),
             timings: &self.timings,
         };
-        if let Some(heard) = data.sound(&world.zoo.entities[at], key) {
-            self.type_sounds.push(UnitSound {
-                id,
-                file: heard.file,
-                voice: heard.voice,
-                base: heard.base,
-                at: (0, 0),
-                distance: 0,
-                pan: 0,
-            });
+        let Some(heard) = data.sound(&world.zoo.entities[at], key) else {
+            return false;
+        };
+        self.type_sounds.push(UnitSound {
+            id,
+            file: heard.file,
+            voice: heard.voice,
+            base: heard.base,
+            at: (0, 0),
+            distance: 0,
+            pan: 0,
+        });
+        true
+    }
+
+    /// The sound of a unit put down (8.4 point 5): its type's `placesound`, else `place.wav`
+    /// (an egg has none).
+    fn drop_sound(&mut self, id: u32) {
+        if !self.type_sound(id, "placesound") {
+            self.ui_sounds.push("place");
         }
+    }
+
+    /// The drop rule of the unit `id` put down (8.5).
+    fn drop_rule(&mut self, id: u32) {
+        let Some(game) = &mut self.game else { return };
+        let cat = self.renderer.catalogue();
+        let data = Library {
+            catalogue: cat,
+            vfs: self.renderer.vfs(),
+            timings: &self.timings,
+        };
+        crate::goal::dropped(&mut game.world, cat, &mut self.sim.rng, &data, id);
     }
 
     /// Picks the building up (unit placing 8.7, guest buildings 11.1): its users are pushed out,
@@ -159,7 +191,7 @@ impl App<'_> {
             let tile = game.world.tile_index(p.tile.0, p.tile.1);
             let rand = &mut || self.sim.rng.rand();
             let before = rating::entity(&mut game.world, cat, tile, true, rand);
-            crate::building::set_down(&mut game.world, held, (p.x, p.y, p.z), p.facing);
+            crate::building::set_down(&mut game.world, ty, held, (p.x, p.y, p.z), p.facing);
             crate::show::added(&mut game.world, cat, carry.id);
             let (habitat, name) = rating::object(ty);
             let change = rating::Change::Object {
@@ -191,7 +223,8 @@ impl App<'_> {
             game.selected = Some(carry.id);
             let line = Self::landing("drop", &game.world, ty, carry.id, p.tile);
             self.world_lines.push(line);
-            self.ui_sounds.push("place");
+            self.drop_rule(carry.id);
+            self.drop_sound(carry.id);
         }
         self.aim(false);
     }
@@ -205,7 +238,7 @@ impl App<'_> {
         };
         let ty = &self.renderer.catalogue().types[carry.ty];
         if let Some(held) = game.held.take() {
-            crate::building::set_down(&mut game.world, held, carry.from, carry.facing);
+            crate::building::set_down(&mut game.world, ty, held, carry.from, carry.facing);
             crate::show::added(&mut game.world, self.renderer.catalogue(), carry.id);
             game.selected = Some(carry.id);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
@@ -218,6 +251,7 @@ impl App<'_> {
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
             self.world_lines.push(line);
+            self.drop_rule(carry.id);
         }
         self.aim(false);
     }

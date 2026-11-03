@@ -106,7 +106,7 @@ pub fn load(world: &mut World, now: u32) {
         };
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
         let (way, pending) = (saved_way(world, block), block.pending.clone());
-        let flag = block.pending_flag != 0;
+        let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
         let cost = block.w4;
@@ -118,7 +118,9 @@ pub fn load(world: &mut World, now: u32) {
             .then(|| world.tile_index(tile[0], tile[1]))
             .flatten();
         let present = here.is_some_and(|t| building_on(world, t));
+        // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
+            unit.held = held;
             (unit.frightened, unit.predator) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
             if unit.kind == crate::unit::Kind::Guest {

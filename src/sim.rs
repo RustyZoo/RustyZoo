@@ -140,6 +140,8 @@ pub struct Report {
     pub water_moved: bool,
     /// The bars of the status bar are to be written: animal happiness, guest happiness, rating.
     pub bars: Option<[i32; 3]>,
+    /// A guest was created this step: the date hooks run (cheats 6).
+    pub arrived: bool,
 }
 
 /// The managers' state: the clocks, the generator and the event queue of one program run.
@@ -182,6 +184,7 @@ pub struct Sim {
     research: Option<Tree>,
     /// The programs the research step completed, for the caller to apply.
     research_done: Vec<Done>,
+    arrived: bool,
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -214,6 +217,7 @@ impl Sim {
             scenario: None,
             research: None,
             research_done: Vec::new(),
+            arrived: false,
             hire_male: false,
         };
         sim.reseed();
@@ -545,6 +549,8 @@ impl Sim {
         crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
         crate::building::users::seat_loaded(world, cat, &mut self.rng);
+        // The dead state is decided with no user put out: a zoo file is being loaded.
+        crate::building::dead::decide_all(world, cat);
     }
 
     /// The clocks, the status and the event queue a file stores (the inverse of
@@ -749,6 +755,7 @@ impl Sim {
             let mut state = std::mem::take(&mut world.exhibits_mut().list_mut()[at].rating);
             let rand = &mut || self.rng.rand();
             let rated = state.update(step, rand, || rating::input(world, cat, id));
+            world.units.cheat.lions_tigers_bears |= state.trio;
             let shown: Vec<String> = (state.records.iter())
                 .filter(|_| rated)
                 .map(|r| format!(" {} {}", r.key, r.shown()))
@@ -780,6 +787,8 @@ impl Sim {
             }
         }
         let water_moved = world.step_water();
+        // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
+        crate::building::dead::wet_changed(world, cat);
         world.decay_water(step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
@@ -806,6 +815,7 @@ impl Sim {
             self.research_done.extend(done);
         }
         Report {
+            arrived: std::mem::take(&mut self.arrived),
             month_end,
             clear_unreachable,
             water_moved,
@@ -847,8 +857,11 @@ impl Sim {
                     date: self.calendar.date(),
                     reset: self.ai.guest_reset_interval,
                 };
-                if guest::arrive(world, cat, &mut self.rng, money, &arrival) && advice {
-                    self.status.advise(&mut self.messages, &mut self.lines);
+                if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
+                    self.arrived = true;
+                    if advice {
+                        self.status.advise(&mut self.messages, &mut self.lines);
+                    }
                 }
             }
         }

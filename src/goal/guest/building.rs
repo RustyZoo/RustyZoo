@@ -60,7 +60,7 @@ impl Cx<'_, '_> {
     }
 
     /// The type of the unit, which the slots of a building test (guest buildings 6.1 point 7).
-    fn species(&self) -> Option<building::Species> {
+    pub(in crate::goal) fn species(&self) -> Option<building::Species> {
         let e = self.world.zoo.entities.get(self.at)?;
         let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
         building::Species::of(self.ctx.cat, e, egg)

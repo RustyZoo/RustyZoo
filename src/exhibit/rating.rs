@@ -436,13 +436,16 @@ pub type Rand<'a> = &'a mut dyn FnMut() -> u32;
 pub fn refresh(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     if world.exhibits().get(x).is_some_and(|e| e.rating.dirty) {
         let input = input(world, cat, x);
+        let mut trio = false;
         if let Some(e) = world.exhibits_mut().get_mut(x) {
             // The species list is revised first when it must be (5.1 point 1).
             if e.rating.revise {
                 e.rating.revise_list(&input, rand);
+                trio = e.rating.trio;
             }
             e.rating.compute(&input);
         }
+        world.units.cheat.lions_tigers_bears |= trio;
         finish(world, cat, x, rand);
     }
 }
@@ -839,6 +842,7 @@ fn surrounding(input: &Input) -> Vec<&Likes> {
 /// Rates the exhibit for each species in it, in the order the species first appear, then for
 /// those of its amphibious neighbours (rules 5.1 to 5.6). The fields that depend on the animals'
 /// own state (happiness sums, hunger counts) are not part of the rating and not kept.
+#[allow(clippy::too_many_lines)] // #1045
 pub fn rate(input: &Input) -> Vec<Record> {
     let site = &input.site;
     let (tank, show) = (site.water.is_some(), site.water.is_some_and(|w| w.show));
@@ -1165,6 +1169,8 @@ pub struct State {
     pub animals: Vec<u32>,
     /// The species list: `key/subtype` of each type on the tiles, as last revised.
     pub types: Vec<String>,
+    /// The last revision found a lion, a tiger and a grizzly bear (9.1 point 4).
+    pub trio: bool,
     /// The tile (index into the exhibit's tile list) of each species' ambient sound.
     pub sounds: Vec<(String, usize)>,
     /// The sum of `cAttractiveness` of the animals.
@@ -1255,6 +1261,14 @@ impl State {
             }
         }
         self.types = now;
+        let has = |id| input.species.iter().any(|l| l.ids[0] == id);
+        self.trio = [
+            crate::cheat::LION,
+            crate::cheat::TIGER,
+            crate::cheat::GRIZZLY,
+        ]
+        .into_iter()
+        .all(has);
     }
 
     /// Computes the records and the attractiveness again; reading a part of a dirty exhibit
