@@ -48,7 +48,6 @@ pub mod checks;
 pub mod gawk;
 pub mod litter;
 pub mod mega;
-pub mod reaction;
 #[cfg(test)]
 mod tests;
 pub mod thought;
@@ -313,9 +312,6 @@ pub struct Guest {
     /// attraction or scenery object counts as seen (guests visit 3.2). A pick-up and a drop clear it; nothing
     /// sets it before M7. A loaded guest has it when the low 19 bits of its return word are not 0 (never `Some(0)`).
     pub returning: Option<i32>,
-    /// The set a return to a building plays (tank fauna 13.1); the drown goal picks its set by it
-    /// and writes it. Nothing else sets it before M7. Not saved.
-    pub return_set: Option<&'static str>,
 }
 
 /// The bits of the return word that hold the return building's name id (zoo format 6.12).

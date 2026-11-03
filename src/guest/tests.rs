@@ -1,8 +1,6 @@
 //! The creation of a guest, the arrival table and ten minutes at the entrance.
 
 use super::*;
-
-mod reaction;
 use crate::config::Config;
 use crate::sim::drive::{Command, Run};
 use crate::status::zoo::{Settings, Status};

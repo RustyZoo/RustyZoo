@@ -267,6 +267,12 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        // The show id is read only when its flag is exactly 1; a block that reads as the live
+        // value is left as it is (shows 26 point 2).
+        let stored = |f: (u8, u16)| if f.0 == 1 { f.1 } else { 0 };
+        if stored(block.flags[1]) != u.show {
+            block.flags[1] = (u8::from(u.show != 0), u.show);
+        }
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
         block.pending = u.runner.queued().unwrap_or_default().to_string();

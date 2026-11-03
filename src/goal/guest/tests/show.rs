@@ -4,13 +4,12 @@ use super::*;
 use crate::building;
 use crate::config::Config;
 use crate::entity::EntityType;
-use crate::guest::{BATHROOM, HUNGER, THIRST};
 use crate::zoo::{Show, ShowInfo};
 use std::sync::Arc;
 
 /// A grandstand of 12 seats that sits its users and charges the default price.
 const STAND: &str = "[Characteristics/Floats]\ncPriceFactor=2\n[Characteristics/Integers]\ncCommerce=1\n\
-    cCapacity=12\ncHungerChange=-5\ncThirstChange=-5\ncBathroomChange=5\ncUserStaysOutside=0\ncUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\n\
+    cCapacity=12\ncUserStaysOutside=0\ncUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\n\
     grandstand\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\n\
     exitpos=0\nexitpos=48\ncapacity=12\n";
 
@@ -207,34 +206,4 @@ fn a_full_grandstand_found_by_the_rung_makes_the_guest_think_crowded() {
     // With no path the guest thinks nothing, and with room it thinks nothing.
     assert!(rung(0, &NoData).1.2.is_empty());
     assert!(rung(11, &walks()).1.2.is_empty());
-}
-
-#[test]
-fn leaving_a_grandstand_makes_the_price_reaction_and_the_status_tick_takes_it_later() {
-    // The default price makes no reaction; an expensive or a cheap one thinks (guests 9.4).
-    for (factor, thought) in [(1.0, None), (100.0, Some(10073)), (0.0, Some(10072))] {
-        let (mut w, cat) = zoo(true);
-        let at = w.find(7).unwrap();
-        let kind = building::kind_of(&cat, &w.zoo.entities[at], w.units.prices.default).unwrap();
-        w.units.buildings.get_mut(&7).unwrap().price = factor * kind.price;
-        let mut unit = w.units.get(1).unwrap().clone();
-        let guest = w.find(1).unwrap();
-        building::leave::pay(&mut w, &cat, guest, &mut unit, 7, &kind);
-        let thoughts: Vec<_> = w.units.thoughts.of(1).iter().map(|t| t.text).collect();
-        assert_eq!(
-            thoughts,
-            thought.into_iter().collect::<Vec<_>>(),
-            "{factor}"
-        );
-        // The values wait for the status tick.
-        let Part::Guest(g) = &unit.part else { panic!() };
-        assert_eq!(g.values, Guest::default().values);
-        assert_eq!(g.pending[HAPPINESS] != 0, thought.is_some(), "{factor}");
-        // The grandstand's change record waits there too.
-        assert_eq!(
-            [g.pending[HUNGER], g.pending[THIRST], g.pending[BATHROOM]],
-            [-5, -5, 5],
-            "{factor}"
-        );
-    }
 }

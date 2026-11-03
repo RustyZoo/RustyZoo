@@ -24,8 +24,6 @@ use crate::zoo::Entity;
 mod animal;
 mod avoid;
 mod dropped;
-mod drown;
-mod entry;
 mod guest;
 mod recover;
 mod staff;
@@ -34,7 +32,6 @@ mod tests;
 
 pub use animal::{DRINK, KEEPER_FOOD, SURFACE};
 pub use dropped::{dropped, picked_up};
-pub use entry::{crowd, send, use_call};
 pub use guest::{IN_BUILDING, LEAVE};
 pub use staff::release_group;
 
@@ -260,8 +257,6 @@ pub enum Goal {
     Avoid,
     /// The recover task (131) of a guest: climb out of the water (tank fauna 13).
     Recover,
-    /// The drown task (132): a man drowns, a woman or a child is put back on land (tank fauna 13.1).
-    Drown,
 }
 
 impl Goal {
@@ -299,7 +294,6 @@ impl Goal {
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             (SICK, Kind::Guest) => Some(Goal::Sick),
             (RECOVER, Kind::Guest) => Some(Goal::Recover),
-            (DROWN, _) => Some(Goal::Drown),
             (AVOID, Kind::Animal) => None,
             (AVOID, _) => Some(Goal::Avoid),
             _ => None,
@@ -336,7 +330,6 @@ impl Goal {
             Goal::Sick => SICK,
             Goal::Avoid => AVOID,
             Goal::Recover => RECOVER,
-            Goal::Drown => DROWN,
         }
     }
 
@@ -354,7 +347,6 @@ impl Goal {
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
             Goal::Recover => cx.recover_init(),
-            Goal::Drown => cx.drown_init(),
             Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
             Goal::Leave => cx.leave_init(),
@@ -392,7 +384,6 @@ impl Goal {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Avoid => return cx.avoid_check_done(),
             Goal::Recover => return cx.recover_check_done(),
-            Goal::Drown => return cx.drown_check_done(),
             Goal::Gawk => return cx.gawk_check_done(),
             Goal::Scenery => return cx.scenery_check_done(),
             Goal::DoScenery => return cx.do_scenery_check_done(),
@@ -476,7 +467,6 @@ impl Goal {
             Goal::Sick => cx.sick_done(),
             Goal::Avoid => cx.avoid_exit(),
             Goal::Recover => cx.reset(),
-            Goal::Drown => cx.drown_complete(),
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
@@ -494,7 +484,7 @@ pub enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6 | 13..=15 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Keeper, 1..=6 | 13..=15 | 19..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             _ => Some(Sub::Base),
         }
@@ -697,6 +687,60 @@ pub fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32, saved: Option
         Part::Animal(a) => (a.building, a.slot) = (id, slot),
         _ => {}
     }
+}
+
+/// Tank fauna 5: the animal at position `at` is sent to tile `to`.
+pub fn send(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    to: usize,
+) {
+    Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    }
+    .send_to(to);
+}
+
+/// A use set reaches the building (guest buildings 6.4.1): `fEnterBuilding` when `enter`, else
+/// `fExitBuilding`.
+pub fn use_call(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    enter: bool,
+) {
+    let mut cx = Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    };
+    match enter {
+        true => cx.set_enters(),
+        false => cx.set_exits(),
+    }
+}
+
+/// A guide's status tick: the countdown of its gathering (tour guide 4).
+pub fn crowd(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    }
+    .crowd_check();
 }
 
 /// One unit's goal update (6.2), after its behaviour.
@@ -965,8 +1009,7 @@ impl Cx<'_, '_> {
 
     fn run_sub(&mut self) {
         if std::mem::take(&mut self.unit.goal.sub_stale) {
-            self.unit.goal.sub = None;
-            self.unit.goal.held.1 = None;
+            self.sub_dropped();
         }
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;

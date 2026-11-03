@@ -149,7 +149,7 @@ impl World {
             at: old.1,
             rotation: old.2,
         });
-        self.changed(None);
+        self.changed();
     }
 
     /// Builds a new piece of the type of the wall at position `wall` on side `d` of tile `t`, as a
@@ -188,7 +188,7 @@ impl World {
         self.zoo.entities.push(copy);
         self.shapes.push(self.shapes[wall]);
         self.record(Action::Copied { id });
-        self.changed(None);
+        self.changed();
         Some(id)
     }
 
@@ -387,7 +387,7 @@ impl World {
             .and_then(|at| self.zoo.entities[at].common.as_mut())
         {
             (c.x, c.y, c.z) = (x, y, z);
-            self.changed(None);
+            self.changed();
         }
     }
 

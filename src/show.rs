@@ -5,8 +5,8 @@
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
-//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience is
-//! `audience`: the search of a guest for a show and the price of a seat.
+//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The marine specialist
+//! is `keeper`. The audience is `audience`: the search of a guest for a show and the price of a seat.
 
 use crate::building::{kind_of, leave::push_out};
 use crate::config::{Config, to_float, to_int};
@@ -19,20 +19,24 @@ use crate::zoo::ShowInfo;
 
 mod audience;
 mod cycle;
+mod keeper;
 mod performer;
 mod relay;
 pub mod trick;
 mod units;
 
 pub use audience::{find, pay};
+pub use keeper::{cue, needs_keeper, rejoin, removed};
 pub use relay::{listen_grandstand, listen_world};
-pub use units::{Move, counted, settle};
+pub use units::{Move, counted, join, leave, settle};
 
-/// The type id of the marine specialist, who conducts a show (shows 3.2).
+/// The type id of the marine specialist, who conducts a show (shows 3.2), and the job he does
+/// while it lasts (shows 22.1).
 const KEEPER: u32 = 9552;
+pub const CONDUCT: u8 = 19;
 
 /// The event types of a show (shows 6.1).
-pub(crate) mod event {
+mod event {
     pub const ANNOUNCE: u16 = 0x2711;
     pub const START_NOTE: u16 = 0x2712;
     pub const STARTED: u16 = 0x2713;

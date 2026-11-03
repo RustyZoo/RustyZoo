@@ -183,7 +183,8 @@ pub fn claimed(world: &World) -> Vec<usize> {
 /// Whether exhibit `x` needs the keeper (7.2), now being the AI clock: a tank a marine keeper and
 /// a land exhibit another one (point 1); in a tank the amphibious animals are the land keepers'
 /// (point 2, tank staff 5.2), no animal of a show tank is hungry for him, and water below
-/// `murkyWaterPurity` calls the marine keeper (point 4). The amphibious neighbours and the nested
+/// `murkyWaterPurity` calls the marine keeper (point 4), as does a show that needs him (point 5).
+/// The amphibious neighbours and the nested
 /// tanks wait for their issues.
 pub fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
     let Some(exhibit) = world.exhibits().get(x) else {
@@ -205,6 +206,9 @@ pub fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
         .tank
         .is_some_and(|t| t.level > 0 && i64::from(t.purity) < i64::from(murky))
     {
+        return true;
+    }
+    if crate::show::needs_keeper(world, x, who.name_id as u32) {
         return true;
     }
     let (now, serviced) = (world.units.ai_ticks, exhibit.rating.serviced as u32);

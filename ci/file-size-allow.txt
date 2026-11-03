@@ -2,7 +2,7 @@ src/animal.rs 1643
 src/build.rs 1464
 src/entity.rs 2037
 src/exhibit/rating.rs 1551
-src/goal.rs 1198
+src/goal.rs 1242
 src/place.rs 1068
 src/render.rs 2220
 src/sprite.rs 1979
@@ -13,5 +13,5 @@ src/ui/layout.rs 1006
 src/unit.rs 1211
 src/vfs.rs 1962
 src/world/exhibit.rs 1136
-src/world.rs 1537
+src/world.rs 1596
 src/zoo.rs 1245

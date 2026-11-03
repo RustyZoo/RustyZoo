@@ -355,6 +355,7 @@ pub fn remove(
         .and_then(|at| world.zoo.entities[at].common.as_mut()?.building.as_mut())
         .map(|b| std::mem::take(&mut b.members));
     let members = record.map_or_else(Vec::new, |m| m.into_iter().rev().collect());
+    crate::show::removed(world, cat, id);
     world.remove(id);
     // Hidden once the list has settled, and removed at the next pass.
     for m in members {

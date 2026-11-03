@@ -11,11 +11,13 @@ use crate::build::{cost, number};
 use crate::entity::EntityType;
 use crate::path::{self, MAX};
 use crate::place::bulldozer::type_of;
+use crate::show::CONDUCT;
 use crate::staff::{assign, service};
 use crate::unit::{Part, Staff, movement};
 use tank::{CLEAN_TANK, CLIMB_DOWN_INSIDE, is_tank_job};
 
 mod capture;
+mod conduct;
 mod guide;
 pub use guide::release_group;
 mod tank;
@@ -357,6 +359,9 @@ impl<'c> Cx<'_, 'c> {
         if self.staff().is_some_and(|s| s.duties_done) || self.record().job != 0 {
             return;
         }
+        if self.show_job(x, who.name_id as u32) {
+            return;
+        }
         let (tiles, animals) = self.lost();
         // The animal to feed and the heal count read the stored list, recomputed first (7.5, 7.6).
         let rng = &mut *self.ctx.rng;
@@ -450,6 +455,9 @@ impl<'c> Cx<'_, 'c> {
         if is_tank_job(job) {
             return self.tank_init(job);
         }
+        if job == CONDUCT {
+            return self.conduct_init();
+        }
         if !matches!(job, PUTTING_FOOD | HEALING | CLEANING) {
             return true;
         }
@@ -519,6 +527,7 @@ impl<'c> Cx<'_, 'c> {
         }
         let id = self.record().job_target.id;
         let done = match job {
+            CONDUCT => return self.conduct_check_done(),
             capture::CHASE => return self.chase_check_done(),
             capture::TRANQ => return self.dart_check_done(),
             capture::RETRIEVE => return self.retrieve_check_done(),
@@ -571,6 +580,7 @@ impl<'c> Cx<'_, 'c> {
             capture::CHASE => self.chase_complete(),
             capture::TRANQ => self.dart_complete(),
             capture::RETRIEVE => self.retrieve_complete(),
+            CONDUCT => self.set_job(0, 0, None),
             _ => self.raked(r.tile),
         }
     }

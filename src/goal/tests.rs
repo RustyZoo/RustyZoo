@@ -12,7 +12,6 @@ mod avoid;
 mod capture;
 mod contagion;
 mod dropped;
-mod drown;
 mod shelter;
 mod surface;
 

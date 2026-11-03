@@ -248,7 +248,7 @@ fn footprint(t: &EntityType, dir: u32, crated: bool) -> (i32, i32) {
 
 /// The units on the tiles `tiles`: their position in the list, position and the half sides of
 /// their blocking rectangle (placing 5.2).
-pub(crate) fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))> {
+fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))> {
     let mut found = Vec::new();
     for (i, e) in world.zoo.entities.iter().enumerate() {
         let (Some(c), Some(shape)) = (e.common.as_ref(), world.shape(i)) else {
