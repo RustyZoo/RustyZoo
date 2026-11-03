@@ -626,6 +626,10 @@ impl World {
             let (Some(a), Some(b)) = (value(&now, kept), value(&now, gone)) else {
                 continue;
             };
+            // A merged tank counts its animals again at its next rating (shows 20.1).
+            if let Some(e) = self.exhibits.get_mut(kept) {
+                e.rating.first = true;
+            }
             let gate = self.exhibits.get(kept).is_some_and(|e| e.gate.is_some());
             if gate {
                 self.merge_water(kept, a, b);

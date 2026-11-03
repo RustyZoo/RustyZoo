@@ -14,6 +14,7 @@
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
 #                         The checks fail when the game did not build it; they never skip for it
 #   #pending <check> N    leaves the check out until the issue N is fixed
+#   #unfed ID N           the animal ID is not required to eat: a known fault the original has too (issue N)
 #
 # Both logs must have the same state hashes (the `sim hash` line of each month change) and be the
 # same, byte for byte (the lines carry the units, guests, money, rating and the hash of every frame).
@@ -38,6 +39,12 @@ failed=0
 ok() { echo "ok: $name: $*"; }
 skip() { echo "skipped: $name: $*"; }
 fail() { echo "FAILED: $name: $*" >&2; failed=1; }
+# unfed <id>: whether the script lets the animal go without eating (it prints the line).
+unfed() {
+  issue=$(sed -n "s/^#unfed $1 \([0-9][0-9]*\).*/\1/p" "$script" | head -1)
+  [ -n "$issue" ] || return 1
+  echo "pending: $name: animal $1 may never eat, waits for issue $issue"
+}
 # pending <check>: whether the script leaves the check out (it prints the line).
 pending() {
   issue=$(sed -n "s/^#pending $1 \([0-9][0-9]*\).*/\1/p" "$script" | head -1)
@@ -205,7 +212,7 @@ n=$(echo "$animals" | wc -w | tr -d ' ')
 if [ "$n" = 0 ]; then
   fail "animals: none adopted"
 else
-  lost=0 early="" died="" hungry="" young=""
+  lost=0 early="" died="" hungry="" young="" excused=""
   end_ms=$(awk '$3 ~ /^t=/ { t = substr($3, 3) + 0 } END { print t + 0 }' "$tmp/log")
   for a in $animals; do
     # The time of the clock, in ms, at which the animal left the game, and 1 if a line `animal dying`
@@ -220,7 +227,7 @@ else
       # An animal added so late that it cannot be hungry before the run ends is not expected to have eaten.
       born=$(awk -v id="$a" '$4 == "unit" && $5 == "add" && $6 == id { print substr($3, 3) + 0; exit }' "$tmp/log")
       soon=$(first_hunger_ms "$(species "$a")")
-      if [ -n "$born" ] && [ -n "$soon" ] && [ $((born + soon)) -gt "$end_ms" ]; then young="$young $a"; else hungry="$hungry $a"; fi
+      if [ -n "$born" ] && [ -n "$soon" ] && [ $((born + soon)) -gt "$end_ms" ]; then young="$young $a"; elif unfed "$a"; then excused="$excused $a"; else hungry="$hungry $a"; fi
     fi
   done
   # The shortest life of the species of the data is 4320 s (cTimeDeath of a gazelle, a zebra, a walrus):
@@ -232,6 +239,7 @@ else
   if pending fed; then :
   elif [ -n "$hungry" ]; then fail "animals: never ate:$hungry"
   elif [ -n "$young" ]; then ok "animals: all $n fed, too young to eat:$young"
+  elif [ -n "$excused" ]; then ok "animals: all $n fed but$excused"
   else ok "animals: all $n fed"; fi
   # Happiness above the start value of the animal (its first status line; the species differ) at some
   # time of the run; the exhibit of the base trial has no raked dung (its keeper has no cDirt), so it

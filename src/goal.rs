@@ -427,7 +427,10 @@ impl Goal {
 
     fn complete(self, cx: &mut Cx) {
         match self {
-            Goal::Habitat => cx.set_task(GAWK, 0, 0, None),
+            Goal::Habitat => {
+                cx.cost_back();
+                cx.set_task(GAWK, 0, 0, None)
+            }
             Goal::KeeperFood => cx.keeper_food_complete(),
             Goal::Exhibit => cx.exhibit_complete(),
             Goal::Duties => cx.duties_complete(),
@@ -808,6 +811,12 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// The guest's non-path cost goes back to its type's, over a saved or emergency one
+    /// (pathfinding 6.5).
+    pub(in crate::goal) fn cost_back(&mut self) {
+        (self.unit.mover.emergency, self.unit.mover.word) = (false, None);
+    }
+
     /// 12.1: clears the record, empties the path, lowers the flags.
     pub fn reset(&mut self) {
         match self.unit.kind {
@@ -821,8 +830,7 @@ impl Cx<'_, '_> {
         self.unit.goal.wants_to_decide = false;
         // A guest's building target goes with it, and so does the eat-standing flag (guests 8).
         self.clear_target();
-        // A guest pays its own cost off the paths again (pathfinding 6.5).
-        self.unit.mover.emergency = false;
+        self.cost_back();
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
             // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
