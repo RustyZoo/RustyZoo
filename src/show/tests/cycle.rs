@@ -72,7 +72,23 @@ pub(super) fn staged(items: Vec<Item>) -> (World, Catalogue) {
     info.schedule = vec![SEAL];
     info.next = 90;
     info.records = vec![record(SEAL, 2000, &[21, 22]), record(KEEPER, 0, &[30])];
+    // Deep enough for the items of depth 1 and the like.
+    tank_mut(&mut w).tank = Some(show_tank(3));
     (w, cat)
+}
+
+/// A show tank with the water at `level`.
+pub(super) fn show_tank(level: u32) -> Tank {
+    Tank {
+        show: true,
+        height: 5,
+        level,
+        salt: false,
+        target: false,
+        purity: 100,
+        filled: true,
+        platform: (-1, -1),
+    }
 }
 
 /// The show tank.
@@ -567,17 +583,7 @@ fn a_running_show_is_aborted_when_the_tank_dries_the_animals_or_the_specialist_g
         let (mut w, cat, mut events) = started(vec![item(0, 3, 5)]);
         match case {
             0 => {
-                let tank = Tank {
-                    show: true,
-                    height: 5,
-                    level: 0,
-                    salt: false,
-                    target: false,
-                    purity: 100,
-                    filled: true,
-                    platform: (-1, -1),
-                };
-                tank_mut(&mut w).tank = Some(tank);
+                tank_mut(&mut w).tank = Some(show_tank(0));
             }
             1 => info_mut(&mut w).records[0].units.clear(),
             _ => info_mut(&mut w).records[1].units.clear(),
@@ -810,6 +816,8 @@ fn the_simulation_step_runs_the_show_manager_before_the_ai_clock_moves() {
 #[test]
 fn the_show_month_change_moves_the_figures_to_last_month_and_takes_the_upkeep_rate() {
     let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    // A whole step with a made-up tank walks its tiles: this world has none.
+    tank_mut(&mut w).tank = None;
     let info = info_mut(&mut w);
     let f = |x: f32| x.to_bits();
     (info.frequency, info.next) = (-1, -1);

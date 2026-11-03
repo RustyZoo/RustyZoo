@@ -5,6 +5,7 @@ mod call;
 mod cycle;
 mod performer;
 mod relay;
+mod validate;
 
 use super::*;
 use crate::building::Live;

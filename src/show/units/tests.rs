@@ -487,6 +487,17 @@ fn removing_an_animal_that_never_joined_makes_an_empty_record_and_a_land_animal_
 }
 
 #[test]
+fn the_animals_of_a_loaded_zoo_join_the_show_in_file_order_with_the_first_step() {
+    let (w, cat) = world(&[(41, "dolphin", (7, 3)), (40, "dolphin", (6, 3))]);
+    // The load places the entities in file order; the tiles would give 40 first.
+    let mut loaded = World::new(w.zoo.clone(), shape);
+    settle(&mut loaded, &cat);
+    assert_eq!(units(&loaded), [41, 40]);
+    // A species with no saved record gets its default script as it joins.
+    assert_eq!(loaded.zoo.shows.scripts.len(), 1);
+}
+
+#[test]
 fn a_loaded_world_starts_with_no_news_and_the_new_numbers_read_from_the_file() {
     let (w, _) = world(&[(40, "dolphin", (7, 3))]);
     assert!(w.units.show.admission == 0.0 && w.units.show.threshold == 5);
