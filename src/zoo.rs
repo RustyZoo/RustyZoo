@@ -36,6 +36,8 @@
 
 mod animal;
 mod body;
+mod habitat;
+use habitat::{HABITAT_MIN, habitat};
 pub(crate) mod fresh;
 #[cfg(test)]
 mod parity;
@@ -990,81 +992,6 @@ fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo>
 /// The bytes `r` has read since `from` was its data.
 fn taken(from: &[u8], r: &Reader) -> Vec<u8> {
     from[..from.len() - r.data.len()].to_vec()
-}
-
-/// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
-const HABITAT_MIN: usize = 76;
-
-type Habitat = (
-    (i32, i32),
-    ((i32, i32), i32),
-    Option<Tank>,
-    HabitatInfo,
-    usize,
-    (usize, usize),
-    (Option<ShowInfo>, Option<(usize, usize)>),
-);
-
-/// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
-/// values are where the record's statistics and its name start and end in them.
-fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
-    let v = r.v;
-    let tile = (r.i32()?, r.i32()?);
-    let name_at = size - r.data.len();
-    let name = latin1(r.string()?);
-    let name_to = size - r.data.len();
-    let gate = (r.i32()?, r.i32()?);
-    let side = r.i32()?;
-    let at = size - r.data.len();
-    let mut stats = [0; 9];
-    for s in &mut stats {
-        *s = r.u32()?;
-    }
-    let created = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
-    let viewing = u64::from(r.u32()?) | u64::from(r.u32()?) << 32;
-    let serviced = if v >= 83 { r.u32()? } else { 0 };
-    let info = HabitatInfo {
-        name,
-        stats,
-        created,
-        viewing,
-        serviced,
-    };
-    let is_tank = v >= 85 && r.u8()? != 0;
-    let show_from = size - r.data.len();
-    let has_show = v >= 90 && r.u8()? != 0;
-    let show = has_show.then(|| ShowInfo::read(r)).transpose()?;
-    let show_at = (v >= 90).then_some((show_from, size - r.data.len()));
-    let show = (show, show_at);
-    if !is_tank {
-        return Ok((tile, (gate, side), None, info, at, (name_at, name_to), show));
-    }
-    let (height, level) = (r.u32()?, r.u32()?);
-    if v >= 88 {
-        r.skip(1)?;
-    }
-    let (mut salt, mut purity) = (100, 100);
-    if v >= 100 {
-        salt = r.u32()?;
-        r.skip(4)?;
-        purity = r.u32()?;
-    }
-    Ok((
-        tile,
-        (gate, side),
-        Some(Tank {
-            tile,
-            gate,
-            height,
-            level,
-            salt: salt != 0,
-            purity,
-        }),
-        info,
-        at,
-        (name_at, name_to),
-        show,
-    ))
 }
 
 fn entity(r: &mut Reader) -> R<Entity> {

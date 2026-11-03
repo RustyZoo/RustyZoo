@@ -1,9 +1,9 @@
-src/animal.rs 1642
-src/app.rs 2892
+src/animal.rs 1643
+src/app.rs 2899
 src/build.rs 1464
 src/entity.rs 2037
-src/exhibit/rating.rs 1531
-src/goal.rs 1218
+src/exhibit/rating.rs 1551
+src/goal.rs 1242
 src/main.rs 2242
 src/place.rs 1068
 src/render.rs 2220
@@ -12,8 +12,8 @@ src/timing.rs 1092
 src/ui/draw.rs 1164
 src/ui/interface/widgets.rs 1010
 src/ui/layout.rs 1006
-src/unit.rs 1206
+src/unit.rs 1211
 src/vfs.rs 1962
-src/world/exhibit.rs 1122
-src/world.rs 1528
-src/zoo.rs 1295
+src/world/exhibit.rs 1136
+src/world.rs 1596
+src/zoo.rs 1245
