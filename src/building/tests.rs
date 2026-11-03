@@ -667,12 +667,8 @@ fn a_built_date_past_30827_is_the_start_of_the_calendar() {
 }
 
 #[test]
-fn a_building_without_a_record_or_a_guest_building_or_a_known_type_keeps_no_live_state() {
-    let w = loaded(&[
-        ("stand", 7, None),
-        ("compost", 8, Some(record(0, START))),
-        ("unknown", 9, Some(record(0, START))),
-    ]);
+fn a_building_without_a_record_or_a_known_type_keeps_no_live_state() {
+    let w = loaded(&[("stand", 7, None), ("unknown", 9, Some(record(0, START)))]);
     assert!(w.units.buildings.is_empty());
 }
 
@@ -1354,4 +1350,100 @@ fn a_building_made_in_play_is_saved_with_the_users_it_has_now() {
     // A huge count saturates, nothing wraps; no live state writes the record of a new one.
     assert_eq!(saved(vec![(1, 0, 0)], u32::MAX, true).1, u32::MAX);
     assert_eq!(saved(vec![(5, 1, 9)], 0, false), (Vec::new(), 0));
+}
+
+/// A live state with figures none of the stored records has.
+fn busy() -> Live {
+    Live {
+        users: vec![(5, 1, 9), (6, 0, 3)],
+        extra: 1,
+        price: 8.25,
+        fill: 17,
+        guests: [4, 6, 21],
+        income: [1.5, 2.5, 99.0],
+        upkeep: 40.0,
+        built: 86_400_000,
+        ..Live::default()
+    }
+}
+
+#[test]
+fn a_loaded_building_is_saved_with_its_live_users_and_figures() {
+    let cat = types();
+    let mut w = loaded(&[
+        ("stand", 7, Some(record(0, START))),
+        ("can", 8, Some(record(0, START))),
+    ]);
+    for id in [7, 8] {
+        w.zoo.entities[id as usize - 7].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+        w.units.buildings.insert(id, busy());
+    }
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let at = |i: usize| zoo.entities[i].common.as_ref().unwrap().building.clone();
+    let b = at(0).unwrap();
+    assert_eq!((b.users.clone(), b.users_now), (vec![(5, 1), (6, 0)], 3));
+    assert_eq!((b.guests, b.price), ([4, 6, 21], 8.25f32.to_bits()));
+    assert_eq!(b.income.map(f32::from_bits), [1.5, 2.5, 99.0]);
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(40.0));
+    assert_eq!(b.built, START + 86_400_000 * 10_000);
+    // Only a trash can has a live fill; the word of another type is the record's.
+    assert_eq!((b.fill, at(1).unwrap().fill), (0, 17));
+}
+
+#[test]
+fn a_building_made_in_play_is_saved_with_its_live_figures_and_its_own_date() {
+    let cat = types();
+    let mut w = loaded(&[("can", 7, None), ("compost", 8, None)]);
+    w.zoo.clocks.calendar = 86_400_000 * 40;
+    w.units.buildings.insert(7, busy());
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let b = zoo.entities[0].common.as_ref().unwrap().building.clone();
+    let b = b.unwrap();
+    assert_eq!(
+        (b.guests, b.price, b.fill),
+        ([4, 6, 21], 8.25f32.to_bits(), 17)
+    );
+    assert_eq!(b.income.map(f32::from_bits), [1.5, 2.5, 99.0]);
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(40.0));
+    // Built on day 1 of the game, not on the day of the save (day 40).
+    assert_eq!(b.built, START + 86_400_000 * 10_000);
+    // A building with no live state is a new one's record.
+    let c = zoo.entities[1].common.as_ref().unwrap().building.clone();
+    let c = c.unwrap();
+    assert_eq!((c.guests, c.fill, c.upkeep), ([0; 3], 0, Some(0)));
+    assert_eq!(c.built, START + 86_400_000 * 40 * 10_000);
+}
+
+#[test]
+fn a_compost_that_earned_is_saved_with_its_stored_figures_and_date() {
+    let cat = types();
+    let day = crate::timing::DAY_MS * 10_000;
+    let mut w = loaded(&[("compost", 8, Some(record(0, START + 7 * day)))]);
+    w.zoo.entities[0].common.as_mut().unwrap().raw = crate::zoo::Raw::read();
+    // Placed in play: a compost starts its figures with the placing date.
+    let mut placed = world_with((12, 4), |_| {});
+    built(
+        &mut placed,
+        &named("compost", COMPOST),
+        9,
+        3 * crate::timing::DAY_MS as i64,
+    );
+    assert_eq!(
+        placed.units.buildings[&9].built,
+        3 * crate::timing::DAY_MS as i64
+    );
+    crate::staff::chores::recycle(&mut w, &cat, 0, false);
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let b = zoo.entities[0].common.as_ref().unwrap().building.clone();
+    let b = b.unwrap();
+    // The stored price, date and figures, grown by the payment (price x factor 1).
+    assert_eq!(
+        (b.guests, b.price, b.built),
+        ([3, 2, 9], 5.5f32.to_bits(), START + 7 * day)
+    );
+    assert_eq!(b.upkeep.map(f32::from_bits), Some(75.0));
+    assert_eq!(b.income.map(f32::from_bits), [16.0, 20.0, 36.0]);
 }
