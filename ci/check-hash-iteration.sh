@@ -9,7 +9,7 @@ set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 # The simulation modules (files and folders under src/); tests are not simulation code.
 modules="sim sim.rs unit unit.rs behaviour behaviour.rs path path.rs exhibit exhibit.rs world world.rs
-  money money.rs entity.rs ground.rs terrain terrain.rs place place.rs status status.rs zoo zoo.rs"
+  money money.rs entity entity.rs ground.rs terrain terrain.rs place place.rs status status.rs zoo zoo.rs"
 files=()
 for m in $modules; do
   [ -e "src/$m" ] && files+=($(find "src/$m" -name '*.rs' ! -name 'tests.rs' ! -path '*/tests/*'))
