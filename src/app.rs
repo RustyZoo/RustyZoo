@@ -489,6 +489,9 @@ pub struct App<'a> {
     map: Framebuffer,
     /// The look of the map in `map` (`frame` without an interface); `None` before the first.
     painted: Option<Look>,
+    /// The rectangles of the map that a staging changed since it was painted for `painted`
+    /// (`Some` when there was a staging, even one that changed nothing in the window).
+    stale: Option<Vec<[i32; 4]>>,
     /// What the last pass did: the commands it applied and the timers it fired.
     applied: Vec<Command>,
     fired: Pass,
@@ -690,6 +693,7 @@ impl<'a> App<'a> {
             ui: None,
             map: Framebuffer::new(0, 0),
             painted: None,
+            stale: None,
             applied: Vec::new(),
             fired: IDLE,
             drew: false,
@@ -2377,7 +2381,8 @@ impl<'a> App<'a> {
     fn paint(&mut self) -> bool {
         let look = self.look();
         let moved = self.painted != look;
-        if !moved && !self.ui.as_ref().is_some_and(Interface::dirty) {
+        let stale = std::mem::take(&mut self.stale);
+        if !moved && stale.is_none() && !self.ui.as_ref().is_some_and(Interface::dirty) {
             return false;
         }
         // The one place that draws the map; the zoom of the camera applies here.
@@ -2385,14 +2390,21 @@ impl<'a> App<'a> {
             Some(_) => &mut self.map,
             None => &mut self.frame,
         };
-        if moved && let Some(game) = &self.game {
-            game.staged.draw(
-                target,
-                game.camera.scroll.0,
-                game.camera.scroll.1,
-                game.camera.zoom,
-                game.grid,
-            );
+        if let Some(game) = &self.game
+            && (moved || stale.is_some())
+        {
+            let (x, y) = game.camera.scroll;
+            match moved {
+                true => game.staged.draw(target, x, y, game.camera.zoom, game.grid),
+                false => game.staged.redraw(
+                    target,
+                    x,
+                    y,
+                    game.camera.zoom,
+                    game.grid,
+                    &stale.unwrap_or_default(),
+                ),
+            }
             self.painted = look;
         }
         if let Some(ui) = &mut self.ui {
@@ -2465,8 +2477,28 @@ impl<'a> App<'a> {
             .stage_with(&game.world.zoo, game.camera.rotation, false, &want)
         {
             Ok(staged) => {
-                game.staged = staged;
-                self.painted = None;
+                let old = std::mem::replace(&mut game.staged, staged);
+                // The map drawn for the old staging is mended where the new one differs.
+                let (x, y) = game.camera.scroll;
+                let size = (self.frame.width, self.frame.height);
+                let drawn = self.painted.is_some()
+                    && self.painted
+                        == Some((
+                            game.camera.scroll,
+                            game.camera.zoom,
+                            game.camera.rotation,
+                            game.grid,
+                        ));
+                let changes = drawn
+                    .then(|| {
+                        game.staged
+                            .changes(&old, size, (x, y), game.camera.zoom, game.grid)
+                    })
+                    .flatten();
+                match changes {
+                    Some(rects) => self.stale.get_or_insert_default().extend(rects),
+                    None => (self.painted, self.stale) = (None, None),
+                }
                 if dirty {
                     self.world_lines.push("stage".to_string());
                 }
@@ -2662,6 +2694,17 @@ impl<'a> App<'a> {
     /// A log, with the size of the window, is all a replay needs: the commands and the clock of
     /// each pass that did something (`run --replay`). A windowed run prints the same lines.
     pub fn log_lines(&self, pass: u64, now: u64) -> Vec<String> {
+        self.log_lines_with(pass, now, |frame| format!("{:016x}", frame_hash(frame)))
+    }
+
+    /// [`App::log_lines`] with the text of the frame hash given by `hash` (called once at most):
+    /// a caller that hashes in a thread puts a placeholder there.
+    pub fn log_lines_with(
+        &self,
+        pass: u64,
+        now: u64,
+        hash: impl FnOnce(&Framebuffer) -> String,
+    ) -> Vec<String> {
         let mut lines = Vec::new();
         let lead = format!("pass {pass} t={now}");
         lines.extend(self.applied.iter().map(|c| format!("{lead} {c}")));
@@ -2690,7 +2733,7 @@ impl<'a> App<'a> {
         lines.extend(self.dev_lines.iter().map(|e| format!("{lead} dev {e}")));
         if self.fired.draw {
             let hash = match self.drew {
-                true => format!("{:016x}", frame_hash(&self.frame)),
+                true => hash(&self.frame),
                 false => "-".into(),
             };
             lines.push(match self.drawn_at {
@@ -2751,6 +2794,31 @@ pub fn frame_hash(frame: &Framebuffer) -> u64 {
     frame.pixels.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &b| {
         (hash ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
     })
+}
+
+/// The FNV-1a hashes of up to four frames at once, each as [`frame_hash`] gives it: the four sums
+/// are independent, so the processor works on them side by side, about four times as fast as one
+/// after the other. Frames of different sizes are hashed one by one.
+pub fn frame_hashes(frames: &[&Framebuffer]) -> Vec<u64> {
+    let size = frames.first().map_or(0, |f| f.pixels.len());
+    if frames.len() > 4 || frames.iter().any(|f| f.pixels.len() != size) {
+        return frames.iter().map(|f| frame_hash(f)).collect();
+    }
+    // Missing lanes repeat the first frame.
+    let lane = |k: usize| {
+        frames
+            .get(k)
+            .or(frames.first())
+            .map_or(&[][..], |f| &f.pixels)
+    };
+    let data = [lane(0), lane(1), lane(2), lane(3)];
+    let mut hash = [0xcbf2_9ce4_8422_2325u64; 4];
+    for i in 0..size {
+        for (h, d) in hash.iter_mut().zip(data) {
+            *h = (*h ^ u64::from(d[i])).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    hash[..frames.len()].to_vec()
 }
 
 mod adopt;

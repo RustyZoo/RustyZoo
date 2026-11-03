@@ -185,7 +185,7 @@ fn pending_of(
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, (world, cat), t, water, lifted.is_some(), crated);
+    check(&mut p, world, t, water, lifted.is_some(), crated);
     Some(p)
 }
 
@@ -248,7 +248,7 @@ fn footprint(t: &EntityType, dir: u32, crated: bool) -> (i32, i32) {
 
 /// The units on the tiles `tiles`: their position in the list, position and the half sides of
 /// their blocking rectangle (placing 5.2).
-fn units_on(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))> {
+fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))> {
     let mut found = Vec::new();
     for (i, e) in world.zoo.entities.iter().enumerate() {
         let (Some(c), Some(shape)) = (e.common.as_ref(), world.shape(i)) else {
@@ -262,7 +262,7 @@ fn units_on(world: &World, cat: &Catalogue, tiles: &[usize]) -> Vec<(usize, i32,
         if world.is_carried(c.id) {
             continue;
         }
-        let (fx, fy) = super::unit_footprint(world, cat, i, shape);
+        let (fx, fy) = world.unit_footprint(i).unwrap_or(shape.footprint);
         let rect = match c.rotation % 4 {
             0 => (fx, fy),
             _ if c.rotation % 2 != 0 => (fx.max(fy), fx.max(fy)),
@@ -284,7 +284,7 @@ fn lets_through(world: &World, object: usize) -> bool {
 /// tank mode.
 fn check(
     p: &mut Pending,
-    (world, cat): (&World, &Catalogue),
+    world: &World,
     t: &EntityType,
     water: &[bool],
     tanked: bool,
@@ -320,7 +320,7 @@ fn check(
         tiles = quads.iter().map(|&(at, _)| at).collect();
         tiles.dedup();
     }
-    let units = units_on(world, cat, &tiles);
+    let units = units_on(world, &tiles);
     // A passable tile, and no other unit's rectangle over the animal's own.
     let passable = (0..4).any(|q| {
         world

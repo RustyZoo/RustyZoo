@@ -24,6 +24,8 @@ const SALT: usize = 10;
 /// The habitat number of an object that gives none ("non-habitat").
 const NO_HABITAT: i32 = 9410;
 /// The species timer passes this to revise the species list, the rating timer that to rate again.
+/// The food kinds an exhibit sums the food of (5.1 point 2).
+pub const FOODS: usize = 16;
 const SPECIES_AFTER: u32 = 7999;
 const RATING_AFTER: u32 = 6999;
 
@@ -275,6 +277,11 @@ pub struct Input {
     pub animals: Vec<usize>,
     /// The sum of their happiness (5.1 point 3).
     pub happy: i32,
+    /// The sick and the very unhappy animals among them, and the food amounts on the tiles by
+    /// food kind (5.1 point 2).
+    pub sick: u32,
+    pub unhappy: u32,
+    pub food: [i32; FOODS],
     /// The first keeper-class staff member that holds the exhibit in his list (habitat rating 11.2).
     pub keeper: Option<u32>,
     /// The exhibit has an amphibious neighbour.
@@ -1175,6 +1182,11 @@ pub struct State {
     /// The exhibit's average happiness h as the last recomputation left it (5.1 point 6): the
     /// guests' viewing reads this, not the animals' happiness now. Not saved.
     pub happiness: i32,
+    /// The sick and the very unhappy animals and the food by kind as the last recomputation left
+    /// them (5.1 point 2): the health, other-animals and hunger checks read these. Not saved.
+    pub sick: u32,
+    pub unhappy: u32,
+    pub food: [i32; FOODS],
     /// The animal count fell to 0 at a recomputation: the step posts the call for the leftovers.
     pub emptied: bool,
     /// The surrounding species list holds a species with `cBashStrength` above 0 (12).
@@ -1262,6 +1274,7 @@ impl State {
         self.emptied |= counts.1 == 0 && self.counts.1 != 0;
         self.counts = counts;
         self.happiness = input.happy.checked_div(counts.1 as i32).unwrap_or(0);
+        (self.sick, self.unhappy, self.food) = (input.sick, input.unhappy, input.food);
         self.bash = surrounding(input).iter().any(|l| l.bash);
         self.keeper = input.keeper;
         self.attractiveness = (input.animals.iter())
@@ -1311,7 +1324,7 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
     let Some(exhibit) = world.exhibits().get(id) else {
         return Input::default();
     };
-    let (species, animals, happy) = animals_on(world, catalogue, &exhibit.order);
+    let (species, animals, tally) = animals_on(world, catalogue, &exhibit.order);
     let keeper = (world.units.iter())
         .filter(|u| u.kind == Kind::Keeper)
         .find(|u| matches!(&u.part, Part::Staff(s) if s.assigned.contains(&id)))
@@ -1349,7 +1362,10 @@ pub fn input(world: &World, catalogue: &Catalogue, id: u32) -> Input {
         site: site(world, catalogue, &exhibit.order, exhibit.tank.map(water)),
         species,
         animals,
-        happy,
+        happy: tally.happy,
+        sick: tally.sick,
+        unhappy: tally.unhappy,
+        food: food_on(world, catalogue, &exhibit.order),
         keeper,
         linked: !exhibit.amphibious.is_empty(),
         near,
@@ -1431,19 +1447,50 @@ fn water(t: Tank) -> Water {
     }
 }
 
+/// What a recomputation counts of the animals of an exhibit (5.1 point 3).
+#[derive(Default)]
+struct Tally {
+    happy: i32,
+    sick: u32,
+    unhappy: u32,
+}
+
+/// The food amounts on the tiles `order` summed by food kind (5.1 point 3); a kind outside the
+/// 16 is not summed.
+fn food_on(world: &World, catalogue: &Catalogue, order: &[usize]) -> [i32; FOODS] {
+    let mut sums = [0i32; FOODS];
+    let mut seen = HashSet::new();
+    for &t in order {
+        for e in (0..4).filter_map(|q| world.quadrant(t, q)) {
+            let entity = &world.zoo.entities[e];
+            let amount = entity.common.as_ref().map(|c| c.food);
+            let Some(amount) = amount.filter(|_| entity.class == "food" && seen.insert(e)) else {
+                continue;
+            };
+            let kind = crate::animal::food::kind(catalogue, entity);
+            if let Some(sum) = usize::try_from(kind).ok().and_then(|k| sums.get_mut(k)) {
+                *sum = sum.saturating_add(amount);
+            }
+        }
+    }
+    sums
+}
+
 /// The animal types on the tiles `order`, each once in the order they first appear tile by
-/// tile, and the type of each animal.
+/// tile, the type of each animal and the counts of the animals.
 fn animals_on(
     world: &World,
     catalogue: &Catalogue,
     order: &[usize],
-) -> (Vec<Likes>, Vec<usize>, i32) {
+) -> (Vec<Likes>, Vec<usize>, Tally) {
     let (mut species, mut animals): (Vec<Likes>, Vec<usize>) = (Vec::new(), Vec::new());
-    let mut happy = 0;
+    let mut tally = Tally::default();
     for (at, ty) in animals_at(world, catalogue, order) {
         let unit = (world.zoo.entities[at].common.as_ref()).and_then(|c| world.units.get(c.id));
         if let Some(Part::Animal(a)) = unit.map(|u| &u.part) {
-            happy += a.happiness;
+            tally.happy += a.happiness;
+            tally.sick += u32::from(a.at_minimum_health);
+            tally.unhappy += u32::from(a.very_unhappy);
         }
         let mut likes = Likes::of(ty);
         // The bears' cheat gives the grizzly a bash strength (cheats 4.1).
@@ -1456,7 +1503,7 @@ fn animals_on(
             });
         animals.push(at);
     }
-    (species, animals, happy)
+    (species, animals, tally)
 }
 
 /// The animals whose own tile is one of `order` (5.1 point 3), tile by tile in that order: the

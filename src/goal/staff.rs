@@ -15,6 +15,7 @@ use crate::staff::{assign, service};
 use crate::unit::{Part, Staff, movement};
 use tank::{CLEAN_TANK, CLIMB_DOWN_INSIDE, is_tank_job};
 
+mod capture;
 mod guide;
 pub use guide::release_group;
 mod tank;
@@ -152,11 +153,12 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    /// 7.1: a frightened keeper avoids his predator; with nothing to do on the grounds he goes to
+    /// 7.1: a frightened keeper avoids his predator, then one who finds an escaped animal to capture
+    /// goes for it; with nothing to do on the grounds he goes to
     /// an exhibit; done in the exhibit of his target tile he starts his duties unless two keepers
     /// work there.
     pub(super) fn keeper_ladder(&mut self, task: u8, done: bool) {
-        if self.staff_fright(task) {
+        if self.staff_fright(task) || self.capture_ladder(task) {
             return;
         }
         let here = self.exhibit();
@@ -517,6 +519,9 @@ impl<'c> Cx<'_, 'c> {
         }
         let id = self.record().job_target.id;
         let done = match job {
+            capture::CHASE => return self.chase_check_done(),
+            capture::TRANQ => return self.dart_check_done(),
+            capture::RETRIEVE => return self.retrieve_check_done(),
             PUT_FOOD | HEAL | CLEAN => self.reached(true),
             HEALING if self.world.find(id).is_none() => return self.job_end(),
             _ => self.set_ended(job),
@@ -533,6 +538,8 @@ impl<'c> Cx<'_, 'c> {
                 PUT_FOOD => self.food_decide(),
                 HEAL => self.heal_decide(),
                 CLEAN => self.rake_decide(),
+                capture::CHASE => self.chase_decide("bChaseAnimal", false),
+                capture::RETRIEVE => self.chase_decide("bRetrieveAnimal", true),
                 _ => {}
             }
         }
@@ -561,6 +568,9 @@ impl<'c> Cx<'_, 'c> {
             HEAL => self.set_job(HEALING, r.id, r.tile),
             HEALING => self.healed(r.id),
             CLEAN => self.set_job(CLEANING, 0, r.tile),
+            capture::CHASE => self.chase_complete(),
+            capture::TRANQ => self.dart_complete(),
+            capture::RETRIEVE => self.retrieve_complete(),
             _ => self.raked(r.tile),
         }
     }
