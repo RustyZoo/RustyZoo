@@ -56,9 +56,12 @@ fn shape(e: &Entity) -> Option<Shape> {
         ("fences", "low") => Some(thing(Class::Edge, (1, 1), false, false)),
         ("fences", _) => Some(thing(Class::Edge, (1, 1), true, false)),
         ("paths", _) => Some(thing(Class::Path, (2, 2), false, false)),
-        ("bush", _) | ("food", _) | ("building", _) => {
-            Some(thing(Class::Fixed, (1, 1), false, false))
-        }
+        // A building or a food pile a rampage turns to rubble (`tree`); rubble is never turned.
+        ("building" | "food", kind) => Some(Shape {
+            rubbleable: kind == "tree",
+            ..thing(Class::Fixed, (1, 1), false, false)
+        }),
+        ("bush" | "rubble", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
         // Scenery a rampage turns to rubble (`tree`) and scenery it spares (`stone`).
         ("scenery", kind) => Some(Shape {
             rubbleable: kind == "tree",
@@ -345,6 +348,43 @@ fn a_rampaging_animal_walks_through_the_scenery_that_turns_to_rubble() {
     assert!(!enters(&trees, false));
     assert!(enters(&trees, true));
     assert!(!enters(&stones, true));
+}
+
+#[test]
+fn a_rampaging_animal_also_walks_through_buildings_and_food_but_rubble_is_for_rampaging_species() {
+    let full = |class: &str, kind: &str| {
+        world(|_, e| {
+            for (x, y) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
+                e.push(entity_at(class, kind, "", (5 * 64 + x, 5 * 64 + y), 0));
+            }
+        })
+    };
+    let enters = |w: &World, m: Mover| cost::clear(w, &m, (t((4, 5)), t((5, 5))), 2, true, None);
+    let animal = |rampaging, rampager| Mover {
+        rampaging,
+        rampager,
+        ..unit(Kind::Animal, (4, 5))
+    };
+    for class in ["building", "food"] {
+        let w = full(class, "tree");
+        assert!(
+            !enters(&w, animal(false, true)),
+            "{class} stops an animal at rest"
+        );
+        assert!(enters(&w, animal(true, false)), "{class}");
+        assert!(
+            !enters(&full(class, "stone"), animal(true, true)),
+            "{class} spared"
+        );
+    }
+    // Rubble: any animal of a species that rampages, rampaging or not; no other animal.
+    let rubble = full("rubble", "other");
+    assert!(enters(&rubble, animal(false, true)));
+    assert!(!enters(&rubble, animal(false, false)));
+    assert!(
+        !enters(&rubble, animal(true, false)),
+        "rubble is not rubbleable"
+    );
 }
 
 #[test]

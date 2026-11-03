@@ -54,8 +54,9 @@ pub fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     pieces(world, kit, &entity, &c)
 }
 
-/// The pieces of the rubble of scenery item `id`, which stays in the list: a unit's turn cannot
-/// take an entity out, so the caller queues its removal for the next pass. Whether it exists.
+/// The pieces of the rubble of item `id` (scenery or building), which stays in the list: a unit's
+/// turn cannot take an entity out, so the caller queues its removal for the next pass. A building
+/// lets its users go first. Whether it exists.
 pub fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(at) = world.find(id) else {
         return false;
@@ -64,6 +65,10 @@ pub fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(c) = entity.common.clone() else {
         return false;
     };
+    if entity.class == "building" {
+        crate::building::leave::push_out(world, kit.cat, id);
+        crate::guest::litter::spill(world, kit.cat, id, kit.rng);
+    }
     pieces(world, kit, &entity, &c)
 }
 

@@ -53,6 +53,15 @@ pub fn shape(e: &Entity) -> Option<Shape> {
         rubbleable: false,
     };
     match e.class.as_str() {
+        // An electrified fence: its piece is working while its life is above 2.
+        "fences" if e.type_name == "wire" => Some(Shape {
+            tank: TankKind {
+                electrified: true,
+                decayed: 2,
+                ..TankKind::NONE
+            },
+            ..thing(Class::Edge, (1, 1), true)
+        }),
         "fences" => Some(thing(Class::Edge, (1, 1), true)),
         "paths" => Some(thing(Class::Path, (2, 2), false)),
         "bush" if e.type_name == "grass" => Some(Shape {
@@ -85,7 +94,11 @@ pub fn shape(e: &Entity) -> Option<Shape> {
             },
             ..thing(Class::Fixed, (1, 1), false)
         }),
-        "building" => Some(thing(Class::Fixed, (1, 1), false)),
+        // A building a rampage turns to rubble (`shed`) and one it spares.
+        "building" => Some(Shape {
+            rubbleable: e.type_name == "shed",
+            ..thing(Class::Fixed, (1, 1), false)
+        }),
         // A zoo wall: it stops the exterior fill.
         "zoowall" => Some(Shape {
             wall: true,

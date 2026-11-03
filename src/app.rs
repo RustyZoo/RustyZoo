@@ -805,7 +805,6 @@ impl<'a> App<'a> {
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
-            world.units.piece_name = ui.string(crate::rubble::PIECE_NAME);
             world.units.names = self.type_names(ui);
             world.name_loaded_entities(self.renderer.catalogue());
         }
@@ -946,23 +945,12 @@ impl<'a> App<'a> {
         let question = ui.tree.picture(self.renderer.vfs(), QUESTION_PICTURE);
         ui.set_question_picture(question);
         let names = self.type_names(&ui);
-        let piece = ui.string(crate::rubble::PIECE_NAME);
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
             game.world.units.names = names;
-            game.world.units.piece_name = piece;
             game.awards_page = Awards::default();
         }
-    }
-
-    /// The text of the name id of each type of the catalogue, as `ui` shows it: the units name
-    /// their new animals, staff and objects with it.
-    fn type_names(&self, ui: &Interface) -> std::collections::HashMap<i32, String> {
-        (self.renderer.catalogue().types.iter())
-            .filter(|t| t.name_id != 0)
-            .map(|t| (t.name_id, ui.string(t.name_id)))
-            .collect()
     }
 
     /// The interface, if the game has one.

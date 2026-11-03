@@ -1734,6 +1734,49 @@ fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refuse
 }
 
 #[test]
+fn a_rampaging_animal_lets_a_rubbleable_object_through_and_a_rampaging_species_lets_rubble_through()
+{
+    use crate::unit::Part;
+    let cat = catalogue();
+    let kiosk = |w: &World| {
+        at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let mut elephant = entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    elephant.common.as_mut().unwrap().id = 77;
+    let mut w = world((0, 0), vec![elephant], |_| {});
+    // At rest it is in the way; rampaging, the kiosk (cRubbleable absent, so 1) is placed over it.
+    assert_eq!(kiosk(&w), Verdict::Invalid);
+    let rampage = |w: &mut World, on: bool, rampager: bool| {
+        let unit = w.units.get_mut(77).unwrap();
+        unit.mover.rampager = rampager;
+        if let Part::Animal(a) = &mut unit.part {
+            a.rampaging = on;
+        }
+    };
+    rampage(&mut w, true, false);
+    assert_eq!(kiosk(&w), Verdict::Valid);
+    // A species that rampages does not let a kiosk through while it is calm; it does let rubble.
+    rampage(&mut w, false, true);
+    assert_eq!(kiosk(&w), Verdict::Invalid);
+    let rubble = ty("rubble", "brubls1", "", [1, 1, 1]);
+    let through = |w: &World, ty: &EntityType| super::unit::lets_through_object(w, 0, ty);
+    assert!(through(&w, &rubble) && !through(&w, &cat.types[15]));
+    rampage(&mut w, false, false);
+    assert!(!through(&w, &rubble));
+    // A type with cRubbleable other than 1 is not let through even by a rampaging animal.
+    rampage(&mut w, true, true);
+    let stone = ty(
+        "building",
+        "stone",
+        "[Characteristics/Integers]\ncRubbleable=0\n",
+        [2, 2, 1],
+    );
+    assert!(!through(&w, &stone) && through(&w, &cat.types[15]));
+}
+
+#[test]
 fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotations() {
     let cat = catalogue();
     // A 3 by 1 unit on the tile of a quarter tile tree, whose rectangle is x and y 0..32 of the

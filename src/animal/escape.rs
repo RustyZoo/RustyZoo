@@ -8,7 +8,7 @@ use crate::behaviour::{Data, Env as Run};
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path::Mover;
-use crate::rubble::{Kit, leave_rubble};
+use crate::rubble::{Kit, PIECE_NAME, leave_rubble};
 use crate::sim::Rng;
 use crate::unit::movement::DIR;
 use crate::unit::{Ctx, Part, Unit};
@@ -91,9 +91,10 @@ pub fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) 
     }
 }
 
-/// A rampaging animal that is not on an escape walk entered tile `t` (animals 11): each scenery
-/// item of its four quadrants whose type has `cRubbleable` 1, an item that spans several quadrants
-/// once, turns to rubble. The item leaves the list at the next removal pass.
+/// A rampaging animal that is not on an escape walk entered tile `t` (animals 11.9 point 4): each
+/// object of its four quadrants whose type has `cRubbleable` 1, one that spans several quadrants
+/// once, turns to rubble with the routine of its kind (cheats 4.6). The object leaves the list at
+/// the next removal pass.
 pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
     if !matches!(&unit.part, Part::Animal(a) if a.rampaging && a.walk.is_none()) {
         return;
@@ -111,7 +112,15 @@ pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
             ids.push(id);
         }
     }
-    let (cat, template) = (ctx.cat, world.units.piece_name.clone());
+    let (cat, template) = (
+        ctx.cat,
+        world
+            .units
+            .names
+            .get(&PIECE_NAME)
+            .cloned()
+            .unwrap_or_default(),
+    );
     let shape = |e: &crate::zoo::Entity| crate::render::shape_of(cat, e);
     let mut kit = Kit {
         cat,
@@ -176,29 +185,31 @@ fn place(world: &World, at: usize) -> (Option<usize>, bool) {
 }
 
 /// `start_new` of a set (behaviours 4.2): nothing when it runs already; else it starts forced with
-/// the queued sequences kept, and a pending set of that name is forgotten.
-fn start_new(
+/// the queued sequences kept, and a pending set of that name is forgotten. Whether it succeeded.
+pub(super) fn start_new(
     unit: &mut Unit,
     world: &World,
     data: &dyn Data,
     rng: &mut Rng,
     at: usize,
     set: (&str, bool),
-) {
+) -> bool {
     let (name, interruptible) = set;
     if unit.runner.running() && unit.runner.top() == Some(name) {
-        return;
+        return true;
     }
     let env = Run {
         data,
         unit: &world.zoo.entities[at],
         rng,
     };
-    unit.runner
+    let started = unit
+        .runner
         .start(&mut unit.animation, &env, name, interruptible, true, true);
     if unit.runner.queued() == Some(name) {
         unit.runner.forget();
     }
+    started
 }
 
 /// Behaviours 6.4 points 0 and 1, the escaped and rampage sets. An escaped animal on dry land
@@ -228,7 +239,8 @@ pub fn ambient_sets(unit: &mut Unit, world: &World, data: &dyn Data, rng: &mut R
         (false, true) if in_exhibit => (HABITAT_RAMPAGE, true),
         (true, true) => (LOOSE_RAMPAGE, false),
         (true, false) if !unit.moving => {
-            return start_new(unit, world, data, rng, at, (ESCAPED, true));
+            start_new(unit, world, data, rng, at, (ESCAPED, true));
+            return;
         }
         _ => return,
     };
@@ -276,14 +288,15 @@ pub fn habitat_rampage(
 }
 
 /// What a tick of the checks asks after its escape check (animals 11): the status dates a loose
-/// animal's escape, a rampage that ended is cleared, and an animal on water is sent off it.
+/// animal's escape, the fence test starts when the zap draw succeeded (11.10), a rampage that
+/// ended is cleared, and an animal on water is sent off it.
 pub fn after(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
     at: usize,
     data: &dyn Data,
-    out: &Out,
+    (out, k): (&Out, &Keys),
 ) {
     world.units.loose |= out.loose;
     if out.calm {
@@ -292,6 +305,9 @@ pub fn after(
     if let Some(pick) = out.sent {
         let mode = if unit.mover.only_underwater { 2 } else { 0 };
         super::tank::send(unit, world, ctx, at, data, (mode, Some(pick)));
+    }
+    if out.fence {
+        super::fence::test(unit, world, ctx, at, data, k);
     }
 }
 

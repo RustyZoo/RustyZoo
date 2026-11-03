@@ -16,7 +16,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub use cost::{in_reach, step, terrain};
+pub use cost::{SLOT, in_reach, step, terrain};
 use search::open_deep;
 pub use search::search;
 
@@ -60,8 +60,10 @@ pub struct Mover {
     /// animals 11.3), and one in water mode (terrain mode 1).
     pub test: bool,
     pub water_mode: bool,
-    /// A rampaging animal walks through the scenery that turns to rubble (animals 11).
+    /// A rampaging animal walks through the objects that turn to rubble (animals 11.9), and an
+    /// animal whose species has `cRampageChance` above 0 walks over rubble.
     pub rampaging: bool,
+    pub rampager: bool,
     /// The unit's own id, to leave it out of the units on a tile.
     pub id: Option<u32>,
     /// The unit is in a tank (move kind 3), `cSurface` and `cDepth` of its type, and the levels

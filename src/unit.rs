@@ -56,6 +56,7 @@ pub fn draw_colours(ty: Option<&EntityType>, count: usize, rng: &mut Rng) -> Vec
         .collect()
 }
 
+mod fnv;
 pub mod gate;
 pub mod movement;
 pub mod predator;
@@ -435,8 +436,6 @@ pub struct Units {
     pub escapes: Vec<u32>,
     /// An escape check found an animal loose this step: the status dates the escape (animals 11.1).
     pub loose: bool,
-    /// The text of the name of a rubble piece (string 10512, cheats 4.6).
-    pub piece_name: String,
 }
 
 impl Default for Units {
@@ -489,7 +488,6 @@ impl Default for Units {
             cheers: Vec::new(),
             escapes: Vec::new(),
             loose: false,
-            piece_name: String::new(),
         }
     }
 }
@@ -734,7 +732,7 @@ impl Units {
     /// movement, the goal, the animation and the needs. A new field moves the hash only when it is
     /// added here.
     pub fn hash(&self) -> u64 {
-        let mut h = Fnv(0xcbf2_9ce4_8422_2325);
+        let mut h = fnv::Fnv(0xcbf2_9ce4_8422_2325);
         h.word(self.period as u32);
         h.word(self.service_interval);
         for v in self.finder.state() {
@@ -853,28 +851,6 @@ impl Units {
             }
         }
         h.0
-    }
-}
-
-struct Fnv(u64);
-
-impl Fnv {
-    fn bytes(&mut self, bytes: &[u8]) {
-        for &b in bytes {
-            self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        self.bytes_end();
-    }
-
-    /// A separator, so that two names do not run into each other.
-    fn bytes_end(&mut self) {
-        self.0 = (self.0 ^ 0xff).wrapping_mul(0x0000_0100_0000_01b3);
-    }
-
-    fn word(&mut self, v: u32) {
-        for b in v.to_le_bytes() {
-            self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
-        }
     }
 }
 

@@ -12,6 +12,7 @@ use crate::zoo::{Clocks, Common, Escape, Tile, UnitBlock, View, Zoo};
 mod boxed;
 mod breed;
 mod escape;
+mod fence;
 mod life;
 mod rampage;
 mod tank;

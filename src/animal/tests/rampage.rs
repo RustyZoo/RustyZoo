@@ -265,6 +265,7 @@ fn trees() -> Catalogue {
     for kind in ["tree", "wide", "stone"] {
         cat.push(ty("scenery", kind, ""));
     }
+    cat.push(ty("building", "shed", ""));
     cat
 }
 
@@ -277,11 +278,18 @@ fn grove(kinds: &[&str]) -> (World, Unit) {
         for (i, kind) in kinds.iter().enumerate() {
             let (x, y) = [(16, 16), (48, 16), (16, 48), (48, 48)][i % 4];
             let at = (3 * 64 + x, 3 * 64 + y);
-            zoo.entities
-                .push(thing("scenery", kind, 10 + i as u32, at, 0));
+            let class = if *kind == "shed" {
+                "building"
+            } else {
+                "scenery"
+            };
+            zoo.entities.push(thing(class, kind, 10 + i as u32, at, 0));
         }
     });
-    world.units.piece_name = "piece-%s".into();
+    world
+        .units
+        .names
+        .insert(crate::rubble::PIECE_NAME, "piece-%s".into());
     let mut unit = world.units.get(500).unwrap().clone();
     unit.part = Part::Animal(Animal {
         rampaging: true,
@@ -317,6 +325,14 @@ fn a_rampaging_animal_turns_each_rubbleable_item_of_the_tile_to_rubble_once() {
     // An item that holds all four quadrants goes once.
     let (mut w, unit) = grove(&["wide"]);
     assert_eq!(trampled(&mut w, &unit).0, [10]);
+}
+
+#[test]
+fn a_rampaging_animal_turns_a_rubbleable_building_to_rubble_too() {
+    let (mut w, unit) = grove(&["shed", "stone"]);
+    let (removals, pieces) = trampled(&mut w, &unit);
+    assert_eq!(removals, [10]);
+    assert!(pieces >= 1);
 }
 
 #[test]
@@ -405,4 +421,54 @@ fn an_idle_animal_rampaging_in_its_pen_runs_the_habitat_rampage_in_the_game() {
         sim.step_in(&mut world, &cat, 67, |_, _, _| {});
     }
     assert_eq!(world.units.get(500).unwrap().runner.top(), Some(HABITAT));
+}
+
+#[test]
+fn the_send_off_water_draw_walks_the_grounds_fill_list_in_its_order() {
+    use crate::animal::tank;
+    let mut world = pens();
+    let at = world.find(500).unwrap();
+    let lake = 2 * SIZE as usize + 4;
+    world.zoo.entities[at].common.as_mut().unwrap().x = 4 * 64 + 32;
+    world.zoo.tiles[lake].terrain = 1;
+    world.set_water(vec![false, true]);
+    // The list is the fill from the entrance, not the map order, and holds only grounds tiles.
+    let list = tank::tiles(&world, crate::exhibit::GROUNDS);
+    let (ex, ey) = world.zoo.entrance;
+    let entrance = world.tile_index(ex as i32, ey as i32).unwrap();
+    assert_eq!(list, crate::exhibit::fill(&world, entrance));
+    assert!(list.windows(2).any(|w| w[0] > w[1]) && !list.contains(&(SIZE as usize + 2)));
+    let dry: Vec<usize> = list
+        .iter()
+        .copied()
+        .filter(|&t| tank::kind(&world, t) == 0)
+        .collect();
+    assert!(!dry.contains(&lake) && dry.len() > 3);
+    for pick in [0, 1, dry.len() - 1] {
+        let mut unit = world.units.get(500).unwrap().clone();
+        let (cat, events, mut removals, mut rng) = (
+            Catalogue::default(),
+            crate::sim::Events::default(),
+            Vec::new(),
+            Rng::default(),
+        );
+        let mut ctx = Ctx {
+            rng: &mut rng,
+            events: &events,
+            removals: &mut removals,
+            step: 67,
+            cat: &cat,
+        };
+        tank::send(
+            &mut unit,
+            &mut world,
+            &mut ctx,
+            at,
+            &data(),
+            (0, Some(pick)),
+        );
+        let to = unit.destination.expect("it was sent");
+        let tile = world.tile_index(to.0.div_euclid(64), to.1.div_euclid(64));
+        assert_eq!(tile, Some(dry[pick]), "pick {pick}");
+    }
 }

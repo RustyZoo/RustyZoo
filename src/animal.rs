@@ -67,6 +67,7 @@ pub mod boxed;
 pub mod breed;
 pub mod dirt;
 pub mod escape;
+pub mod fence;
 pub mod food;
 pub mod home;
 pub mod life;
@@ -316,6 +317,10 @@ keys! {
     rampage_min: "cRampageTimeMin" = 0,
     rampage_max: "cRampageTimeMax" = 0,
     test_fence: "cTestFenceChance" = 0,
+    fence_offset: "cTestFenceOffset" = 0,
+    fence_drop: "cTestFenceChanceDrop" = 0,
+    fence_min: "cMinTestFenceChance" = 0,
+    zap_change: "cZapHappinessChange" = -1,
     hunger_increment: "cHungerIncrement" = 10,
     hungry_health: "cHungryHealthChange" = 5,
     no_food_change: "cNoFoodChange" = -20,
@@ -514,6 +519,9 @@ pub struct Animal {
     pub force: Option<&'static str>,
     /// The zap counter (animals 4.1): it starts at 0 and fires when it was below 1.
     pub zap: i32,
+    /// The current fence-test chance (animals 11): `None` is the species' `cTestFenceChance`, as at
+    /// creation; a test that starts lowers it (11.10). The file does not hold it.
+    pub fence_chance: Option<i32>,
     /// The crate counter (`cBoxedCheck`), which runs only while the animal is crated.
     pub crate_count: i32,
     /// Status ticks until the creation runs again (`AnimalResetInterval`).
@@ -852,6 +860,8 @@ pub struct Out {
     pub shelter: Option<u32>,
     /// A rampage ended: a running rampage set is cleared (animals 11).
     pub calm: bool,
+    /// The draw of the zap check succeeded: the fence test starts (animals 11.10).
+    pub fence: bool,
     /// The escape check fired with the animal on the zoo grounds: the zoo status dates the
     /// escape (animals 11.1).
     pub loose: bool,
@@ -988,7 +998,7 @@ pub fn run_read(
     out.terrain = tank::water(a, k, class, env, rng);
     shelter(a, k, class, env, rng, &mut out);
     other(a, k, class, env);
-    zap(a, k, class, env, rng);
+    zap(a, k, class, env, rng, &mut out);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
         out.messages.push(NOT_HAPPY);
     }
@@ -1188,8 +1198,8 @@ fn other(a: &mut Animal, k: &Keys, class: &Class, env: &Env) {
 
 /// The zap check (animals 11): nothing runs for an animal in a show; its counter fires when it
 /// was below 1, and the draw of a fence test is made when nothing occupies the animal and its
-/// chance is not 0. The test itself is M7's.
-fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
+/// chance is not 0; a success asks for the test itself ([`fence::test`]).
+fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng, out: &mut Out) {
     if a.in_show {
         return;
     }
@@ -1197,9 +1207,8 @@ fn zap(a: &mut Animal, k: &Keys, class: &Class, env: &Env, rng: &mut Rng) {
     a.zap = old.wrapping_sub(1);
     if old < 1 {
         a.zap = class.zap.wrapping_sub(1);
-        if !a.occupied(env) && k.test_fence != 0 {
-            rng.chance(k.test_fence);
-        }
+        let current = a.fence_chance.unwrap_or(k.test_fence);
+        out.fence = !a.occupied(env) && current != 0 && rng.chance(k.test_fence);
     }
 }
 
@@ -1596,7 +1605,7 @@ pub fn checks(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data
         }
         world.units.tell(format!("{word} {id}"));
     }
-    escape::after(unit, world, ctx, at, data, &out);
+    escape::after(unit, world, ctx, at, data, (&out, &k));
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);
     }

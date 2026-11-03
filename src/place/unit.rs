@@ -273,6 +273,19 @@ fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, (i32, i32))
     found
 }
 
+/// Placing 5.2 item 4: whether the unit at `i` lets an object of type `t` through: the
+/// helicopter, a rampaging animal when the type has `cRubbleable` 1 (the default), and an animal
+/// whose species has `cRampageChance` above 0 when the object is rubble.
+pub(super) fn lets_through_object(world: &World, i: usize, t: &EntityType) -> bool {
+    let e = &world.zoo.entities[i];
+    let unit = (e.common.as_ref()).and_then(|c| world.units.get(c.id));
+    let rampaging =
+        unit.is_some_and(|u| matches!(&u.part, crate::unit::Part::Animal(a) if a.rampaging));
+    e.class == "helicopter"
+        || rampaging && number(t, "cRubbleable").is_none_or(|n| n == 1.0)
+        || t.class == "rubble" && unit.is_some_and(|u| u.mover.rampager)
+}
+
 /// Whether the object holding a quarter lets a unit through: only `walkable` counts, whatever
 /// the unit (unit placing 6.1).
 fn lets_through(world: &World, object: usize) -> bool {

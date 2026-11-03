@@ -1,5 +1,6 @@
 //! The world on synthetic maps.
 
+use super::edges::edge_states;
 use super::*;
 use crate::zoo::{Common, View};
 

@@ -545,6 +545,7 @@ pub fn read_type(unit: &mut Unit, data: &dyn Data, entity: &crate::zoo::Entity) 
     m.avoid_edges = number("cAvoidEdges").max(0) as u32;
     (m.jumper, m.climber) = (number("cIsJumper") != 0, number("cIsClimber") != 0);
     (m.bash, m.crush) = (number("cBashStrength"), number("cCrushesFences"));
+    m.rampager = unit.kind == Kind::Animal && number("cRampageChance") > 0;
     // The guest's costs off the paths are the unit class file's; a missing key keeps the fallback.
     if unit.kind == Kind::Guest {
         let cost = |key, fallback: u32| data.unit_class(key).map_or(fallback, |v| v.max(0) as u32);

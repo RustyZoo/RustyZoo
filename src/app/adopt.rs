@@ -5,6 +5,17 @@ use super::*;
 use crate::staff;
 
 impl App<'_> {
+    /// The text of the name id of each type of the catalogue, as `ui` shows it: the units name
+    /// their new animals, staff and objects with it. The name of a rubble piece goes with them.
+    pub(super) fn type_names(&self, ui: &Interface) -> std::collections::HashMap<i32, String> {
+        let piece = crate::rubble::PIECE_NAME;
+        (self.renderer.catalogue().types.iter())
+            .filter(|t| t.name_id != 0)
+            .map(|t| (t.name_id, ui.string(t.name_id)))
+            .chain([(piece, ui.string(piece))])
+            .collect()
+    }
+
     /// A release on the map with an animal or a staff member as the tool: a valid place gets the
     /// unit, paid and booked as animal purchase or in the wages of its class, and logs `world add
     /// CLASS/TYPE/SUBTYPE X,Y id N name=NAME` and `money book CATEGORY PRICE`; the placement

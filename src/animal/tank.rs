@@ -120,15 +120,24 @@ pub fn kind(world: &World, t: usize) -> u8 {
 }
 
 /// The tiles of region `x` that the picks of tank fauna 5 draw from: an exhibit's, or for the zoo
-/// grounds every tile of that region in map order (medium: the order of the original's list).
+/// grounds (the exterior included, animals 11.5 points 2 and 3) the fill of the grounds from the
+/// entrance tile (medium: the list of its last fill, exact while no exhibit was made), then any
+/// grounds tile that fill does not reach, in map order.
 pub fn tiles(world: &World, x: u32) -> Vec<usize> {
     if x != GROUNDS {
         return world.tiles_of(x);
     }
     let region = world.exhibits();
-    (0..world.zoo.tiles.len())
-        .filter(|&t| region.region(t) == Some(GROUNDS))
-        .collect()
+    let grounds = |t: usize| matches!(region.region(t), Some(GROUNDS | EXTERIOR));
+    let (ex, ey) = world.zoo.entrance;
+    let start = (i32::try_from(ex).ok().zip(i32::try_from(ey).ok()))
+        .and_then(|(x, y)| world.tile_index(x, y));
+    let mut list: Vec<usize> = start.map_or(Vec::new(), |s| crate::exhibit::fill(world, s));
+    list.retain(|&t| grounds(t));
+    let mut seen = vec![false; world.zoo.tiles.len()];
+    list.iter().for_each(|&t| seen[t] = true);
+    list.extend((0..seen.len()).filter(|&t| !seen[t] && grounds(t)));
+    list
 }
 
 /// The terrain mode change (tank fauna 5) after the water check: the animal takes the terrain
@@ -167,7 +176,9 @@ pub fn send(
     let tile = (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
     let x = tile.and_then(|t| world.exhibits().region(t));
-    let Some((x, pick)) = x.filter(|&x| x != EXTERIOR).zip(pick) else {
+    // The exterior is part of the grounds' list (animals 11.5 point 3).
+    let x = x.map(|x| if x == EXTERIOR { GROUNDS } else { x });
+    let Some((x, pick)) = x.zip(pick) else {
         return;
     };
     let neighbours = (world.exhibits().get(x)).map_or(Vec::new(), |e| e.amphibious.clone());
