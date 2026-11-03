@@ -296,17 +296,38 @@ pub fn update(world: &mut World, cat: &Catalogue, events: &mut Events, now: u32)
         return;
     }
     infos.sort_by_key(|&(id, _)| id);
+    let upkeep = upkeeps(world, cat);
+    for (id, n) in infos {
+        cycle::update(world, cat, events, now, n, grandstand_upkeep(&upkeep, id));
+    }
+}
+
+/// The upkeep of each grandstand in list order, with the show it faces now (shows 9.2).
+fn upkeeps(world: &World, cat: &Catalogue) -> Vec<(u16, f32)> {
     let sight = Sight::of(world, cat);
-    let upkeep: Vec<(u16, f32)> = (sight.stands.iter())
+    (sight.stands.iter())
         .map(|&(id, at)| {
             let cost = crate::place::bulldozer::type_of(cat, &world.zoo.entities[at])
                 .map_or(0.0, |ty| crate::month::upkeep_of(&world.units, ty, id));
             (sight.seen(world, at), cost)
         })
-        .collect();
-    for (id, n) in infos {
-        let sum = (upkeep.iter().filter(|u| u.0 == id)).fold(0.0, |a, u| a + u.1);
-        cycle::update(world, cat, events, now, n, sum);
+        .collect()
+}
+
+/// `grandstand_upkeep(id)` (shows 9.2): the sum in single precision of the upkeeps facing show `id`.
+fn grandstand_upkeep(upkeep: &[(u16, f32)], id: u16) -> f32 {
+    (upkeep.iter().filter(|u| u.0 == id)).fold(0.0, |a, u| a + u.1)
+}
+
+/// The month change of the show infos (shows 9.3), after the exhibits' and before the wages: the
+/// figures of the month that ended move to last month and the upkeep takes the current rate.
+pub fn new_month(world: &mut World, cat: &Catalogue) {
+    if world.zoo.shows.infos.iter().all(Option::is_none) {
+        return;
+    }
+    let upkeep = upkeeps(world, cat);
+    for info in world.zoo.shows.infos.iter_mut().flatten() {
+        info.new_month(grandstand_upkeep(&upkeep, info.id));
     }
 }
 
