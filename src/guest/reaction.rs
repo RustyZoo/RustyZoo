@@ -35,24 +35,21 @@ pub fn react(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data:
         // The percent tests compare unsigned 32-bit numbers (shows 6.4 point 3).
         let [bad, good, great] = world.units.show.show.map(|n| n as u32);
         let p = ev.data;
-        // The set tests the four bands in order; the thought tests below each limit.
+        // The great limit is tested before the good one (shows 6.4 point 3): the set and the
+        // thought are the same band.
         let band = match p {
             _ if p <= bad => 0,
-            _ if p < good => 1,
-            _ if good <= p && p < great => 2,
-            _ => 3,
+            _ if p >= great => 3,
+            _ if p >= good => 2,
+            _ => 1,
         };
-        let step = [p <= bad, p < good, p < great]
-            .iter()
-            .take_while(|&&b| !b)
-            .count();
         let mut name = None;
         // An abort changes nothing: no record, no status update.
         let mut changes = true;
         match ev.kind {
             event::ENDED => {
                 name = (!aborted).then(|| EXITS[band]);
-                world.units.think(unit.id, END_THOUGHTS[step], None, None);
+                world.units.think(unit.id, END_THOUGHTS[band], None, None);
                 apply(unit, [0, 0, 0, 0, 0, -i32::from(ev.extra)]);
             }
             event::ABORTED => {

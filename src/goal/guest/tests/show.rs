@@ -4,12 +4,13 @@ use super::*;
 use crate::building;
 use crate::config::Config;
 use crate::entity::EntityType;
+use crate::guest::{BATHROOM, HUNGER, THIRST};
 use crate::zoo::{Show, ShowInfo};
 use std::sync::Arc;
 
 /// A grandstand of 12 seats that sits its users and charges the default price.
 const STAND: &str = "[Characteristics/Floats]\ncPriceFactor=2\n[Characteristics/Integers]\ncCommerce=1\n\
-    cCapacity=12\ncUserStaysOutside=0\ncUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\n\
+    cCapacity=12\ncHungerChange=-5\ncThirstChange=-5\ncBathroomChange=5\ncUserStaysOutside=0\ncUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\n\
     grandstand\n[slots]\nname=slot\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\n\
     exitpos=0\nexitpos=48\ncapacity=12\n";
 
@@ -229,5 +230,11 @@ fn leaving_a_grandstand_makes_the_price_reaction_and_the_status_tick_takes_it_la
         let Part::Guest(g) = &unit.part else { panic!() };
         assert_eq!(g.values, Guest::default().values);
         assert_eq!(g.pending[HAPPINESS] != 0, thought.is_some(), "{factor}");
+        // The grandstand's change record waits there too.
+        assert_eq!(
+            [g.pending[HUNGER], g.pending[THIRST], g.pending[BATHROOM]],
+            [-5, -5, 5],
+            "{factor}"
+        );
     }
 }

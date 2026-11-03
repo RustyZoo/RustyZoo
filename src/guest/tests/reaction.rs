@@ -19,9 +19,9 @@ fn heard(kind: u16, data: u32, extra: u16) -> Event {
     }
 }
 
-/// A guest with 50 happiness and 80 energy, running the set `top`, reads `events`.
-fn read(top: Option<&str>, events: Vec<Event>) -> (World, Unit) {
-    let mut w = crate::unit::testing::world_with((4, 4), |zoo| {
+/// A guest with 50 happiness and 80 energy at its place in the world.
+fn guest() -> (World, Unit, Catalogue, usize) {
+    let w = crate::unit::testing::world_with((4, 4), |zoo| {
         let e = entity("guests", "man", 1, centre((1, 1)), 0);
         zoo.entities.push(e);
     });
@@ -33,6 +33,25 @@ fn read(top: Option<&str>, events: Vec<Event>) -> (World, Unit) {
         values: [50, 0, 0, 80, 0],
         ..Guest::default()
     });
+    (w, unit, cat, at)
+}
+
+/// The guest `unit` reads its events with `data`.
+fn hear(w: &mut World, unit: &mut Unit, cat: &Catalogue, at: usize, data: &dyn Data) {
+    let (queue, mut removals, mut rng) = (Events::default(), Vec::new(), Rng::default());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &queue,
+        removals: &mut removals,
+        step: 67,
+        cat,
+    };
+    crate::guest::reaction::react(unit, w, &mut ctx, at, data);
+}
+
+/// A guest with 50 happiness and 80 energy, running the set `top`, reads `events`.
+fn read(top: Option<&str>, events: Vec<Event>) -> (World, Unit) {
+    let (mut w, mut unit, cat, at) = guest();
     if let Some(top) = top {
         let env = crate::behaviour::Env {
             data: &NoData,
@@ -43,15 +62,7 @@ fn read(top: Option<&str>, events: Vec<Event>) -> (World, Unit) {
             .start(&mut unit.animation, &env, top, false, true, true);
     }
     unit.events = events;
-    let (queue, mut removals, mut rng) = (Events::default(), Vec::new(), Rng::default());
-    let mut ctx = Ctx {
-        rng: &mut rng,
-        events: &queue,
-        removals: &mut removals,
-        step: 67,
-        cat: &cat,
-    };
-    crate::guest::reaction::react(&mut unit, &mut w, &mut ctx, at, &NoData as &dyn Data);
+    hear(&mut w, &mut unit, &cat, at, &NoData);
     (w, unit)
 }
 
@@ -263,4 +274,75 @@ fn an_abort_leaves_the_pending_changes_for_the_status_tick() {
     crate::guest::reaction::react(&mut unit, &mut w, &mut ctx, at, &NoData);
     assert_eq!(values(&unit).1, [0, 15, 0, 0, 0]);
     assert_eq!(unit.runner.top(), Some("bExitShowBad"));
+}
+
+#[test]
+fn the_end_tests_the_great_limit_before_the_good_one() {
+    // A shows.cfg with goodShow above greatShow: a percent between the two is great.
+    let (mut w, mut unit, cat, at) = guest();
+    w.units.show.show = [25, 75, 50];
+    unit.events = vec![heard(event::ENDED, 60, 0)];
+    hear(&mut w, &mut unit, &cat, at, &NoData);
+    assert_eq!(thoughts(&mut w), ["thought 1 10290"]);
+    assert_eq!(unit.runner.top(), Some("bExitShowGreat"));
+}
+
+/// Sets that play an animation and never end.
+struct Tricks(std::collections::HashMap<String, Vec<crate::behaviour::Call>>);
+
+impl Data for Tricks {
+    fn set(&self, _: &crate::zoo::Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
+        self.0.get(name).map(Vec::as_slice)
+    }
+    fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Timing> {
+        Some(crate::behaviour::Timing {
+            count: 2,
+            delay: 100,
+        })
+    }
+    fn number(&self, unit: &crate::zoo::Entity, number: &crate::behaviour::Number) -> i32 {
+        NoData.number(unit, number)
+    }
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+#[test]
+fn a_reaction_set_is_forced_interruptible_and_keeps_the_sequences() {
+    let calls = ["fPlay(a)", "fKeepControl()"]
+        .map(|c| crate::behaviour::parse_call(c.as_bytes()).unwrap().0);
+    let data = Tricks(
+        ["bGoodTrick", "bExitShowGreat", "bBadTrick"]
+            .map(|n| (n.to_string(), calls.to_vec()))
+            .into(),
+    );
+    let (mut w, mut unit, cat, at) = guest();
+    let mut rng = Rng::default();
+    // A set that is not interruptible runs and has a sequence queued.
+    let mut env = crate::behaviour::Env {
+        data: &data,
+        unit: &w.zoo.entities[at],
+        rng: &mut rng,
+    };
+    unit.runner
+        .start(&mut unit.animation, &env, "bGoodTrick", false, false, true);
+    unit.runner.step(&mut unit.animation, &mut env, None);
+    assert!(format!("{:?}", unit.animation).contains("queue: [["));
+    // The end replaces it, the queue stays, and the new set accepts a plain start.
+    unit.events = vec![heard(event::ENDED, 90, 0)];
+    hear(&mut w, &mut unit, &cat, at, &data);
+    assert_eq!(unit.runner.top(), Some("bExitShowGreat"));
+    assert!(format!("{:?}", unit.animation).contains("queue: [["));
+    let env = crate::behaviour::Env {
+        data: &data,
+        unit: &w.zoo.entities[at],
+        rng: &mut rng,
+    };
+    unit.runner
+        .start(&mut unit.animation, &env, "bBadTrick", true, false, true);
+    assert_eq!(unit.runner.top(), Some("bBadTrick"));
 }
