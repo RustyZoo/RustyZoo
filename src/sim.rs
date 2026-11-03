@@ -794,6 +794,7 @@ impl Sim {
                 crate::animal::home::settle(world, cat, id);
                 self.lines.push(format!("rate {id}{}", shown.concat()));
             }
+            crate::show::open_portals(world, cat, id);
         }
         let water_moved = world.step_water();
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).

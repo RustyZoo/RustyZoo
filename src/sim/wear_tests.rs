@@ -173,6 +173,7 @@ fn stored(version: u32) -> Run {
         life: 1,
         timers: [5, 6],
         portal: false,
+        open: false,
     });
     run(types(WEARING), world, 1)
 }
@@ -206,6 +207,7 @@ fn the_repair_cheat_mends_the_broken_and_decayed_pieces_and_leaves_the_others() 
             life,
             timers: [5, 6],
             portal: false,
+            open: false,
         });
         run.sim.repair_fences(&mut run.world, &run.cat);
         let f = fence(&run);
@@ -394,6 +396,7 @@ fn loaded_in(sections: &str, keys: &str, life: Option<i32>) -> Vec<(u16, u32)> {
         life,
         timers: [5, 5],
         portal: false,
+        open: false,
     });
     w.loaded_events(&types_with(sections, keys))
         .iter()
@@ -579,6 +582,7 @@ fn broken(subtype: &str, keys: &str, life: i32) -> (World, Vec<String>, Vec<u16>
         life,
         timers: [5, 6],
         portal: false,
+        open: false,
     });
     let mut lines = Vec::new();
     let events = w.break_fences(&types(keys), &mut lines);

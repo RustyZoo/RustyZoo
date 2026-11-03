@@ -19,13 +19,13 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
                     life: r.u32()? as i32,
                     timers: [r.u32()?, r.u32()?],
                     portal: false,
+                    open: false,
                 });
             }
             if class == b"tankwall" && v >= 101 {
-                let portal = r.u8()? != 0;
-                r.skip(1)?;
+                let (portal, open) = (r.u8()? != 0, r.u8()? != 0);
                 if let Some(fence) = &mut common.fence {
-                    fence.portal = portal;
+                    (fence.portal, fence.open) = (portal, open);
                 }
             }
             common

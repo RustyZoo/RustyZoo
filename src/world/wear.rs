@@ -136,6 +136,7 @@ impl World {
                 life,
                 timers: [0; 2],
                 portal: false,
+                open: false,
             }),
             _ => return None,
         };

@@ -70,7 +70,7 @@ impl<'c> Cx<'_, 'c> {
         }
     }
 
-    fn name_of(&self, id: u32) -> String {
+    pub(super) fn name_of(&self, id: u32) -> String {
         let named = self
             .world
             .find(id)
@@ -78,7 +78,7 @@ impl<'c> Cx<'_, 'c> {
         named.map_or_else(String::new, |c| c.name.clone())
     }
 
-    fn exhibit_name(&self, x: u32) -> String {
+    pub(super) fn exhibit_name(&self, x: u32) -> String {
         self.world
             .exhibits()
             .get(x)

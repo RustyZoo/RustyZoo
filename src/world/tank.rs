@@ -180,6 +180,7 @@ impl World {
                     life: kind.life,
                     timers: [0; 2],
                     portal: false,
+                    open: false,
                 }),
                 ..Default::default()
             }),

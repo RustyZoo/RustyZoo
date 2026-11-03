@@ -359,6 +359,7 @@ fn a_piece_of_the_same_type_and_a_path_of_another_type_keep_their_id_and_place()
             life,
             timers: [0; 2],
             portal: false,
+            open: false,
         });
         e
     };

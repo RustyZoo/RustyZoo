@@ -32,6 +32,11 @@ impl Events {
         self.next.push(event);
     }
 
+    /// The events posted since the last swap, taken out (for code that posts through the world).
+    pub(crate) fn take_posted(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.next)
+    }
+
     /// The events a listener reads in this step, in buffer order: those for it or for everyone
     /// on its channel whose delay is below 2. Reading does not consume them.
     pub(crate) fn listen(&self, id: u32, channel: u8) -> impl Iterator<Item = &Event> {
