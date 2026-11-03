@@ -451,6 +451,8 @@ impl World {
         let mut starts: Vec<(u32, Pair)> = Vec::new();
         let mut regate = Vec::new();
         let mut kept_ids = HashSet::new();
+        // The exhibits the original resizes: the ones made and the ones whose region changed.
+        let mut resized: Vec<u32> = Vec::new();
         // The tiles beside the piece: the fill of a region that changed starts at the one it
         // holds (3.1).
         let beside: Vec<usize> = hint
@@ -477,6 +479,9 @@ impl World {
                     kept_ids.insert(e.id);
                     let same = e.order.len() == part.tiles.len()
                         && part.tiles.iter().all(|&t| old.region(t) == Some(e.id));
+                    if !same {
+                        resized.push(e.id);
+                    }
                     let part = match same {
                         true => &Part {
                             tiles: e.order.clone(),
@@ -508,6 +513,7 @@ impl World {
                     };
                     let id = next.add(part, name);
                     fresh.push(id);
+                    resized.push(id);
                     match kind {
                         // A tank has its ground, walls and objects to deal with before its name.
                         Some(_) => {
@@ -547,6 +553,9 @@ impl World {
                 .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
             {
                 next.reorder(r, exhibit::fill(self, out));
+                if !resized.contains(&r) {
+                    resized.push(r);
+                }
             }
         }
         // The tiles of the tanks that are gone, which keep their ground as sand (3.9).
@@ -557,7 +566,7 @@ impl World {
             .flat_map(|e| (0..self.zoo.tiles.len()).filter(|&t| old.region(t) == Some(e.id)))
             .collect();
         self.exhibits = next;
-        self.resize_areas();
+        self.resize_areas(&resized);
         self.edits += 1;
         let mut changed = self.retank(quiet);
         if !quiet {

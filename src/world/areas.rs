@@ -1,38 +1,25 @@
-//! The viewing areas of the exhibits follow the map (habitat rating 10.1): built when an exhibit
-//! is made or its fenced tiles change, and updated for each path tile placed or removed.
+//! The viewing areas of the exhibits follow the map (habitat rating 10.1): resized when an exhibit
+//! is made, split, merged or morphed, and updated for each path tile placed or removed.
 
 use super::*;
 use crate::exhibit::viewing::Plan;
 
 impl World {
-    /// Builds the areas again of the exhibits whose tile list or fenced tiles are not the ones
-    /// their areas were built from (a new exhibit, a fence placed or removed, tanks merged or
-    /// split); the slots of the exhibits that are gone are cleared.
-    pub(super) fn resize_areas(&mut self) {
-        let ids: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
+    /// Resizes the areas of the exhibits `ids` (10.1): the ones the original resizes, an exhibit
+    /// made, split, merged, morphed, or a tank merged or split; the slots of the exhibits that
+    /// are gone are cleared.
+    pub(super) fn resize_areas(&mut self, ids: &[u32]) {
+        let alive: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
         self.exhibits
             .views
             .slots
             .values_mut()
             .flatten()
-            .filter(|s| s.is_some_and(|(x, _)| !ids.contains(&x)))
+            .filter(|s| s.is_some_and(|(x, _)| !alive.contains(&x)))
             .for_each(|s| *s = None);
-        for id in ids {
-            let Some(order) = self.exhibits.get(id).map(|e| e.order.clone()) else {
-                continue;
-            };
-            let fenced = (order.iter().copied())
-                .filter(|&t| [0, 2, 4, 6].into_iter().any(|d| self.closed(t, d)))
-                .collect();
-            let key = (order, fenced);
-            if self.exhibits.get(id).is_some_and(|e| e.built == key) {
-                continue;
-            }
+        for &id in ids {
             let plan = Plan::of(self, id);
-            self.exhibits.rebuild(&plan, id);
-            if let Some(e) = self.exhibits.get_mut(id) {
-                e.built = key;
-            }
+            self.exhibits.resize(&plan, id);
         }
     }
 

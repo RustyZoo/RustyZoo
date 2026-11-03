@@ -621,9 +621,9 @@ fn lay(w: &mut World, at: (i32, i32)) {
 
 /// What a rebuild of exhibit 1 would group.
 fn rebuilt(w: &World) -> Vec<Vec<(usize, usize)>> {
-    let mut again = w.exhibits().clone();
-    again.rebuild(&Plan::of(w, 1), 1);
-    (again.get(1).unwrap().areas.iter())
+    let mut areas = Vec::new();
+    crate::exhibit::viewing::build(&Plan::of(w, 1), 1, &mut areas, &mut Default::default());
+    (areas.iter())
         .map(|a| a.tiles.iter().map(|&t| (t % 10, t / 10)).collect())
         .collect()
 }
@@ -696,4 +696,90 @@ fn the_areas_of_an_exhibit_that_opens_are_gone_with_their_slots() {
             .flatten()
             .any(|s| s.0 == 1)
     );
+}
+
+/// The exhibit's areas resized once more, as a split or a merge does.
+fn resize(w: &mut World) {
+    let plan = Plan::of(w, 1);
+    w.exhibits_mut().resize(&plan, 1);
+}
+
+fn fence(w: &mut World, at: (i32, i32), side: u32) -> u32 {
+    let piece = entity("fences", "", 0, centre(at), side);
+    let shape = shape(&piece);
+    w.add(piece, shape).unwrap()
+}
+
+#[test]
+fn a_second_resize_keeps_the_areas_and_adds_the_candidate_tiles_again() {
+    let mut w = pen(&[]);
+    let first = [(5, 4), (5, 5), (5, 6)];
+    resize(&mut w);
+    assert_eq!(stored(&w), [[first, first].concat()]);
+    assert!(w.exhibits().views.slots.contains_key(&55));
+}
+
+#[test]
+fn a_removed_tile_listed_twice_keeps_its_other_entry() {
+    let mut w = pen(&[]);
+    resize(&mut w);
+    assert!(w.remove(201));
+    assert_eq!(
+        stored(&w),
+        [[(5, 4), (5, 6), (5, 4), (5, 5), (5, 6)]],
+        "the first entry only"
+    );
+}
+
+#[test]
+fn placing_a_fence_piece_inside_a_pen_leaves_the_areas_as_they_are() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    let before = stored(&w);
+    assert_eq!(before, [[(5, 4), (5, 6), (5, 5)]]);
+    fence(&mut w, (2, 5), 2);
+    assert_eq!(w.exhibits().list().len(), 1);
+    assert_eq!(stored(&w), before);
+}
+
+#[test]
+fn removing_a_fence_piece_inside_a_pen_leaves_the_areas_as_they_are() {
+    let mut w = pen(&[]);
+    let piece = fence(&mut w, (2, 5), 2);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    let before = stored(&w);
+    assert_eq!(before, [[(5, 4), (5, 6), (5, 5)]]);
+    assert!(w.remove(piece));
+    assert_eq!(w.exhibits().list().len(), 1);
+    assert_eq!(stored(&w), before);
+}
+
+fn dirty_cleared(w: &mut World) {
+    w.exhibits_mut().get_mut(1).unwrap().rating.dirty = false;
+}
+
+#[test]
+fn an_area_made_by_a_path_edit_marks_its_exhibit_dirty() {
+    let mut w = pen(&[]);
+    assert!(w.remove(200) && w.remove(201) && w.remove(202));
+    dirty_cleared(&mut w);
+    lay(&mut w, (5, 5));
+    assert!(dirty(&w));
+    // A tile that joins an area makes none.
+    dirty_cleared(&mut w);
+    lay(&mut w, (5, 4));
+    assert!(!dirty(&w));
+}
+
+#[test]
+fn an_area_destroyed_by_a_path_edit_marks_its_exhibit_dirty() {
+    let mut w = pen(&[]);
+    dirty_cleared(&mut w);
+    assert!(w.remove(201) && w.remove(200));
+    assert!(!dirty(&w), "the area is still there");
+    assert!(w.remove(202));
+    assert!(stored(&w).is_empty());
+    assert!(dirty(&w));
 }

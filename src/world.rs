@@ -308,7 +308,8 @@ impl World {
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
-        world.resize_areas();
+        let all: Vec<u32> = world.exhibits.list().iter().map(|e| e.id).collect();
+        world.resize_areas(&all);
         world.load_gates();
         world.load_tanks();
         world.retank(false);

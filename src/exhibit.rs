@@ -52,9 +52,6 @@ pub struct Exhibit {
     pub stats: Stats,
     /// Its viewing areas (habitat rating 10), kept up to date per path change.
     pub areas: Vec<viewing::Area>,
-    /// The tile list and the fenced tiles the areas were built from; the areas are built again
-    /// when either differs.
-    pub built: (Vec<usize>, Vec<usize>),
 }
 
 /// The statistics of an exhibit (habitat rating 13.2 and 13.3). The simulation writes them: the
@@ -474,7 +471,6 @@ impl Exhibits {
             rating: rating::State::new(),
             stats: Stats::default(),
             areas: Vec::new(),
-            built: Default::default(),
         });
         self.assign(id, part);
         id
