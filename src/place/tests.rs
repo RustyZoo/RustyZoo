@@ -1777,6 +1777,34 @@ fn a_rampaging_animal_lets_a_rubbleable_object_through_and_a_rampaging_species_l
 }
 
 #[test]
+fn a_tall_animal_lets_a_walkable_by_tall_object_through_the_placing_check() {
+    let mut cat = catalogue();
+    let rock = |name: &str, by_tall: u8| {
+        let ini = format!("[Characteristics/Integers]\ncRubbleable=0\nwalkableByTall={by_tall}\n");
+        ty("building", name, &ini, [2, 2, 1])
+    };
+    cat.push(rock("low", 0));
+    cat.push(rock("high", 1));
+    let (low, high) = (cat.types.len() - 2, cat.types.len() - 1);
+    let mut elephant = entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+    elephant.common.as_mut().unwrap().id = 77;
+    let mut w = world((0, 0), vec![elephant], |_| {});
+    let verdict =
+        |w: &World, t: usize| at(w, &cat, t, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap().verdict;
+    for tall in [false, true] {
+        w.units.get_mut(77).unwrap().mover.tall = tall;
+        let (a, b) = (verdict(&w, low), verdict(&w, high));
+        assert_eq!(
+            (a, b),
+            (
+                Verdict::Invalid,
+                [Verdict::Invalid, Verdict::Valid][tall as usize]
+            )
+        );
+    }
+}
+
+#[test]
 fn a_units_rectangle_is_its_footprint_centred_with_the_larger_side_at_odd_rotations() {
     let cat = catalogue();
     // A 3 by 1 unit on the tile of a quarter tile tree, whose rectangle is x and y 0..32 of the

@@ -472,3 +472,76 @@ fn the_send_off_water_draw_walks_the_grounds_fill_list_in_its_order() {
         assert_eq!(tile, Some(dry[pick]), "pick {pick}");
     }
 }
+
+#[test]
+fn a_rampaging_animal_turns_the_quarters_of_a_tile_in_the_slot_order() {
+    let (mut w, unit) = grove(&["tree", "tree", "tree", "tree"]);
+    // Slot 1 is the lower-left quarter (id 12), slot 2 the upper-right one (id 11).
+    assert_eq!(trampled(&mut w, &unit).0, [10, 12, 11, 13]);
+}
+
+#[test]
+fn a_trampled_item_leaves_the_undo_list() {
+    let (mut w, unit) = grove(&["tree"]);
+    let at = w.find(10).unwrap();
+    let (e, s) = (w.zoo.entities[at].clone(), w.shape(at));
+    w.unrecorded(|w| w.remove(10));
+    // The tree is placed again by hand: the undo list holds it.
+    let id = w.add(e, s).unwrap();
+    assert!(w.can_undo());
+    assert_eq!(trampled(&mut w, &unit).0, [id]);
+    assert!(!w.can_undo());
+}
+
+#[test]
+fn a_loose_swimmer_in_the_zoo_exterior_is_sent_to_the_grounds_list() {
+    use crate::animal::tank;
+    // A zoo wall down the east side of column 1, the entrance on tile (2, 0) facing west: columns
+    // 0 and 1 are the exterior.
+    let mut world = world_with((6, 6), |zoo| {
+        zoo.entrance = (2, 0);
+        let wall = |y: i32| thing("zoowall", "", 300 + y as u32, centre((1, y)), 2);
+        zoo.entities.extend((0..6).map(wall));
+        zoo.entities
+            .push(thing("building", "", 320, centre((2, 0)), 6));
+        zoo.entities
+            .push(thing("animals", "zebra", 500, centre((0, 3)), 0));
+    });
+    let tile = world.tile_index(0, 3).unwrap();
+    assert_eq!(
+        world.exhibits().region(tile),
+        Some(crate::exhibit::EXTERIOR)
+    );
+    let mut unit = world.units.get(500).unwrap().clone();
+    let (cat, events, mut removals, mut rng) = (
+        Catalogue::default(),
+        crate::sim::Events::default(),
+        Vec::new(),
+        Rng::default(),
+    );
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    // The list holds the exterior with the grounds: pick its dry tile (0, 5). The tiles beyond the
+    // wall are closed to the path search, so the send shows in the task it sets.
+    let far = world.tile_index(0, 5).unwrap();
+    let dry: Vec<usize> = (tank::tiles(&world, crate::exhibit::GROUNDS).into_iter())
+        .filter(|&t| tank::kind(&world, t) == 0)
+        .collect();
+    let pick = dry.iter().position(|&t| t == far).expect("in the list");
+    assert_eq!(unit.goal.record.task, 0);
+    let at = world.find(500).unwrap();
+    tank::send(
+        &mut unit,
+        &mut world,
+        &mut ctx,
+        at,
+        &data(),
+        (0, Some(pick)),
+    );
+    assert_eq!(unit.goal.record.task, crate::goal::RANDOM);
+}

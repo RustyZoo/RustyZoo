@@ -389,3 +389,45 @@ fn a_column_whose_first_cell_was_skipped_plays_nothing() {
     assert!(firsts.len() < 2);
     assert_eq!(sounds.iter().map(|s| s.0).collect::<Vec<_>>(), firsts);
 }
+
+#[test]
+fn a_trampled_building_puts_its_users_out_and_spills_its_litter() {
+    let mut cat = cat(&ALL);
+    let can = "cPurchaseCost=25\n[Removes]\ntrash\n[Satisfies]\nbuilding\ntrash\n";
+    cat.push(ty("building", "can", "", 80, [2, 2], can));
+    cat.push(ty("objects", "other", "trash", 0, [1, 1], ""));
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("building", "can", 5, centre((4, 4)), 0));
+        zoo.entities
+            .push(entity("guests", "", 6, centre((7, 7)), 0));
+    });
+    w.units.buildings.insert(
+        5,
+        crate::building::Live {
+            users: vec![(6, 0, 0)],
+            fill: 3,
+            ..Default::default()
+        },
+    );
+    let shape = |_: &Entity| None;
+    let mut rng = Rng::default();
+    let mut kit = Kit {
+        cat: &cat,
+        rng: &mut rng,
+        template: "piece-%s",
+        shape: &shape,
+    };
+    assert!(leave_rubble(&mut w, &mut kit, 5));
+    let litter = w.zoo.entities.iter().filter(|e| e.subtype == "trash");
+    assert_eq!(litter.count(), 3);
+    assert_eq!(w.units.buildings[&5].fill, 0);
+    // The user was put out: its abort event is posted, and the building lists nobody.
+    assert!(w.units.buildings[&5].users.is_empty());
+    assert!(
+        w.units
+            .posts
+            .iter()
+            .any(|p| p.kind == 0x2722 && p.target == 6)
+    );
+}

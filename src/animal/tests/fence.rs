@@ -266,3 +266,31 @@ fn a_status_tick_whose_zap_draw_succeeds_starts_the_test_and_one_that_fails_does
     assert!(!tick("0").0);
     assert!(!tick("-5").0, "a negative chance draws and fails");
 }
+
+#[test]
+fn the_exterior_counts_as_the_grounds_for_the_fence_test_probe() {
+    // A zoo wall down the east side of column 1 and the entrance at (2, 0) facing west: columns 0
+    // and 1 are the exterior. The animal stands on (1, 3); a wire on the east side of (2, 3) is
+    // found by the probe one tile east, which lies on the grounds.
+    let mut extra: Vec<Entity> = (0..6)
+        .map(|y: i32| thing("zoowall", "", 300 + y as u32, centre((1, y)), 2))
+        .collect();
+    extra.push(thing("building", "", 320, centre((2, 0)), 6));
+    extra.push(piece("wire", (2, 3), 2, 5));
+    let world = world_with((6, 6), |zoo| {
+        zoo.entrance = (2, 0);
+        zoo.entities
+            .push(thing("animals", "zebra", 500, centre((1, 3)), 0));
+        zoo.entities.extend(extra);
+    });
+    let exterior = world.tile_index(1, 3).unwrap();
+    assert_eq!(
+        world.exhibits().region(exterior),
+        Some(crate::exhibit::EXTERIOR)
+    );
+    let mut unit = world.units.get(500).unwrap().clone();
+    unit.part = Part::Animal(Animal::default());
+    let mut w = world;
+    let k = keys_with(|k| k.fence_offset = 1);
+    assert_eq!(start(&mut w, &mut unit, &k, &data()), (2, true));
+}

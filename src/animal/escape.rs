@@ -7,7 +7,7 @@ use super::{Animal, Class, ESCAPE, Env, Keys, Out, fire};
 use crate::behaviour::{Data, Env as Run};
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::path::Mover;
+use crate::path::{Mover, SLOT};
 use crate::rubble::{Kit, PIECE_NAME, leave_rubble};
 use crate::sim::Rng;
 use crate::unit::movement::DIR;
@@ -92,15 +92,15 @@ pub fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) 
 }
 
 /// A rampaging animal that is not on an escape walk entered tile `t` (animals 11.9 point 4): each
-/// object of its four quadrants whose type has `cRubbleable` 1, one that spans several quadrants
-/// once, turns to rubble with the routine of its kind (cheats 4.6). The object leaves the list at
-/// the next removal pass.
+/// object of its four quadrants, taken in the slot order (pathfinding 4.3), whose type has
+/// `cRubbleable` 1, one that spans several quadrants once, turns to rubble with the routine of its
+/// kind (cheats 4.6). The object leaves the list at the next removal pass and the undo list at once.
 pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
     if !matches!(&unit.part, Part::Animal(a) if a.rampaging && a.walk.is_none()) {
         return;
     }
     let mut ids = Vec::new();
-    for q in 0..4 {
+    for q in SLOT {
         let Some(e) = world
             .quadrant(t, q)
             .filter(|&e| world.shape(e).is_some_and(|s| s.rubbleable))
@@ -128,10 +128,11 @@ pub fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
         template: &template,
         shape: &shape,
     };
-    for id in ids {
-        if leave_rubble(world, &mut kit, id) {
-            ctx.removals.push(id);
-        }
+    let gone: Vec<u32> = (ids.into_iter())
+        .filter(|&id| leave_rubble(world, &mut kit, id))
+        .collect();
+    for id in gone {
+        ctx.remove(world, id);
     }
 }
 
