@@ -690,7 +690,7 @@ impl Cx<'_, '_> {
             s.walkable.0
         };
         if b.class != "building"
-            || self.mode() == 3
+            || matches!(self.mode(), 1 | 3)
             || through
             || !crate::path::in_reach(self.world, e, t, u.z.div_euclid(16))
             || s.footprint.0.saturating_mul(s.footprint.1) <= 3

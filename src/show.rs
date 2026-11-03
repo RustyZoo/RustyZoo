@@ -5,8 +5,8 @@
 //! The state itself, the scripts and the show info of each tank, is [`crate::zoo::Shows`], loaded
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
-//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The audience is
-//! `audience`: the search of a guest for a show and the price of a seat.
+//! `performer`, a stub until Shows 2: a show that starts only ends by abort. The marine specialist
+//! is `keeper`. The audience is `audience`: the search of a guest for a show and the price of a seat.
 
 use crate::building::kind_of;
 #[cfg(test)]
@@ -23,6 +23,7 @@ use crate::zoo::ShowInfo;
 
 mod audience;
 mod cycle;
+mod keeper;
 mod performer;
 mod portals;
 mod relay;
@@ -30,12 +31,15 @@ pub mod trick;
 mod units;
 
 pub(crate) use audience::{find, pay};
+pub(crate) use keeper::{cue, needs_keeper, rejoin, removed};
 pub(crate) use portals::{open_portals, portal};
 pub(crate) use relay::{listen_grandstand, listen_world};
-pub(crate) use units::{Move, counted, settle};
+pub(crate) use units::{Move, counted, join, leave, settle};
 
-/// The type id of the marine specialist, who conducts a show (shows 3.2).
+/// The type id of the marine specialist, who conducts a show (shows 3.2), and the job he does
+/// while it lasts (shows 22.1).
 const KEEPER: u32 = 9552;
+pub(crate) const CONDUCT: u8 = 19;
 
 /// The event types of a show (shows 6.1).
 pub(crate) mod event {
@@ -394,7 +398,6 @@ pub(crate) fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut
 }
 
 /// Whether a show info with this show id exists.
-#[cfg(test)]
 fn has_info(world: &World, id: u16) -> bool {
     world.zoo.shows.infos.iter().flatten().any(|i| i.id == id)
 }

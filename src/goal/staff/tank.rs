@@ -18,7 +18,7 @@ use crate::world::World;
 pub(super) const CLIMB_UP_OUTSIDE: u8 = 20;
 pub(super) const CLIMB_DOWN_OUTSIDE: u8 = 21;
 const TO_OUTSIDE_LADDER: u8 = 22;
-const TO_INSIDE_LADDER: u8 = 23;
+pub(super) const TO_INSIDE_LADDER: u8 = 23;
 pub(super) const CLEAN_TANK: u8 = 24;
 const CLEANING_TANK: u8 = 25;
 const CLIMB_UP_INSIDE: u8 = 28;

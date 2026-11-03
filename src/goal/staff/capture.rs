@@ -1,11 +1,12 @@
 //! A keeper's capture of an escaped animal (staff 7.1 point 2, 7.11, animals 11.6): the search that
 //! claims the nearest animal he may capture, the capture task and its jobs 13 (close in), 14 (the
-//! dart) and 15 (the crate). The helicopter and its hook are not here.
+//! dart) and 15 (the crate). The helicopter flies to the animal instead of walking (staff 7.11.1
+//! point 4) and its dart counts on its base; its own goals are in [`super::heli`].
 
 use super::super::{CAPTURE, Cx};
 use crate::animal::{self, Animal, boxed};
 use crate::build::number;
-use crate::unit::{Part, movement, predator};
+use crate::unit::{Kind, Part, movement, predator};
 
 /// The jobs of the capture.
 pub(super) const CHASE: u8 = 13;
@@ -20,7 +21,7 @@ const NOWHERE: i32 = 0x7fff_ffff;
 
 impl Cx<'_, '_> {
     /// The animal `id`, when it is one and exists.
-    fn animal(&self, id: u32) -> Option<&Animal> {
+    pub(super) fn animal(&self, id: u32) -> Option<&Animal> {
         self.world.find(id)?;
         match &self.world.units.get(id)?.part {
             Part::Animal(a) => Some(a),
@@ -71,7 +72,7 @@ impl Cx<'_, '_> {
     /// distance wins: the first qualifying animal is taken whatever its distance, a later one
     /// replaces it only when strictly nearer. It is written as his capture id and he is the
     /// animal's claim. Whether one was found.
-    fn found_escaped(&mut self) -> bool {
+    pub(super) fn found_escaped(&mut self) -> bool {
         if let Some(s) = self.staff() {
             s.captured = 0;
         }
@@ -160,9 +161,15 @@ impl Cx<'_, '_> {
         self.done_capture();
     }
 
-    /// The job's target tile is given up once he stands on it.
+    /// The job's target tile is given up once he stands on it; a helicopter's once it is above
+    /// that tile, whatever its height (point 4.3).
     fn arrived(&mut self) {
-        if self.reached(true) {
+        let tile = self.record().job_target.tile;
+        let over = tile.is_some() && tile == self.tile();
+        if match self.unit.kind {
+            Kind::Heli => over,
+            _ => self.reached(true),
+        } {
             let world = &*self.world;
             self.unit.goal.record.job_target.set_tile(world, None);
         }
@@ -190,7 +197,12 @@ impl Cx<'_, '_> {
         let Some(to) = self.tile_of_entity(at) else {
             return;
         };
-        if self.path_to(to, true) && self.start_with(set, interruptible, false) {
+        // A helicopter has no path to look for: it flies to the corner of the animal's tile.
+        let found = match self.unit.kind {
+            Kind::Heli => self.fly_to(to),
+            _ => self.path_to(to, true),
+        };
+        if found && self.start_with(set, interruptible, false) {
             let (world, dest) = (&*self.world, self.unit.destination);
             self.unit.goal.record.job_target.set_pos(world, dest);
         }
@@ -227,6 +239,7 @@ impl Cx<'_, '_> {
         if let Some(unit) = self.world.units.get_mut(id) {
             boxed::tranquilise(unit, &keys);
         }
+        self.dart_hook();
         match self.can_capture(id) {
             true => self.set_job(RETRIEVE, id, None),
             false => self.set_job(0, 0, None),

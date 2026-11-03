@@ -156,7 +156,30 @@ pub(crate) fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
         return;
     };
     let (id, record) = (common.id, common.staff.clone());
-    let mut staff = create(type_of(cat, entity), kind, rng);
+    // A helicopter draws its two counters and no colour; a loaded record then overwrites them (staff
+    // 4.2, zoo format 6.13).
+    let staff = match kind {
+        Kind::Heli => Staff {
+            work: counter(type_of(cat, entity), "cWorkCheck", 5.0, rng),
+            chase: counter(type_of(cat, entity), "cChaseCheck", 2.0, rng),
+            ..Staff::default()
+        },
+        _ => create(type_of(cat, entity), kind, rng),
+    };
+    fit(world, cat, at, kind, id, record, staff);
+}
+
+/// Puts `staff` on the unit of the entity at `at`, restored from its record, as [`make`] does after its
+/// draws; a helicopter's birth calls it alone, its counters having been drawn by [`helicopter`].
+pub(crate) fn fit(
+    world: &mut World,
+    cat: &Catalogue,
+    at: usize,
+    kind: Kind,
+    id: u32,
+    record: Option<Box<StaffRecord>>,
+    mut staff: Staff,
+) {
     if let Some(record) = record {
         let assigned = (record.tiles.iter())
             .filter_map(|&t| exhibit_at(world, t))
@@ -164,10 +187,18 @@ pub(crate) fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
         let guest = |m: &u32| (world.units.get(*m)).is_some_and(|u| u.kind == Kind::Guest);
         let members = record.members.iter().copied().filter(guest).collect();
         staff.restore(&record, assigned, members);
+        if kind == Kind::Heli {
+            staff.heli = heli::Heli::from_own(&record.own);
+        }
     }
+    let landed = kind == Kind::Heli && !staff.heli.flying;
     if let Some(unit) = world.units.get_mut(id) {
         unit.part = Part::Staff(staff);
         unit.started = true;
+    }
+    // A helicopter on the ground is put at the slot point of its slot (staff 7.11.1 point 8.5).
+    if landed {
+        heli::land(world, cat, at);
     }
 }
 
@@ -243,7 +274,7 @@ impl Staff {
 /// The first turn of a staff member that was not created by [`make`] or the Hire panel (one a test
 /// world added): the same draws as [`create`].
 pub(crate) fn start(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
-    if !matches!(unit.part, Part::Staff(_)) {
+    if !matches!(unit.part, Part::Staff(_)) || unit.kind == Kind::Heli {
         return;
     }
     let ty = type_of(ctx.cat, &world.zoo.entities[at]);
@@ -268,6 +299,10 @@ pub(crate) fn checks(
     let Part::Staff(s) = &unit.part else {
         return;
     };
+    // A helicopter fears nothing (staff 7.11.1 point 1).
+    if unit.kind == Kind::Heli {
+        return;
+    }
     let who = type_of(ctx.cat, &world.zoo.entities[at]);
     if unit.kind == Kind::Keeper {
         let small = |x: &u32| {
@@ -336,6 +371,7 @@ pub(crate) fn leaves(world: &mut World, id: u32) {
 
 pub mod assign;
 pub mod chores;
+pub(crate) mod heli;
 pub mod ladder;
 pub mod pool;
 pub mod service;

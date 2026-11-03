@@ -2216,11 +2216,7 @@ fn a_sold_base_puts_its_helicopter_out_before_hiding_it() {
     let removed = remove(&mut w, &mut money, &cat, base, &mut rng).unwrap();
     assert_eq!(removed.members, [heli]);
     // Its goal is stopped and it stands at the exit place, not at the pad.
-    let c = w.zoo.entities[w.find(heli).unwrap()]
-        .common
-        .as_ref()
-        .unwrap();
-    assert_eq!(c.unit.as_ref().unwrap().target.goal, 0);
+    assert_eq!(w.units.get(heli).unwrap().goal.record.task, 0);
     assert_ne!(at(&w), pad);
 }
 

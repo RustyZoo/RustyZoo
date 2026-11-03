@@ -31,6 +31,7 @@ mod reach;
 mod recover;
 mod show;
 mod staff;
+mod stops;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +40,7 @@ pub(crate) use dropped::{dropped, picked_up, reset_unit};
 pub(crate) use entry::{crowd, send, use_call};
 pub(crate) use guest::{IN_BUILDING, LEAVE};
 pub(crate) use staff::release_group;
+pub(crate) use stops::{lose_task, resume_use, stop_all, stop_use};
 
 pub(crate) const NONE: u8 = 0;
 /// The wander.
@@ -128,16 +130,6 @@ pub fn task_name(task: u8) -> &'static str {
         t => TASKS
             .get(usize::from(t).wrapping_sub(100))
             .unwrap_or(&"unknown"),
-    }
-}
-
-/// The job the log names for a guide's task: `staff job <id> <job>` (tour guide 18).
-fn guide_job(task: u8) -> Option<&'static str> {
-    match task {
-        LEG => Some("va"),
-        TALK => Some("speak"),
-        RANDOM => Some("random"),
-        _ => None,
     }
 }
 
@@ -268,6 +260,11 @@ pub(crate) enum Goal {
     /// (shows 21.3, 21.4).
     GoShow,
     Return,
+    /// 0x6a to 0x67 of a helicopter: wait at its base, take off, return and land (staff 7.11.1).
+    HeliBase,
+    HeliExit,
+    HeliReturn,
+    HeliEnter,
 }
 
 impl Goal {
@@ -279,7 +276,11 @@ impl Goal {
             (HABITAT, Kind::Guest) => Some(Goal::Habitat),
             (HABITAT, Kind::Keeper) => Some(Goal::Exhibit),
             (DUTIES, Kind::Keeper) => Some(Goal::Duties),
-            (CAPTURE, Kind::Keeper) => Some(Goal::Capture),
+            (CAPTURE, Kind::Keeper | Kind::Heli) => Some(Goal::Capture),
+            (USE, Kind::Heli) => Some(Goal::HeliBase),
+            (EXIT_BUILDING, Kind::Heli) => Some(Goal::HeliExit),
+            (ENTRANCE, Kind::Heli) => Some(Goal::HeliReturn),
+            (ENTER_BUILDING, Kind::Heli) => Some(Goal::HeliEnter),
             (MAINT, Kind::Worker) => Some(Goal::Maint),
             (ENTER_TANK, Kind::Keeper) => Some(Goal::EnterTank),
             (EXIT_TANK, Kind::Keeper) => Some(Goal::ExitTank),
@@ -347,6 +348,10 @@ impl Goal {
             Goal::Drown => DROWN,
             Goal::GoShow => GO_TO_SHOW,
             Goal::Return => RETURN_FROM_SHOW,
+            Goal::HeliBase => USE,
+            Goal::HeliExit => EXIT_BUILDING,
+            Goal::HeliReturn => ENTRANCE,
+            Goal::HeliEnter => ENTER_BUILDING,
         }
     }
 
@@ -369,6 +374,7 @@ impl Goal {
             Goal::EnterTank => cx.enter_init(),
             Goal::Leave => cx.leave_init(),
             Goal::ExitTank => cx.exit_init(),
+            Goal::HeliExit | Goal::HeliReturn | Goal::HeliEnter => cx.heli_init(self),
             _ => true,
         }
     }
@@ -412,6 +418,9 @@ impl Goal {
             Goal::Exhibit => return cx.exhibit_check_done(),
             Goal::Duties => return cx.duties_check_done(),
             Goal::Capture => return cx.capture_check_done(),
+            Goal::HeliBase | Goal::HeliExit | Goal::HeliReturn | Goal::HeliEnter => {
+                return cx.heli_check_done(self);
+            }
             // It never completes by itself (staff 8.1).
             Goal::Maint => return,
             Goal::EnterTank | Goal::ExitTank => return cx.ladder_task_check_done(),
@@ -452,6 +461,7 @@ impl Goal {
             Goal::Follow if cx.record().target.tile.is_none() => cx.reset(),
             Goal::Enter if cx.record().target.tile.is_none() => cx.enter_decide(),
             Goal::Exit => cx.exit_decide(),
+            Goal::HeliExit | Goal::HeliReturn => cx.heli_decide(self),
             Goal::Go if cx.record().target.tile.is_none() => cx.reset(),
             Goal::EatStand if cx.record().target.tile.is_none() => cx.wander(false),
             _ => {}
@@ -492,6 +502,9 @@ impl Goal {
             Goal::Drown => cx.drown_complete(),
             Goal::GoShow => cx.go_show_complete(),
             Goal::Return => cx.return_complete(),
+            Goal::HeliBase | Goal::HeliExit | Goal::HeliReturn | Goal::HeliEnter => {
+                cx.heli_complete(self)
+            }
             Goal::Base | Goal::Site | Goal::Maint => {}
         }
     }
@@ -509,8 +522,9 @@ pub(crate) enum Sub {
 impl Sub {
     fn build(job: u8, kind: Kind) -> Option<Sub> {
         match (kind, job) {
-            (Kind::Keeper, 1..=6 | 13..=15 | 20..=25 | 28 | 29) => Some(Sub::Keeper(job)),
+            (Kind::Keeper, 1..=6 | 13..=15 | 19..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
+            (Kind::Heli, 13..=15) => Some(Sub::Keeper(job)),
             _ => Some(Sub::Base),
         }
     }
@@ -639,81 +653,6 @@ pub(crate) struct Cx<'a, 'c> {
     pub data: &'a dyn Data,
 }
 
-/// A maintenance worker loses its task (staff 8.3, 8.9): the link, the target and the goal go, the
-/// worker stands, and the ladder gives it the duties again at its next update.
-pub(crate) fn lose_task(unit: &mut Unit) {
-    if let Part::Staff(s) = &mut unit.part {
-        (s.task, s.target) = (0, None);
-    }
-    unit.goal.record = Record::default();
-    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
-    crate::unit::movement::stop(unit);
-    unit.destination = None;
-}
-
-/// A unit stops everything with the goal reset (staff 7.11, unit placing 9.1): its record and its
-/// need flags go, its walk and its set stop, and its hold is lowered.
-pub(crate) fn stop_all(unit: &mut Unit) {
-    unit.goal.record = Record::default();
-    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
-    unit.goal.wants_to_decide = false;
-    crate::unit::movement::stop(unit);
-    unit.destination = None;
-    unit.runner = Default::default();
-    unit.mover.emergency = false;
-    unit.wait = 0;
-    if let Part::Animal(a) = &mut unit.part {
-        (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
-    }
-}
-
-/// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
-/// stop and a guest forgets the building it came for; the ladder gives it a task at its next
-/// update.
-pub(crate) fn stop_use(unit: &mut Unit) {
-    unit.goal.record = Record::default();
-    (unit.goal.stale, unit.goal.sub_stale) = (true, true);
-    unit.goal.wants_to_decide = false;
-    crate::unit::movement::stop(unit);
-    unit.destination = None;
-    (unit.through_building, unit.aborted) = (false, false);
-    unit.runner = Default::default();
-    unit.use_set = None;
-    unit.animation = Default::default();
-    match &mut unit.part {
-        Part::Guest(g) => (g.need, g.building, g.stand) = (None, 0, false),
-        Part::Animal(a) => a.building = 0,
-        _ => {}
-    }
-}
-
-/// A guest listed as a user of slot `slot` of building `id` in a zoo just loaded goes on with its
-/// use (task 0x6a, guest buildings 4.1, 6.5), as if it had entered at AI tick `now`: the walk and
-/// the set it ran stop and the building is its target (for an animal, its shelter). A unit saved
-/// entering or leaving (`saved` 0x68 or 0x69) keeps that task; one saved in any other task (a
-/// record without a unit block counts as using) ends its use at once (guest buildings 4.2).
-pub(crate) fn resume_use(unit: &mut Unit, id: u32, slot: usize, now: u32, saved: Option<i32>) {
-    stop_use(unit);
-    let kept = saved.and_then(|t| u8::try_from(t).ok());
-    let kept = kept.filter(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(t));
-    unit.goal.record = Record {
-        task: kept.unwrap_or(USE),
-        mode: u8::from(kept == Some(EXIT_BUILDING)),
-        done: saved.is_some() && kept.is_none(),
-        target: Target {
-            id,
-            ..Target::default()
-        },
-        start: now,
-        ..Record::default()
-    };
-    match &mut unit.part {
-        Part::Guest(g) => (g.building, g.slot) = (id, slot),
-        Part::Animal(a) => (a.building, a.slot) = (id, slot),
-        _ => {}
-    }
-}
-
 /// One unit's goal update (6.2), after its behaviour.
 pub fn update(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let mut cx = Cx {
@@ -764,7 +703,7 @@ impl Cx<'_, '_> {
         r.target.set_tile(world, tile);
         goal.stale = true;
         if changed {
-            if let (true, Some(job)) = (guide, guide_job(task)) {
+            if let (true, Some(job)) = (guide, staff::guide_job(task)) {
                 world.units.staff_note(format!("job {unit} {job}"));
             }
             let width = world.zoo.width as usize;
@@ -886,6 +825,7 @@ impl Cx<'_, '_> {
             Kind::Keeper => self.keeper_ladder(task, done),
             Kind::Worker => self.worker_ladder(task, done),
             Kind::Guide => self.guide_ladder(task, done),
+            Kind::Heli => return self.heli_ladder(task),
         }
         true
     }
@@ -958,8 +898,7 @@ impl Cx<'_, '_> {
 
     fn run_sub(&mut self) {
         if std::mem::take(&mut self.unit.goal.sub_stale) {
-            self.unit.goal.sub = None;
-            self.unit.goal.held.1 = None;
+            self.sub_dropped();
         }
         if self.unit.goal.sub.is_none() {
             let job = self.record().job;

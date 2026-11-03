@@ -191,12 +191,16 @@ impl World {
                         let tiles = (s.assigned.iter())
                             .filter_map(|&x| crate::staff::gate_tile(self, x))
                             .collect();
-                        s.record(
+                        let mut record = s.record(
                             base,
                             tiles,
                             crate::staff::duty_kinds(cat),
                             e.class == "tour",
-                        )
+                        );
+                        if e.class == "helicopter" {
+                            record.own = s.heli.own();
+                        }
+                        record
                     }
                     _ => base,
                 }));
@@ -235,7 +239,17 @@ impl World {
         let mut block = c.unit.take().map_or_else(|| fresh::unit_new(guest), |b| *b);
         if let Some(u) = self.units.get(c.id).filter(|u| u.typed) {
             live_goal(u, &mut block.target);
-            block.move_kind = 2;
+            // A helicopter's movement is the free one, or none (staff 7.11.1 point 10).
+            block.move_kind = match (class == "helicopter", u.walking) {
+                (false, _) => 2,
+                (true, flying) => {
+                    if flying {
+                        1
+                    } else {
+                        -1
+                    }
+                }
+            };
             if guest.is_some() {
                 block.w4 = u.mover.cost_word();
             }
@@ -268,6 +282,12 @@ impl World {
             .collect();
         block.b7 = u8::from(u.held);
         (block.b5, block.b6) = (u8::from(u.called), u8::from(u.back));
+        // The show id is read only when its flag is exactly 1; a block that reads as the live
+        // value is left as it is (shows 26 point 2).
+        let stored = |f: (u8, u16)| if f.0 == 1 { f.1 } else { 0 };
+        if stored(block.flags[1]) != u.show {
+            block.flags[1] = (u8::from(u.show != 0), u.show);
+        }
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
         (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
         block.pending = u.runner.queued().unwrap_or_default().to_string();

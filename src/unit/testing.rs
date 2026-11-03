@@ -304,6 +304,35 @@ pub(crate) fn tank_world_with(
     w
 }
 
+/// [`tank_world_with`] as a show tank (show id 1001, no script) and a marine specialist, id 7,
+/// standing on the tile inside its gate.
+pub fn show_tank() -> World {
+    let keeper = entity("keeper", "trainer", 7, centre((2, 2)), 0);
+    let mut w = tank_world_with(5, 4, &[], vec![keeper]);
+    let id = w.tank_at(2 * 12 + 2).unwrap();
+    w.exhibits_mut()
+        .get_mut(id)
+        .unwrap()
+        .tank
+        .as_mut()
+        .unwrap()
+        .show = true;
+    w.zoo.shows.infos = vec![Some(crate::zoo::ShowInfo {
+        frequency: 90,
+        index: 0,
+        schedule: Vec::new(),
+        records: Vec::new(),
+        events: Vec::new(),
+        next: 0,
+        id: 1001,
+        upkeep: [0; 3],
+        receipts: [0; 3],
+        attendance: [0; 3],
+        show: Default::default(),
+    })];
+    w
+}
+
 /// The numbers of a walking type: the rates 20, 46 and 76, the animation speeds 50 (slow) and 80
 /// (slow, in water), and a swimmer.
 pub(crate) fn rates(number: &crate::behaviour::Number) -> i32 {

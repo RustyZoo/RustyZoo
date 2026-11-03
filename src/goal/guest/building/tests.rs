@@ -1154,6 +1154,9 @@ fn a_unit_of_any_kind_is_sent_out_unless_it_moves_inside_a_tank() {
         let at = w.find(1).unwrap();
         w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 3;
         assert_eq!(with_cx(&cat, &mut w, common_hit), 0, "{class}");
+        // A unit in the free move (the helicopter) is let through by every building.
+        w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 1;
+        assert_eq!(with_cx(&cat, &mut w, common_hit), 0, "{class}");
         w.zoo.entities[at].common.as_mut().unwrap().movement_mode = 2;
         assert_eq!(with_cx(&cat, &mut w, common_hit), EXIT_BUILDING, "{class}");
         // The hall keeps its users outside: the goal is done where the unit stands at the next
