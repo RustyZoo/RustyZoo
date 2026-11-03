@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::animal::Animal;
-use crate::unit::testing::{centre, entity, world_with};
+use crate::unit::testing::{centre, entity, shape, world_with};
 
 fn kind(class: &'static str, name: &str, name_id: i32) -> EntityType {
     EntityType {
@@ -603,4 +603,196 @@ fn leaving_and_the_tour_bonus_recompute_only_for_a_donation() {
             "sick {sick}"
         );
     }
+}
+
+/// The tiles of the areas of exhibit 1 as (x, y), area by area.
+fn stored(w: &World) -> Vec<Vec<(usize, usize)>> {
+    let areas = &w.exhibits().get(1).unwrap().areas;
+    (areas.iter())
+        .map(|a| a.tiles.iter().map(|&t| (t % 10, t / 10)).collect())
+        .collect()
+}
+
+fn lay(w: &mut World, at: (i32, i32)) {
+    let path = entity("paths", "stone", 0, centre(at), 0);
+    let shape = shape(&path);
+    w.add(path, shape).unwrap();
+}
+
+/// What a rebuild of exhibit 1 would group.
+fn rebuilt(w: &World) -> Vec<Vec<(usize, usize)>> {
+    let mut areas = Vec::new();
+    crate::exhibit::viewing::build(&Plan::of(w, 1), 1, &mut areas, &mut Default::default());
+    (areas.iter())
+        .map(|a| a.tiles.iter().map(|&t| (t % 10, t / 10)).collect())
+        .collect()
+}
+
+#[test]
+fn a_removed_path_tile_leaves_its_area_without_regrouping() {
+    let mut w = pen(&[]);
+    assert_eq!(stored(&w), [[(5, 4), (5, 5), (5, 6)]]);
+    assert!(w.remove(201));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6)]]);
+    assert_eq!(
+        rebuilt(&w),
+        [[(5, 4)], [(5, 6)]],
+        "a rebuild groups them apart"
+    );
+    let slots = &w.exhibits().views.slots;
+    assert!(!slots.contains_key(&55), "the tile holds no slot any more");
+    // The last tile of an area takes the area with it.
+    assert!(w.remove(200) && w.remove(202));
+    assert!(stored(&w).is_empty());
+}
+
+#[test]
+fn a_placed_path_tile_joins_the_area_of_its_neighbour_where_a_rebuild_orders_it_differently() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6), (5, 5)]]);
+    assert_eq!(rebuilt(&w), [[(5, 4), (5, 5), (5, 6)]]);
+    // The tile looks at the pen in the directions of its slots.
+    let held = w.exhibits().views.slots[&55];
+    assert!(held[6].is_some() && held[0].is_none());
+}
+
+#[test]
+fn a_path_tile_far_from_the_pen_joins_no_area_and_an_edit_does_not_regroup() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (9, 9));
+    lay(&mut w, (5, 9));
+    assert_eq!(
+        stored(&w),
+        [[(5, 4), (5, 6)]],
+        "more than 2 tiles from the pen"
+    );
+    assert!(w.set_tile(8, 8, 1, 0, 0));
+    assert_eq!(stored(&w), [[(5, 4), (5, 6)]]);
+}
+
+#[test]
+fn the_areas_of_an_exhibit_that_opens_are_gone_with_their_slots() {
+    let mut w = pen(&[]);
+    assert!(
+        w.exhibits()
+            .views
+            .slots
+            .values()
+            .flatten()
+            .flatten()
+            .any(|s| s.0 == 1)
+    );
+    assert!(w.remove(101));
+    assert!(w.exhibits().get(1).is_none());
+    assert!(
+        !w.exhibits()
+            .views
+            .slots
+            .values()
+            .flatten()
+            .flatten()
+            .any(|s| s.0 == 1)
+    );
+}
+
+/// The exhibit's areas resized once more, as a split or a merge does.
+fn resize(w: &mut World) {
+    let plan = Plan::of(w, 1);
+    w.exhibits_mut().resize(&plan, 1);
+}
+
+fn fence(w: &mut World, at: (i32, i32), side: u32) -> u32 {
+    let piece = entity("fences", "", 0, centre(at), side);
+    let shape = shape(&piece);
+    w.add(piece, shape).unwrap()
+}
+
+#[test]
+fn a_second_resize_keeps_the_areas_and_adds_the_candidate_tiles_again() {
+    let mut w = pen(&[]);
+    let first = [(5, 4), (5, 5), (5, 6)];
+    resize(&mut w);
+    assert_eq!(stored(&w), [[first, first].concat()]);
+    assert!(w.exhibits().views.slots.contains_key(&55));
+}
+
+#[test]
+fn a_removed_tile_listed_twice_in_a_held_area_loses_both_entries() {
+    let mut w = pen(&[]);
+    resize(&mut w);
+    assert!(w.remove(201));
+    assert_eq!(
+        stored(&w),
+        [[(5, 4), (5, 6), (5, 4), (5, 6)]],
+        "one entry per pass"
+    );
+}
+
+#[test]
+fn a_removed_tile_listed_twice_in_an_area_no_slot_holds_keeps_one_entry() {
+    let mut w = pen(&[]);
+    resize(&mut w);
+    w.exhibits_mut().views.slots.remove(&55);
+    assert!(w.remove(201));
+    assert_eq!(
+        stored(&w),
+        [[(5, 4), (5, 6), (5, 4), (5, 5), (5, 6)]],
+        "the list pass only"
+    );
+}
+
+#[test]
+fn placing_a_fence_piece_inside_a_pen_leaves_the_areas_as_they_are() {
+    let mut w = pen(&[]);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    let before = stored(&w);
+    assert_eq!(before, [[(5, 4), (5, 6), (5, 5)]]);
+    fence(&mut w, (2, 5), 2);
+    assert_eq!(w.exhibits().list().len(), 1);
+    assert_eq!(stored(&w), before);
+}
+
+#[test]
+fn removing_a_fence_piece_inside_a_pen_leaves_the_areas_as_they_are() {
+    let mut w = pen(&[]);
+    let piece = fence(&mut w, (2, 5), 2);
+    assert!(w.remove(201));
+    lay(&mut w, (5, 5));
+    let before = stored(&w);
+    assert_eq!(before, [[(5, 4), (5, 6), (5, 5)]]);
+    assert!(w.remove(piece));
+    assert_eq!(w.exhibits().list().len(), 1);
+    assert_eq!(stored(&w), before);
+}
+
+fn dirty_cleared(w: &mut World) {
+    w.exhibits_mut().get_mut(1).unwrap().rating.dirty = false;
+}
+
+#[test]
+fn an_area_made_by_a_path_edit_marks_its_exhibit_dirty() {
+    let mut w = pen(&[]);
+    assert!(w.remove(200) && w.remove(201) && w.remove(202));
+    dirty_cleared(&mut w);
+    lay(&mut w, (5, 5));
+    assert!(dirty(&w));
+    // A tile that joins an area makes none.
+    dirty_cleared(&mut w);
+    lay(&mut w, (5, 4));
+    assert!(!dirty(&w));
+}
+
+#[test]
+fn an_area_destroyed_by_a_path_edit_marks_its_exhibit_dirty() {
+    let mut w = pen(&[]);
+    dirty_cleared(&mut w);
+    assert!(w.remove(201) && w.remove(200));
+    assert!(!dirty(&w), "the area is still there");
+    assert!(w.remove(202));
+    assert!(stored(&w).is_empty());
+    assert!(dirty(&w));
 }

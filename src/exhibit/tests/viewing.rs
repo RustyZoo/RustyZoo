@@ -2,7 +2,7 @@
 //! the pressure of the guests and the wear of the fences on a synthetic world.
 
 use super::*;
-use crate::exhibit::viewing::{Area, Body, Ground, Plan, Wear, areas, wear};
+use crate::exhibit::viewing::{Area, Body, Ground, Plan, Store, Wear, build, join, wear};
 use crate::zoo::Fence;
 
 /// A map from rows of text: `E` a fenced exhibit tile, `e` an unfenced one, `P` a path (inside
@@ -28,6 +28,27 @@ fn plan(rows: &[&str]) -> Plan {
     plan
 }
 
+/// The areas of exhibit 1 for the plan, built from nothing, and the slots.
+fn built(plan: &Plan) -> (Vec<Area>, Store) {
+    let (mut areas, mut store) = (Vec::new(), Store::default());
+    build(plan, 1, &mut areas, &mut store);
+    (areas, store)
+}
+
+fn areas(plan: &Plan) -> Vec<Area> {
+    built(plan).0
+}
+
+/// For each tile of the area, the directions (bit `k`) whose slot holds it.
+fn looks(store: &Store, a: &Area) -> Vec<u8> {
+    (a.tiles.iter())
+        .map(|t| {
+            let held = store.slots.get(t).copied().unwrap_or_default();
+            (0..8).fold(0, |m, k| m | u8::from(held[k] == Some((1, a.id))) << k)
+        })
+        .collect()
+}
+
 fn xy(plan: &Plan, a: &Area) -> Vec<(usize, usize)> {
     (a.tiles.iter())
         .map(|&t| (t % plan.width, t / plan.width))
@@ -45,16 +66,43 @@ fn span(plan: &Plan, a: &Area, axis: usize) -> usize {
 #[test]
 fn a_long_path_beside_an_exhibit_is_cut_into_areas_of_four_tiles() {
     let p = plan(&["PPPPPPPPPPPP", "............", "EEEEEEEEEEEE"]);
-    let a = areas(&p);
+    let (a, store) = built(&p);
     assert_eq!(
         a.iter().map(|a| a.tiles.len()).collect::<Vec<_>>(),
         [4, 4, 4]
     );
     assert_eq!(xy(&p, &a[1]), [(4, 0), (5, 0), (6, 0), (7, 0)]);
     // A tile in the middle looks straight down (4) and along both diagonals down (3 and 5).
-    assert_eq!(a[1].looks[0], 0b0011_1000);
+    assert_eq!(looks(&store, &a[1])[0], 0b0011_1000);
     // The first tile has no diagonal to the west: the map ends.
-    assert_eq!(a[0].looks[0], 0b0001_1000);
+    assert_eq!(looks(&store, &a[0])[0], 0b0001_1000);
+}
+
+#[test]
+fn a_path_tile_added_later_joins_the_area_of_the_neighbour_it_meets_first() {
+    // Tiles 0 and 2 are built apart; the tile between them then meets its east neighbour first
+    // (side 2), where a rebuild would have put all three in the area of the west one.
+    let mut p = plan(&["P.P..", "EEEEE"]);
+    let (mut a, mut store) = built(&p);
+    assert_eq!(a.len(), 2);
+    p.path[1] = true;
+    join(&p, 1, &mut a, &mut store, 1);
+    assert_eq!(
+        a.iter().map(|a| a.tiles.clone()).collect::<Vec<_>>(),
+        [vec![0], vec![2, 1]]
+    );
+    assert_eq!(
+        areas(&p)
+            .iter()
+            .map(|a| a.tiles.clone())
+            .collect::<Vec<_>>(),
+        [vec![0, 1, 2]]
+    );
+    // A tile outside the zoo joins nothing.
+    p.path[3] = true;
+    p.in_zoo[3] = false;
+    join(&p, 1, &mut a, &mut store, 3);
+    assert_eq!(a.len(), 2);
 }
 
 #[test]
@@ -111,10 +159,10 @@ fn a_tile_that_sees_the_exhibit_in_no_line_is_in_no_direction_and_joins_nobody()
     // line. (5, 2) sees it along the diagonal (direction 7), but its neighbour holds no
     // direction, so it starts an area of its own.
     let p = plan(&["...E..", ".....P", ".....P"]);
-    let a = areas(&p);
+    let (a, store) = built(&p);
     assert_eq!(a.len(), 2);
     assert_eq!(
-        (a[0].looks.clone(), a[1].looks.clone()),
+        (looks(&store, &a[0]), looks(&store, &a[1])),
         (vec![0], vec![0b1000_0000])
     );
 }
@@ -234,7 +282,7 @@ fn an_area_sees_the_exhibit_tiles_within_ten_tiles_and_in_line_of_sight() {
 fn guests_press_on_an_animal_less_with_each_tile_of_distance() {
     let area = Area {
         tiles: vec![5, 6],
-        looks: vec![0; 2],
+        id: 1,
         seen: Vec::new(),
     };
     let mut first = || 0;

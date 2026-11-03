@@ -20,6 +20,7 @@ use crate::unit::Units;
 use crate::zoo::{Entity, Tile, Zoo};
 
 mod amphibious;
+mod areas;
 mod exhibit;
 mod filter;
 mod save;
@@ -311,6 +312,8 @@ impl World {
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
+        let all: Vec<u32> = world.exhibits.list().iter().map(|e| e.id).collect();
+        world.resize_areas(&all);
         world.load_gates();
         world.load_tanks();
         world.retank(false);
@@ -1402,7 +1405,9 @@ impl World {
                 Some((id, held))
             })
             .collect();
+        let paths = self.path_tiles();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        self.follow_paths(&paths);
         for (id, held) in held {
             let Some(at) = self.find(id) else {
                 continue;
