@@ -97,6 +97,8 @@ pub(crate) struct Slot {
     pub height: i32,
     pub entrances: Vec<Point>,
     pub exit: Option<Point>,
+    /// The height of the exit (`exitposz`).
+    pub exit_height: i32,
     pub capacity: i32,
     pub facing: u32,
     /// Whether the exit may be on land and on water (`exitonland`, `exitonwater`; 6.3).
@@ -274,6 +276,7 @@ impl Kind {
                 height: number("slotposz"),
                 entrances: points("entrpos"),
                 exit: points("exitpos").first().copied(),
+                exit_height: number("exitposz"),
                 capacity: number("capacity"),
                 facing: number("facing") as u32,
                 exit_land: flag("exitonland", true),

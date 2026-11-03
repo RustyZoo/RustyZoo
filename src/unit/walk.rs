@@ -590,7 +590,7 @@ pub(crate) fn fits(unit: &Unit, w: &World, here: usize, t: usize, lenient: bool)
                 && !tank
                 && (!grounds(from) || grounds(region))
         }
-        Kind::Keeper | Kind::Worker => {
+        Kind::Keeper | Kind::Worker | Kind::Heli => {
             w.in_zoo(t) && (!w.is_water(t) || m.swims) && (w.tank_at(t).is_none() || m.underwater)
         }
         Kind::Guide => w.in_zoo(t) && (w.path(t).is_some() || off_path) && room(w, t),

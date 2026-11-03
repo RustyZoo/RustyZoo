@@ -28,8 +28,8 @@ type Way = (Vec<usize>, Vec<i32>, Option<(i32, i32, i32)>);
 /// search made it (from version 84), its levels, "none" being -1, the level 0 of a swimmer
 /// included; with a path, also the destination point of the record. A node off the map makes the whole
 /// path empty: nothing could walk it. A record with no path keeps no destination, so that the
-/// move call finds the way the goals give it.
-fn saved_way(world: &World, block: &UnitBlock) -> Way {
+/// move call finds the way the goals give it; a helicopter, which has no path, keeps its destination.
+fn saved_way(world: &World, block: &UnitBlock, flier: bool) -> Way {
     let at = |n: u32| i32::try_from(n).ok();
     let tile = |r: &[u32; 3]| world.tile_index(at(r[0])?, at(r[1])?);
     let Some(path) = (block.records.iter().map(tile)).collect::<Option<Vec<_>>>() else {
@@ -41,7 +41,7 @@ fn saved_way(world: &World, block: &UnitBlock) -> Way {
         Vec::new()
     };
     let [x, y, z] = block.p3;
-    let there = (!path.is_empty() && x >= 0 && y >= 0).then_some((x, y, z));
+    let there = ((flier || !path.is_empty()) && x >= 0 && y >= 0).then_some((x, y, z));
     (path, levels, there)
 }
 
@@ -105,7 +105,8 @@ pub(crate) fn load(world: &mut World, now: u32) {
             continue;
         };
         let (id, set, tile) = (c.id, block.behaviour.clone(), block.building);
-        let (way, pending) = (saved_way(world, block), block.pending.clone());
+        let flier = world.zoo.entities[at].class == "helicopter";
+        let (way, pending) = (saved_way(world, block, flier), block.pending.clone());
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
         let show = if block.flags[1].0 == 1 {
             block.flags[1].1
@@ -116,7 +117,9 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let fright = (block.b1 != 0, block.w1);
         let cost = block.w4;
         let task = u8::try_from(block.target.goal).ok();
-        let inside = task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
+        // A helicopter's building tasks are its own (staff 7.11.1): it is no user of the building here.
+        let inside =
+            !flier && task.is_some_and(|t| [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&t));
         let here = tile
             .iter()
             .all(|&n| n >= 0)

@@ -2,7 +2,8 @@
 //! (simulation 6, behaviours 4.6, movement 3).
 //!
 //! The state is a side table of the world ([`Units`], `World::units`) with one [`Unit`] per
-//! animal, guest, keeper, maintenance worker and tour guide of the entity list, in list order.
+//! animal, guest, keeper, maintenance worker, tour guide and helicopter of the entity list, in
+//! list order.
 //! The position and the facing (`rotation`) stay in the entity's common part. The table follows the
 //! entity list: a unit that is added or removed (a placement, an undo, the removal pass) is added
 //! or dropped when the world re-indexes, and a new one starts its status timer at `id % period`.
@@ -77,11 +78,12 @@ pub(crate) enum Kind {
     Keeper,
     Worker,
     Guide,
+    /// The helicopter of the DRT base (staff 7.11.1).
+    Heli,
 }
 
 impl Kind {
-    /// The kind of the units of an entity class; `None` for everything that is not a unit (and
-    /// for the helicopter, which comes with the scenarios).
+    /// The kind of the units of an entity class; `None` for everything that is not a unit.
     pub(crate) fn of_class(class: &str) -> Option<Kind> {
         Some(match class {
             "animals" => Kind::Animal,
@@ -89,6 +91,7 @@ impl Kind {
             "keeper" => Kind::Keeper,
             "maint" => Kind::Worker,
             "tour" => Kind::Guide,
+            "helicopter" => Kind::Heli,
             _ => return None,
         })
     }
@@ -101,6 +104,7 @@ impl Kind {
             Kind::Keeper => "keeper",
             Kind::Worker => "worker",
             Kind::Guide => "guide",
+            Kind::Heli => "heli",
         }
     }
 
@@ -109,7 +113,7 @@ impl Kind {
         match self {
             Kind::Animal => path::Kind::Animal,
             Kind::Guest => path::Kind::Guest,
-            Kind::Keeper => path::Kind::Keeper,
+            Kind::Keeper | Kind::Heli => path::Kind::Keeper,
             Kind::Worker => path::Kind::Worker,
             Kind::Guide => path::Kind::Guide,
         }
@@ -160,6 +164,8 @@ pub(crate) struct Staff {
     pub duties_done: bool,
     /// The animal the member has taken as his capture job, 0 for none (staff 7.11).
     pub captured: u32,
+    /// A helicopter's own state (staff 7.11.1).
+    pub heli: crate::staff::heli::Heli,
 }
 
 /// The kind-specific part of a unit.
@@ -845,6 +851,7 @@ impl Hooks for Standard<'_> {
         unit.animation
             .advance(ms, &|name| self.data.timing(entity, name));
         self.tell(unit, world, at);
+        crate::staff::heli::rotor(unit, ms);
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
@@ -869,6 +876,9 @@ impl Hooks for Standard<'_> {
         if let Some(name) = unit.use_set.take() {
             unit.runner
                 .start(&mut unit.animation, &env, &name, false, true, true);
+        }
+        if unit.kind == Kind::Heli {
+            crate::staff::heli::idle_set(unit, &env);
         }
         unit.runner.step(&mut unit.animation, &mut env, key);
         self.building_calls(unit, world, ctx, at);
@@ -916,6 +926,9 @@ impl Hooks for Standard<'_> {
 
     fn typed(&mut self, unit: &mut Unit, world: &mut World, at: usize) {
         movement::read_type(unit, self.data, &world.zoo.entities[at]);
+        if unit.kind == Kind::Heli {
+            crate::staff::heli::read_type(unit, self.data, &world.zoo.entities[at]);
+        }
     }
     fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         crate::guest::reaction::react(unit, world, ctx, at, self.data);

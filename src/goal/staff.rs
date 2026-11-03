@@ -19,6 +19,8 @@ use tank::{CLEAN_TANK, CLIMB_DOWN_INSIDE, is_tank_job};
 mod capture;
 mod conduct;
 mod guide;
+mod heli;
+pub(super) use guide::guide_job;
 pub(crate) use guide::release_group;
 mod tank;
 mod worker;

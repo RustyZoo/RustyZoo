@@ -20,6 +20,7 @@ mod capture;
 mod contagion;
 mod dropped;
 mod drown;
+mod heli;
 mod shelter;
 mod surface;
 
