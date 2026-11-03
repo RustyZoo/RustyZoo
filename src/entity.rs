@@ -88,6 +88,15 @@ pub struct EntityType {
 }
 
 impl EntityType {
+    /// The egg and the crate footprints of an animal type, in that order (see
+    /// [`EntityType::form_footprint`]).
+    pub fn forms(&self) -> [(i32, i32); 2] {
+        [true, false].map(|egg| {
+            let [x, y] = self.form_footprint(egg);
+            (x, y)
+        })
+    }
+
     /// The footprint `(x, y)` in half tiles of an animal in its egg (`cEggFootprintX/Y`) or in its
     /// crate (`cBoxFootprintX/Y`), read like the plain footprint; 2 by 2 when the file gives none.
     pub fn form_footprint(&self, egg: bool) -> [i32; 2] {

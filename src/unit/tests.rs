@@ -439,7 +439,7 @@ fn the_hash_covers_the_needs_of_the_animals_and_nothing_else_of_them() {
         change(a);
         other.units.hash()
     };
-    let changes: [fn(&mut Animal); 10] = [
+    let changes: [fn(&mut Animal); 12] = [
         |a| a.happiness = 1,
         |a| a.hunger = 1,
         |a| a.health = 1,
@@ -450,6 +450,8 @@ fn the_hash_covers_the_needs_of_the_animals_and_nothing_else_of_them() {
         |a| a.dying = true,
         |a| a.escaped = true,
         |a| a.rampaging = true,
+        |a| a.tranq = true,
+        |a| a.claim = 1,
     ];
     for (i, change) in changes.into_iter().enumerate() {
         assert_ne!(hash(change), base, "field {i}");
@@ -480,7 +482,13 @@ fn the_hash_of_the_units_follows_the_counters_of_a_staff_member() {
         panic!("not staff");
     };
     staff.chase = 1;
-    assert_ne!(w.units.hash(), work);
+    let chase = w.units.hash();
+    assert_ne!(chase, work);
+    let Part::Staff(staff) = &mut w.units.get_mut(1).unwrap().part else {
+        panic!("not staff");
+    };
+    staff.captured = 9;
+    assert_ne!(w.units.hash(), chase);
 }
 
 /// A type with one ambient set, `fPlayWithSound(a, purr)` then `fPlay(b)`, for every unit; `a`

@@ -457,6 +457,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate,
         gated: !gate && !unit,
         walkable: (gate, gate),
+        forms: None,
         tank: TankKind::NONE,
     })
 }

@@ -231,8 +231,8 @@ pub struct TypeRecord {
     pub attendance: [u32; 3],
     /// The creation date (a file time); 0 in a file before version 99.
     pub date: u64,
-    /// The ids of the performing animals of the type that take part (shows 20); not saved: the
-    /// animals rebuild it.
+    /// The ids of the units that take part, in joining order (shows 3.2, 20). Not saved: the units
+    /// join again when they are put on the map.
     pub units: Vec<u32>,
 }
 
@@ -280,7 +280,8 @@ impl Default for Show {
 /// The state of one animal in a show (shows 3.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemState {
-    pub word: u16,
+    /// The show's current script when the state is made.
+    pub script: u16,
     pub animal: u32,
     /// -1 before the first item.
     pub item: i16,
@@ -293,6 +294,32 @@ pub struct ItemState {
 }
 
 impl ShowInfo {
+    /// The record of type `t`. The original makes an empty one on a lookup; nothing reads it, so
+    /// none is made here.
+    pub fn record(&self, t: u32) -> Option<&TypeRecord> {
+        self.records.iter().find(|r| r.key == t)
+    }
+
+    /// The units of type `t` that take part (shows 3.2).
+    pub fn units(&self, t: u32) -> &[u32] {
+        self.record(t).map_or(&[], |r| &r.units)
+    }
+
+    /// The species whose turn it is.
+    pub fn scheduled(&self) -> Option<u32> {
+        self.schedule.get(self.index as usize).copied()
+    }
+
+    /// The script id of the scheduled species, 0 for none (shows 5.2).
+    pub fn scheduled_script(&self) -> u16 {
+        (self.scheduled()).map_or(0, |t| self.record(t).map_or(0, |r| r.script))
+    }
+
+    /// Running the scheduled script (shows 3.3).
+    pub fn is_started(&self) -> bool {
+        self.show.running && self.show.script == self.scheduled_script()
+    }
+
     /// Reads a show info of the version being read; the fields it lacks stay as a fresh info has
     /// them.
     pub(super) fn read(r: &mut Reader) -> R<ShowInfo> {
@@ -419,7 +446,7 @@ impl Show {
         let items = (0..r.count(14)?)
             .map(|_| {
                 Ok(ItemState {
-                    word: r.u16()?,
+                    script: r.u16()?,
                     animal: r.u32()?,
                     item: r.u16()? as i16,
                     finished: r.u8()? != 0,
@@ -464,7 +491,7 @@ impl Show {
         }
         o.u32(self.items.len() as u32);
         for s in &self.items {
-            o.u16(s.word);
+            o.u16(s.script);
             o.u32(s.animal);
             o.u16(s.item as u16);
             for b in [

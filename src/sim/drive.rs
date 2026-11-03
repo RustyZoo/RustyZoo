@@ -403,6 +403,7 @@ impl Run {
             gated: false,
             tank: crate::world::TankKind::NONE,
             walkable: (false, false),
+            forms: None,
         };
         let Some(id) = self.world.add(entity, Some(shape)) else {
             return false;
