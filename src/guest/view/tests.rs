@@ -720,14 +720,27 @@ fn a_second_resize_keeps_the_areas_and_adds_the_candidate_tiles_again() {
 }
 
 #[test]
-fn a_removed_tile_listed_twice_keeps_its_other_entry() {
+fn a_removed_tile_listed_twice_in_a_held_area_loses_both_entries() {
     let mut w = pen(&[]);
     resize(&mut w);
     assert!(w.remove(201));
     assert_eq!(
         stored(&w),
+        [[(5, 4), (5, 6), (5, 4), (5, 6)]],
+        "one entry per pass"
+    );
+}
+
+#[test]
+fn a_removed_tile_listed_twice_in_an_area_no_slot_holds_keeps_one_entry() {
+    let mut w = pen(&[]);
+    resize(&mut w);
+    w.exhibits_mut().views.slots.remove(&55);
+    assert!(w.remove(201));
+    assert_eq!(
+        stored(&w),
         [[(5, 4), (5, 6), (5, 4), (5, 5), (5, 6)]],
-        "the first entry only"
+        "the list pass only"
     );
 }
 

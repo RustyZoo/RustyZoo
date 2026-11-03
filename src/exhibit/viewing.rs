@@ -228,9 +228,10 @@ impl Exhibits {
         }
     }
 
-    /// A path tile was removed (10.1): it leaves the areas its eight slots hold, then the areas
-    /// of every exhibit that list it, the first entry of each only; an area left empty is
-    /// destroyed, which marks its exhibit to be rated again (itself only).
+    /// A path tile was removed (10.1): two independent passes, each taking the first entry only.
+    /// It leaves the areas its eight slots hold, then every area that still lists it, those the
+    /// first pass hit included; an area left empty is destroyed, which marks its exhibit to be
+    /// rated again (itself only).
     pub fn path_removed(&mut self, t: usize) {
         let held = self.views.slots.remove(&t).unwrap_or_default();
         let mut done: Vec<(u32, u32)> = Vec::new();
@@ -243,8 +244,7 @@ impl Exhibits {
             }
         }
         for e in &mut self.list {
-            let x = e.id;
-            take_out(e, |a| !done.contains(&(x, a)), t);
+            take_out(e, |_| true, t);
         }
     }
 }
