@@ -74,8 +74,14 @@ pub fn births(
         let Some(id) = world.add(heli, shape) else {
             continue;
         };
+        // Its counters were drawn above: no second draw.
         if let Some(at) = world.find(id) {
-            crate::staff::make(world, cat, rng, at);
+            let record = world.zoo.entities[at]
+                .common
+                .as_ref()
+                .and_then(|c| c.staff.clone());
+            let kind = crate::unit::Kind::Heli;
+            crate::staff::fit(world, cat, at, kind, id, record, Default::default());
         }
         // It waits at the base, as the block it stores says.
         let now = world.units.ai_ticks;

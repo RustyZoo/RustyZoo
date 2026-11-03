@@ -156,11 +156,30 @@ pub fn make(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize) {
         return;
     };
     let (id, record) = (common.id, common.staff.clone());
-    // A helicopter drew its counters when its base made it (unit placing 7.4).
-    let mut staff = match kind {
-        Kind::Heli => Staff::default(),
+    // A helicopter draws its two counters and no colour; a loaded record then overwrites them (staff
+    // 4.2, zoo format 6.13).
+    let staff = match kind {
+        Kind::Heli => Staff {
+            work: counter(type_of(cat, entity), "cWorkCheck", 5.0, rng),
+            chase: counter(type_of(cat, entity), "cChaseCheck", 2.0, rng),
+            ..Staff::default()
+        },
         _ => create(type_of(cat, entity), kind, rng),
     };
+    fit(world, cat, at, kind, id, record, staff);
+}
+
+/// Puts `staff` on the unit of the entity at `at`, restored from its record, as [`make`] does after its
+/// draws; a helicopter's birth calls it alone, its counters having been drawn by [`helicopter`].
+pub fn fit(
+    world: &mut World,
+    cat: &Catalogue,
+    at: usize,
+    kind: Kind,
+    id: u32,
+    record: Option<Box<StaffRecord>>,
+    mut staff: Staff,
+) {
     if let Some(record) = record {
         let assigned = (record.tiles.iter())
             .filter_map(|&t| exhibit_at(world, t))

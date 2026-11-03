@@ -602,3 +602,33 @@ fn a_landed_helicopter_is_put_at_its_slot_point_on_the_map_but_one_in_the_air_st
     crate::staff::make(&mut w, &cat, &mut rng, at);
     assert_eq!(point(&w, h), (300, 300, 0));
 }
+
+#[test]
+fn a_helicopter_of_a_loaded_zoo_draws_its_work_and_chase_counters_once() {
+    // Two draws, work then chase, no colour (staff 4.2).
+    let mut want = Rng::default();
+    let counters = (want.pick(5) as i32, want.pick(2) as i32);
+    let (w, cat, h) = zoo(&[]);
+    let (mut back, mut rng) = (
+        World::new(w.saved(|_| true), testing::shape),
+        Rng::default(),
+    );
+    for at in 0..back.zoo.entities.len() {
+        crate::staff::make(&mut back, &cat, &mut rng, at);
+    }
+    // The base draws nothing, and the helicopter's record overwrites its counters.
+    assert_eq!(rng, want);
+    let at = back.find(h).unwrap();
+    let c = back.zoo.entities[at].common.as_ref().unwrap();
+    assert_eq!(
+        (
+            c.staff.as_ref().unwrap().work,
+            c.staff.as_ref().unwrap().chase
+        ),
+        counters
+    );
+    // The birth drew them once, before the unit was made.
+    let mut birth = Rng::default();
+    births(&mut zoo(&[]).0, &cat, BASE, &mut birth, 9, testing::shape);
+    assert_eq!(birth, want);
+}
