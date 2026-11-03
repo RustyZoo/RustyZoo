@@ -321,6 +321,35 @@ fn two_tanks_that_merge_get_the_mean_height_and_the_flag_of_the_larger_volume() 
 }
 
 #[test]
+fn a_merged_tank_counts_its_animals_for_the_shows_at_its_next_rating() {
+    let mut pieces = ring("tank", 2, 2, 5, 2);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    put_wall(&mut world, last.0, last.1);
+    let line = put_wall(&mut world, "tank", (3, 2, 2));
+    let copy = world
+        .edge(2 * SIZE as usize + 4, 6)
+        .and_then(|e| world.zoo.entities[e].common.as_ref())
+        .map(|c| c.id)
+        .unwrap();
+    let ids: Vec<u32> = world.exhibits().list().iter().map(|e| e.id).collect();
+    for &x in &ids {
+        world.exhibits_mut().get_mut(x).unwrap().rating.first = false;
+    }
+    world.begin();
+    world.remove(line);
+    assert!(
+        ids.iter()
+            .all(|&x| !world.exhibits().get(x).unwrap().rating.first)
+    );
+    world.remove(copy);
+    let [merged] = world.exhibits().list() else {
+        panic!("one tank")
+    };
+    assert!(merged.rating.first);
+}
+
+#[test]
 fn the_pending_gate_over_a_tank_wall_takes_the_height_of_the_tank() {
     let t = |x: usize, y: usize| y * SIZE as usize + x;
     let height = |w: &World, x, y, d| w.wall_height(w.edge(t(x, y), d).unwrap());

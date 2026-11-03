@@ -75,7 +75,7 @@ impl Cx<'_, '_> {
     }
 
     /// Ladder point 1: a guest standing in an exhibit or a tank (put there, or fallen in) loses its
-    /// fright, gets the exit task, mode 0, and thinks 10568, unless it has the task already or is
+    /// fright, stops everything, gets the exit task, mode 0, and thinks 10568, unless it has the task already or is
     /// drowning or avoiding. Whether it did.
     pub(super) fn exit_ladder(&mut self) -> bool {
         let task = self.record().task;
@@ -85,9 +85,7 @@ impl Cx<'_, '_> {
         {
             return false;
         }
-        self.unit.frightened = false;
-        self.think(10568, None);
-        self.set_task(EXIT, 0, 0, None);
+        self.stop_and_exit();
         true
     }
 
@@ -194,7 +192,7 @@ impl Cx<'_, '_> {
         if let Some(entrance) = self.entrance() {
             // The way out is searched at the normal cost; only an afraid guest then pays the
             // emergency one and runs.
-            self.unit.mover.emergency = false;
+            self.cost_back();
             if self.path_to(entrance, true) {
                 self.unit.mover.emergency = afraid;
                 let started = match afraid {

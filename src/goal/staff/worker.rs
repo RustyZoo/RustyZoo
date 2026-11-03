@@ -260,7 +260,7 @@ impl Cx<'_, '_> {
                 }
             }
             // Nothing left to bag on the grounds or in an empty exhibit ends the walk (staff 8.6).
-            pool::ZOO_DOO if !chores::poo_left(self.world, self.unit.id) => self.work_finish(),
+            pool::ZOO_DOO if !self.poo_left() => self.work_finish(),
             pool::TRASH_PILE | pool::ZOO_DOO if self.tile() == Some(tile) => {
                 self.record().job_done = true;
             }
@@ -280,6 +280,12 @@ impl Cx<'_, '_> {
             }
             _ => {}
         }
+    }
+
+    /// Whether the check done of job 11 goes on (staff 8.6).
+    fn poo_left(&mut self) -> bool {
+        let (cat, me, rng) = (self.ctx.cat, self.unit.id, &mut *self.ctx.rng);
+        chores::poo_left(self.world, cat, me, &mut || rng.rand())
     }
 
     /// Decide of a job with no target yet: the way to the tile of the task, or for a fence to the
@@ -315,17 +321,16 @@ impl Cx<'_, '_> {
     }
 
     /// Whether job 11 is void for tile `t` (staff 8.6, failure A): the tile has no habitat, or its
-    /// habitat is not the zoo grounds and holds animals, its amphibious neighbours' included.
-    fn keepers_own(&self, t: usize) -> bool {
+    /// habitat is not the zoo grounds and its rated animal count, its amphibious neighbours' added,
+    /// is not 0; each count is read recomputed first when its exhibit is dirty.
+    fn keepers_own(&mut self, t: usize) -> bool {
         let x = match self.world.exhibits().region(t) {
             None => return true,
             Some(crate::exhibit::GROUNDS | crate::exhibit::EXTERIOR) => return false,
             Some(x) => x,
         };
-        let neighbours = self.world.exhibits().get(x).map(|e| e.amphibious.clone());
-        std::iter::once(x)
-            .chain(neighbours.unwrap_or_default())
-            .any(|n| !crate::panel::exhibit::animals_in(self.world, n).is_empty())
+        let (cat, rng) = (self.ctx.cat, &mut *self.ctx.rng);
+        chores::rated_around(self.world, cat, x, &mut || rng.rand()) > 0
     }
 
     /// 8.4 job 9: the way to the can, else to one of the four tiles beside it, drawn.

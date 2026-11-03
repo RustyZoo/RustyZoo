@@ -2092,6 +2092,78 @@ fn a_guest_entering_a_grandstand_is_put_on_the_draw_place_the_first_draw_gives()
     assert_eq!((seats.len(), seats[0].unit), (1, 1));
 }
 
+/// Gives guest 1 the non-path cost 9 it was loaded with (and the emergency one).
+fn loaded(cx: &mut Cx) {
+    cx.unit.mover.word = Some(9);
+    cx.unit.mover.emergency = true;
+}
+
+fn cost(cx: &Cx) -> (Option<u32>, bool) {
+    (cx.unit.mover.word, cx.unit.mover.emergency)
+}
+
+#[test]
+fn a_site_goal_writes_the_cost_back_over_the_saved_one() {
+    let (cat, mut w) = (types(), at_the_ride());
+    with_cx(&cat, &mut w, |cx| {
+        loaded(cx);
+        cx.site_decide();
+        assert_eq!((cx.record().task, cost(cx)), (GO, (None, false)));
+        // The arrival of the viewing tile and of the scenery goal.
+        let own = cx.tile();
+        loaded(cx);
+        cx.set_task(crate::goal::HABITAT, 0, 0, own);
+        cx.run_goal();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (crate::goal::GAWK, (None, false))
+        );
+        loaded(cx);
+        cx.scenery_arrived();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (crate::goal::DO_SCENERY, (None, false))
+        );
+    });
+}
+
+#[test]
+fn a_guest_inside_a_building_keeps_its_saved_cost_when_the_tiles_update() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        for task in IN_BUILDING {
+            loaded(cx);
+            cx.set_task(task, 0, 8, w_tile((5, 9)));
+            assert!(cx.head_for(8, "bathroom"));
+            assert_eq!(cost(cx), (Some(9), true), "{task}");
+        }
+    });
+}
+
+#[test]
+fn a_building_goal_writes_the_cost_back_over_the_saved_one() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        // The completion of the building goal, then the entrance goal (done and decide).
+        loaded(cx);
+        cx.set_task(GO, 0, 8, w_tile((5, 9)));
+        cx.run_goal();
+        assert_eq!((cx.record().task, cost(cx)), (ENTRANCE, (None, false)));
+        loaded(cx);
+        cx.set_task(ENTRANCE, 0, 8, w_tile((5, 9)));
+        cx.run_goal();
+        assert_eq!(
+            (cx.record().task, cost(cx)),
+            (ENTER_BUILDING, (None, false))
+        );
+        // The update of the building tiles, for a guest outside.
+        loaded(cx);
+        cx.set_task(0, 0, 0, None);
+        assert!(cx.head_for(8, "bathroom"));
+        assert_eq!(cost(cx), (None, false));
+    });
+}
+
 #[test]
 fn a_user_of_a_type_that_stays_outside_is_seated_all_the_same() {
     // The seating is done for every type with the flag, before the hide and stay-outside tests.

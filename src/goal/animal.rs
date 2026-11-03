@@ -147,14 +147,19 @@ impl Cx<'_, '_> {
     /// itself. Otherwise to the first of its four straight neighbours (nearest to the unit first,
     /// the later direction first on a tie) that the unit may step onto from `to` and that has a
     /// path. A successful request leaves the unit's destination on the tile it was asked for, which
-    /// the walk then takes as the goal's target. The `cKeepMoving` extension is not ported (M7).
+    /// the walk then takes as the goal's target. A species with `cKeepMoving` 1 on the random walk
+    /// or keeper food task gets `to` and the tile one step past it (when the unit may step there)
+    /// appended to that path; the destination stays the neighbour.
     fn next_to(&mut self, to: usize, direct: bool) -> bool {
         let draw = self.ctx.rng.rand() % 100;
         let mover = crate::unit::movement::mover(self.unit, self.world, self.at, to);
         if direct && draw < 50 && !mover.deep {
             return self.path_to(to, false);
         }
-        let near: Vec<usize> = {
+        let keeps_moving = matches!(self.unit.goal.record.task, RANDOM | KEEPER_FOOD)
+            && crate::animal::keys(self.world, self.ctx.cat, self.at).keep_moving == 1;
+        // Each valid neighbour with the tile past `to` when the unit keeps moving and may go there.
+        let near: Vec<(usize, Option<usize>)> = {
             let world = &*self.world;
             let distance = squared_distance(world, self.tile());
             let mut near: Vec<(usize, usize)> = [6, 4, 2, 0]
@@ -166,19 +171,40 @@ impl Cx<'_, '_> {
             // A unit in a tank steps between tank tiles at its own level (tank fauna 7.1).
             let level = mover.levels.1;
             let through = self.unit.through_building;
-            let valid = |&(t, d): &(usize, usize)| match mover.deep {
+            let valid = |from: usize, (t, d): (usize, usize)| match mover.deep {
                 true => path::allowed_deep(
                     world,
                     &mover,
                     settings,
-                    ((to, level), (t, level), d),
+                    ((from, level), (t, level), d),
                     through,
                 ),
-                false => path::allowed(world, &mover, settings, (to, t, d), through),
+                false => path::allowed(world, &mover, settings, (from, t, d), through),
             };
-            near.iter().filter(|c| valid(c)).map(|&(t, _)| t).collect()
+            let past = |d: usize| {
+                let t = world.neighbour(to, (d + 4) % 8)?;
+                (keeps_moving && valid(to, (t, (d + 4) % 8))).then_some(t)
+            };
+            (near.iter().filter(|&&c| valid(to, c)))
+                .map(|&(t, d)| (t, past(d)))
+                .collect()
         };
-        near.into_iter().any(|t| self.path_to(t, false))
+        for (t, past) in near {
+            if !self.path_to(t, false) {
+                continue;
+            }
+            if keeps_moving {
+                self.unit.path.push(to);
+                let level = self.unit.levels.last().copied();
+                self.unit.levels.extend(level);
+                if let Some(past) = past {
+                    self.unit.path.push(past);
+                    self.unit.levels.extend(level);
+                }
+            }
+            return true;
+        }
+        false
     }
 
     /// 11.9 complete: at the water an animal that is not drinking starts `bEat` and another after

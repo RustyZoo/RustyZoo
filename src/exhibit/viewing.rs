@@ -6,13 +6,18 @@
 //! them from one. The pressure of the guests on the animals seen is [`Area::pressure`]: a caller
 //! with units draws it for each animal and adds the result to the animal's totals.
 //!
-//! Nothing is cached: the callers build the areas again when a path or a fence changes and call
-//! [`wear`] when a fence changes and after a game is loaded (rule 12).
+//! The exhibit keeps its areas (`Exhibit::areas`) and the world keeps, per tile, the area each of
+//! the eight directions looks through ([`Store`]). They are resized when an exhibit is made,
+//! split, merged or morphed ([`Exhibits::resize`]); a path tile placed is added to the areas near it
+//! ([`Exhibits::path_placed`]) and one removed is taken out of them ([`Exhibits::path_removed`]),
+//! so the result can group the tiles differently from a rebuild (10.1). The callers call [`wear`]
+//! when a fence changes and after a game is loaded (rule 12).
 
 use std::collections::HashMap;
 
 use crate::build::number;
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::{Exhibit, Exhibits};
 use crate::render::corner_elevation;
 use crate::world::World;
 use crate::zoo::Entity;
@@ -87,13 +92,24 @@ impl Plan {
 /// A group of path tiles, and what it sees.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Area {
+    /// Its number, unique in the world.
+    pub id: u32,
     /// Its tiles in the order they joined.
     pub tiles: Vec<usize>,
-    /// For each tile, the directions (bit `k`) in which it looks at the exhibit within 3 tiles;
-    /// a tile with none belongs to the list but to no direction.
-    pub looks: Vec<u8>,
     /// The exhibit tiles it sees (10.4), set by [`Area::observe`].
     pub seen: Vec<usize>,
+}
+
+/// The area each of the eight directions of a tile looks through, as (exhibit, area) numbers: a
+/// tile that sees the exhibit in no line within 3 tiles has none, and the last area to take a
+/// tile for a direction holds it.
+pub type Slots = HashMap<usize, [Option<(u32, u32)>; 8]>;
+
+/// The slots of the tiles and the number of the next area.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Store {
+    pub slots: Slots,
+    pub next: u32,
 }
 
 /// The candidate set of an exhibit (10.2 point 1): the map tiles outside it within 2 tiles of a
@@ -118,49 +134,134 @@ pub fn candidates(plan: &Plan) -> Vec<usize> {
     set
 }
 
-/// Builds the viewing areas of an exhibit (10.2 and 10.3): the path tiles of the candidate set,
-/// each joined to the area of a neighbour with room, else made a new area.
-pub fn areas(plan: &Plan) -> Vec<Area> {
-    let set = candidates(plan);
-    let mut areas: Vec<Area> = Vec::new();
-    // The area held by each direction of a tile.
-    let mut slots: HashMap<usize, [Option<usize>; 8]> = HashMap::new();
-    for t in set.into_iter().filter(|&t| plan.path[t] && plan.in_zoo[t]) {
-        let joined = [0, 2, 4, 6].into_iter().find_map(|k| {
-            let n = plan.step(t, k, 1).filter(|&n| plan.path[n])?;
-            let a = slots.get(&n)?.iter().flatten().next().copied()?;
-            // Rows for a neighbour along y, columns along x.
-            let coord = |t: usize| {
-                if k % 4 == 0 {
-                    t / plan.width
-                } else {
-                    t % plan.width
+/// Resizes the viewing areas of exhibit `id` (10.2): the areas and slots it has stay, and the
+/// path tiles of the candidate set each go through [`join`] again, also the ones already in an
+/// area (they are listed twice then). Whether an area was made.
+pub fn build(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store) -> bool {
+    let mut made = false;
+    for t in candidates(plan).into_iter().filter(|&t| plan.path[t]) {
+        made |= join(plan, id, areas, store, t);
+    }
+    made
+}
+
+/// Adds one path tile to the areas of exhibit `id` (10.3). Whether it made an area.
+pub fn join(plan: &Plan, id: u32, areas: &mut Vec<Area>, store: &mut Store, t: usize) -> bool {
+    if !plan.in_zoo[t] {
+        return false;
+    }
+    let joined = [0, 2, 4, 6].into_iter().find_map(|k| {
+        let n = plan.step(t, k, 1).filter(|&n| plan.path[n])?;
+        let a = store.slots.get(&n)?.iter().flatten().find(|s| s.0 == id)?.1;
+        // Rows for a neighbour along y, columns along x.
+        let coord = |t: usize| {
+            if k % 4 == 0 {
+                t / plan.width
+            } else {
+                t % plan.width
+            }
+        };
+        let area = areas.iter().find(|x| x.id == a)?;
+        let (low, high) = (area.tiles.iter().map(|&t| coord(t)))
+            .fold((coord(n), coord(n)), |(l, h), c| (l.min(c), h.max(c)));
+        // The rows or columns counted inclusive are `high - low + 1`.
+        (((high - low) as i32) < SPAN).then_some(a)
+    });
+    let made = joined.is_none();
+    let a = joined.unwrap_or_else(|| {
+        store.next += 1;
+        areas.push(Area {
+            id: store.next,
+            ..Area::default()
+        });
+        store.next
+    });
+    for k in 0..8 {
+        let sees = (1..=LOOK)
+            .map_while(|d| plan.step(t, k, d))
+            .any(|n| plan.inside[n]);
+        if sees {
+            store.slots.entry(t).or_default()[k] = Some((id, a));
+        }
+    }
+    if let Some(area) = areas.iter_mut().find(|x| x.id == a) {
+        area.tiles.push(t);
+    }
+    made
+}
+
+impl Exhibits {
+    /// Resizes the areas of exhibit `id`, for a plan of it that was just read; the exhibit is
+    /// marked to be rated again, itself only (10.1).
+    pub fn resize(&mut self, plan: &Plan, id: u32) {
+        let Some(e) = self.list.iter_mut().find(|e| e.id == id) else {
+            return;
+        };
+        build(plan, id, &mut e.areas, &mut self.views);
+        e.rating.dirty = true;
+    }
+
+    /// The exhibits that own a tile of the 5 x 5 square centred on tile `t`, in the square's
+    /// order (x outer, y inner): the ones a path tile placed there joins (10.1).
+    pub fn near(&self, t: usize, width: usize) -> Vec<u32> {
+        let (tx, ty) = ((t % width) as i32, (t / width) as i32);
+        let mut near: Vec<u32> = Vec::new();
+        for x in (tx - 2).max(0)..=(tx + 2).min(width as i32 - 1) {
+            for y in (ty - 2).max(0)..=ty + 2 {
+                let r = self.region(y as usize * width + x as usize);
+                if let Some(r) = r.filter(|&r| self.get(r).is_some() && !near.contains(&r)) {
+                    near.push(r);
                 }
-            };
-            let tiles = areas[a].tiles.iter().map(|&t| coord(t));
-            let (low, high) = tiles.fold((coord(n), coord(n)), |(l, h), c| (l.min(c), h.max(c)));
-            // The rows or columns counted inclusive are `high - low + 1`.
-            (((high - low) as i32) < SPAN).then_some(a)
-        });
-        let a = joined.unwrap_or_else(|| {
-            areas.push(Area::default());
-            areas.len() - 1
-        });
-        let mut looks = 0;
-        let held = slots.entry(t).or_default();
-        for (k, slot) in held.iter_mut().enumerate() {
-            let first = (1..=LOOK)
-                .map_while(|d| plan.step(t, k, d))
-                .find(|&n| plan.inside[n]);
-            if first.is_some() {
-                *slot = Some(a);
-                looks |= 1 << k;
             }
         }
-        areas[a].tiles.push(t);
-        areas[a].looks.push(looks);
+        near
     }
-    areas
+
+    /// A path tile was placed (10.1): each exhibit of [`Exhibits::near`] gets it, with its plan.
+    pub fn path_placed(&mut self, t: usize, plans: Vec<(u32, Plan)>) {
+        for (id, plan) in plans {
+            if let Some(e) = self.list.iter_mut().find(|e| e.id == id)
+                && join(&plan, id, &mut e.areas, &mut self.views, t)
+            {
+                e.rating.dirty = true;
+            }
+        }
+    }
+
+    /// A path tile was removed (10.1): two independent passes, each taking the first entry only.
+    /// It leaves the areas its eight slots hold, then every area that still lists it, those the
+    /// first pass hit included; an area left empty is destroyed, which marks its exhibit to be
+    /// rated again (itself only).
+    pub fn path_removed(&mut self, t: usize) {
+        let held = self.views.slots.remove(&t).unwrap_or_default();
+        let mut done: Vec<(u32, u32)> = Vec::new();
+        for (x, a) in held.into_iter().flatten() {
+            if let Some(e) = self.list.iter_mut().find(|e| e.id == x)
+                && !done.contains(&(x, a))
+            {
+                take_out(e, |id| id == a, t);
+                done.push((x, a));
+            }
+        }
+        for e in &mut self.list {
+            take_out(e, |_| true, t);
+        }
+    }
+}
+
+/// Takes the first entry of tile `t` out of the areas of exhibit `e` that `pick` accepts, and
+/// destroys the ones left empty.
+fn take_out(e: &mut Exhibit, pick: impl Fn(u32) -> bool, t: usize) {
+    for area in e.areas.iter_mut().filter(|a| pick(a.id)) {
+        if let Some(i) = area.tiles.iter().position(|&x| x == t) {
+            area.tiles.remove(i);
+        }
+    }
+    let before = e.areas.len();
+    e.areas.retain(|a| !a.tiles.is_empty());
+    if e.areas.len() < before {
+        e.rating.dirty = true;
+    }
 }
 
 /// What the line of sight needs of one entity's type.

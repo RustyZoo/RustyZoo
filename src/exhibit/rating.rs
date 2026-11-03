@@ -461,7 +461,10 @@ pub fn finish(world: &mut World, cat: &Catalogue, x: u32, rand: Rand) {
     let Some(e) = world.exhibits_mut().get_mut(x) else {
         return;
     };
-    e.rating.animals = list;
+    e.rating.animals = list.clone();
+    if std::mem::take(&mut e.rating.first) {
+        crate::show::counted(world, cat, x, &list);
+    }
     let Some(e) = world.exhibits().get(x) else {
         return;
     };
@@ -1150,6 +1153,9 @@ pub struct State {
     /// The records must be computed again; the species list must be revised.
     pub dirty: bool,
     pub revise: bool,
+    /// The next recomputation is the exhibit's first, or the first since a tank merge: the
+    /// performing animals it counts join the shows (shows 20.1). Not saved.
+    pub first: bool,
     /// Milliseconds since the species list was revised and since the records were computed.
     pub species_ms: u32,
     pub rating_ms: u32,
@@ -1197,6 +1203,7 @@ impl State {
         State {
             dirty: true,
             escape: true,
+            first: true,
             ..State::default()
         }
     }

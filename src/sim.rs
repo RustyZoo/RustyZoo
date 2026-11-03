@@ -679,6 +679,7 @@ impl Sim {
         for id in std::mem::take(&mut self.bulldozed) {
             world.remove_filter(cat, id);
         }
+        crate::show::settle(world, cat);
         world.units.ai_ticks = self.ai_ticks;
         let settings = &self.status.settings;
         world.units.guest_join = (settings.join_happiness, settings.join_chance);
