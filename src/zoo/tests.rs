@@ -1731,6 +1731,18 @@ fn the_game_block_of_an_old_file_gets_the_rows_and_words_it_lacked() {
 }
 
 #[test]
+fn two_entities_differing_only_in_the_kept_body_are_not_equal() {
+    let zoo = Zoo::parse(&lean(106)).unwrap();
+    let mut other = zoo.entities[0].clone();
+    assert_eq!(zoo.entities[0], other);
+    other.common.as_mut().unwrap().raw.body.push(7);
+    assert_ne!(zoo.entities[0], other);
+    let mut other = zoo.entities[0].clone();
+    other.common.as_mut().unwrap().raw.spans.end += 1;
+    assert_ne!(zoo.entities[0], other);
+}
+
+#[test]
 fn an_entity_without_a_body_is_not_written_unless_the_model_builds_it() {
     // A class the writer has no fields for.
     let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();

@@ -177,16 +177,16 @@ pub struct Common {
 /// Where parts of the entity base lie inside a body, so a writer can keep what it does not model:
 /// the stamp, the colour count and the end of the colours. All 0 for an entity that was not read
 /// from a file.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Spans {
     stamp: usize,
     colors: usize,
     end: usize,
 }
 
-/// The body of an entity record as read. It never makes two entities differ: the fields of [`Common`]
-/// are the state, the bytes are what is kept of the rest.
-#[derive(Debug, Clone, Default)]
+/// The body of an entity record as read: the bytes are what is kept of the rest of the record, and
+/// they count in the equality of two entities.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Raw {
     body: Vec<u8>,
     spans: Spans,
@@ -207,14 +207,6 @@ impl Raw {
         self.body.is_empty()
     }
 }
-
-impl PartialEq for Raw {
-    fn eq(&self, _: &Raw) -> bool {
-        true
-    }
-}
-
-impl Eq for Raw {}
 
 /// The bytes of the sections the engine does not model, as read (save games 7): written back
 /// unchanged. The offsets tell where the modelled values lie in `finances`.
