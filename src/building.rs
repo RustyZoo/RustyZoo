@@ -34,6 +34,7 @@ pub mod birth;
 pub mod dead;
 pub mod items;
 pub mod leave;
+pub mod ret;
 pub mod upgrade;
 pub mod users;
 
@@ -108,6 +109,8 @@ pub(crate) struct Slot {
     /// (`filter`; guest buildings 6.1 point 7).
     pub species: Vec<i32>,
     pub filter: String,
+    /// Only a returning unit may use the slot (`isreturnslot`; guest buildings 12.2 point 11).
+    pub return_slot: bool,
     /// The name id of the unit type made in the slot when the building is placed (`birthUser`,
     /// unit placing 7.4), 0 for none.
     pub birth: i32,
@@ -134,6 +137,9 @@ pub(crate) struct Species {
     /// A guest whose need being served is `grandstand`: a grandstand with no show soon refuses it
     /// (6.1 point 6).
     pub grandstand: bool,
+    /// The unit's id, and the name id of the return building it means to come back to.
+    pub unit: u32,
+    pub returning: Option<i32>,
 }
 
 impl Species {
@@ -153,6 +159,8 @@ impl Species {
                 .as_ref()
                 .map(|c| (c.x.div_euclid(64), c.y.div_euclid(64))),
             grandstand: false,
+            unit: e.common.as_ref().map_or(0, |c| c.id),
+            returning: None,
         })
     }
 }
@@ -164,6 +172,7 @@ impl Slot {
             return true;
         };
         (self.species.is_empty() || self.species.contains(&who.id))
+            && self.return_slot == who.returning.is_some()
             && (self.filter.is_empty() || !self.filter.contains(&who.subtype))
     }
 }
@@ -229,6 +238,8 @@ pub(crate) struct Kind {
     pub slots: Vec<Slot>,
     /// The keys that decide the dead state (11.1.1).
     pub dead: dead::Keys,
+    /// The keys of a return building (12.2).
+    pub ret: ret::Keys,
 }
 
 impl Kind {
@@ -283,6 +294,7 @@ impl Kind {
                 exit_water: flag("exitonwater", false),
                 species: s.get_all("id").iter().filter_map(|v| to_int(v)).collect(),
                 filter: String::from_utf8_lossy(s.get("filter").unwrap_or_default()).into(),
+                return_slot: flag("isreturnslot", false),
                 birth: number("birthUser"),
                 places: draw_places(config, s),
             }
@@ -329,6 +341,13 @@ impl Kind {
                 underwater: flag("cDeadUnderwater", false),
                 surface: flag("cSurface", false),
                 height: int("cHeight", 0),
+            },
+            ret: ret::Keys {
+                building: flag("cReturnBuilding", false),
+                tracker: flag("cUserTracker", false),
+                strict: int("cStrictBuildingCapacity", 0),
+                idler: flag("cIdler", false),
+                viewer: flag("cExhibitViewer", false),
             },
         }
     }
@@ -410,6 +429,10 @@ pub(crate) struct Live {
     /// The building is in its dead state: it refuses new users (6.1 point 1) and, found dead
     /// outside a load, it has put its users out (11.1.1); not saved, decided again at the load.
     pub dead: bool,
+    /// The guests let out on the water, for a `cUserTracker` type (12.2 point 6); not saved.
+    pub members: Vec<u32>,
+    /// The water capacity (12.2 point 13), 0 until the first leave; not saved.
+    pub water: u32,
 }
 
 /// A user on a draw place of a slot.
@@ -884,6 +907,7 @@ pub(crate) fn can_add(
         && in_slot < s.capacity.max(0) as usize
         && !no_show
         && s.allows(who)
+        && ret::may_enter(world, e, kind, live, who)
         && exit_of(world, e, kind, slot, who).is_some()
 }
 

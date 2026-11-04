@@ -310,12 +310,13 @@ pub(crate) struct Guest {
     /// The last drop of litter failed (guests 10).
     pub littered: bool,
     /// The name id of the return building the guest means to come back to; while set, no
-    /// attraction or scenery object counts as seen (guests visit 3.2). A pick-up and a drop clear it; nothing
-    /// sets it before M7. A loaded guest has it when the low 19 bits of its return word are not 0 (never `Some(0)`).
+    /// attraction or scenery object counts as seen (guests visit 3.2). The first leave of a return
+    /// building sets it (guest buildings 12.2), the return leave, a pick-up and a drop clear it. A
+    /// loaded guest has it when the low 19 bits of its return word are not 0 (never `Some(0)`).
     pub returning: Option<i32>,
-    /// The set a return to a building plays (tank fauna 13.1); the drown goal picks its set by it
-    /// and writes it. Nothing else sets it before M7. Not saved.
-    pub return_set: Option<&'static str>,
+    /// The set the walks of a return to a building play (guest buildings 12.2 point 3, tank fauna
+    /// 13.1); the drown goal picks its set by it and writes it. Not saved.
+    pub return_set: Option<String>,
 }
 
 /// The bits of the return word that hold the return building's name id (zoo format 6.12).

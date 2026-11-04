@@ -39,6 +39,7 @@ mod trick;
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
 pub(crate) use dropped::{dropped, picked_up, reset_unit};
 pub(crate) use entry::{crowd, send, use_call};
+use guest::Ride;
 pub(crate) use guest::{IN_BUILDING, LEAVE};
 pub(crate) use staff::release_group;
 pub(crate) use stops::{lose_task, resume_use, stop_all, stop_use};
@@ -257,6 +258,8 @@ pub(crate) enum Goal {
     Sick,
     /// 0x75 of a guest or a staff member: run from a predator (11.11).
     Avoid,
+    /// 0x82 of a guest: the ride on the water after a return building (11.13).
+    Ride,
     /// The recover task (131) of a guest: climb out of the water (tank fauna 13).
     Recover,
     /// The drown task (132): a man drowns, a woman or a child is put back on land (tank fauna 13.1).
@@ -311,6 +314,7 @@ impl Goal {
             (EAT_STANDING, Kind::Guest) => Some(Goal::EatStand),
             (EATING_STANDING, Kind::Guest) => Some(Goal::Eating),
             (SICK, Kind::Guest) => Some(Goal::Sick),
+            (RETURN_TO_BUILDING, Kind::Guest) => Some(Goal::Ride),
             (RECOVER, Kind::Guest) => Some(Goal::Recover),
             (DROWN, _) => Some(Goal::Drown),
             (GO_TO_SHOW, Kind::Animal) => Some(Goal::GoShow),
@@ -351,6 +355,7 @@ impl Goal {
             Goal::Eating => EATING_STANDING,
             Goal::Sick => SICK,
             Goal::Avoid => AVOID,
+            Goal::Ride => RETURN_TO_BUILDING,
             Goal::Recover => RECOVER,
             Goal::Drown => DROWN,
             Goal::GoShow => GO_TO_SHOW,
@@ -375,6 +380,7 @@ impl Goal {
             Goal::Capture => cx.capture_init(),
             Goal::Eating => cx.eating_init(),
             Goal::Sick => cx.sick_init(),
+            Goal::Ride => cx.ride_init(),
             Goal::Recover => cx.recover_init(),
             Goal::Drown => cx.drown_init(),
             Goal::Surface => cx.surface_init(),
@@ -414,6 +420,7 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Avoid => return cx.avoid_check_done(),
+            Goal::Ride => return cx.ride_check_done(),
             Goal::Recover => return cx.recover_check_done(),
             Goal::Drown => return cx.drown_check_done(),
             Goal::GoShow | Goal::Return => return cx.show_check_done(),
@@ -457,6 +464,7 @@ impl Goal {
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::Avoid => cx.avoid_decide(),
+            Goal::Ride => cx.ride_decide(),
             Goal::Recover => cx.recover_decide(),
             Goal::DrinkWater => cx.drink_decide(),
             Goal::Surface => cx.surface_decide(),
@@ -507,6 +515,7 @@ impl Goal {
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
             Goal::Avoid => cx.avoid_exit(),
+            Goal::Ride => cx.ride_complete(),
             Goal::Recover => cx.reset(),
             Goal::Drown => cx.drown_complete(),
             Goal::GoShow => cx.go_show_complete(),
@@ -604,6 +613,8 @@ pub(crate) struct Goals {
     pub wandered: bool,
     /// The tries a guest has left to climb out of the water (tank fauna 13); not saved.
     tries: Option<u8>,
+    /// The state of the ride on the water (11.13); not saved.
+    ride: Ride,
 }
 
 /// The state hash of a run reads this text: `held` is not in it (it follows from the objects), so
@@ -845,7 +856,8 @@ impl Cx<'_, '_> {
     /// takes the leave task) and point 3 (a frightened guest avoids its predator) come first.
     fn guest_ladder(&mut self, task: u8, done: bool) {
         self.spread();
-        if self.exit_ladder()
+        if self.return_ladder()
+            || self.exit_ladder()
             || self.leave_ladder()
             || self.fright_ladder(task)
             || self.sick_ladder()

@@ -671,8 +671,11 @@ pub(crate) fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facin
         if let crate::unit::Part::Guest(g) = &mut unit.part {
             g.leave = false;
             g.returning = None;
+            g.return_set = None;
         }
     }
+    // The member lists of the return buildings let it go (guest buildings 12.2 point 3).
+    crate::building::ret::forget(world, id);
     crate::unit::swim::put(world, id);
     world.mark_rating(tile);
     true

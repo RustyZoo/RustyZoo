@@ -602,6 +602,8 @@ pub(crate) fn mover(unit: &Unit, world: &World, at: usize, here: usize) -> path:
     };
     let record = &unit.goal.record;
     task(&mut m, record.task, record.target.id);
+    // A guest holding a return building travels in water (pathfinding 6.5).
+    m.in_water |= matches!(&unit.part, Part::Guest(g) if g.returning.is_some());
     m.water_mode = matches!(&unit.part, Part::Animal(a) if a.terrain == 1);
     m.test |= matches!(&unit.part, Part::Animal(a) if a.walk.is_some());
     m.rampaging = matches!(&unit.part, Part::Animal(a) if a.rampaging);

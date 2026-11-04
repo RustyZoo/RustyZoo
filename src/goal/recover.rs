@@ -74,7 +74,7 @@ impl Cx<'_, '_> {
             let dry = east.into_iter().find(|&t| !self.world.is_water(t));
             found = dry.filter(|&t| self.path_to(t, false));
         }
-        if found.is_some() && self.start_walk(false, false, true) {
+        if found.is_some() && self.return_walk(true, true) {
             return;
         }
         let tries = self.unit.goal.tries.as_mut().map(|t| {
@@ -88,7 +88,7 @@ impl Cx<'_, '_> {
         }
         let (unit, world) = (&mut *self.unit, &mut *self.world);
         if crate::unit::walk::random_walk(unit, world, self.ctx.cat, self.ctx.rng, self.at) {
-            self.start_walk(false, false, true);
+            self.return_walk(true, true);
         }
     }
 }
