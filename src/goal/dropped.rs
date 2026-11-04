@@ -9,7 +9,7 @@ use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::show::abort_show_for;
 use crate::sim::{Events, Rng};
-use crate::unit::predator::PREY;
+use crate::unit::predator::find_prey;
 use crate::unit::{Ctx, Kind, Part, Unit};
 use crate::world::World;
 
@@ -117,7 +117,7 @@ impl Cx<'_, '_> {
             return;
         }
         let found = match self.predator(0) {
-            0 => self.predator(PREY),
+            0 => find_prey(self.world, self.ctx.cat, self.unit, self.at),
             threat => threat,
         };
         let show = self.world.units.get(found).map_or(0, |u| u.show);

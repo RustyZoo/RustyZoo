@@ -58,25 +58,19 @@ fn preys_on(ty: &EntityType, id: i32) -> bool {
 
 /// The unit that looks: its kind, the type name id a predator lists (the man for a guest) and
 /// whether it stands on the zoo grounds.
-struct Looker<'a> {
+struct Looker {
     kind: Kind,
     prey: i32,
-    /// The type of the looker, for the prey list of an animal.
-    ty: Option<&'a EntityType>,
     grounds: bool,
 }
 
-/// The mode of `find` that asks an animal for a prey of its own (shows 30.2 point 4.6): a unit it
-/// hunts, as a threat is one that hunts it.
-pub(crate) const PREY: u8 = 2;
-
 /// The threat test (`checkPredator`) of the entity at position `e` in `mode` (0 a threat, 1 a
-/// playmate that chases the unit, [`PREY`] a prey of an animal: an animal whose type its prey list
-/// holds, inferred as the mirror of the threat). An animal that is crated or an egg is none. For a guest the mode is ignored and a species whose prey list holds the man is one,
-/// whatever the animal does. For staff and animals in mode 0 it must be an adult (or of a species
-/// with `cBabiesAttack` 1) whose prey list holds the looker's type; a staff member must also stand
-/// on the grounds and the animal must not be darted. Mode 1 asks for an animal chasing the unit,
-/// which no staff member ever is.
+/// playmate that chases the unit). An animal that is crated or an egg is none. For a guest the
+/// mode is ignored and a species whose prey list holds the man is one, whatever the animal does.
+/// For staff and animals in mode 0 it must be an adult (or of a species with `cBabiesAttack` 1)
+/// whose prey list holds the looker's type; a staff member must also stand on the grounds and the
+/// animal must not be darted. Mode 1 asks for an animal chasing the unit, which no staff member
+/// ever is.
 fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -> bool {
     let entity = &world.zoo.entities[e];
     let Some(id) = entity.common.as_ref().map(|c| c.id) else {
@@ -91,7 +85,6 @@ fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -
     match looker.kind {
         Kind::Guest => preys_on(ty, MAN),
         _ if mode == 1 => false,
-        Kind::Animal if mode == PREY => looker.ty.is_some_and(|me| preys_on(me, ty.name_id)),
         kind => {
             let adult = entity.subtype.starts_with(['m', 'f']);
             let babies = crate::build::number(ty, "cBabiesAttack").is_some_and(|v| v as i32 == 1);
@@ -119,14 +112,12 @@ pub(crate) fn find(
     let xy = |t: usize| (t as i32 % w, t as i32 / w);
     let (tx, ty) = xy(here);
     let region = world.exhibits().region(here);
-    let me = type_of(cat, &world.zoo.entities[at]);
     let looker = Looker {
         kind: unit.kind,
         prey: match unit.kind {
             Kind::Guest => MAN,
-            _ => me.map_or(0, |t| t.name_id),
+            _ => type_of(cat, &world.zoo.entities[at]).map_or(0, |t| t.name_id),
         },
-        ty: me,
         grounds: matches!(region, Some(GROUNDS | EXTERIOR)),
     };
     let r = radius(cat);
@@ -187,6 +178,9 @@ pub(crate) fn find(
     }
     found
 }
+
+mod prey;
+pub(crate) use prey::find_prey;
 
 #[cfg(test)]
 mod tests;

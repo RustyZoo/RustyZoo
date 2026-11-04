@@ -255,10 +255,7 @@ fn an_animal_hunts_the_units_of_its_prey_list_in_its_exhibit() {
             (51, "zebra", "m", (3, 3), false),
         ],
     );
-    let prey = |w: &World, id| {
-        let unit = w.units.get(id).unwrap().clone();
-        find(w, &cat, &[], &unit, w.find(id).unwrap(), PREY)
-    };
+    let prey = |w: &World, id| hunt(w, &cat, id);
     assert_eq!((prey(&w, 50), prey(&w, 51)), (51, 0));
     // Another exhibit, or the grounds, holds no prey of the pen.
     let w = zoo(
@@ -269,4 +266,174 @@ fn an_animal_hunts_the_units_of_its_prey_list_in_its_exhibit() {
         ],
     );
     assert_eq!(prey(&w, 50), 0);
+}
+
+fn hunt(w: &World, cat: &Catalogue, id: u32) -> u32 {
+    let unit = w.units.get(id).unwrap().clone();
+    find_prey(w, cat, &unit, w.find(id).unwrap())
+}
+
+/// The catalogue of `cat` with `cPreyRadius` set.
+fn prey_radius_cat(radius: Option<i32>) -> Catalogue {
+    let mut cat = cat(None);
+    cat.prey_radius = radius;
+    cat
+}
+
+#[test]
+fn the_prey_search_covers_the_square_of_cpreyradius_with_no_circle() {
+    // A lion on the grounds at (10, 10); the zebra is prey, escaped or not.
+    let at = |tile| {
+        zoo(
+            (0, 0),
+            &[
+                (50, "lion", "m", (10, 10), false),
+                (51, "zebra", "m", tile, false),
+            ],
+        )
+    };
+    let cat = prey_radius_cat(None);
+    // The radius is 5 (not `cPredatorRadius`): (5, 5) away counts, 6 on an axis does not.
+    assert_eq!(hunt(&at((15, 15)), &cat, 50), 51);
+    assert_eq!(hunt(&at((16, 10)), &cat, 50), 0);
+    assert_eq!(hunt(&at((10, 4)), &cat, 50), 0);
+    // `cPredatorRadius` 7 changes nothing.
+    let mut wide = prey_radius_cat(None);
+    wide.predator_radius = Some(7);
+    assert_eq!(hunt(&at((16, 10)), &wide, 50), 0);
+    // The radius at 0, negative, huge and missing.
+    assert_eq!(hunt(&at((10, 11)), &prey_radius_cat(Some(0)), 50), 0);
+    assert_eq!(hunt(&at((10, 11)), &prey_radius_cat(Some(1)), 50), 51);
+    assert_eq!(hunt(&at((10, 11)), &prey_radius_cat(Some(-3)), 50), 0);
+    assert_eq!(
+        hunt(&at((19, 19)), &prey_radius_cat(Some(1_000_000)), 50),
+        51
+    );
+    // A bound that wraps leaves the scan empty, as in the original.
+    assert_eq!(hunt(&at((11, 10)), &prey_radius_cat(Some(i32::MAX)), 50), 0);
+    assert_eq!(hunt(&at((19, 19)), &prey_radius_cat(Some(i32::MIN)), 50), 0);
+    // The nearest wins, the first found of equal distances (the outer axis is x).
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "m", (10, 10), false),
+            (51, "zebra", "m", (13, 10), false),
+            (52, "zebra", "m", (11, 10), false),
+            (53, "zebra", "m", (9, 10), false),
+        ],
+    );
+    assert_eq!(hunt(&w, &cat, 50), 53);
+}
+
+fn set(w: &mut World, id: u32, edit: impl FnOnce(&mut Animal)) {
+    if let Some(Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) {
+        edit(a);
+    }
+}
+
+#[test]
+fn only_an_adult_or_a_baby_attacker_hunts_and_a_young_prey_counts() {
+    let mut cat = cat(None);
+    cat.push(ty("animals", "lion", "y", 5006, "cPrey=5001"));
+    cat.push(ty("animals", "zebra", "y", 5001, ""));
+    // A young lion hunts nothing, a young zebra is prey.
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "y", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+        ],
+    );
+    assert_eq!(hunt(&w, &cat, 50), 0);
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "m", (10, 10), false),
+            (51, "zebra", "y", (11, 10), false),
+        ],
+    );
+    assert_eq!(hunt(&w, &cat, 50), 51);
+    // With `cBabiesAttack` 1 the young trex hunts.
+    let mut babies = Catalogue::default();
+    babies.push(ty(
+        "animals",
+        "trex",
+        "y",
+        7001,
+        "cPrey=5001\ncBabiesAttack=1",
+    ));
+    babies.push(ty("animals", "zebra", "m", 5001, ""));
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "trex", "y", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+        ],
+    );
+    assert_eq!(hunt(&w, &babies, 50), 51);
+    // A zebra is no prey of a zebra.
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "zebra", "m", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+        ],
+    );
+    assert_eq!(hunt(&w, &cat, 50), 0);
+}
+
+#[test]
+fn a_crated_unit_is_no_prey_and_an_egg_only_to_an_egg_eater_of_another_species() {
+    let mut cat = cat(None);
+    cat.push(ty("animals", "croc", "m", 5200, "cEatsEggs=1"));
+    let mut w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "m", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+            (52, "croc", "m", (9, 10), false),
+        ],
+    );
+    set(&mut w, 51, |a| a.crated = true);
+    assert_eq!(hunt(&w, &cat, 50), 0);
+    // An egg of the zebra: the lion does not eat eggs, the crocodile does, a zebra's egg is not
+    // a crocodile's own species, and a crocodile's egg is none to a crocodile.
+    set(&mut w, 51, |a| (a.crated, a.egg) = (false, true));
+    assert_eq!(hunt(&w, &cat, 50), 0);
+    assert_eq!(hunt(&w, &cat, 52), 51);
+    let mut w = zoo(
+        (0, 0),
+        &[
+            (52, "croc", "m", (9, 10), false),
+            (53, "croc", "m", (10, 10), false),
+        ],
+    );
+    set(&mut w, 53, |a| a.egg = true);
+    assert_eq!(hunt(&w, &cat, 52), 0);
+}
+
+#[test]
+fn a_unit_in_the_building_chain_is_no_prey_unless_the_hunter_rampages() {
+    let cat = cat(None);
+    let mut w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "m", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+            (52, "zebra", "m", (12, 10), false),
+        ],
+    );
+    for task in [103, 104, 105, 106, 107] {
+        w.units.get_mut(51).unwrap().goal.record.task = task;
+        let chain = (104..=106).contains(&task);
+        // The next unit of the search takes over; the one on the tile itself does not count.
+        assert_eq!(
+            hunt(&w, &cat, 50),
+            if chain { 52 } else { 51 },
+            "task {task}"
+        );
+    }
+    w.units.get_mut(51).unwrap().goal.record.task = 105;
+    set(&mut w, 50, |a| a.rampaging = true);
+    assert_eq!(hunt(&w, &cat, 50), 51);
 }

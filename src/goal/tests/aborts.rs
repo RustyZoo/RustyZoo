@@ -139,3 +139,11 @@ fn an_animal_dropped_with_no_threat_and_no_prey_or_out_of_a_tank_aborts_nothing(
     super::super::dropped(&mut w, &cat(), &mut Rng::default(), &NoData, 2);
     assert!(posted(&w).is_empty());
 }
+
+#[test]
+fn an_animals_goal_reset_lowers_afraid() {
+    let (mut w, mut rng) = (map("animals"), Rng::default());
+    w.units.get_mut(1).unwrap().afraid = true;
+    with_cx(&mut w, &mut rng, |cx| cx.reset());
+    assert!(!w.units.get(1).unwrap().afraid);
+}
