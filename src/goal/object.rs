@@ -2,10 +2,10 @@
 //! stands for and the one update.
 
 use super::{
-    AVOID, CAPTURE, Cx, DO_SCENERY, DRINK, DROWN, DUTIES, EAT, EAT_STANDING, EATING_STANDING,
-    ENTER_BUILDING, ENTER_TANK, ENTRANCE, EXIT_BUILDING, EXIT_TANK, GAWK, GO_BUILDING, GO_TO_SHOW,
-    HABITAT, KEEPER_FOOD, LEAVE, LEG, MAINT, NONE, RANDOM, RECOVER, RETURN_FROM_SHOW,
-    RETURN_TO_BUILDING, SCENERY, SICK, SITE, SURFACE, TALK, TRICK_FOOD, USE,
+    AVOID, CAPTURE, CHASE, Cx, DO_SCENERY, DRINK, DROWN, DUTIES, EAT, EAT_STANDING,
+    EATING_STANDING, ENTER_BUILDING, ENTER_TANK, ENTRANCE, EXIT_BUILDING, EXIT_TANK, GAWK,
+    GO_BUILDING, GO_TO_SHOW, HABITAT, KEEPER_FOOD, LEAVE, LEG, MAINT, NONE, RANDOM, RECOVER,
+    RETURN_FROM_SHOW, RETURN_TO_BUILDING, SCENERY, SICK, SITE, SURFACE, TALK, TRICK_FOOD, USE,
 };
 use crate::unit::Kind;
 
@@ -63,8 +63,10 @@ pub(crate) enum Goal {
     Eating,
     /// 0x79 of a guest: be sick on the spot (11.10).
     Sick,
-    /// 0x75 of a guest or a staff member: run from a predator (11.11).
+    /// 0x75: run from a predator (11.11, animals 20.6).
     Avoid,
+    /// 0x74 of an animal: hunt a prey or play the friendly chase (animals 20.2).
+    Chase,
     /// 0x82 of a guest: the ride on the water after a return building (11.13).
     Ride,
     /// The recover task (131) of a guest: climb out of the water (tank fauna 13).
@@ -126,7 +128,7 @@ impl Goal {
             (DROWN, _) => Some(Goal::Drown),
             (GO_TO_SHOW, Kind::Animal) => Some(Goal::GoShow),
             (RETURN_FROM_SHOW, Kind::Animal) => Some(Goal::Return),
-            (AVOID, Kind::Animal) => None,
+            (CHASE, Kind::Animal) => Some(Goal::Chase),
             (AVOID, _) => Some(Goal::Avoid),
             _ => None,
         }
@@ -162,6 +164,7 @@ impl Goal {
             Goal::Eating => EATING_STANDING,
             Goal::Sick => SICK,
             Goal::Avoid => AVOID,
+            Goal::Chase => CHASE,
             Goal::Ride => RETURN_TO_BUILDING,
             Goal::Recover => RECOVER,
             Goal::Drown => DROWN,
@@ -193,6 +196,8 @@ impl Goal {
             Goal::Surface => cx.surface_init(),
             Goal::EnterTank => cx.enter_init(),
             Goal::Leave => cx.leave_init(),
+            Goal::Avoid => cx.avoid_init(),
+            Goal::Chase => cx.hunt_init(),
             Goal::ExitTank => cx.exit_init(),
             Goal::HeliExit | Goal::HeliReturn | Goal::HeliEnter => cx.heli_init(self),
             _ => true,
@@ -227,6 +232,7 @@ impl Goal {
         match self {
             Goal::Leave => return cx.leave_check_done(),
             Goal::Avoid => return cx.avoid_check_done(),
+            Goal::Chase => return cx.hunt_check_done(),
             Goal::Ride => return cx.ride_check_done(),
             Goal::Recover => return cx.recover_check_done(),
             Goal::Drown => return cx.drown_check_done(),
@@ -271,6 +277,7 @@ impl Goal {
             Goal::Maint => cx.maint_decide(),
             Goal::Leave => cx.leave_decide(),
             Goal::Avoid => cx.avoid_decide(),
+            Goal::Chase => cx.hunt_decide(),
             Goal::Ride => cx.ride_decide(),
             Goal::Recover => cx.recover_decide(),
             Goal::DrinkWater => cx.drink_decide(),
@@ -281,7 +288,7 @@ impl Goal {
             Goal::Site => cx.site_decide(),
             Goal::Gawk => cx.gawk_decide(),
             Goal::Leg => cx.leg_decide(),
-            Goal::Follow if cx.record().target.tile.is_none() => cx.reset(),
+            Goal::Follow if cx.record().target.tile.is_none() => cx.clear_goal(),
             Goal::Enter if cx.record().target.tile.is_none() => cx.enter_decide(),
             Goal::Exit => cx.exit_decide(),
             Goal::HeliExit | Goal::HeliReturn => cx.heli_decide(self),
@@ -322,6 +329,7 @@ impl Goal {
             Goal::Eating => cx.reset(),
             Goal::Sick => cx.sick_done(),
             Goal::Avoid => cx.avoid_exit(),
+            Goal::Chase => cx.hunt_complete(),
             Goal::Ride => cx.ride_complete(),
             Goal::Recover => cx.recover_complete(),
             Goal::Drown => cx.drown_complete(),
@@ -340,6 +348,8 @@ impl Goal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sub {
     Base,
+    /// Job 18 of an animal: the preattack of a hunter and the defence of its prey (animals 20.4).
+    Preattack,
     Keeper(u8),
     Worker(u8),
 }
@@ -350,6 +360,7 @@ impl Sub {
             (Kind::Keeper, 1..=6 | 13..=15 | 19..=25 | 28 | 29) => Some(Sub::Keeper(job)),
             (Kind::Worker, 7..=12 | 16 | 17 | 26 | 27) => Some(Sub::Worker(job)),
             (Kind::Heli, 13..=15) => Some(Sub::Keeper(job)),
+            (Kind::Animal, super::chase::PREATTACK) => Some(Sub::Preattack),
             _ => Some(Sub::Base),
         }
     }
@@ -366,6 +377,17 @@ impl Sub {
                 cx.job_decide(job);
             } else {
                 cx.job_complete(job);
+            }
+            return;
+        }
+        if self == Sub::Preattack {
+            if !cx.record().job_done {
+                cx.preattack_check_done();
+            }
+            if cx.record().job != super::chase::PREATTACK {
+                cx.unit.goal.sub_stale = true;
+            } else if cx.record().job_done {
+                cx.preattack_complete();
             }
             return;
         }

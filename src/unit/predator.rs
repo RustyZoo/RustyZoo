@@ -59,6 +59,7 @@ fn preys_on(ty: &EntityType, id: i32) -> bool {
 /// The unit that looks: its kind, the type name id a predator lists (the man for a guest) and
 /// whether it stands on the zoo grounds.
 struct Looker {
+    id: u32,
     kind: Kind,
     prey: i32,
     grounds: bool,
@@ -69,8 +70,8 @@ struct Looker {
 /// mode is ignored and a species whose prey list holds the man is one, whatever the animal does.
 /// For staff and animals in mode 0 it must be an adult (or of a species with `cBabiesAttack` 1)
 /// whose prey list holds the looker's type; a staff member must also stand on the grounds and the
-/// animal must not be darted. Mode 1 asks for an animal chasing the unit, which no staff member
-/// ever is.
+/// animal must not be darted. Mode 1 asks for an animal of the unit's own species that hunts it
+/// (its kept prey is the unit), which no staff member ever is.
 fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -> bool {
     let entity = &world.zoo.entities[e];
     let Some(id) = entity.common.as_ref().map(|c| c.id) else {
@@ -84,6 +85,8 @@ fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -
     };
     match looker.kind {
         Kind::Guest => preys_on(ty, MAN),
+        // A playmate: an animal of its own species whose kept prey is the looker.
+        Kind::Animal if mode == 1 => ty.name_id == looker.prey && a.prey == looker.id,
         _ if mode == 1 => false,
         kind => {
             let adult = entity.subtype.starts_with(['m', 'f']);
@@ -113,6 +116,7 @@ pub(crate) fn find(
     let (tx, ty) = xy(here);
     let region = world.exhibits().region(here);
     let looker = Looker {
+        id: unit.id,
         kind: unit.kind,
         prey: match unit.kind {
             Kind::Guest => MAN,

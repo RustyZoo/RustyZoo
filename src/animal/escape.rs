@@ -324,7 +324,7 @@ pub(crate) fn after(
         super::fence::test(unit, world, ctx, at, data, k);
     }
     if out.fired {
-        dispatch::run(unit, world, ctx, at);
+        dispatch::run(unit, world, ctx, at, data);
     }
 }
 

@@ -204,6 +204,10 @@ pub(crate) fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
     let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved, &k, &world.units.class);
+    // The chase stamp is the entity base's: a stored 0 becomes the current tick (animals 20.8).
+    animal.stamp = (entity.common.as_ref())
+        .and_then(|c| c.stamp)
+        .unwrap_or(world.units.ai_ticks);
     // What the saved unit was doing: the active goal (its set is taken by `unit::resume`).
     let block = entity.common.as_ref().and_then(|c| c.unit.as_ref());
     // The drink task is the wanted goal's (behaviours 4.7); a drinking flag saved outside it stays

@@ -316,6 +316,9 @@ pub(crate) struct Guest {
     /// The set the walks of a return to a building play (guest buildings 12.2 point 3, tank fauna
     /// 13.1); the drown goal picks its set by it and writes it. Not saved.
     pub return_set: Option<String>,
+    /// A hunting animal holds it: it is no prey any more (animals 11.8.1, 20.3 point 3).
+    /// Not saved.
+    pub seized: bool,
 }
 
 /// The bits of the return word that hold the return building's name id (zoo format 6.12).

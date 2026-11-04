@@ -2782,6 +2782,67 @@ fn a_saved_animal_holds_its_live_state_and_keeps_the_rest_of_its_record() {
     assert_eq!(a.escape, Some(escape));
 }
 
+#[test]
+fn an_animals_hunt_state_is_loaded_and_saved() {
+    let cat = zebras();
+    let mut world = pens();
+    for e in &mut world.zoo.entities {
+        let Some(c) = e.common.as_mut().filter(|c| c.id == 500) else {
+            continue;
+        };
+        c.stamp = Some(123);
+        c.unit = Some(Box::new(crate::zoo::UnitBlock {
+            b2: 1,
+            ..Default::default()
+        }));
+        c.animal = Some(Box::new(AnimalRecord {
+            playing: true,
+            caught_prey: true,
+            prey: 501,
+            ..record()
+        }));
+    }
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    // Loaded (animals 20.8 point 2).
+    let u = world.units.get(500).unwrap();
+    let Part::Animal(a) = &u.part else {
+        panic!("not an animal");
+    };
+    assert_eq!(
+        (a.playing, a.caught_prey, a.prey, a.stamp),
+        (true, true, 501, 123)
+    );
+    assert!(u.caught);
+    // And saved: the live values, not the file's bytes.
+    let save = |world: &World| {
+        let mut zoo = world.saved(|_| true);
+        world.finish_save(&mut zoo, &cat);
+        let c = (zoo.entities.iter())
+            .find_map(|e| e.common.as_ref().filter(|c| c.id == 500))
+            .unwrap();
+        (
+            *c.animal.clone().unwrap(),
+            c.unit.clone().unwrap().b2,
+            c.stamp,
+        )
+    };
+    let (r, caught, stamp) = save(&world);
+    assert_eq!((r.playing, r.caught_prey, r.prey), (true, true, 501));
+    assert_eq!((caught, stamp), (1, Some(123)));
+    let u = world.units.get_mut(500).unwrap();
+    u.caught = false;
+    let Part::Animal(a) = &mut u.part else {
+        panic!("not an animal");
+    };
+    (a.playing, a.caught_prey, a.prey, a.stamp) = (false, false, 0, 9);
+    let (r, caught, stamp) = save(&world);
+    assert_eq!((r.playing, r.caught_prey, r.prey), (false, false, 0));
+    assert_eq!((caught, stamp), (0, Some(9)));
+}
+
 /// The record of the animal `id` of `zoo`, after a save.
 fn saved_record(zoo: &Zoo, id: u32) -> AnimalRecord {
     let c = zoo

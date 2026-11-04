@@ -82,25 +82,66 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// 11.11 decide: with a threat and no target tile, the unit runs away along the flee path.
+    /// 11.11 init: an animal's defence flags start down (animals 20.4 point 4).
+    pub(super) fn avoid_init(&mut self) -> bool {
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.pre = [false; 2];
+        }
+        true
+    }
+
+    /// 11.11 decide: with a threat and no target tile, the unit runs away along the flee path. A
+    /// guest that is caught plays its set instead; an animal then defends itself (animals 20.6).
     pub(super) fn avoid_decide(&mut self) {
+        if self.unit.caught && self.unit.kind == Kind::Guest {
+            return;
+        }
         let r = &self.unit.goal.record;
         if r.target.id != 0 && r.target.tile.is_none() && self.flee() {
             self.walk_set("bRunFromPredator", false, true);
         }
+        if self.unit.kind == Kind::Animal {
+            self.defence();
+        }
+    }
+
+    /// `avoid_done(T)` (11.11): in a friendly chase the avoid lasts `cChaseTimeOut` AI ticks from
+    /// the chase stamp; otherwise it lasts while a threat or a chasing playmate is in sight.
+    fn avoid_done(&mut self, other: Option<u32>) -> bool {
+        let friendly = self.unit.kind == Kind::Animal && other.is_some_and(|t| self.same_type(t));
+        if let (true, Part::Animal(a)) = (friendly, &self.unit.part) {
+            let out = self.ctx.cat.chase_time_out.unwrap_or(5);
+            return self.now().wrapping_sub(a.stamp) as i32 >= out;
+        }
+        self.predator(0) == 0 && self.predator(1) == 0
     }
 
     /// 11.11 check done: when the threat is gone or no predator is seen any more, and the unit is
     /// neither caught nor defending itself, the avoid ends (the goal resets, the flag and the kept
-    /// predator go, a guest that is not coming back leaves the zoo). Otherwise, at the end of a
-    /// leg, the exit rule and a new leg.
+    /// predator go, a hunter that chased it for fun lets go of it, a guest that is not coming back
+    /// leaves the zoo). A caught unit waits for its set to end. Otherwise, at the end of a leg, the
+    /// exit rule and a new leg.
     pub(super) fn avoid_check_done(&mut self) {
         let id = self.record().target.id;
         let gone = self.ctx.removals.contains(&id) || self.world.find(id).is_none();
         let set = self.unit.runner.top().unwrap_or_default();
         let held = set.contains("bCaughtBy") || set.contains("bDefense");
-        if (gone || self.predator(0) == 0) && !held {
+        let over = match self.unit.caught {
+            true => !held,
+            false => (gone || self.avoid_done((!gone).then_some(id))) && !held,
+        };
+        if over {
+            let friend = !gone && self.unit.kind == Kind::Animal && self.same_type(id);
+            let me = self.unit.id;
             self.reset();
+            if self.unit.caught {
+                self.unit.caught = false;
+            } else if friend
+                && let Some(Part::Animal(t)) = self.world.units.get_mut(id).map(|t| &mut t.part)
+                && t.prey == me
+            {
+                t.prey = 0;
+            }
             (self.unit.frightened, self.unit.predator) = (false, 0);
             if let Part::Guest(g) = &mut self.unit.part
                 && g.returning.is_none()
@@ -109,7 +150,7 @@ impl Cx<'_, '_> {
             }
             return;
         }
-        if self.unit.path.len() < 2 {
+        if !self.unit.caught && self.unit.path.len() < 2 {
             if self.record().target.tile.is_some() {
                 self.avoid_exit();
             }

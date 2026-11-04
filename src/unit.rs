@@ -260,10 +260,14 @@ pub struct Unit {
     /// The contagion byte of a guest named by one of the guest-name cheats (cheats 4.2 E); not
     /// saved, not part of the state hash.
     pub spreads: u8,
-    /// Frightened: the look for a predator found one, the ladder starts the avoid task (guests 6.2,
-    /// staff 4.2); and the kept predator, 0 for none (animals 11.8).
+    /// Frightened: the look for a predator found one, the ladder starts the avoid task
+    /// (guests 6.2, staff 4.2; an animal's "afraid", animals 11.7); and the kept predator, 0 for
+    /// none (animals 11.8).
     pub frightened: bool,
     pub predator: u32,
+    /// Caught: a hunting animal has this unit in its catch; it plays `bCaughtBy` (animals
+    /// 20.3 point 6).
+    pub caught: bool,
     /// A guest saw a predator (guests 6.2, 6.12): it leaves at a run.
     pub afraid: bool,
     /// The show an animal was started in, never cleared (shows 18.2); 0 for none. Saved as
@@ -326,6 +330,7 @@ impl Unit {
             boxed: false,
             spreads: 0,
             frightened: false,
+            caught: false,
             predator: 0,
             afraid: false,
             show: 0,

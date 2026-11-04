@@ -259,7 +259,7 @@ fn an_animal_hunts_the_units_of_its_prey_list_in_its_exhibit() {
 
 fn hunt(w: &World, cat: &Catalogue, id: u32) -> u32 {
     let unit = w.units.get(id).unwrap().clone();
-    find_prey(w, cat, &unit, w.find(id).unwrap())
+    find_prey(w, cat, &unit, w.find(id).unwrap(), 0)
 }
 
 /// The catalogue of `cat` with `cPreyRadius` set.
@@ -425,4 +425,103 @@ fn a_unit_in_the_building_chain_is_no_prey_unless_the_hunter_rampages() {
     w.units.get_mut(51).unwrap().goal.record.task = 105;
     set(&mut w, 50, |a| a.rampaging = true);
     assert_eq!(hunt(&w, &cat, 50), 51);
+}
+
+fn hunt_mode(w: &World, cat: &Catalogue, id: u32, mode: u8) -> u32 {
+    let unit = w.units.get(id).unwrap().clone();
+    find_prey(w, cat, &unit, w.find(id).unwrap(), mode)
+}
+
+fn with_prey(w: &mut World, id: u32, kept: u32) {
+    if let Part::Animal(a) = &mut w.units.get_mut(id).unwrap().part {
+        a.prey = kept;
+    }
+}
+
+#[test]
+fn the_kept_prey_decides_alone_while_it_stays_in_the_square() {
+    // Animals 11.8.1: a kept zebra inside the square wins over a nearer one; out of it, or no
+    // prey any more, the scan or nothing.
+    let cat = cat(None);
+    let beasts = |far: (i32, i32)| {
+        zoo(
+            (0, 0),
+            &[
+                (50, "lion", "m", (10, 10), false),
+                (51, "zebra", "m", (12, 10), false),
+                (52, "zebra", "m", (11, 10), false),
+                (53, "zebra", "m", far, false),
+            ],
+        )
+    };
+    let mut w = beasts((19, 19));
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), 52);
+    with_prey(&mut w, 50, 51);
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), 51);
+    // Out of the square: the scan, which never offers the kept one.
+    with_prey(&mut w, 50, 53);
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), 52);
+    // In the square but crated, not prey any more: none, no scan.
+    with_prey(&mut w, 50, 51);
+    if let Part::Animal(a) = &mut w.units.get_mut(51).unwrap().part {
+        a.crated = true;
+    }
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), 0);
+}
+
+#[test]
+fn mode_1_finds_an_animal_of_the_hunters_own_type_and_never_itself() {
+    let cat = cat(None);
+    let w = zoo(
+        (0, 0),
+        &[
+            (50, "lion", "m", (10, 10), false),
+            (51, "zebra", "m", (11, 10), false),
+            (52, "lion", "m", (14, 12), false),
+        ],
+    );
+    assert_eq!(hunt_mode(&w, &cat, 50, 1), 52);
+    assert_eq!(hunt_mode(&w, &cat, 51, 1), 0);
+    // The playmate search of the one hunted: an animal of its type whose kept prey is it.
+    let mut w = w;
+    with_prey(&mut w, 52, 50);
+    let unit = w.units.get(50).unwrap().clone();
+    assert_eq!(
+        find(&w, &cat, &[], &unit, w.find(50).unwrap(), 1),
+        0,
+        "not escaped"
+    );
+    if let Part::Animal(a) = &mut w.units.get_mut(52).unwrap().part {
+        a.escaped = true;
+    }
+    w.units.escapes.push(52);
+    assert_eq!(find(&w, &cat, &[], &unit, w.find(50).unwrap(), 1), 52);
+    with_prey(&mut w, 52, 51);
+    assert_eq!(find(&w, &cat, &[], &unit, w.find(50).unwrap(), 1), 0);
+}
+
+#[test]
+fn a_guest_is_prey_while_not_seized_and_staff_only_on_the_grounds() {
+    let mut cat = cat(None);
+    cat.push(unit_ty("guests", "man", "", 9503, ""));
+    let mut w = zoo((12, 10), &[(50, "lion", "m", (10, 10), false)]);
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), GUEST);
+    if let Part::Guest(g) = &mut w.units.get_mut(GUEST).unwrap().part {
+        g.seized = true;
+    }
+    assert_eq!(hunt_mode(&w, &cat, 50, 0), 0);
+    // The keeper at (11, 10) is the trex's prey on the grounds.
+    let w = zoo((19, 19), &[(60, "trex", "m", (10, 10), false)]);
+    assert_eq!(hunt_mode(&w, &cat, 60, 0), KEEPER);
+}
+
+#[test]
+fn a_staff_member_in_an_exhibit_is_no_prey() {
+    // 11.8.1 point 5: the trex hunts the keeper on the grounds, but not in its own pen.
+    let cat = cat(None);
+    let mut w = zoo((19, 19), &[(60, "trex", "m", (4, 4), false)]);
+    let at = w.find(KEEPER).unwrap();
+    let (x, y) = centre((3, 3));
+    w.place_unit(at, (x, y, 0), 0);
+    assert_eq!(hunt_mode(&w, &cat, 60, 0), 0);
 }
