@@ -1,9 +1,5 @@
-src/build.rs 1464
-src/exhibit/rating.rs 1243
 src/goal.rs 1198
-src/place.rs 1068
 src/ui/draw.rs 1164
 src/ui/interface/widgets.rs 1010
 src/ui/layout.rs 1006
 src/unit.rs 1211
-src/zoo.rs 1245
