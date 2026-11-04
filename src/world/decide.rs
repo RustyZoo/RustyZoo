@@ -151,13 +151,24 @@ impl World {
         }
     }
 
-    /// The load makes a fresh show info with a new id for each show tank, which the stored one
-    /// replaces (31.6 points 1, 2 and 5): the show id counter moves up by one for each.
+    /// The creation of a tank first builds a temporary exhibit, which draws an id for a show tank
+    /// and is deleted (31.2 step 0): the counter moves up by one for each of the tanks `ids` that
+    /// passes the show test, before the real tank draws the id it keeps.
+    pub(super) fn spend_temporary_ids(&mut self, ids: impl Iterator<Item = u32>) {
+        let count = ids
+            .filter(|&id| self.tank(id).is_some_and(|t| t.show))
+            .count();
+        let shows = &mut self.zoo.shows;
+        shows.next_show = shows.next_show.wrapping_add(count as u16);
+    }
+
+    /// The load makes each show tank twice (31.2 step 0), each time with a fresh id; the stored
+    /// info replaces the second (31.6 points 1, 2 and 5): the counter moves up by two for each.
     pub(super) fn spend_loaded_ids(&mut self) {
         let tanks = self.exhibits.list().iter();
         let count = tanks.filter(|e| e.tank.is_some_and(|t| t.show)).count();
         let shows = &mut self.zoo.shows;
-        shows.next_show = shows.next_show.wrapping_add(count as u16);
+        shows.next_show = shows.next_show.wrapping_add(2 * count as u16);
     }
 
     /// The grandstands facing a show tank take its show id when the decision ends (31.2 steps 9

@@ -39,15 +39,14 @@ fn ids(world: &World) -> Vec<u16> {
 }
 
 #[test]
-fn a_show_tank_built_in_play_gets_a_new_show_info_with_the_next_id_even_when_the_build_is_declined()
-{
-    // 31.1 points 2 and 6, 31.2 points 1 and 6.
+fn a_show_tank_built_in_play_spends_two_show_ids_and_holds_the_second() {
+    // 31.1 points 2 and 6, 31.2 step 0 and points 1 and 6: the temporary exhibit draws the first.
     let bench = [("bench", 3 * 64 + 16, 3 * 64 + 16)];
     let mut world = tanks(&[], &bench, &[]);
     world.units.ai_ticks = 500;
     build(&mut world, "show", (0, 0, 1, 1));
     let first = info(&world, 0, 0).unwrap();
-    assert_eq!((first.id, first.frequency, first.next), (1001, 90, 590));
+    assert_eq!((first.id, first.frequency, first.next), (1002, 90, 590));
     assert_eq!(
         (first.index, first.schedule.len(), first.records.len()),
         (0, 0, 0)
@@ -58,23 +57,24 @@ fn a_show_tank_built_in_play_gets_a_new_show_info_with_the_next_id_even_when_the
         ([0; 3], [0; 3], [0; 3])
     );
     build(&mut world, "show", (3, 0, 4, 1));
-    assert_eq!(info(&world, 3, 0).unwrap().id, 1002);
+    assert_eq!(info(&world, 3, 0).unwrap().id, 1004);
     // The third has a bench in it: the question is open and the info is there already.
     build(&mut world, "show", (2, 3, 3, 4));
-    assert_eq!(info(&world, 2, 3).unwrap().id, 1003);
+    assert_eq!(info(&world, 2, 3).unwrap().id, 1006);
     let declined = id_at(&world, 2, 3);
     world.decline_tank(declined);
     assert_eq!(
         ids(&world),
-        [1001, 1002],
+        [1002, 1004],
         "the declined tank takes its info away"
     );
-    // Its number is not given back.
+    // Its two numbers are not given back.
     build(&mut world, "show", (5, 5, 6, 6));
-    assert_eq!(info(&world, 5, 5).unwrap().id, 1004);
-    // A plain tank has none.
+    assert_eq!(info(&world, 5, 5).unwrap().id, 1008);
+    // A plain tank has none and spends none.
     build(&mut world, "tank", (0, 3, 1, 4));
     assert!(info(&world, 0, 3).is_none() && ids(&world).len() == 3);
+    assert_eq!(world.zoo.shows.next_show, 1008);
 }
 
 #[test]
@@ -86,13 +86,14 @@ fn a_tank_that_already_has_a_show_info_keeps_it_through_a_decision_and_its_new_h
     world.zoo.shows.infos[n].as_mut().unwrap().frequency = 45;
     put_wall(&mut world, "show", (3, 2, 2));
     let (a, b) = (info(&world, 2, 2).unwrap(), info(&world, 5, 2).unwrap());
-    let (kept, new) = if a.id == 1001 { (a, b) } else { (b, a) };
+    let (kept, new) = if a.id == 1002 { (a, b) } else { (b, a) };
     assert_eq!(
         (kept.id, kept.frequency),
-        (1001, 45),
+        (1002, 45),
         "the old info is kept"
     );
-    assert_eq!((new.id, new.frequency), (1002, 90));
+    // One draw for the new half (O27).
+    assert_eq!((new.id, new.frequency), (1003, 90));
 }
 
 #[test]
@@ -101,7 +102,7 @@ fn a_tank_that_fails_the_show_test_loses_its_show_info_and_so_does_a_deleted_one
     let mut world = tanks(&[], &[], &[]);
     build(&mut world, "show", (2, 2, 3, 3));
     build(&mut world, "show", (5, 5, 6, 6));
-    assert_eq!(ids(&world), [1001, 1002]);
+    assert_eq!(ids(&world), [1002, 1004]);
     // A plain wall in the first: the lines no longer all pass.
     let piece = at(&world, 2, 2, 0);
     let plain = tank_shape(&Entity {
@@ -119,7 +120,7 @@ fn a_tank_that_fails_the_show_test_loses_its_show_info_and_so_does_a_deleted_one
                 .unwrap()
                 .show
     );
-    assert_eq!(ids(&world), [1002]);
+    assert_eq!(ids(&world), [1004]);
     // The second is opened to the grounds: it is gone, and its info with it.
     let line = at(&world, 5, 5, 0);
     assert!(world.remove(line));
@@ -254,17 +255,60 @@ fn the_grandstands_take_the_show_id_with_the_last_decision_and_not_before() {
 }
 
 #[test]
-fn the_counter_of_a_loaded_zoo_moves_up_for_each_of_its_show_tanks() {
-    // 31.6 point 5: the load made one fresh id for each, which the stored info replaced.
+fn the_counter_of_a_loaded_zoo_moves_up_by_two_for_each_of_its_show_tanks() {
+    // 31.6 point 5: the load made two fresh ids for each (31.2 step 0), the stored info replaced one.
     let mut pieces = ring("show", 2, 2, 3, 3);
     pieces.extend(ring("show", 5, 5, 6, 6));
     pieces.extend(ring("tank", 0, 5, 1, 6));
     let mut world = tanks(&pieces, &[], &[]);
-    assert_eq!(world.zoo.shows.next_show, 1002);
+    assert_eq!(world.zoo.shows.next_show, 1004);
     assert!(
         ids(&world).is_empty(),
         "the stored infos come from the file"
     );
     build(&mut world, "show", (0, 0, 1, 1));
-    assert_eq!(info(&world, 0, 0).unwrap().id, 1003);
+    assert_eq!(info(&world, 0, 0).unwrap().id, 1006);
+}
+
+#[test]
+fn the_tank_left_by_a_merge_keeps_one_show_info_or_none_and_notes_the_pass() {
+    // 31.2 point 11: two show tanks merge into one with one info; a show tank and a plain one
+    // merge into a plain one. Either way the decision ends with the grandstand pass.
+    let line = |world: &World, x: i32, y: i32, d: usize| {
+        let t = world.tile_index(x, y).unwrap();
+        let e = world.edge(t, d).unwrap();
+        world.zoo.entities[e].common.as_ref().unwrap().id
+    };
+    let mut pieces = ring("show", 2, 2, 5, 2);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    put_wall(&mut world, last.0, last.1);
+    put_wall(&mut world, "show", (3, 2, 2));
+    assert_eq!(ids(&world).len(), 2);
+    let (a, b) = (line(&world, 3, 2, 2), line(&world, 4, 2, 6));
+    world.begin();
+    world.take_moves();
+    world.remove(a);
+    world.remove(b);
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert_eq!(ids(&world).len(), 1, "one info is left");
+    assert!(world.take_moves().contains(&Move::Associate), "show, show");
+
+    let mut world = tanks(&[], &[], &[]);
+    build(&mut world, "tank", (1, 2, 2, 2));
+    world.begin();
+    let mut pieces = ring("show", 3, 2, 4, 2);
+    pieces.retain(|&(_, p)| !(p.0 == 3 && p.2 == 6));
+    for (class, p) in pieces {
+        put_wall(&mut world, class, p);
+    }
+    assert_eq!(ids(&world).len(), 1);
+    let (a, b) = (line(&world, 2, 2, 2), line(&world, 3, 2, 6));
+    world.begin();
+    world.take_moves();
+    world.remove(a);
+    world.remove(b);
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert!(ids(&world).is_empty(), "no info is left");
+    assert!(world.take_moves().contains(&Move::Associate), "show, plain");
 }

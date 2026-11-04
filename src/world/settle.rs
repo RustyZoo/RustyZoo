@@ -378,6 +378,10 @@ impl World {
             changed.extend(lost.iter().map(|l| l.1).chain(split_kept.iter().copied()));
             self.floors(&changed);
         }
+        if !quiet {
+            let made = built.tanks.iter().filter(|t| t.1.is_none());
+            self.spend_temporary_ids(made.map(|t| t.0));
+        }
         self.decide(&changed, false);
         for (id, inherited) in std::mem::take(&mut built.tanks) {
             self.make_tank(id, inherited, !quiet);
