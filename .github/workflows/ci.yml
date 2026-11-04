@@ -202,17 +202,6 @@ jobs:
           fi
           echo "${{ matrix.system }}=$(echo "$hashes" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
-      # Information, never a failure on a value: the intervals of the draw, interface and step
-      # timers on the real clock of the runner (the dummy video driver shows no window).
-      - name: Timing summary of a ten second windowed run
-        run: |
-          trials="${RUNNER_TEMP//\\//}/trials"
-          if [ ! -d "$trials/base-trial" ]; then
-            echo "::warning title=Timing skipped::No trial data on this runner."
-            exit 0
-          fi
-          ${{ matrix.path }} --data "$trials/base-trial" run maps/default.zoo --timing 10000
-
       # One picture per system from the platform's real video driver and window server (X11
       # on a virtual display for Linux). The log gets the game size and factor, the three sizes,
       # the display scale, the number of colours and the hash of the pixels read back; the step

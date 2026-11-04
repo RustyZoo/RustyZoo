@@ -46,7 +46,7 @@ use sdl3::video::WindowFlags;
 
 use crate::CliError;
 use crate::boot::{Booted, boot};
-use crate::probe::{self, Timing};
+use crate::probe;
 use cursor::Cursors;
 use events::{State, asleep, focused, maximised};
 use screen::Screen;
@@ -64,8 +64,6 @@ pub struct Flags<'a> {
     pub passes: Option<u64>,
     /// `--script`: the commands to apply before the pass of their index.
     pub script: Vec<(u64, Command)>,
-    /// `--timing`: run this many milliseconds, then print the intervals of the three timers.
-    pub timing: Option<u64>,
     /// `--shot`: write the pixels of the last frame, as the renderer has them, to this PNG.
     pub shot: Option<&'a str>,
     /// `--show`: layouts of the interface to show at the start.
@@ -431,10 +429,6 @@ pub fn run(
         booted = Some(made);
         menu = music;
     }
-    let timers = Timers::from_config(ini);
-    let mut timing = flags
-        .timing
-        .map(|ms| Timing::new(ms, timers.draw_period(), timers.update_period()));
     let mut catalogue = None;
     let mut app = make_app(
         &mut catalogue,
@@ -503,9 +497,6 @@ pub fn run(
             None => false,
         };
         commands.clear();
-        if let Some(timing) = &mut timing {
-            timing.note(now, app.fired());
-        }
         shown |= painted;
         if painted || (shown && std::mem::take(&mut state.exposed)) {
             present(&mut screen, &texture)?;
@@ -517,8 +508,7 @@ pub fn run(
         }
         sound_and_log(&mut sound, vfs, &app, &mut log, (pass, now))?;
         pass += 1;
-        let timed = timing.as_ref().is_some_and(|t| t.done(now));
-        if app.quit() || timed || flags.passes.is_some_and(|n| pass >= n) {
+        if app.quit() || flags.passes.is_some_and(|n| pass >= n) {
             break;
         }
         wait.next(&mut pump, &app, start, &mut state, &mut commands);
@@ -527,9 +517,6 @@ pub fn run(
         log.flush()?;
     }
     sound.summary(&app);
-    if let Some(timing) = timing {
-        timing.summary().iter().for_each(|line| println!("{line}"));
-    }
     if let Some(file) = flags.shot {
         shot(&mut screen, &texture, file)?;
     }
