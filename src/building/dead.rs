@@ -75,10 +75,15 @@ pub(crate) fn decide_all(world: &mut World, cat: &Catalogue) {
 }
 
 /// Validates again the buildings on every tank whose water level or wall height moved since the
-/// last call: the simulation's water step and the app's edits both call it, each tank once.
-pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue) {
+/// last call: the simulation's water step and the app's edits both call it, each tank once. The
+/// guests of a tank whose water, base level, walls or ground changed get the AI reset (guest
+/// buildings 12.2 point 22).
+pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue, rng: &mut crate::sim::Rng) {
     for tank in world.take_wet() {
         tank_changed(world, cat, tank);
+    }
+    for tank in world.take_stirred() {
+        crate::goal::stir_guests(world, cat, rng, tank);
     }
 }
 

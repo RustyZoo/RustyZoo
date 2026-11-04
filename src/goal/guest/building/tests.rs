@@ -13,6 +13,7 @@ use crate::unit::testing::{centre, entity, world_with};
 use crate::unit::{Ctx, Unit};
 use crate::world::World;
 
+mod after;
 mod placed;
 mod ride;
 

@@ -78,7 +78,7 @@ fn lake_in(key: &str, wet: bool, fenced: bool, extra: &[((i32, i32), u32)]) -> (
     (cat(), w)
 }
 
-fn lake(key: &str) -> (Catalogue, World) {
+pub(super) fn lake(key: &str) -> (Catalogue, World) {
     lake_in(key, true, false, &[])
 }
 
@@ -86,21 +86,21 @@ fn lake_with(key: &str, wet: bool) -> (Catalogue, World) {
     lake_in(key, wet, false, &[])
 }
 
-fn set(w: &mut World, f: impl FnOnce(&mut Guest)) {
+pub(super) fn set(w: &mut World, f: impl FnOnce(&mut Guest)) {
     if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
         f(g);
     }
 }
 
 /// Guest 1 is a user of slot `slot` of building 9, its target.
-fn inside(cat: &Catalogue, w: &mut World, slot: usize) {
+pub(super) fn inside(cat: &Catalogue, w: &mut World, slot: usize) {
     let kind = with_cx(cat, w, |cx| cx.building(9).unwrap().1);
     let live = (w.units.buildings.entry(9)).or_insert_with(|| Live::new(&kind));
     live.users.push((1, slot, 0));
     set(w, |g| (g.building, g.slot) = (9, slot));
 }
 
-fn leave(cat: &Catalogue, w: &mut World) {
+pub(super) fn leave(cat: &Catalogue, w: &mut World) {
     with_cx(cat, w, |cx| cx.remove_user());
 }
 
@@ -422,7 +422,7 @@ impl Data for Rides {
     }
 }
 
-fn riding(key: &str, id: i32) -> (Catalogue, World) {
+pub(super) fn riding(key: &str, id: i32) -> (Catalogue, World) {
     let (cat, mut w) = lake(key);
     set(&mut w, |g| {
         (g.returning, g.return_set) = (Some(id), Some(format!("bReturn{key}0")))
@@ -432,7 +432,7 @@ fn riding(key: &str, id: i32) -> (Catalogue, World) {
     (cat, w)
 }
 
-fn ride<R>(cat: &Catalogue, w: &mut World, f: impl FnOnce(&mut Cx) -> R) -> R {
+pub(super) fn ride<R>(cat: &Catalogue, w: &mut World, f: impl FnOnce(&mut Cx) -> R) -> R {
     with_data(cat, w, &Rides(walks()), f)
 }
 

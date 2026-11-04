@@ -299,7 +299,9 @@ impl Cx<'_, '_> {
         let Some(k) = guest::keys(self.world, self.ctx.cat, at) else {
             return;
         };
-        let occupied = busy(self.world.units.get(id).map_or(0, |u| u.goal.record.task));
+        // A returning guest is busy whatever its task (guest buildings 12.2 point 17).
+        let task = self.world.units.get(id).map_or(0, |u| u.goal.record.task);
+        let occupied = busy(task) || g.returning.is_some();
         let pressing = g.pressing(&k);
         let (known, member) = (g.guide == 0 || g.guide == guide, g.guide == guide);
         if !known || occupied || g.sick || g.leave || pressing {

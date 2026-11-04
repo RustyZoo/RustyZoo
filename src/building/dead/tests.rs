@@ -51,23 +51,31 @@ fn cave() -> EntityType {
     }
 }
 
-/// A tank of tiles (2, 2) to (4, 4) with a cave on (3, 3) and a guest 1 who uses it, filled to
+/// The tank walls of tiles (2, 2) to (4, 4), ids from 100.
+fn walls(zoo: &mut crate::zoo::Zoo) {
+    let mut walls = Vec::new();
+    for i in 2..=4 {
+        walls.extend([(i, 2, 0), (i, 4, 4), (2, i, 6), (4, i, 2)]);
+    }
+    for (i, (x, y, d)) in walls.into_iter().enumerate() {
+        let id = 100 + i as u32;
+        zoo.entities
+            .push(entity("tankwall", "", id, centre((x, y)), d));
+    }
+}
+
+/// A tank of tiles (2, 2) to (4, 4) with a cave on (3, 3), a guest 1 who uses it and a guest 2, filled to
 /// the wall height 9 (level 8). Returns the world, the catalogue and the tank's id.
 fn flooded() -> (World, Catalogue, u32) {
     let mut cat = Catalogue::default();
     cat.push(cave());
     let mut w = world_with((8, 8), |zoo| {
-        let mut walls = Vec::new();
-        for i in 2..=4 {
-            walls.extend([(i, 2, 0), (i, 4, 4), (2, i, 6), (4, i, 2)]);
-        }
-        for (i, (x, y, d)) in walls.into_iter().enumerate() {
-            let id = 100 + i as u32;
-            zoo.entities
-                .push(entity("tankwall", "", id, centre((x, y)), d));
-        }
+        walls(zoo);
         zoo.entities
             .push(entity("building", "cave", 7, centre((3, 3)), 0));
+        // Guest 2 comes first in the entity list.
+        zoo.entities
+            .push(entity("guests", "man", 2, centre((6, 6)), 0));
         zoo.entities
             .push(entity("guests", "man", 1, centre((6, 6)), 0));
     });
@@ -244,4 +252,123 @@ fn a_drained_tank_puts_the_users_of_a_cave_out_in_a_headless_run() {
     assert!(w.tank(tank).unwrap().level < 7);
     let live = &w.units.buildings[&7];
     assert!(live.dead && live.users.is_empty());
+}
+
+/// A change of tank `id`.
+type Change = fn(&mut World, u32);
+
+/// Guest 1 stands at tile `at`, then `change` moves the tank and the stirred tanks are told; the
+/// guest's wait in milliseconds.
+fn stirred(at: (i32, i32), change: Change) -> i32 {
+    let (mut w, cat, id) = flooded();
+    stand(&mut w, 1, at);
+    // The guest uses no building, so that only the stir can reset it.
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    w.units.get_mut(1).unwrap().hidden = false;
+    w.take_stirred();
+    change(&mut w, id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    w.units.get(1).unwrap().wait
+}
+
+/// Unit `id` stands at the centre of tile `at`, in the map index too.
+fn stand(w: &mut World, id: u32, at: (i32, i32)) {
+    let index = w.find(id).unwrap();
+    let (x, y) = centre(at);
+    w.place_unit(index, (x, y, 0), 0);
+}
+
+#[test]
+fn a_change_of_the_water_the_walls_or_the_ground_resets_the_guests_in_the_tank() {
+    // Guest buildings 12.2 point 22: the water level, the base level, the height, a terrain change.
+    let changes: [(&str, Change); 5] = [
+        ("level", |w, id| assert!(w.drain(id))),
+        ("height", |w, id| w.set_height(id, 7)),
+        ("base level", |w, id| w.flatten(id, 3, false)),
+        ("terrain", |w, _| assert!(w.set_tile(3, 2, 0, 0, 1))),
+        ("nothing", |_, _| ()),
+    ];
+    for (name, change) in changes {
+        let waits = [stirred((2, 3), change), stirred((6, 6), change)];
+        match name {
+            "nothing" => assert_eq!(waits, [0, 0]),
+            // The guest out of the tank is left alone.
+            _ => assert!((1000..5000).contains(&waits[0]) && waits[1] == 0, "{name}"),
+        }
+    }
+}
+
+/// Stirs tank `id` with guest 1 at `at` and guest 2 at `other`, neither busy; the waits of both.
+fn stir_two(at: (i32, i32), other: (i32, i32), gate: bool) -> (i32, i32) {
+    let (mut w, cat, id) = flooded();
+    if gate {
+        // The wall east of tile (3, 3): the gate, with tile (5, 3) outside.
+        w.set_gate(id, 107);
+    }
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    for (unit, to) in [(1, at), (2, other)] {
+        stand(&mut w, unit, to);
+        w.units.get_mut(unit).unwrap().hidden = false;
+    }
+    w.take_stirred();
+    w.stir(id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    (w.units.get(1).unwrap().wait, w.units.get(2).unwrap().wait)
+}
+
+#[test]
+fn the_stir_resets_the_tank_tiles_before_the_gate_tile() {
+    // Point 22: the tank's tile list, then the outer gate tile: guest 2, first in the entity list
+    // and on the gate tile, draws after guest 1 in the tank.
+    let alone = stir_two((2, 3), (6, 6), true).0;
+    assert!((1000..5000).contains(&alone));
+    let (tank, gate) = stir_two((2, 3), (5, 3), true);
+    assert_eq!(tank, alone, "the tank guest takes the first draw");
+    assert!((1000..5000).contains(&gate) && gate != tank);
+}
+
+#[test]
+fn a_guest_on_the_outer_gate_tile_is_reset() {
+    let (a, b) = stir_two((6, 6), (5, 3), true);
+    assert!(a == 0 && (1000..5000).contains(&b));
+    // Without a gate there is no gate tile: the same guest is left alone.
+    assert_eq!(stir_two((6, 6), (5, 3), false), (0, 0));
+}
+
+#[test]
+fn a_change_of_the_height_alone_resets_the_guests_in_the_tank() {
+    let (mut w, cat, id) = flooded();
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    stand(&mut w, 1, (2, 3));
+    w.units.get_mut(1).unwrap().hidden = false;
+    // A lower tank holds less water than its walls: raising the walls keeps the level.
+    w.set_height(id, 7);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let (level, height) = (w.tank(id).unwrap().level, w.tank(id).unwrap().height);
+    w.units.get_mut(1).unwrap().wait = 0;
+    w.set_height(id, height + 1);
+    assert_eq!(w.tank(id).unwrap().level, level, "only the height moved");
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    assert!((1000..5000).contains(&w.units.get(1).unwrap().wait));
+}
+
+#[test]
+fn a_loaded_tank_stirs_no_guest() {
+    // The tank record of a file sets the height and the level when the world is built.
+    let mut w = world_with((8, 8), |zoo| {
+        walls(zoo);
+        zoo.tanks = vec![crate::zoo::Tank {
+            tile: (2, 2),
+            gate: (-1, -1),
+            height: 9,
+            level: 6,
+            salt: false,
+            purity: 90,
+        }];
+    });
+    assert_eq!(
+        w.tank(w.tank_at(3 * 8 + 3).unwrap()).map(|t| t.height),
+        Some(9)
+    );
+    assert_eq!(w.take_stirred(), Vec::<u32>::new());
 }

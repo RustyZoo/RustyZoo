@@ -62,6 +62,28 @@ pub(super) fn run(
     with_unit(world, &mut ctx, data, id, f);
 }
 
+/// Guest buildings 12.2 point 22: the guests standing in tank `tank` or on its outer gate tile get
+/// the guest's AI reset: the tank's tiles in their order, then the gate tile, each tile's units in
+/// list order.
+pub(crate) fn stir_guests(world: &mut World, cat: &Catalogue, rng: &mut Rng, tank: u32) {
+    let outer = crate::staff::service::gate_tiles(world, tank).map(|g| g.1);
+    let tiles = world.tiles_of(tank).into_iter().chain(outer);
+    let ids: Vec<u32> = tiles
+        .flat_map(|t| world.units_on(t))
+        .filter_map(|at| {
+            let id = world.zoo.entities[at].common.as_ref()?.id;
+            world
+                .units
+                .get(id)
+                .filter(|u| u.kind == Kind::Guest && !u.carried)?;
+            Some(id)
+        })
+        .collect();
+    for id in ids {
+        run(world, cat, rng, &NoData, id, |cx| cx.guest_reset_ai());
+    }
+}
+
 /// The goal of unit `id` is reset (goals 12.1) by code outside a unit's turn, as the show does for
 /// its animals.
 pub(crate) fn reset_unit(world: &mut World, cat: &Catalogue, id: u32) {

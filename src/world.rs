@@ -164,6 +164,8 @@ pub struct World {
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
     /// objects on their tiles are validated again (guest buildings 11.1.1; not saved).
     wet: Vec<u32>,
+    /// The tanks whose water, base level, walls or ground changed (guest buildings 12.2 point 22).
+    stirred: Vec<u32>,
     /// What each tank filter shows besides its record: switched off, or showing bubbles (not
     /// saved, not hashed).
     filter_view: BTreeMap<u32, filter::View>,
@@ -214,6 +216,7 @@ impl World {
             paused: false,
             told_water: BTreeMap::new(),
             wet: Vec::new(),
+            stirred: Vec::new(),
             filter_view: BTreeMap::new(),
             words: language.exhibit_words.clone(),
             language,
@@ -241,6 +244,7 @@ impl World {
         world.load_thoughts();
         world.dirty = false;
         world.wet.clear();
+        world.stirred.clear();
         world
     }
 

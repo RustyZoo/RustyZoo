@@ -325,6 +325,17 @@ fn a_guest_that_is_busy_in_a_pressing_need_or_in_another_group_is_not_taken() {
 }
 
 #[test]
+fn a_returning_guest_is_busy_and_follows_no_guide() {
+    // Guest buildings 12.2 point 17: busy whatever its task.
+    let mut g = crowd("", LEG);
+    if let Part::Guest(guest) = &mut g.w.units.get_mut(1).unwrap().part {
+        guest.returning = Some(8059);
+    }
+    with_cx(&mut g, GUIDE, |cx| cx.gather());
+    assert_eq!(g.guide().members, [3, 4]);
+}
+
+#[test]
 fn a_release_resets_every_follower_with_one_draw_each_and_empties_the_list() {
     let mut g = crowd("", TALK);
     with_cx(&mut g, GUIDE, |cx| cx.gather());

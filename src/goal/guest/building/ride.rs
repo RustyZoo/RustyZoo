@@ -4,10 +4,12 @@
 //! guest's return string as the set; nothing of it is saved.
 
 use super::*;
+use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::goal::{NONE, RECOVER, stop_all};
+use crate::goal::{Goal, NONE, RECOVER, stop_all};
 use crate::guest::{HAPPINESS, view};
 use crate::render::order::STEP;
+use crate::world::World;
 
 /// The thought of a viewer that sees overjoyed animals, and the set of a treading idler.
 const OVERJOYED: i32 = 10098;
@@ -26,6 +28,38 @@ pub(in crate::goal) struct Ride {
     pub(super) idler: bool,
     pub(super) idle: bool,
     pub(super) viewer: bool,
+}
+
+/// The idler and viewer flags of the building type found by a return name id.
+fn flags(world: &World, cat: &Catalogue, name: Option<i32>) -> (bool, bool) {
+    let default = world.units.prices.default;
+    let ty = (cat.types.iter()).find(|t| t.class == "building" && name == Some(t.name_id));
+    let keys = ty.map_or_else(Default::default, |t| building::Kind::of(t, default).ret);
+    (keys.idler, keys.viewer)
+}
+
+/// A load (goals 11.13 point 9): the ride of a guest whose saved task is 0x82 is built and never
+/// initialised: no legs, the AI clock `now`, and the flags of the type of its return name id.
+pub(crate) fn rides_loaded(world: &mut World, cat: &Catalogue, now: u32) {
+    let riders: Vec<u32> = (world.units.iter())
+        .filter(|u| u.goal.object == Some(Goal::Ride))
+        .map(|u| u.id)
+        .collect();
+    for id in riders {
+        let name = match world.units.get(id).map(|u| &u.part) {
+            Some(Part::Guest(g)) => g.returning,
+            _ => continue,
+        };
+        let (idler, viewer) = flags(world, cat, name);
+        if let Some(u) = world.units.get_mut(id) {
+            u.goal.ride = Ride {
+                until: now,
+                idler,
+                viewer,
+                ..Ride::default()
+            };
+        }
+    }
 }
 
 impl Cx<'_, '_> {
@@ -54,16 +88,15 @@ impl Cx<'_, '_> {
             return false;
         };
         let name = self.guest().and_then(|g| g.returning);
-        let default = self.world.units.prices.default;
-        let ty =
-            (self.ctx.cat.types.iter()).find(|t| t.class == "building" && name == Some(t.name_id));
-        let keys = ty.map_or_else(Default::default, |t| building::Kind::of(t, default).ret);
+        let (idler, viewer) = flags(self.world, self.ctx.cat, name);
+        let legs = building::ret::legs(self.world, at, &kind);
+        let now = self.now();
         self.unit.goal.ride = Ride {
-            legs: building::ret::legs(self.world, at, &kind),
-            until: self.now(),
-            idler: keys.idler,
+            legs,
+            until: now,
+            idler,
             idle: false,
-            viewer: keys.viewer,
+            viewer,
         };
         true
     }
@@ -197,6 +230,18 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Invalidate target (goals 11.13 point 6): the target building, when it still stands and keeps
+    /// track of its guests, loses this one from its members; the guest recovers from the water.
+    pub(in crate::goal) fn ride_invalidate(&mut self) {
+        let (id, unit) = (self.record().target.id, self.unit.id);
+        if self.building(id).is_some_and(|(_, k)| k.ret.tracker)
+            && let Some(live) = self.world.units.buildings.get_mut(&id)
+        {
+            live.members.retain(|&m| m != unit);
+        }
+        self.set_task(RECOVER, 0, 0, None);
+    }
+
     /// Guest buildings 12.2 point 18: a building of the guest's return type, in its habitat, with
     /// a slot open to it; one draw among them, none for none.
     fn back_building(&mut self) -> Option<u32> {
@@ -244,9 +289,8 @@ impl Cx<'_, '_> {
 
     /// The guest's AI reset (guest buildings 12.2 point 21, simulation 8.1): a guest in the
     /// building tasks leaves its building by a normal leave, everything stops, it waits 1000 to
-    /// 4999 ms, and its return name id is 0; the string and any membership stay. The callers of
-    /// point 22 (a tank's water level, base level and height, a terrain change) are not built.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// 4999 ms, and its return name id is 0; the string and any membership stay. Called by the
+    /// stir of a tank (point 22).
     pub(crate) fn guest_reset_ai(&mut self) {
         if [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&self.record().task) {
             self.remove_user();
