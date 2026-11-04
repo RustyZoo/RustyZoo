@@ -3,6 +3,7 @@
 //! dart) and 15 (the crate). The helicopter flies to the animal instead of walking (staff 7.11.1
 //! point 4) and its dart counts on its base; its own goals are in [`super::heli`].
 
+use super::super::dropped::with_unit;
 use super::super::{CAPTURE, Cx};
 use crate::animal::{self, Animal, boxed};
 use crate::build::number;
@@ -230,12 +231,19 @@ impl Cx<'_, '_> {
     }
 
     /// Job 14 complete: the animal is darted. If he may still capture it, the crate follows.
-    pub(super) fn dart_complete(&mut self) {
+    pub(in crate::goal) fn dart_complete(&mut self) {
         let id = self.record().job_target.id;
         let Some(at) = self.animal(id).and(self.world.find(id)) else {
             return self.set_job(0, 0, None);
         };
         let keys = animal::keys(self.world, self.ctx.cat, at);
+        // Without caught prey the animal's chase stops, forced (animals 21.3).
+        let meal = self.animal(id).is_some_and(|a| a.caught_prey);
+        if !meal {
+            with_unit(self.world, self.ctx, self.data, id, |cx| {
+                cx.stop_chase(true)
+            });
+        }
         if let Some(unit) = self.world.units.get_mut(id) {
             boxed::tranquilise(unit, &keys);
         }

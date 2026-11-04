@@ -135,8 +135,10 @@ pub(super) fn habitat(a: &mut Animal, k: &Keys, class: &Class, env: &Env, messag
     a.change(other);
 }
 
-/// The bored check (animals 5.5): a fed, rested animal with company may get thirsty. The
-/// predator and playmate searches and the chase are M7's and find nothing.
+/// The bored check (animals 5.5, 21.1): a threat or a playmate that chases the animal frightens
+/// it; a fed, rested animal with company may look for a playmate or get thirsty. The searches are
+/// in `env.sight`, found when the counter is due; the avoid and the chase themselves are the
+/// goals'.
 pub(super) fn bored(
     a: &mut Animal,
     k: &Keys,
@@ -145,6 +147,9 @@ pub(super) fn bored(
     rng: &mut Rng,
     out: &mut Out,
 ) {
+    /// The chase and avoid tasks.
+    const CHASE: u8 = 0x74;
+    const AVOID: u8 = 0x75;
     if a.egg || a.in_show || !fire(&mut a.counters[BORED], class.periods[BORED]) {
         return;
     }
@@ -153,17 +158,35 @@ pub(super) fn bored(
     if a.energy >= k.energy_threshold {
         return life::sleep(a, k, class, env, out);
     }
-    if a.at_minimum_health || a.occupied(env) || a.rampaging {
+    if a.at_minimum_health {
         return;
     }
-    if a.hunger >= k.hunger_threshold {
+    let s = env.sight;
+    if !s.afraid {
+        let playmate = !a.playing && !a.escaped && !a.occupied(env) && s.chaser && !a.rampaging;
+        if s.threat || playmate {
+            out.afraid = true;
+            return;
+        }
+    }
+    if a.occupied(env) || a.rampaging || a.hunger >= k.hunger_threshold {
         return;
     }
     let alone = env.census.species <= 1;
     let (drink, play) = (k.drink, if alone { 0 } else { k.chase });
+    if alone && s.task == CHASE && s.friendly {
+        a.reset_needs();
+        out.lonely = true;
+    }
     let total = drink.wrapping_add(play);
-    if total > 0 && rng.rand() as i32 % total < drink {
-        a.thirsty |= !env.wet && !a.escaped;
+    if total > 0 && s.task != CHASE && s.task != AVOID {
+        let free = !a.playing && !s.afraid && !a.escaped;
+        if rng.rand() as i32 % total >= drink {
+            a.playing |= free && s.prey;
+        } else {
+            let land = !env.wet && !matches!(a.terrain, 1 | 2) && env.tank_mode == 0;
+            a.thirsty |= free && land;
+        }
     }
 }
 

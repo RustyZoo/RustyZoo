@@ -239,6 +239,9 @@ pub(crate) struct Animal {
     /// check; nothing else follows from them before M7.
     pub rampaging: bool,
     pub rampage: i32,
+    /// The rampage's building target flag (animals 21.4): one of the "doing something" flags of
+    /// 9.3, saved from version 78. Nothing raises it until the target building goal is traced.
+    pub rampage_target: bool,
     /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
     /// lowered by the escape check in an exhibit and when it is picked up.
     pub escaped: bool,
@@ -355,6 +358,7 @@ impl Animal {
         self.thirsty = r.thirsty;
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
+        self.rampage_target = r.rampage_target;
         self.escaped = r.escaped;
         (self.playing, self.caught_prey, self.prey) = (r.playing, r.caught_prey, r.prey);
         (self.claim, self.tranq) = (r.claim, r.tranq);
@@ -408,6 +412,7 @@ impl Animal {
             thirsty: self.thirsty,
             rampaging: self.rampaging,
             rampage: self.rampage,
+            rampage_target: self.rampage_target,
             sleeping: self.sleeping,
             eating: self.eating,
             drinking: self.drinking,
@@ -464,7 +469,21 @@ impl Animal {
 
     /// Whether it is doing something (9.3). The set and the task are the environment's.
     fn occupied(&self, env: &Env) -> bool {
-        self.thirsty || self.in_show || self.wants_food || self.dying || self.drinking || env.busy
+        let flags = [
+            self.thirsty,
+            self.in_show,
+            self.wants_food,
+            self.dying,
+            self.drinking,
+        ];
+        flags.contains(&true) || self.caught_prey || self.rampage_target || env.busy
+    }
+
+    /// The need flags of a goal reset (animals 9.2): drinking, hungry for keeper food, thirsty, the
+    /// escape walk, playing, the caught and the kept prey.
+    pub(crate) fn reset_needs(&mut self) {
+        (self.drinking, self.wants_food, self.thirsty, self.walk) = (false, false, false, None);
+        (self.playing, self.caught_prey, self.prey) = (false, false, 0);
     }
 
     /// Clears the bits, then sets "needs a suitable exhibit" when `set`.
@@ -525,8 +544,10 @@ pub(crate) struct Env {
     pub wet: bool,
     /// The game milliseconds of the calendar, for the date of its last meal.
     pub now: i64,
-    /// Its set or its task occupies it (9.3).
+    /// Its set, its task or a caught state occupies it (9.3).
     pub busy: bool,
+    /// What the bored check reads of the units round it (animals 21.1).
+    pub sight: Sight,
     /// Its task is the keeper food or the other food task.
     pub food_task: bool,
     /// The food of its species' kind in its exhibit, in units (hunger check 4.1).
@@ -569,6 +590,19 @@ pub(crate) struct Env {
     pub candidates: Vec<u32>,
 }
 
+/// What the bored check reads of the units round the animal, found when its counter is due: the
+/// afraid flag and the task now, a threat, a playmate that chases it, prey for a playmate of its
+/// own and whether it is in a friendly chase (animals 21.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Sight {
+    pub afraid: bool,
+    pub task: u8,
+    pub threat: bool,
+    pub chaser: bool,
+    pub prey: bool,
+    pub friendly: bool,
+}
+
 /// The shelters around an animal when its shelter check is due: whether the building it aims at
 /// still serves the need `animalrest`, and the nearest buildings that do, in the list order
 /// (guests 7.1); the draw among them is the check's.
@@ -591,6 +625,10 @@ pub(crate) struct Out {
     pub sets: Vec<&'static str>,
     /// A dung pile is due (the meter was at its threshold).
     pub dung: bool,
+    /// The bored check saw a threat or a playmate that chases it: the afraid flag goes up.
+    pub afraid: bool,
+    /// The bored check ended a lonely friendly chase: the unit's goal resets (animals 21.1 point 7).
+    pub lonely: bool,
     /// The animal is taken away or removed without a death set, and the animals of its exhibit
     /// mourn.
     pub remove: bool,
