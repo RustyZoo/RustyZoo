@@ -3,6 +3,7 @@
 //! of its tries, and with none left it takes the drowning task (`drown.rs`).
 
 use super::{Cx, DROWN};
+use crate::unit::Part;
 
 /// Rounds of searches, tries in a round, and the reach of a try in tiles on each side.
 const ROUNDS: u32 = 10;
@@ -27,6 +28,15 @@ impl Cx<'_, '_> {
         }
         if self.unit.goal.tries == Some(0) {
             self.set_task(DROWN, 0, 0, None);
+        }
+    }
+
+    /// Complete (tank fauna 13, guest buildings 12.2 point 23): the goal is reset and the return
+    /// name id is 0.
+    pub(super) fn recover_complete(&mut self) {
+        self.reset();
+        if let Part::Guest(g) = &mut self.unit.part {
+            g.returning = None;
         }
     }
 

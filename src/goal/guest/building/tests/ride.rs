@@ -1,7 +1,8 @@
 //! A guest out of a return building (guest buildings 12.2, goals 11.13) on a lake: a boat shack, a
-//! dolphin shack and a changing room 9 at (5, 2), whose exits are on the water at (5, 3), a lake
+//! dolphin shack and a changing room 9 at (5, 7), whose exits are on the water at (5, 6), a lake
 //! of 5 by 4 tiles (x 3 to 7, y 3 to 6), and a stand 7 at (1, 1) on the land. Guest 1 stands in
-//! the water at (5, 3).
+//! the water at (5, 3). As in the shipped files, the exit on the water lies at the building's
+//! side opposite to its rotation, so the tile next to the exit in the rotation is the building.
 
 use super::*;
 use crate::behaviour::{Call, Heard, Row, Timing};
@@ -15,9 +16,9 @@ fn deck(keys: &str) -> String {
     format!(
         "[Characteristics/Integers]\ncCapacity=25\ncHideUser=1\ncUserUsesExit=1\ncDirectEntrance=1\n\
          cReturnBuilding=1\ncAdultChange=8\n{keys}[Satisfies]\nbuilding\nfun\n[slots]\nname=slot\n\
-         name=back\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\n\
+         name=back\n[slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=-48\nexitpos=0\nexitpos=-48\n\
          capacity=25\nexitonland=1\nexitonwater=1\n[back]\nslotpos=0\nslotpos=0\nentrpos=0\n\
-         entrpos=48\nexitpos=0\nexitpos=-48\ncapacity=25\nisreturnslot=1\nexitonland=1\n"
+         entrpos=-48\nexitpos=0\nexitpos=48\ncapacity=25\nisreturnslot=1\nexitonland=1\n"
     )
 }
 
@@ -42,8 +43,9 @@ fn cat() -> Catalogue {
 }
 
 /// The lake with a building 9 of the registry key `key`; `wet` is whether the lake has water;
-/// `fenced`, whether the 4 by 4 tiles x 3 to 6, y 3 to 6 stand in a ring of fences.
-fn lake_in(key: &str, wet: bool, fenced: bool) -> (Catalogue, World) {
+/// `fenced`, whether the 4 by 4 tiles x 3 to 6, y 3 to 6 stand in a ring of fences, but for the
+/// edge to the building; `extra` more fences, as tile and edge.
+fn lake_in(key: &str, wet: bool, fenced: bool, extra: &[((i32, i32), u32)]) -> (Catalogue, World) {
     let mut w = world_with((10, 10), |zoo| {
         zoo.entrance = (8, 5);
         for y in 3..=6 {
@@ -51,7 +53,7 @@ fn lake_in(key: &str, wet: bool, fenced: bool) -> (Catalogue, World) {
                 zoo.tiles[y * 10 + x].terrain = u8::from(wet);
             }
         }
-        let mut b = entity("building", "building", 9, centre((5, 2)), 4);
+        let mut b = entity("building", "building", 9, centre((5, 7)), 4);
         b.subtype = key.into();
         zoo.entities.push(b);
         zoo.entities
@@ -60,9 +62,16 @@ fn lake_in(key: &str, wet: bool, fenced: bool) -> (Catalogue, World) {
             .push(entity("guests", "man", 1, centre((5, 3)), 6));
         for i in (3..=6).filter(|_| fenced) {
             for (at, d) in [((i, 3), 0), ((i, 6), 4), ((3, i), 6), ((6, i), 2)] {
+                if (at, d) == ((5, 6), 4) {
+                    continue;
+                }
                 let id = 100 + zoo.entities.len() as u32;
                 zoo.entities.push(entity("fences", "", id, centre(at), d));
             }
+        }
+        for &(at, d) in extra {
+            let id = 100 + zoo.entities.len() as u32;
+            zoo.entities.push(entity("fences", "", id, centre(at), d));
         }
     });
     w.set_water(vec![false, true]);
@@ -70,11 +79,11 @@ fn lake_in(key: &str, wet: bool, fenced: bool) -> (Catalogue, World) {
 }
 
 fn lake(key: &str) -> (Catalogue, World) {
-    lake_in(key, true, false)
+    lake_in(key, true, false, &[])
 }
 
 fn lake_with(key: &str, wet: bool) -> (Catalogue, World) {
-    lake_in(key, wet, false)
+    lake_in(key, wet, false, &[])
 }
 
 fn set(w: &mut World, f: impl FnOnce(&mut Guest)) {
@@ -328,7 +337,7 @@ fn the_water_area_is_the_connected_water_without_objects_or_fences() {
 #[test]
 fn a_fenced_pond_of_4_by_4_tiles_behind_the_building_has_an_area_of_16_and_a_capacity_of_2() {
     // Open point 11: the lake is 5 wide; fence the 4 by 4 tiles x 3 to 6, y 3 to 6.
-    let (cat, w) = lake_in("boatshak", true, true);
+    let (cat, w) = lake_in("boatshak", true, true, &[]);
     let at = w.find(9).unwrap();
     let kind = crate::building::kind_of(&cat, &w.zoo.entities[at], 29.0).unwrap();
     assert_eq!(ret::area(&w, at, &kind), 16);
@@ -567,7 +576,7 @@ fn the_ladder_walks_a_returning_guest_to_the_return_slot_with_its_string() {
     let r = &w.units.get(1).unwrap().goal.record;
     assert_eq!(
         (r.task, r.target.tile),
-        (crate::goal::ENTRANCE, Some(3 * 10 + 5))
+        (crate::goal::ENTRANCE, Some(6 * 10 + 5))
     );
     assert_eq!(guest(&w).slot, 1);
 }
@@ -654,4 +663,272 @@ fn a_guest_holding_a_return_building_travels_in_water() {
     assert!(!mover(&w).in_water);
     set(&mut w, |g| g.returning = Some(8059));
     assert!(mover(&w).in_water);
+}
+
+/// A map of `n` by `n` tiles with guest 1 returning from a boat shack at its centre; `land` tells
+/// which tiles are dry, `edit` adds entities.
+fn sea(
+    n: i32,
+    land: impl Fn(i32, i32) -> bool,
+    edit: impl FnOnce(&mut crate::zoo::Zoo),
+) -> (Catalogue, World) {
+    let mut w = world_with((n, n), |zoo| {
+        zoo.entrance = (n as u32 - 1, 0);
+        for t in 0..(n * n) as usize {
+            zoo.tiles[t].terrain = u8::from(!land(t as i32 % n, t as i32 / n));
+        }
+        let at = centre((n / 2, n / 2));
+        zoo.entities.push(entity("guests", "man", 1, at, 6));
+        edit(zoo);
+    });
+    w.set_water(vec![false, true]);
+    set(&mut w, |g| {
+        (g.returning, g.return_set) = (Some(8059), Some("bReturnboatshak0".into()))
+    });
+    let r = &mut w.units.get_mut(1).unwrap().goal.record;
+    (r.task, r.target.id) = (RETURN_TO_BUILDING, 9);
+    (cat(), w)
+}
+
+/// The generator at state `seed`.
+fn seeded(seed: u32) -> Rng {
+    let mut rng = Rng::default();
+    rng.seed(seed);
+    rng
+}
+
+/// Runs a decide of the ride of guest 1 with `legs` left, the flags `idler` (an idler decides
+/// out of its pause) and `viewer`, and the generator `rng`. The tile of the walk it started.
+fn leg(cat: &Catalogue, w: &mut World, rng: &mut Rng, idler: bool, viewer: bool) -> Option<usize> {
+    with_rng(cat, w, &Rides(walks()), rng, |cx| {
+        let ride = &mut cx.unit.goal.ride;
+        (ride.legs, ride.idler, ride.idle, ride.viewer) = (5, idler, idler, viewer);
+        cx.ride_decide();
+        cx.record().target.tile
+    })
+}
+
+#[test]
+fn a_leg_draws_x_then_y_in_a_window_of_6_for_an_idler_and_10_for_the_others() {
+    // In an open sea the first try is the tile; the window and the order show in the tile.
+    let n = 24;
+    for (idler, reach) in [(false, 10), (true, 6)] {
+        let tile = |a: u32, b: u32, r: u32| {
+            let at = |v: u32| n / 2 + (v % r) as i32 - r as i32 / 2;
+            at(a) + n * at(b)
+        };
+        let other = if idler { 10 } else { 6 };
+        let seed = (1..)
+            .find(|&s| {
+                let mut r = seeded(s);
+                let (a, b) = (r.rand(), r.rand());
+                let t = tile(a, b, reach);
+                t != tile(b, a, reach) && t != tile(a, b, other) && t != n / 2 * (n + 1)
+            })
+            .unwrap();
+        let mut by_hand = seeded(seed);
+        let (a, b) = (by_hand.rand(), by_hand.rand());
+        let (cat, mut w) = sea(n, |_, _| false, |_| ());
+        let mut rng = seeded(seed);
+        let target = leg(&cat, &mut w, &mut rng, idler, false);
+        assert_eq!(target, Some(tile(a, b, reach) as usize), "idler {idler}");
+        assert_eq!(rng, by_hand, "two draws");
+    }
+}
+
+/// The offsets of the tries of a leg search from the generator at state `seed`: x then y, in a
+/// window of `reach`.
+fn tries(seed: u32, reach: u32) -> impl Iterator<Item = (i32, i32)> {
+    let mut rng = seeded(seed);
+    let mut draw = move || rng.rand() % reach;
+    std::iter::repeat_with(move || {
+        let dx = draw() as i32 - reach as i32 / 2;
+        (dx, draw() as i32 - reach as i32 / 2)
+    })
+}
+
+#[test]
+fn the_leg_search_makes_20_rounds_of_30_tries_and_requests_the_30th_tile() {
+    let n = 24;
+    // A path under the guest: no other tile is enterable for it, so every try but its own fails
+    // and the 30th tile of the first round, a water tile it can reach, is requested.
+    let path = |zoo: &mut crate::zoo::Zoo| {
+        let at = centre((n / 2, n / 2));
+        zoo.entities.push(entity("paths", "stone", 600, at, 0));
+    };
+    let seed = (1..)
+        .find(|&s| tries(s, 10).take(30).all(|d| d != (0, 0)))
+        .unwrap();
+    let (dx, dy) = tries(seed, 10).nth(29).unwrap();
+    let (cat, mut w) = sea(n, |_, _| false, path);
+    let mut rng = seeded(seed);
+    let target = leg(&cat, &mut w, &mut rng, false, false);
+    assert_eq!(target, Some(((n / 2 + dx) + n * (n / 2 + dy)) as usize));
+    let mut by_hand = seeded(seed);
+    (0..60).for_each(|_| _ = by_hand.rand());
+    assert_eq!(rng, by_hand, "60 draws");
+    // On dry land every request fails: 20 rounds make 1200 draws, and the ride is over.
+    let (cat, mut w) = sea(n, |_, _| true, |_| ());
+    let (mut rng, mut by_hand) = (Rng::default(), Rng::default());
+    assert_eq!(leg(&cat, &mut w, &mut rng, false, false), None);
+    assert!(w.units.get(1).unwrap().goal.record.done);
+    (0..1200).for_each(|_| _ = by_hand.rand());
+    assert_eq!(rng, by_hand, "1200 draws");
+}
+
+#[test]
+fn the_leg_search_tries_the_diagonals_in_order_after_20_failed_rounds() {
+    // Water on the guest's tile, its four sides and the diagonals (-1, 1) and (1, -1); the other
+    // diagonals are dry. A crowd of 4 guests on a tile leaves it no room: only the two diagonals
+    // are tiles the guest may enter, and a request to a side still reaches them. The seed is one
+    // for which no try of the 20 rounds hits a diagonal and no round ends on a side or on the
+    // guest's own tile (found by a search over `tries`), so every round fails.
+    const SEED: u32 = 442_478;
+    let n = 24;
+    let (cx, cy) = (n / 2, n / 2);
+    let sides = [(0, 0), (0, -1), (-1, 0), (1, 0), (0, 1)];
+    let wet = |x: i32, y: i32| {
+        let d = (x - cx, y - cy);
+        sides.contains(&d) || [(-1, 1), (1, -1)].contains(&d)
+    };
+    let crowd = |zoo: &mut crate::zoo::Zoo| {
+        for (i, d) in sides.iter().enumerate() {
+            let at = centre((cx + d.0, cy + d.1));
+            for k in 0..(4 - usize::from(i == 0)) {
+                let id = 10 * (i as u32 + 1) + k as u32;
+                zoo.entities.push(entity("guests", "man", id, at, 6));
+            }
+        }
+    };
+    let (cat, mut w) = sea(n, |x, y| !wet(x, y), crowd);
+    let mut rng = seeded(SEED);
+    let target = leg(&cat, &mut w, &mut rng, false, false);
+    // The first of the diagonals that is water, not the last.
+    assert_eq!(target, Some(((cx - 1) + n * (cy + 1)) as usize));
+    let mut by_hand = seeded(SEED);
+    (0..1200).for_each(|_| _ = by_hand.rand());
+    assert_eq!(rng, by_hand, "1200 draws");
+}
+
+fn area_of((cat, w): &(Catalogue, World)) -> usize {
+    let at = w.find(9).unwrap();
+    let kind = crate::building::kind_of(cat, &w.zoo.entities[at], 29.0).unwrap();
+    ret::area(w, at, &kind)
+}
+
+#[test]
+fn a_fence_between_the_exit_tile_and_the_building_gives_no_water() {
+    // The exit tile (5, 6) lies north of the building (5, 7), which faces 4: the tile next to the
+    // exit in the rotation is the building. A fence on that edge, from either tile, gives no
+    // water; a fence on another edge of the exit tile or of the lake does not.
+    for (fences, area) in [
+        (vec![], 20),
+        (vec![((5, 6), 4)], 0),
+        (vec![((5, 7), 0)], 0),
+        (vec![((5, 6), 2)], 20),
+        (vec![((5, 6), 6)], 20),
+        (vec![((4, 6), 4)], 20),
+    ] {
+        let lake = lake_in("boatshak", true, false, &fences);
+        assert_eq!(area_of(&lake), area, "{fences:?}");
+    }
+}
+
+#[test]
+fn the_legs_and_the_water_capacity_stop_at_10() {
+    // A lake of 12 by 12 tiles: (144 + 7) / 10 = 15.
+    let mut w = world_with((16, 16), |zoo| {
+        zoo.entrance = (15, 8);
+        for y in 1..=12 {
+            for x in 2..=13 {
+                zoo.tiles[y * 16 + x].terrain = 1;
+            }
+        }
+        let mut b = entity("building", "building", 9, centre((5, 13)), 4);
+        b.subtype = "boatshak".into();
+        zoo.entities.push(b);
+    });
+    w.set_water(vec![false, true]);
+    let cat = cat();
+    let at = w.find(9).unwrap();
+    let kind = crate::building::kind_of(&cat, &w.zoo.entities[at], 29.0).unwrap();
+    assert_eq!(ret::area(&w, at, &kind), 144);
+    assert_eq!(
+        (ret::legs(&w, at, &kind), ret::capacity(&w, at, &kind)),
+        (10, 10)
+    );
+}
+
+#[test]
+fn an_idlers_pause_lasts_6_to_12_ai_ticks() {
+    let mut seen = std::collections::BTreeSet::new();
+    for seed in 1..400 {
+        let (cat, mut w) = riding("chroom", 8061);
+        let mut rng = seeded(seed);
+        with_rng(&cat, &mut w, &Rides(walks()), &mut rng, |cx| {
+            assert!(cx.ride_init());
+            cx.ride_decide();
+            assert!(cx.unit.goal.ride.idle);
+            seen.insert(cx.unit.goal.ride.until - cx.now());
+        });
+    }
+    assert_eq!(seen, (6..=12).collect());
+}
+
+#[test]
+fn a_viewer_sees_nothing_2_or_4_tiles_ahead() {
+    // The guest at (6, 5) faces west. A pen of one tile with an overjoyed zebra stands at each
+    // of the given tiles; only the one 3 tiles ahead, (3, 5), is seen.
+    for (pens, seen) in [
+        (vec![4, 2], false),
+        (vec![4], false),
+        (vec![2], false),
+        (vec![3], true),
+        (vec![4, 3, 2], true),
+    ] {
+        let mut w = world_with((10, 10), |zoo| {
+            zoo.entrance = (9, 5);
+            zoo.entities
+                .push(entity("guests", "man", 1, centre((6, 5)), 6));
+            for &x in &pens {
+                for d in [0, 2, 4, 6] {
+                    let id = 100 + zoo.entities.len() as u32;
+                    zoo.entities
+                        .push(entity("fences", "", id, centre((x, 5)), d));
+                }
+                let id = 10 + x as u32;
+                zoo.entities
+                    .push(entity("animals", "zebra", id, centre((x, 5)), 0));
+            }
+        });
+        let mut cat = cat();
+        cat.push(EntityType {
+            footprint: [1, 1, 1],
+            ..ty("animals", "zebra", "")
+        });
+        for &x in &pens {
+            let part = Part::Animal(crate::animal::Animal {
+                happiness: 90,
+                ..Default::default()
+            });
+            w.units.get_mut(10 + x as u32).unwrap().part = part;
+        }
+        for pen in w.exhibits().list().iter().map(|x| x.id).collect::<Vec<_>>() {
+            crate::exhibit::rating::refresh(&mut w, &cat, pen, &mut || 0);
+        }
+        ride(&cat, &mut w, |cx| cx.ride_view());
+        assert_eq!(
+            guest(&w).pending[HAPPINESS],
+            if seen { 10 } else { 0 },
+            "{pens:?}"
+        );
+    }
+}
+
+#[test]
+fn the_recover_complete_clears_the_return_word() {
+    // Guest buildings 12.2 point 23: the string stays, the name id is 0.
+    let (cat, mut w) = riding("boatshak", 8059);
+    with_cx(&cat, &mut w, |cx| crate::goal::Goal::Recover.complete(cx));
+    assert_eq!(names(&w), (None, Some("bReturnboatshak0")));
 }

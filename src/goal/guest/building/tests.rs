@@ -166,10 +166,21 @@ fn with_data<R>(
     data: &dyn Data,
     f: impl FnOnce(&mut Cx) -> R,
 ) -> R {
+    with_rng(cat, w, data, &mut Rng::default(), f)
+}
+
+/// The same with the generator `rng`.
+fn with_rng<R>(
+    cat: &Catalogue,
+    w: &mut World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
     let mut u: Unit = w.units.get(1).unwrap().clone();
-    let (events, mut removals, mut rng) = (Events::default(), Vec::new(), Rng::default());
+    let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
-        rng: &mut rng,
+        rng,
         events: &events,
         removals: &mut removals,
         step: 67,

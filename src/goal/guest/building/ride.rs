@@ -21,7 +21,7 @@ const TRIES: u32 = 30;
 /// The object of task 0x82 (goals 11.13 point 1).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::goal) struct Ride {
-    legs: i32,
+    pub(super) legs: i32,
     pub(super) until: u32,
     pub(super) idler: bool,
     pub(super) idle: bool,

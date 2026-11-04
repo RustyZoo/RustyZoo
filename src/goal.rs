@@ -516,7 +516,7 @@ impl Goal {
             Goal::Sick => cx.sick_done(),
             Goal::Avoid => cx.avoid_exit(),
             Goal::Ride => cx.ride_complete(),
-            Goal::Recover => cx.reset(),
+            Goal::Recover => cx.recover_complete(),
             Goal::Drown => cx.drown_complete(),
             Goal::GoShow => cx.go_show_complete(),
             Goal::Return => cx.return_complete(),
