@@ -15,7 +15,7 @@
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step, `sim scenario ...` ([`crate::scenario`]), `sim month M Y` when a step acts on the month
-//! flag of the one before, and the zoo status' `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
+//! flag of the one before, and the zoo status' `sim fly ID [COUNT]` for a flying object a date hook launches (no flight is drawn yet), `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
 //! when exhibit `ID` is rated at its update (habitat rating 4), with the suitability its record of
 //! each species gives, and at a month end the
 //! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
@@ -187,6 +187,8 @@ pub(crate) struct Sim {
     /// The programs the research step completed, for the caller to apply.
     research_done: Vec<Done>,
     arrived: bool,
+    /// The computer's (month, day) in UTC; a test sets another (cheats 6.1 point 2).
+    pub(crate) real_day: fn() -> (u32, u32),
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
     /// first seeding, and after every hire (unit placing 4.3).
     pub hire_male: bool,
@@ -220,6 +222,7 @@ impl Sim {
             research: None,
             research_done: Vec::new(),
             arrived: false,
+            real_day: crate::timing::utc_day,
             hire_male: false,
         };
         sim.reseed();
@@ -868,6 +871,7 @@ impl Sim {
                     max_guests: self.ai.max_guests,
                     date: self.calendar.date(),
                     reset: self.ai.guest_reset_interval,
+                    real_halloween: (self.real_day)() == (10, 31),
                 };
                 if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
                     self.arrived = true;

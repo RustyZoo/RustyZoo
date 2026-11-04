@@ -241,13 +241,39 @@ pub(crate) const JACK_O_LANTERN: i32 = 7078;
 pub(crate) const SNOWMAN: i32 = 7079;
 pub(crate) const YELLOW_BRICK: i32 = 9111;
 
+/// A flying object a date hook launches (cheats 6), by the name id of its ambient type. There is no
+/// flight yet: the launch is told in the log (`sim fly ID [COUNT]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Fly {
+    Biplane,
+    Sleigh,
+    Witch,
+    /// The witch of a start on the real 31 October, there for good with the value 30.
+    PermanentWitch,
+}
+
+impl Fly {
+    /// The log line of the launch, without the family.
+    pub(crate) fn line(self) -> String {
+        match self {
+            Fly::Biplane => "fly 5082".into(),
+            Fly::Sleigh => "fly 5083".into(),
+            Fly::Witch => "fly 5084".into(),
+            Fly::PermanentWitch => "fly 5084 30".into(),
+        }
+    }
+}
+
 /// The date hooks' flags of the program run (cheats 6): not saved, not cleared by a load or a new
-/// game. The flying objects of the hooks (the sleigh, the witch, the biplane) are not made yet.
+/// game.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Season {
     /// The permanent Halloween flag (a start on the real 31 October): while up, the jack-o'-lantern
     /// step of the guest hook is skipped. Never lowered.
     pub(crate) halloween: bool,
+    /// The sleigh and the biplane are out (their loops run until a file load or a start).
+    sleigh: bool,
+    biplane: bool,
     /// The snowman and the holiday tree are available for 25 December.
     snow: bool,
     /// The jack-o'-lantern is available for 31 October.
@@ -291,11 +317,50 @@ impl Season {
         set
     }
 
-    /// The start of a game (cheats 6): the four items become unavailable. The day flags stay as
-    /// they are, as in the original: a game started on the day of the previous one keeps the
-    /// items unavailable until the date leaves and comes back.
-    pub(crate) fn game_started() -> [(i32, bool); 4] {
-        [HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK].map(|id| (id, false))
+    /// The flying objects of a guest created on the game date `month`/`day` (cheats 6.2 steps 1 to
+    /// 3): the sleigh on 25 December and the biplane on 15 September once while their flag is down,
+    /// a witch on 31 October at every creation. Another day lowers the flag.
+    pub(crate) fn flights(&mut self, month: u32, day: u32) -> Vec<Fly> {
+        let mut out = Vec::new();
+        let christmas = (month, day) == (12, 25);
+        if christmas && !self.sleigh {
+            out.push(Fly::Sleigh);
+        }
+        self.sleigh = christmas;
+        if (month, day) == (10, 31) {
+            out.push(Fly::Witch);
+        }
+        let september = (month, day) == (9, 15);
+        if september && !self.biplane {
+            out.push(Fly::Biplane);
+        }
+        self.biplane = september;
+        out
+    }
+
+    /// The loops of the sleigh and the biplane stop (every file load and game end, cheats 6.5.1).
+    pub(crate) fn loops_stopped(&mut self) {
+        (self.sleigh, self.biplane) = (false, false);
+    }
+
+    /// The start hook of a game (cheats 6.3.3): the loops stop, the four items become unavailable
+    /// and, when the real-world date is 31 October, the jack-o'-lantern is given back at every
+    /// start; the permanent flag goes up and the permanent witch comes only the first time. The day
+    /// flags stay as they are, as in the original: a game started on the day of the previous one
+    /// keeps the items unavailable until the date leaves and comes back.
+    pub(crate) fn game_started(&mut self, real_halloween: bool) -> (Vec<(i32, bool)>, Option<Fly>) {
+        self.loops_stopped();
+        let items = [HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK];
+        let mut set: Vec<_> = items.map(|id| (id, false)).into();
+        let mut fly = None;
+        if real_halloween {
+            if !self.halloween {
+                self.halloween = true;
+                fly = Some(Fly::PermanentWitch);
+            }
+            set.push((JACK_O_LANTERN, true));
+        }
+        (set, fly)
     }
 }
 
@@ -631,15 +696,16 @@ mod tests {
         assert_eq!(s.guest_created(3, 3, true), [(YELLOW_BRICK, true)]);
         assert_eq!(s.guest_created(3, 3, true), []);
         // A start takes it away and nothing gives it back.
-        assert_eq!(Season::game_started()[3], (YELLOW_BRICK, false));
+        assert_eq!(s.game_started(false).0[3], (YELLOW_BRICK, false));
         assert_eq!(s.guest_created(3, 4, true), []);
     }
 
     #[test]
     fn a_start_makes_the_four_items_unavailable_and_keeps_the_day_flags() {
-        let ids: Vec<i32> = Season::game_started().iter().map(|a| a.0).collect();
+        let (set, fly) = Season::default().game_started(false);
+        let ids: Vec<i32> = set.iter().map(|a| a.0).collect();
         assert_eq!(ids, [7077, 7078, 7079, 9111]);
-        assert!(Season::game_started().iter().all(|a| !a.1));
+        assert!(set.iter().all(|a| !a.1) && fly.is_none());
         // A game restarted on the same day: the items stay unavailable until the date moves.
         let mut s = Season::default();
         s.guest_created(12, 25, false);
@@ -649,5 +715,48 @@ mod tests {
             [(SNOWMAN, false), (HOLIDAY_TREE, false)]
         );
         assert_eq!(s.guest_created(12, 25, false), SNOW);
+    }
+
+    #[test]
+    fn the_flights_of_the_game_date_follow_the_flags_of_the_sleigh_and_the_biplane() {
+        let mut s = Season::default();
+        assert_eq!(s.flights(12, 25), [Fly::Sleigh]);
+        assert_eq!(s.flights(12, 25), []);
+        assert_eq!(s.flights(12, 24), []);
+        assert_eq!(s.flights(12, 25), [Fly::Sleigh]);
+        assert_eq!(s.flights(9, 15), [Fly::Biplane]);
+        assert_eq!(s.flights(9, 15), []);
+        // The same day of another month is no date.
+        assert_eq!(s.flights(8, 15), []);
+        assert_eq!(s.flights(9, 15), [Fly::Biplane]);
+        // The witch at every creation; the permanent flag does not matter.
+        assert_eq!(s.flights(10, 31), [Fly::Witch]);
+        s.halloween = true;
+        assert_eq!(s.flights(10, 31), [Fly::Witch]);
+    }
+
+    #[test]
+    fn a_start_lowers_the_loops_and_a_real_31_october_start_gives_7078_back_every_time() {
+        let mut s = Season::default();
+        s.flights(12, 25);
+        s.flights(9, 15);
+        let (set, fly) = s.game_started(true);
+        assert_eq!((s.sleigh, s.biplane), (false, false));
+        assert_eq!(set.last(), Some(&(JACK_O_LANTERN, true)));
+        assert_eq!((s.halloween, fly), (true, Some(Fly::PermanentWitch)));
+        // The second start: no new flag, no new witch, 7078 again.
+        let (set, fly) = s.game_started(true);
+        assert_eq!(
+            (set.len(), set.last(), fly),
+            (5, Some(&(JACK_O_LANTERN, true)), None)
+        );
+        // Any other real day: the four items only, the flag stays up.
+        let (set, fly) = s.game_started(false);
+        assert_eq!((set.len(), fly, s.halloween), (4, None, true));
+        // The day flags are not touched.
+        let mut d = Season::default();
+        d.guest_created(10, 31, false);
+        d.game_started(true);
+        assert!(d.pumpkin);
     }
 }
