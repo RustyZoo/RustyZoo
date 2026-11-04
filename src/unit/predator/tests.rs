@@ -206,3 +206,67 @@ fn the_predator_radius_is_32_bit_arithmetic() {
     assert_eq!(look(&pen, &cat(Some(3)), GUEST, 0), 50);
     assert_eq!(look(&pen, &cat(Some(i32::MAX)), GUEST, 0), 0);
 }
+
+#[test]
+fn an_animal_in_an_exhibit_fears_an_adult_that_preys_on_its_type_darted_or_not() {
+    // Shows 30.2 point 4.6: the zebra in the pen sees the lion there; nothing but the type and
+    // the age counts for an animal (the grounds and the dart are a staff member's tests).
+    let cat = cat(None);
+    let mut w = zoo(
+        (10, 10),
+        &[
+            (50, "lion", "m", (4, 4), false),
+            (51, "zebra", "m", (3, 3), false),
+        ],
+    );
+    assert_eq!(look(&w, &cat, 51, 0), 50);
+    assert_eq!(look(&w, &cat, 50, 0), 0);
+    if let Some(Part::Animal(a)) = w.units.get_mut(50).map(|u| &mut u.part) {
+        a.tranq = true;
+    }
+    assert_eq!(look(&w, &cat, 51, 0), 50);
+    // The young do not hunt; the playmate search finds none (no animal chases yet).
+    let w = zoo(
+        (10, 10),
+        &[
+            (50, "lion", "y", (4, 4), false),
+            (51, "zebra", "m", (3, 3), false),
+        ],
+    );
+    assert_eq!(look(&w, &cat, 51, 0), 0);
+    let w = zoo(
+        (10, 10),
+        &[
+            (50, "lion", "m", (4, 4), false),
+            (51, "zebra", "m", (3, 3), false),
+        ],
+    );
+    let unit = w.units.get(51).unwrap().clone();
+    assert_eq!(find(&w, &cat, &[], &unit, w.find(51).unwrap(), 1), 0);
+}
+
+#[test]
+fn an_animal_hunts_the_units_of_its_prey_list_in_its_exhibit() {
+    let cat = cat(None);
+    let w = zoo(
+        (10, 10),
+        &[
+            (50, "lion", "m", (4, 4), false),
+            (51, "zebra", "m", (3, 3), false),
+        ],
+    );
+    let prey = |w: &World, id| {
+        let unit = w.units.get(id).unwrap().clone();
+        find(w, &cat, &[], &unit, w.find(id).unwrap(), PREY)
+    };
+    assert_eq!((prey(&w, 50), prey(&w, 51)), (51, 0));
+    // Another exhibit, or the grounds, holds no prey of the pen.
+    let w = zoo(
+        (10, 10),
+        &[
+            (50, "lion", "m", (4, 4), false),
+            (51, "zebra", "m", (9, 9), true),
+        ],
+    );
+    assert_eq!(prey(&w, 50), 0);
+}

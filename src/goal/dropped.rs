@@ -1,12 +1,15 @@
 //! A unit picked up by hand and put down again (unit placing 8.2, 8.5, 8.6). The pick-up stops
 //! the goal of the unit; the drop (and the put-back after a cancelled move) runs the rule of its
 //! kind: a guest on water outside a tank starts the recovery from water and thinks 10568, a staff
-//! member forgets the targets it could not reach, a keeper in an exhibit starts its duties.
+//! member forgets the targets it could not reach, a keeper in an exhibit starts its duties, an animal in a tank
+//! aborts the show of the unit it hunts or fears there.
 
 use super::{Cx, DUTIES, RECOVER};
 use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
+use crate::show::abort_show_for;
 use crate::sim::{Events, Rng};
+use crate::unit::predator::PREY;
 use crate::unit::{Ctx, Kind, Part, Unit};
 use crate::world::World;
 
@@ -101,8 +104,24 @@ impl Cx<'_, '_> {
                 self.keeper_dropped();
             }
             Kind::Worker | Kind::Guide => self.forget_unreached(),
-            Kind::Animal | Kind::Heli => {}
+            Kind::Animal => self.animal_dropped(),
+            Kind::Heli => {}
         }
+    }
+
+    /// Shows 30.2 point 4.6: an animal dropped into a tank aborts the show of the unit it fears
+    /// there, else of the one it hunts there. Nothing tests that a hunt is going on.
+    fn animal_dropped(&mut self) {
+        let region = self.tile().and_then(|t| self.world.exhibits().region(t));
+        if !region.is_some_and(|r| self.world.tank(r).is_some()) {
+            return;
+        }
+        let found = match self.predator(0) {
+            0 => self.predator(PREY),
+            threat => threat,
+        };
+        let show = self.world.units.get(found).map_or(0, |u| u.show);
+        abort_show_for(self.world, self.ctx.cat, self.unit, show);
     }
 
     /// A guest dropped on water outside a tank leaves its leave flag down, starts the recovery

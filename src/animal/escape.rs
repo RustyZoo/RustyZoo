@@ -3,6 +3,8 @@
 //! points 1 and 2) and what a rampage does to the scenery (animals 11). The search that starts
 //! the walk is the random walk's pick (`crate::unit::walk`).
 
+mod dispatch;
+
 use super::{Animal, Class, ESCAPE, Env, Keys, Out, fire};
 use crate::behaviour::{Data, Env as Run};
 use crate::entity::Catalogue;
@@ -321,6 +323,9 @@ pub(crate) fn after(
     if out.fence {
         super::fence::test(unit, world, ctx, at, data, k);
     }
+    if out.fired {
+        dispatch::run(unit, world, ctx, at);
+    }
 }
 
 /// A rampage ended (animals 11): when its set runs, the pending call and the set are cleared, the
@@ -379,6 +384,7 @@ pub(super) fn check(
     if !fire(&mut a.counters[ESCAPE], class.periods[ESCAPE]) {
         return;
     }
+    out.fired = true;
     if env.grounds {
         let was = std::mem::replace(&mut a.escaped, true);
         let mode = if k.only_underwater { 2 } else { 0 };

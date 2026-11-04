@@ -192,7 +192,8 @@ impl Cycle<'_> {
         })
     }
 
-    // ---- Reading the show info's own events (shows 5.7)
+    // ---- Reading the show info's own events (shows 5.7; the drain posts the abort, the removal of
+    // the exhibit never does, 30.4)
 
     fn listen(&mut self) {
         let id = u32::from(self.id());

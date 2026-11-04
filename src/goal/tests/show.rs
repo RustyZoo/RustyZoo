@@ -45,7 +45,12 @@ fn tile(x: i32, y: i32) -> usize {
 /// The world with the orca in `at`, the portal and the show info of the show tank; the orca is
 /// started in that show.
 fn staged(at: (i32, i32), portal: bool) -> World {
-    let mut w = gated(show_world(&[(1, "orca", at)]));
+    staged_with(&[(1, "orca", at)], portal)
+}
+
+/// [`staged`] with other animals in the world too; the first is the orca of the show.
+pub(super) fn staged_with(animals: &[(u32, &str, (i32, i32))], portal: bool) -> World {
+    let mut w = gated(show_world(animals));
     for (t, d) in [((5, 3), 2), ((6, 3), 6)] {
         let piece = w.edge(tile(t.0, t.1), d).unwrap();
         let fence = w.zoo.entities[piece]

@@ -767,9 +767,10 @@ impl Cx<'_, '_> {
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
             // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
-            // 9.2, 11.3); the afraid, playing, prey and chase-partner ones belong to M7.
+            // 9.2, 11.3); the playing, prey and chase-partner ones belong to M7.
             Part::Animal(a) => {
-                (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None)
+                (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
+                self.unit.afraid = false;
             }
             _ => {}
         }

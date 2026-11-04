@@ -235,6 +235,20 @@ pub(crate) fn abort_show(world: &mut World, cat: &Catalogue, id: u16) {
     world.units.posts.extend(events.take_posted());
 }
 
+/// [`abort_show`] for `unit`, which is out of the world's table for its turn: it goes back in
+/// while the show lets go of its animals, itself among them.
+pub(crate) fn abort_show_for(world: &mut World, cat: &Catalogue, unit: &mut Unit, id: u16) {
+    let at = unit.id;
+    let Some(slot) = world.units.get_mut(at) else {
+        return;
+    };
+    std::mem::swap(unit, slot);
+    abort_show(world, cat, id);
+    if let Some(slot) = world.units.get_mut(at) {
+        std::mem::swap(unit, slot);
+    }
+}
+
 /// The grandstands of a world in the order of the building list, as (id, position in the entity
 /// list).
 fn grandstands(world: &World, cat: &Catalogue) -> Vec<(u32, usize)> {
