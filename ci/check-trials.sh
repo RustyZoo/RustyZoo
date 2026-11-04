@@ -234,8 +234,9 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # of a guest queues `bSick` (behaviours 4.2.1) instead of starting it over the walk, which moves the shared draws: seed 2 now
 # cuts the lion off, seed 1 (the first) and seeds 3, 4 and 6 reach the pile. The keeper food and drink walks go next to the pile
 # (animals needs 7.1) and draw once per call, which moves the shared draws again: seed 1 no longer reaches the pile; seed 3 is the first
-# that eats the pile both with and without the neighbour walk (seed 2 only with it).
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 3 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# that eats the pile both with and without the neighbour walk (seed 2 only with it). The loaded lions now go on with the friendly chase they were saved in (animals 20.8): it ends at step 51 and the draws move, so seed 3 no longer reaches the pile; seed 1 does, with the same steps.
+# Seed 8 is the first from 1 that shows the keeper food walk on both builds (master and this branch); seed 1 shows it on this branch only.
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 8 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # A fence piece of the lions' pen removed (the bulldozer's deletion) opens the pen onto the grounds: the pen is
 # deleted and its three lions stand loose, each escaping at its next escape check (animals 11).
 check base-trial 27646,44033,27645 'printf "5 bulldoze 18548\n" >"$tmp/open"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/open" --log 2>/dev/null | awk "/ animal escape /{l=l (l?\",\":\"\") \$NF} END{print l}"'
@@ -964,7 +965,7 @@ pushed_out() { # pushed_out <map>
   echo "$b,$g"
   rm -rf "${d:?}"
 }
-check expansion-trial 0/1,1/0,51781,32688 "pushed_out maps/scn19.zoo"
+check expansion-trial 0/1,1/0,24953,35133 "pushed_out maps/scn19.zoo"
 
 # The panel of a building of a saved zoo shows the figures its record stores (zoo format 6.9, guest
 # buildings 4): the game paused, the view scrolled <presses> times by <dx> <dy> to the building, a
@@ -1018,19 +1019,20 @@ building_moved() { # building_moved <map>
 check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building_moved maps/scn19.zoo"
 
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
-# stand of scn19 (seed 6, the first from 1 where a guest is inside to be picked up, on this change and on the one before it (the neighbour walk of keeper food moves the draws; seed 2 has one only with it): the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
+# stand of scn19 (seed 1, the first from 1 where a guest is inside to be picked up since the avoid and the chase of animals (animals 20) moved the draws, seed 6 had none then; before that seed 6, on the change before it (the neighbour walk of keeper food moves the draws; seed 2 has one only with it): the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
 # click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
-# pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed).
+# pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed; $896 on seed 2).
+# Seed 2 is the first from 1 that shows it on both builds (seed 1 has no guest inside on master, so no carry).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
   printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
-  rz run "$1" --headless --passes 1102 --clock 67 --seed 6 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 2 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
   rm -rf "${d:?}"
 }
-check expansion-trial 'carry,31554;putback,31554;income_$882' "guest_picked maps/scn19.zoo"
+check expansion-trial 'carry,31554;putback,31554;income_$896' "guest_picked maps/scn19.zoo"
 
 # The same stand picked up by a second click on it while it is selected, put back by Escape and picked
 # up again by the same click (it is selected again): the lines they give, with no user in the stand (so
@@ -1177,8 +1179,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:19@29,44;29726:12@20,48;29745:20@36,33;29748:25@32,34;29750:23@21,49" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:34@29,45;29726:21@22,43;29745:20@36,33;29748:26@32,35;29750:38@29,44" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:20@28,44;29726:22@27,43;29745:19@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:36@29,47;29726:21@22,43;29745:42@36,33;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1257,13 +1259,13 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # moves the draws again: with seed 3 the land bear no longer swims back into the tank (even in 30000 steps). Seed 2 is
 # the first seed (from 1; seed 1 has no crossing after step 374) where the tank bear crosses several times and the land
 # bear goes back into the tank. It is not tuned to the change: seeds 2 to 20 cross in the same way with the sleep set
-# started at once, and seed 2 gives the same line either way.
+# started at once, and seed 2 gives the same line either way. The avoid and chase of animals (animals 20) end the goal update of the animal that starts one before its draw and make animals walk and stand apart, which moves the draws: seed 2 still crosses several times and the land bear still goes back, with more crossings after step 374.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>
   rz sim "$1" --ticks 14000 --seed 2 --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
     END{ print a ":" x ";" b ":" y }'
 }
-check expansion-trial "93962:2@226,1@374;97902:1@1899" "tank_cross maps/scn28b.zoo 93962 97902"
+check expansion-trial "93962:2@226,1@374,2@8868,1@10311;97902:1@1899,2@8035,1@8445,2@9926,1@13256" "tank_cross maps/scn28b.zoo 93962 97902"
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1274,15 +1276,16 @@ check expansion-trial "93962:2@226,1@374;97902:1@1899" "tank_cross maps/scn28b.z
 # the sleep and sick checks queue `bSleep` and `bSick` (behaviours 4.2.1), which moved the draws again;
 # seed 7 (the entities of types the trial does not list are dropped; seeds 1 to 6 give a shorter cycle or one that starts on land, 7 is the first with the five changes).
 # The neighbour walk of keeper food and drink (animals needs 7.1) moves the draws once more: seed 7 now keeps four changes (both modes) and fewer walks.
+# The avoid and chase of animals (animals 20) move them again: seed 7 keeps no land change; seed 1 is the first seed with both modes (water, land, water).
 water_mode() { # water_mode <map> <animal>
-  rz sim "$1" --ticks 3500 --seed 7 --reset-fences --log 2>/dev/null | awk -v a="$2" '
+  rz sim "$1" --ticks 3500 --seed 1 --reset-fences --log 2>/dev/null | awk -v a="$2" '
     $5 == a && / animal terrain /{ out = out (out ? ";" : "") "mode" $6 "@" $2 }
     $5 == a && / unit tile /{ t = $6 }
     $5 == a && / unit goal [0-9]+ none /{ ended = t }
     $5 == a && / unit set /{ if (ended != "") { out = out ";" ended ":" $6; ended = "" } }
     END{ print out }'
 }
-check expansion-trial "mode1@18;27,31:bInWater;mode0@1212;25,23:bSleep;25,23:bWalk;mode1@1809;26,27:bInWater;29,25:bInWater;24,29:bInWater;26,24:bInWater" "water_mode maps/scn19.zoo 51758"
+check expansion-trial "mode1@18;26,30:bInWater;27,28:bInWater;mode0@1212;25,23:bSleep;25,23:bWalk;mode1@1809;21,23:bInWater;23,26:bInWater;27,25:bInWater;26,24:bInWater;27,25:bInWater;28,32:bInWater;26,31:bInWater" "water_mode maps/scn19.zoo 51758"
 
 # Objects in a tank block only their own levels (tank fauna 7.3): piles of food on the floor of
 # scn27's tank all along x 30 block its floor level only, and the manta ray, which swims above it,
@@ -1298,7 +1301,7 @@ tank_over() { # tank_over <map> <ray>
     END{ print n + 0 ";" low ";" first }'
   rm -rf "$d"
 }
-check expansion-trial "29;-65;324" "tank_over maps/scn27.zoo 36659"
+check expansion-trial "26;-79;324" "tank_over maps/scn27.zoo 36659"
 
 # The tank filter placed during play (tank staff 7.2, 7.3): scn27's filter is taken away and three
 # are put down: one beside the tank, which then serves it and filters (and charges) at its first
@@ -1345,7 +1348,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@3297;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@12253;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1366,8 +1369,8 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: 3 eggs in the clutch, the same steps.
-# The dung pile and the trampled ground are made inside the checks, which lays no egg at seed 1 now: seed 5 is the first seed from 1 that gives a clutch and a hatching on both builds (the same steps).
-check expansion-trial "egg@426;eggs:6;hatch@1053" "egg_clutch maps/scn19.zoo 51757 51758 53931"
+# The dung pile and the trampled ground are made inside the checks, which lays no egg at seed 1 now: seed 5 is the first seed from 1 that gives a clutch and a hatching on both builds (the same steps). The avoid and chase of animals (animals 20) move the draws: seed 5 still gives a clutch (3 eggs) and a hatching.
+check expansion-trial "egg@3726;eggs:3;hatch@4347" "egg_clutch maps/scn19.zoo 51757 51758 53931"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

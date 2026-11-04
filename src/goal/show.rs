@@ -10,6 +10,7 @@ use crate::place::bulldozer::type_of;
 use crate::show::{abort_show_for, event, exhibit_of, in_show_now, info_of, portal};
 use crate::sim::{Event, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::staff::ladder::edge;
+use crate::unit::Part;
 use crate::unit::movement::direction;
 use crate::unit::walk;
 
@@ -29,8 +30,11 @@ impl Cx<'_, '_> {
     /// show tank with no show of its own) the return task, unless it is in a building task. True
     /// when the ladder ends here.
     pub(super) fn animal_show_rung(&mut self, task: u8) -> bool {
-        // The afraid and playing flags of an animal are not in the engine yet (animals 11.7).
-        if [CHASE, AVOID, GO_TO_SHOW, RETURN_FROM_SHOW].contains(&task) {
+        let playing = matches!(&self.unit.part, Part::Animal(a) if a.playing);
+        if [CHASE, AVOID, GO_TO_SHOW, RETURN_FROM_SHOW].contains(&task)
+            || self.unit.frightened
+            || playing
+        {
             return true;
         }
         let busy = in_building(task);

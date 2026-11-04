@@ -273,6 +273,15 @@ pub(crate) struct Animal {
     /// [`crate::guest::NEED_LIST`], [`crate::guest::NO_NEED`] for none. A toy trick writes `showtrick`,
     /// a shelter choice `animalrest`; a goal reset leaves it, so it outlives the trick.
     pub need: u8,
+    /// Playing (it hunts, or plays the friendly chase), caught prey (its hunt got its catch), the
+    /// kept prey and the chase stamp (an AI clock value); animals 20. A goal reset lowers the first two and the kept prey.
+    pub playing: bool,
+    pub caught_prey: bool,
+    pub prey: u32,
+    pub stamp: u32,
+    /// The goal flags of the preattack and of the defence, started and over (animals 20.2, 20.4);
+    /// the chase goal and the avoid goal each start them down.
+    pub pre: [bool; 2],
 }
 
 impl Animal {
@@ -345,6 +354,7 @@ impl Animal {
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
         self.escaped = r.escaped;
+        (self.playing, self.caught_prey, self.prey) = (r.playing, r.caught_prey, r.prey);
         (self.claim, self.tranq) = (r.claim, r.tranq);
         // The flags are rebuilt from their words (animals 11.3).
         self.walk = r.escape.map(|e| crate::zoo::Escape {
@@ -371,6 +381,9 @@ impl Animal {
         };
         AnimalRecord {
             escaped: self.escaped,
+            playing: self.playing,
+            caught_prey: self.caught_prey,
+            prey: self.prey,
             escape: self.walk,
             happiness: self.happiness,
             hunger: self.hunger,

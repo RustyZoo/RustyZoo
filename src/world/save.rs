@@ -144,6 +144,9 @@ impl World {
                         Some(Part::Animal(a)) => a.record(base),
                         _ => base,
                     }));
+                    if let Some(Part::Animal(a)) = live.map(|u| &u.part) {
+                        c.stamp = Some(a.stamp);
+                    }
                 }
                 "guests" => {
                     if c.raw.is_new() {
@@ -294,7 +297,7 @@ impl World {
             }
         }
         block.p3 = u.destination.map_or([-1; 3], |(x, y, z)| [x, y, z]);
-        (block.b1, block.w1) = (u8::from(u.frightened), u.predator);
+        (block.b1, block.w1, block.b2) = (u8::from(u.frightened), u.predator, u8::from(u.caught));
         block.pending = u.runner.queued().unwrap_or_default().to_string();
         if u.runner.queued().is_some() {
             block.pending_flag = u8::from(u.runner.queued_flag());

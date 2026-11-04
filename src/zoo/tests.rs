@@ -1829,7 +1829,10 @@ fn new_animal() -> AnimalRecord {
         claim: 21,
         tranq: true,
         home: [30, 40],
-        spare: (1..=68).collect(),
+        playing: true,
+        caught_prey: true,
+        prey: 77,
+        spare: (1..=62).collect(),
     }
 }
 
@@ -2871,8 +2874,8 @@ fn a_new_animal_is_written_with_the_fields_of_a_new_one() {
         (Some(4319), 999, 1600, Some(2), 1)
     );
     // The keeper-visit level and the five rate multipliers are 1.
-    let ones: Vec<usize> = (0..68).filter(|&i| back.spare[i] != 0).collect();
-    assert_eq!((back.spare.len(), ones), (68, vec![1, 6, 10, 14, 18, 22]));
+    let ones: Vec<usize> = (0..62).filter(|&i| back.spare[i] != 0).collect();
+    assert_eq!((back.spare.len(), ones), (62, vec![1, 6, 10, 14, 18, 22]));
     assert!(back.spare.iter().filter(|&&b| b > 1).count() == 0);
 }
 
@@ -2898,12 +2901,12 @@ fn an_animal_record_of_any_size_is_written_whole() {
     );
     assert_eq!(back.breath, Some(i32::MAX));
     assert_eq!(back.spare[..3], [9, 1, 0]);
-    assert_eq!(back.spare.len(), 68);
+    assert_eq!(back.spare.len(), 62);
     let long = AnimalRecord {
         spare: vec![1; 500],
         ..full
     };
-    assert_eq!(animal_back(&long).spare, vec![1; 68]);
+    assert_eq!(animal_back(&long).spare, vec![1; 62]);
     // An escape record is kept only with the flag 1.
     let none = AnimalRecord {
         escape: None,

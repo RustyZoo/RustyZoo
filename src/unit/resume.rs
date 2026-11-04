@@ -111,7 +111,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
         let [trick, show] = block.flags.map(|f| if f.0 == 1 { f.1 } else { 0 });
         let (goal, name) = (block.target.clone(), block.text.clone());
-        let fright = (block.b1 != 0, block.w1);
+        let fright = (block.b1 != 0, block.w1, block.b2 != 0);
         let call = (block.b5, block.b6);
         let (cost, need) = (block.w4, block.need);
         let task = u8::try_from(block.target.goal).ok();
@@ -132,7 +132,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
                 a.need = need;
             }
             (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
-            (unit.frightened, unit.predator) = fright;
+            (unit.frightened, unit.predator, unit.caught) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).
             if unit.kind == crate::unit::Kind::Guest {
                 unit.mover.word = Some(cost);

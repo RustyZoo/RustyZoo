@@ -13,17 +13,26 @@ pub(crate) const DRINK: u8 = 122;
 pub(crate) const SURFACE: u8 = 124;
 
 impl Cx<'_, '_> {
-    /// 10.1 point 3 comes first: the show rung (shows 21.2). 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
+    /// 10.1 points 2 and 3 come first: the hunt rungs (animals 20.1) and the show rung (shows
+    /// 21.2). 10.1 point 4: a hungry animal that has found food sets the keeper food task, unless it
     /// has it, is in the building chain or is drinking. Points 6 and 7 keep the building chain and
     /// send the animal to the shelter it aims at; they end the ladder, so the thirst of point 8 and
     /// the breath of point 9 wait. Point 8 sets the drink task for a thirsty animal and point 9
     /// comes last, whatever those do.
-    pub(super) fn animal_ladder(&mut self, task: u8) {
-        if !matches!(&self.unit.part, Part::Animal(_)) || self.animal_show_rung(task) {
-            return;
+    /// Whether the common part runs after it: the starts of the avoid and the chase end the goal
+    /// update (animals 20.1 point 5).
+    pub(super) fn animal_ladder(&mut self, task: u8) -> bool {
+        if !matches!(&self.unit.part, Part::Animal(_)) {
+            return true;
+        }
+        if let Some(common) = self.hunt_rungs(task) {
+            return common;
+        }
+        if self.animal_show_rung(task) {
+            return true;
         }
         let Part::Animal(a) = &self.unit.part else {
-            return;
+            return true;
         };
         let (drinking, hungry, thirsty, breath) = (a.drinking, a.wants_food, a.thirsty, a.breath);
         let free = !(drinking || BUILDING.contains(&task));
@@ -32,7 +41,7 @@ impl Cx<'_, '_> {
             self.set_task(KEEPER_FOOD, 1, 0, None);
         }
         if self.shelter_rung() {
-            return;
+            return true;
         }
         if free && !food && thirsty && task != DRINK {
             self.set_task(DRINK, 1, 0, None);
@@ -44,6 +53,7 @@ impl Cx<'_, '_> {
                 self.set_task(SURFACE, 0, 0, None);
             }
         }
+        true
     }
 
     /// 10.1 points 6 and 7: an animal busy in the building chain keeps its task. One that aims at a

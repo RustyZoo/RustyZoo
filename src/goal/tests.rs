@@ -18,6 +18,7 @@ impl Cx<'_, '_> {
 mod aborts;
 mod avoid;
 mod capture;
+mod chase;
 mod contagion;
 mod dropped;
 mod drown;
