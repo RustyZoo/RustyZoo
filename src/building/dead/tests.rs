@@ -399,6 +399,31 @@ fn a_sleeping_animal_in_the_tank_wakes_at_the_reset() {
 }
 
 #[test]
+fn a_non_guest_using_a_building_is_taken_out_of_it_by_the_reset() {
+    // Point 22: the unit's reset takes a unit in a building task out of its building.
+    let (mut w, cat, id) = flooded_with(vec![entity("animals", "", 20, centre((6, 6)), 0)]);
+    w.units
+        .buildings
+        .get_mut(&7)
+        .unwrap()
+        .users
+        .push((20, 1, 0));
+    stand(&mut w, 20, (2, 3));
+    let u = w.units.get_mut(20).unwrap();
+    u.goal.record.task = crate::goal::USE;
+    let Part::Animal(a) = &mut u.part else {
+        panic!("an animal")
+    };
+    (a.building, a.slot) = (7, 1);
+    w.take_stirred();
+    w.stir(id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let users = &w.units.buildings[&7].users;
+    assert!(users.iter().all(|u| u.0 != 20), "{users:?}");
+    assert_eq!(w.units.get(20).unwrap().goal.record.task, crate::goal::NONE);
+}
+
+#[test]
 fn a_helicopter_in_the_tank_is_left_alone() {
     // It keeps its goal and takes no draw: the guest after it takes the first one.
     let units = [("helicopter", 20, (2, 3)), ("guests", 1, (3, 2))];
