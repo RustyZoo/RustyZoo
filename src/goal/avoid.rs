@@ -19,18 +19,39 @@ impl Cx<'_, '_> {
         predator::find(self.world, cat, removed, self.unit, self.at, mode)
     }
 
-    /// Guest ladder point 3: a frightened guest that is not avoiding and not in a building task
-    /// looks again; with none in sight the flag goes down, else it resets its goal and takes the
-    /// avoid task, mode 3, on the threat, which it keeps, pays the emergency cost off the paths and
-    /// forgets leaving. Whether the ladder ends here. (No building is a grandstand before the
-    /// shows.)
+    /// Whether predator `p` is an animal on a rampage (shows 30.3 point 3).
+    pub(crate) fn rampaging(&self, p: u32) -> bool {
+        let part = self.world.units.get(p).map(|u| &u.part);
+        matches!(part, Some(Part::Animal(a)) if a.rampaging)
+    }
+
+    /// Guest ladder point 3: a frightened guest that is not avoiding looks again, unless it is in
+    /// a building task whose building is not a grandstand. With none in sight the flag goes down.
+    /// A guest bound for a grandstand (its building target, walking or inside) never avoids: a
+    /// rampaging threat empties the grandstand and the ladder ends (shows 30.3 point 3). Else it
+    /// resets its goal and takes the avoid task, mode 3, on the threat, which it keeps, pays the
+    /// emergency cost off the paths and forgets leaving. Whether the ladder ends here.
     pub(super) fn fright_ladder(&mut self, task: u8) -> bool {
-        if !self.unit.frightened || task == AVOID || super::IN_BUILDING.contains(&task) {
+        if !self.unit.frightened || task == AVOID {
+            return false;
+        }
+        let building = match &self.unit.part {
+            Part::Guest(g) => g.building,
+            _ => 0,
+        };
+        let stand = crate::show::is_grandstand(self.world, self.ctx.cat, building);
+        if super::IN_BUILDING.contains(&task) && !stand {
             return false;
         }
         let p = self.predator(0);
         if p == 0 {
             self.unit.frightened = false;
+            return true;
+        }
+        if stand {
+            if self.rampaging(p) {
+                crate::show::empty_grandstands_for(self.world, self.ctx.cat, self.unit, building);
+            }
             return true;
         }
         self.reset();

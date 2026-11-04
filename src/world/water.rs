@@ -166,6 +166,7 @@ impl World {
                 t.level = 0;
             }
         });
+        crate::show::drained(self, id);
         true
     }
 
