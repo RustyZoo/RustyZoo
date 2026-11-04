@@ -6,7 +6,7 @@
 //! and saved with the zoo. [`update`] is the show manager's step (the cycle is `cycle`), [`relay`]
 //! the world manager's and the grandstands' reading of the events. The animal side of an item is
 //! `performer`, its calls and the events it reads, and `crate::goal::start_trick`, the trick it
-//! starts; its validation is still a stub. The marine specialist is `keeper`. The audience is
+//! starts; the cycle's validation of an item is `cycle/validate.rs`. The marine specialist is `keeper`. The audience is
 //! `audience`: the search of a guest for a show and the price of a seat.
 
 use crate::behaviour::Data;
