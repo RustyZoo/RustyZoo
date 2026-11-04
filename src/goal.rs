@@ -37,10 +37,10 @@ mod tests;
 mod trick;
 
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub(crate) use dropped::{dropped, picked_up, reset_unit};
+pub(crate) use dropped::{dropped, picked_up, reset_unit, stir_guests};
 pub(crate) use entry::{crowd, send, use_call};
 use guest::Ride;
-pub(crate) use guest::{IN_BUILDING, LEAVE};
+pub(crate) use guest::{IN_BUILDING, LEAVE, rides_loaded};
 pub(crate) use staff::release_group;
 pub(crate) use stops::{lose_task, resume_use, stop_all, stop_use};
 pub(crate) use trick::{TRICK_FOOD, start_trick};
@@ -793,7 +793,10 @@ impl Cx<'_, '_> {
             a.walk = None;
         }
         self.unit.path.clear();
-        self.record().target.clear();
+        match self.unit.goal.object {
+            Some(Goal::Ride) => self.ride_invalidate(),
+            _ => self.record().target.clear(),
+        }
         self.record().job_target.clear();
     }
 

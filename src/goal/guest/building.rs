@@ -22,6 +22,7 @@ mod litter;
 mod ride;
 
 pub(in crate::goal) use ride::Ride;
+pub(crate) use ride::rides_loaded;
 
 /// The thought of a guest too crowded to be served by a building (guests 7.2).
 pub(super) const CROWDED: i32 = 10243;
@@ -783,9 +784,12 @@ impl Cx<'_, '_> {
         self.reset();
         // A guest that has just left a return building rides on the water, wandered flag down
         // (guest buildings 12.2 point 16).
+        // One that finds no building there gives target id 0, so that the ride's init fails
+        // (open point 12).
         if self.guest().is_some_and(|g| g.returning.is_some()) {
             self.unit.animation = Default::default();
-            return self.set_task(super::super::RETURN_TO_BUILDING, 0, building, None);
+            let target = self.building(building).map_or(0, |_| building);
+            return self.set_task(super::super::RETURN_TO_BUILDING, 0, target, None);
         }
         if let Some(g) = self.guest() {
             let food = g.items[0].is_some();

@@ -245,3 +245,42 @@ fn a_drained_tank_puts_the_users_of_a_cave_out_in_a_headless_run() {
     let live = &w.units.buildings[&7];
     assert!(live.dead && live.users.is_empty());
 }
+
+/// A change of tank `id`.
+type Change = fn(&mut World, u32);
+
+/// Guest 1 stands at tile `at`, then `change` moves the tank and the stirred tanks are told; the
+/// guest's wait in milliseconds.
+fn stirred(at: (i32, i32), change: Change) -> i32 {
+    let (mut w, cat, id) = flooded();
+    let index = w.find(1).unwrap();
+    let c = w.zoo.entities[index].common.as_mut().unwrap();
+    (c.x, c.y) = centre(at);
+    // The guest uses no building, so that only the stir can reset it.
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    w.units.get_mut(1).unwrap().hidden = false;
+    w.take_stirred();
+    change(&mut w, id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    w.units.get(1).unwrap().wait
+}
+
+#[test]
+fn a_change_of_the_water_the_walls_or_the_ground_resets_the_guests_in_the_tank() {
+    // Guest buildings 12.2 point 22: the water level, the base level, the height, a terrain change.
+    let changes: [(&str, Change); 5] = [
+        ("level", |w, id| assert!(w.drain(id))),
+        ("height", |w, id| w.set_height(id, 7)),
+        ("base level", |w, id| w.flatten(id, 3, false)),
+        ("terrain", |w, _| assert!(w.set_tile(3, 2, 0, 0, 1))),
+        ("nothing", |_, _| ()),
+    ];
+    for (name, change) in changes {
+        let waits = [stirred((2, 3), change), stirred((6, 6), change)];
+        match name {
+            "nothing" => assert_eq!(waits, [0, 0]),
+            // The guest out of the tank is left alone.
+            _ => assert!((1000..5000).contains(&waits[0]) && waits[1] == 0, "{name}"),
+        }
+    }
+}

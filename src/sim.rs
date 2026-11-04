@@ -556,6 +556,7 @@ impl Sim {
         // The units go on with their saved sets; the users come once every guest is made,
         // whatever the order of the file.
         crate::unit::resume::load(world, self.ai_ticks);
+        crate::goal::rides_loaded(world, cat, self.ai_ticks);
         crate::show::rejoin(world, cat);
         crate::show::associate(world, cat);
         crate::building::users::restore(world, cat, self.ai_ticks);
@@ -799,7 +800,7 @@ impl Sim {
         }
         let water_moved = world.step_water();
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
-        crate::building::dead::wet_changed(world, cat);
+        crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;

@@ -48,8 +48,11 @@ impl World {
                     .world_note(format!("water {id} level {level} purity {purity}"));
             }
             self.events.push(super::Event::Tank(id));
-            if (now.level, now.height) != (before.level, before.height) && !self.wet.contains(&id) {
-                self.wet.push(id);
+            if (now.level, now.height) != (before.level, before.height) {
+                self.stir(id);
+                if !self.wet.contains(&id) {
+                    self.wet.push(id);
+                }
             }
             self.sync_tanks();
             // The top of the walls moved or the fill state changed: the links (tank fauna 12.2,
@@ -70,6 +73,26 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Tank `id` had its water level, base level, wall height or ground changed: the guests in it
+    /// and at its gate get the AI reset (guest buildings 12.2 point 22). Not a tank: nothing.
+    pub(crate) fn stir(&mut self, id: u32) {
+        if self.tank(id).is_some() && !self.stirred.contains(&id) {
+            self.stirred.push(id);
+        }
+    }
+
+    /// The ground of tile `t` changed: its tank, if any, is stirred.
+    pub(super) fn stir_tile(&mut self, t: usize) {
+        if let Some(x) = self.exhibits.region(t) {
+            self.stir(x);
+        }
+    }
+
+    /// The tanks stirred since the last call.
+    pub(crate) fn take_stirred(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.stirred)
     }
 
     /// The tanks whose water level or wall height moved since the last call.

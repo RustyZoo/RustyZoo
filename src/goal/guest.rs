@@ -16,6 +16,7 @@ use crate::unit::Part;
 
 mod building;
 pub(super) use building::Ride;
+pub(crate) use building::rides_loaded;
 mod contagion;
 mod scenery;
 mod sites;
