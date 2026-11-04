@@ -2484,7 +2484,7 @@ fn the_destination_before_75_is_the_tile_centre() {
 
 #[test]
 fn old_tiles_carry_the_ground_height() {
-    use super::{Ground, Tile};
+    use super::{Tile, read::Ground};
     let tile = |elevation, shape| Tile {
         elevation,
         shape,
