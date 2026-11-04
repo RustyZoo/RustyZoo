@@ -562,3 +562,90 @@ fn the_food_trick_goal_runs_in_the_update_and_ends_with_the_treat_set() {
     assert!(line("set 1 bWalk") < line("set 1 bfoodtrick"), "{log:?}");
     assert!(line("set 1 bfoodtrick").is_some(), "{log:?}");
 }
+
+#[test]
+fn a_toy_deleted_while_the_animal_walks_in_drops_the_goal_without_aborting_the_item() {
+    // Shows 30.6 point 1: the check done of 0x68 resets; only the arrival's complete clears.
+    let (cat, mut w, mut rng) = (
+        types_with("", PERFORMS),
+        zoo(trick(1, "wave")),
+        Rng::default(),
+    );
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    w.zoo.entities.pop();
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+        cx.set_task(ENTER_BUILDING, 0, 9, None);
+        // One draw in 15 looks at the building again.
+        for _ in 0..500 {
+            if cx.record().task != ENTER_BUILDING {
+                break;
+            }
+            cx.enter_check_done();
+        }
+    });
+    assert_eq!(unit(&w).goal.record.task, NONE);
+    assert!(w.units.posts.is_empty());
+    assert!(!w.zoo.shows.infos[0].as_ref().unwrap().show.items[0].aborted);
+    // The same for the check done of the way out (0x69).
+    let mut w = zoo(trick(1, "wave"));
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    w.zoo.entities.pop();
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+        cx.set_task(EXIT_BUILDING, 1, 9, None);
+        for _ in 0..500 {
+            if cx.record().task != EXIT_BUILDING {
+                break;
+            }
+            cx.exit_check_done();
+        }
+    });
+    assert_eq!(unit(&w).goal.record.task, NONE);
+    assert!(w.units.posts.is_empty());
+}
+
+#[test]
+fn a_toy_deleted_before_the_animal_is_inside_aborts_the_item_at_the_arrival() {
+    // Shows 30.6 point 1, the arrival first: the complete of 0x68 clears the goal.
+    let (cat, mut w, mut rng) = (
+        types_with("", PERFORMS),
+        zoo(trick(1, "wave")),
+        Rng::default(),
+    );
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    w.zoo.entities.pop();
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+        cx.set_task(ENTER_BUILDING, 0, 9, None);
+        cx.enter_arrived();
+    });
+    let kinds: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [event::FAILED]);
+    assert_eq!(unit(&w).goal.record.task, NONE);
+}
+
+#[test]
+fn an_animal_is_never_turned_away_at_the_entrance_for_the_price() {
+    // Shows 30.6 point 2: the test of the price is a guest's; the animal goes on to 0x68.
+    let toy = "[Characteristics/Integers]\ncCapacity=1\ncTimeInside=9\ncUserStaysOutside=0\n\
+        cCommerce=1\n[Satisfies]\nbuilding\nshowtrick\n[slots]\nname=slot\n[slot]\nslotpos=0\n\
+        slotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=1\n";
+    let mut cat = Catalogue::default();
+    cat.push(ty("animals", "seal", "m", SEAL, PERFORMS));
+    cat.push(ty("building", "building", "sealwav", TOY, toy));
+    for price in [1e9_f32, 0.0] {
+        let (mut w, mut rng) = (zoo(trick(1, "wave")), Rng::default());
+        assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+        w.units.buildings.insert(
+            9,
+            crate::building::Live {
+                price,
+                ..Default::default()
+            },
+        );
+        on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+            cx.set_task(ENTRANCE, 0, 9, None);
+            cx.entrance_arrived();
+        });
+        assert_eq!(unit(&w).goal.record.task, ENTER_BUILDING, "{price}");
+        assert!(w.units.posts.is_empty());
+    }
+}

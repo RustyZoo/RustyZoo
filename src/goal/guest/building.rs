@@ -296,9 +296,9 @@ impl Cx<'_, '_> {
     }
 
     /// 0x67 complete: with no free slot the building is crowded, whatever its price; a charging
-    /// attraction or show building with an expensive price turns the guest away angry; else the
-    /// guest takes the slot and goes on to 0x68, with no target: the decide of 0x68 starts the
-    /// walk at the next update.
+    /// attraction or show building with an expensive price turns a guest away angry (an animal
+    /// never, shows 30.6 point 2); else the unit takes the slot and goes on to 0x68, with no
+    /// target: the decide of 0x68 starts the walk at the next update.
     pub(in crate::goal) fn entrance_arrived(&mut self) {
         self.cost_back();
         let Some(id) = self.aim().map(|(b, _, _)| *b) else {
@@ -312,7 +312,7 @@ impl Cx<'_, '_> {
         };
         // Guest buildings 7.3: only a building that satisfies `fun` or `showtrick` refuses.
         let shown = kind.satisfies("fun") || kind.satisfies("showtrick");
-        if kind.commerce && shown && self.mood(id, &kind) == Mood::Angry {
+        if self.guest().is_some() && kind.commerce && shown && self.mood(id, &kind) == Mood::Angry {
             self.react(Mood::Angry, id);
             self.saw(id);
             // A returning guest keeps its done goal: it is turned away again at each update
@@ -320,7 +320,9 @@ impl Cx<'_, '_> {
             if self.guest().is_some_and(|g| g.returning.is_some()) {
                 return;
             }
-            return self.reset();
+            self.reset();
+            self.unit.goal.wandered = true;
+            return;
         }
         if let Some((_, s, _)) = self.aim() {
             *s = slot;

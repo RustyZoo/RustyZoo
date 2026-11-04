@@ -599,6 +599,8 @@ pub(crate) struct Out {
     /// The escape check fired with the animal on the zoo grounds: the zoo status dates the
     /// escape (animals 11.1).
     pub loose: bool,
+    /// The escape check fired: the predator search follows (animals 11.7).
+    pub fired: bool,
     /// The draw that picks the land tile an escaped animal on water is sent to (animals 11.5).
     pub sent: Option<usize>,
 }

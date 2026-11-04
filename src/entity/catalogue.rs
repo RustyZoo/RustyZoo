@@ -39,6 +39,8 @@ pub struct Catalogue {
     pub guest_non_path_cost: Option<u32>,
     /// `cPredatorRadius` of the same file (animals 11.8), in tiles; `None` when missing.
     pub predator_radius: Option<i32>,
+    /// `cPreyRadius` of the same file (animals 11.8.1), in tiles; `None` when missing.
+    pub prey_radius: Option<i32>,
     /// The award definitions (`award*.cfg`), read with the types.
     pub(crate) awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
@@ -355,6 +357,7 @@ impl Catalogue {
         };
         catalogue.guest_non_path_cost = key("cNonPathCost").map(|v| v.max(0) as u32);
         catalogue.predator_radius = key("cPredatorRadius");
+        catalogue.prey_radius = key("cPreyRadius");
         catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {

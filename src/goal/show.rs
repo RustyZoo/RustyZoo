@@ -7,7 +7,7 @@ use crate::animal::home::home;
 use crate::behaviour::Target;
 use crate::exhibit::rating::Likes;
 use crate::place::bulldozer::type_of;
-use crate::show::{abort_show, event, exhibit_of, in_show_now, info_of, portal};
+use crate::show::{abort_show_for, event, exhibit_of, in_show_now, info_of, portal};
 use crate::sim::{Event, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::staff::ladder::edge;
 use crate::unit::movement::direction;
@@ -132,15 +132,8 @@ impl Cx<'_, '_> {
     /// `abort_show` (shows 21.6): the show of the animal's show id is aborted. The unit goes back
     /// into the table while the show lets go of its animals, itself among them.
     pub(crate) fn abort_show(&mut self) {
-        let (id, show) = (self.unit.id, self.unit.show);
-        let Some(slot) = self.world.units.get_mut(id) else {
-            return;
-        };
-        std::mem::swap(self.unit, slot);
-        abort_show(self.world, self.ctx.cat, show);
-        if let Some(slot) = self.world.units.get_mut(id) {
-            std::mem::swap(self.unit, slot);
-        }
+        let show = self.unit.show;
+        abort_show_for(self.world, self.ctx.cat, self.unit, show);
     }
 
     /// The crossing, shared by the arrival and the return (shows 21.3): an animal at the portal is
