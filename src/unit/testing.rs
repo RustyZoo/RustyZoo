@@ -2,7 +2,7 @@
 
 use crate::render::order::Kind as Class;
 use crate::world::{Shape, TankKind, World};
-use crate::zoo::{Common, Entity, Fence, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, Fence, Tile, Zoo};
 
 /// An entity standing at the point `(x, y)`.
 pub(crate) fn entity(
@@ -143,21 +143,9 @@ pub(crate) fn world(
 /// The same, with the whole zoo to edit.
 pub(crate) fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> World {
     let mut zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: w as u32,
         height: h as u32,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 1_000_000,
-        clocks: Default::default(),
         tiles: vec![
             Tile {
                 elevation: 0,
@@ -167,9 +155,7 @@ pub(crate) fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> Wor
             };
             (w * h) as usize
         ],
-        entities: Vec::new(),
-        view: View::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     edit(&mut zoo);
     World::new(zoo, shape)

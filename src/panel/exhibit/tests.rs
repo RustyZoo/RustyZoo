@@ -4,7 +4,7 @@ use crate::exhibit::rating::bit;
 use crate::render::order::Kind;
 use crate::timing::Date;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, Tile, Zoo};
 
 fn entity(class: &str, tx: i32, ty: i32, id: u32) -> Entity {
     Entity {
@@ -81,25 +81,13 @@ fn world_of(names: &[&str]) -> World {
         e.common.as_mut().unwrap().name = name.to_string();
     }
     let mut zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 6,
         height: 6,
         entrance: (5, 5),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; 36],
         entities,
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     // Close the square with pieces on every side of its tiles.
     for (x, y, d) in [

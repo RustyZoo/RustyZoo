@@ -4,7 +4,7 @@ use super::*;
 use crate::render::order::Kind;
 use crate::strings::Language;
 use crate::world::{Event, Shape, TankKind};
-use crate::zoo::{Common, Entity, HabitatInfo, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, HabitatInfo, Tile, Zoo};
 
 const SIZE: i32 = 8;
 
@@ -81,25 +81,13 @@ fn zoo(fences: &[(i32, i32, u32)]) -> Zoo {
     let mut entities = vec![entity("gate", SIZE - 1, SIZE - 1, 2)];
     entities.extend(fences.iter().map(|&(x, y, d)| entity("fences", x, y, d)));
     Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: SIZE as u32,
         height: SIZE as u32,
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (SIZE * SIZE) as usize],
         entities,
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     }
 }
 

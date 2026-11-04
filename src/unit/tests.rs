@@ -3,7 +3,7 @@
 use super::*;
 use crate::behaviour::{Data, Heard, NoData};
 use crate::sim::Sim;
-use crate::zoo::{Clocks, Common, Tile, View, Zoo};
+use crate::zoo::{Clocks, Common, Tile, Zoo};
 
 fn entity(class: &str, id: u32, (x, y): (i32, i32)) -> Entity {
     Entity {
@@ -34,27 +34,14 @@ fn world(units: &[(&str, u32)]) -> World {
         edges: 0,
     };
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 4,
         height: 4,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 1_000_000,
         tiles: vec![tile; 16],
         entities: (units.iter())
             .map(|&(class, id)| entity(class, id, (96, 96)))
             .collect(),
-        view: View::default(),
-        clocks: Clocks::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     let mut w = World::new(zoo, |_| None);
     crate::goal::quiet(&mut w);

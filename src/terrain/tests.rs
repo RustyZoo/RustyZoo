@@ -4,7 +4,7 @@ use super::*;
 use crate::render::order::Kind;
 use crate::sprite::tests::Install;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Common, View, Zoo};
+use crate::zoo::{Common, Zoo};
 use crate::zoom::Zoom;
 
 const GRASS: u8 = 0;
@@ -168,25 +168,13 @@ fn map(gate: Entity, entities: Vec<Entity>, wall: bool) -> World {
         edges: 0,
     };
     let mut zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 8,
         height: 8,
         entrance: if wall { (1, 4) } else { (7, 7) },
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; 64],
         entities: vec![gate],
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     if wall {
         zoo.entities

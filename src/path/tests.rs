@@ -3,7 +3,7 @@
 use super::*;
 use crate::render::order::Kind as Class;
 use crate::world::{Shape, TankKind, World};
-use crate::zoo::{Common, Entity, Fence, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, Fence, Tile, Zoo};
 
 const N: i32 = 10;
 
@@ -108,25 +108,13 @@ fn sized((w, h): (i32, i32), edit: impl FnOnce(&mut Vec<Tile>, &mut Vec<Entity>)
     let mut entities = vec![entity("gate", "", "", (w - 1, h - 1), 2)];
     edit(&mut tiles, &mut entities);
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: w as u32,
         height: h as u32,
         entrance: (w as u32 - 1, h as u32 - 1),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
-        clocks: Default::default(),
-        names: Default::default(),
         tiles,
         entities,
-        view: View::default(),
+        ..Default::default()
     };
     World::new(zoo, shape)
 }

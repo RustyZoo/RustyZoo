@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::world::{Shape, Step, TankKind};
-use crate::zoo::{Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, Tile, Zoo};
 
 #[test]
 fn the_pending_object_keeps_its_facing_on_screen_when_the_view_turns() {
@@ -272,25 +272,13 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
     edit(&mut tiles);
     World::new(
         Zoo {
-            awards: Vec::new(),
-            kept: Default::default(),
-            shows: Default::default(),
-            version: 0,
-            locale: 0,
-            expansion: 0,
             width: 8,
             height: 8,
             entrance,
-            habitat_tiles: Vec::new(),
-            habitat_gates: Vec::new(),
-            habitat_info: Vec::new(),
-            tanks: Vec::new(),
             id_counter: 100,
             tiles,
             entities,
-            view: View::default(),
-            clocks: Default::default(),
-            names: Default::default(),
+            ..Default::default()
         },
         shape,
     )

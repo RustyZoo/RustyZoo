@@ -3,7 +3,7 @@ use crate::config::Config;
 use crate::render::order::Kind as Class;
 use crate::unit::Staff;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Clocks, Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Clocks, Common, Entity, Tile, Zoo};
 use std::sync::Arc;
 
 fn entity(class: &str, type_name: &str, (tx, ty): (i32, i32), rotation: u32, id: u32) -> Entity {
@@ -109,19 +109,9 @@ fn world() -> (World, [u32; 4]) {
         entities.push(entity(class, name, (7, n as i32), 0, 1 + n as u32));
     }
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 8,
         height: 8,
         entrance: (7, 7),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 10_000,
         tiles: vec![
             Tile {
@@ -133,9 +123,7 @@ fn world() -> (World, [u32; 4]) {
             64
         ],
         entities,
-        view: View::default(),
-        clocks: Clocks::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     let w = World::new(zoo, shape);
     let at = |x: usize, y: usize| w.exhibits().region(y * 8 + x).unwrap();
