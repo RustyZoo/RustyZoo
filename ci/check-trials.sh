@@ -89,10 +89,10 @@ check() {
 # change has altered the random stream and must say why.
 # The scripts that pin the hash of a picture (drags, painting, placing) pause the game at pass 0: no unit
 # moves, so the picture is the same for every seed and the hash moves only when what is drawn changes.
-# any_seed <function> <args>: yes when the function prints yes for one of the seeds 1 to 8 (it reads
+# any_seed <function> <args>: yes when the function prints yes for one of the seeds 1 to 24 (it reads
 # $seed), else the last thing it printed. For an event the stream may or may not give within a run.
 any_seed() {
-  for seed in 1 2 3 4 5 6 7 8; do
+  for seed in $(seq 24); do
     out=$(seed=$seed "$@")
     [ "$out" = yes ] && { echo yes; return; }
   done
@@ -247,7 +247,7 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
 # what is left, and the pile goes (animals needs 7.1: the keeper's food walk goes next to the pile).
 # Whether the lion reaches the pile within the run depends on the stream (its shelter walk can take it
-# elsewhere), so one of the seeds 1 to 8 must show the keeper food goal and the pile eaten in 1000 steps.
+# elsewhere), so one of the seeds 1 to 24 must show the keeper food goal and the pile eaten in 1000 steps.
 keeper_food() {
   printf "0 food 45,38 carnchow 50\n" >"$tmp/food"
   rz sim maps/scn01a.zoo --ticks 1000 --seed "$seed" --script "$tmp/food" --log 2>/dev/null |
@@ -279,7 +279,7 @@ check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 
 # without .wav is a file of the type's folder.
 check base-trial yes 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {f=1} END {print f ? \"yes\" : \"no\"}"'
 check base-trial noset,anim 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / {s=1} / unit anim 27645 / && \$NF != \"idle\" {a=1} END {print (s ? \"set\" : \"noset\") \",\" (a ? \"anim\" : \"noanim\")}"'
-# The lion makes its sound (its file is a fact of the data) within 3000 passes of one of the seeds 1 to 8.
+# The lion makes its sound (its file is a fact of the data) within 3000 passes of one of the seeds 1 to 24.
 lion_sound() {
   rz run maps/scn01a.zoo --headless --bare --passes 3000 --clock 67 --seed "$seed" 2>/dev/null |
     grep " unit sound " | awk '$NF == "animals/lion/cat_sgr.wav" {f=1} END {print f ? "yes" : "no"}'
@@ -970,7 +970,7 @@ check base-trial '' "building_running maps/default.zoo '140 160' 'months 2'"
 # bulldozer delete the building one step after the first guest entered it. The user is pushed out (one
 # `building push` line; none in the plain run) and its walk out of the building (the goal `leavebuilding`,
 # which the plain run shows) comes less often. Which guest is the first user, and whether it has another
-# walk-out in the run, depends on the stream: yes when for one of the seeds 1 to 8 the plain run has no push,
+# walk-out in the run, depends on the stream: yes when for one of the seeds 1 to 24 the plain run has no push,
 # the deleting one has a push and the guest has fewer walk-outs in it.
 pushed_out() { # pushed_out <map>: reads $seed
   d=$(mktemp -d)
@@ -1004,7 +1004,7 @@ check expansion-trial 'income_$354_upkeep_$300_profit_$54_month_$50_$42_$7_month
 # A building sold from its panel while a guest uses it (guest buildings 11.1, placing 7): the burger stand
 # of scn19 (type brontbrg, at the pixel the first lines click; the panel's sell button is the one at 987 578)
 # is sold at pass 1098 (the question is answered Yes) while a guest is inside from pass 1084 on. Yes when
-# for one of the seeds 1 to 8 the stand's guest is pushed out, the refund is 0.8 of 250 and the guest takes
+# for one of the seeds 1 to 24 the stand's guest is pushed out, the refund is 0.8 of 250 and the guest takes
 # no walk-out goal after it.
 sold_with_user() { # sold_with_user <map>: reads $seed
   d=$(mktemp -d)
@@ -1022,7 +1022,7 @@ check expansion-trial yes "any_seed sold_with_user maps/scn19.zoo"
 # A building picked up from its panel and put down elsewhere (unit placing 8.7, guest buildings 11.1): the
 # gift stand of scn19 (type giftstnd, cMoveable 1, id 29780 at tile 31,41, at the pixel 300 375) is selected,
 # its user pushed out when the pick-up button (871 573) is pressed at pass 1150, and it is put down at the
-# pixel 520 310 (tile 37,42). Yes when for one of the seeds 1 to 8 a user is pushed out and the lines are the
+# pixel 520 310 (tile 37,42). Yes when for one of the seeds 1 to 24 a user is pushed out and the lines are the
 # carry, the push and the drop, and the stand keeps its figures: the $430 its saved record stores and the
 # $10 of each user that paid, so at least $440.
 building_moved() { # building_moved <map>: reads $seed
@@ -1040,7 +1040,7 @@ check expansion-trial yes "any_seed building_moved maps/scn19.zoo"
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
 # stand of scn19 is inside at pass 1088 on some seeds. It is selected by a click (pass 1088), picked up by a
 # second click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's
-# panel read at pass 1098 shows the price factor booked as income. Yes when for one of the seeds 1 to 8 the
+# panel read at pass 1098 shows the price factor booked as income. Yes when for one of the seeds 1 to 24 the
 # guest picked up is the guest put back and the panel shows an income.
 guest_picked() { # guest_picked <map>: reads $seed
   d=$(mktemp -d)
@@ -1230,7 +1230,7 @@ check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" 
 # has the 20 of its threshold, breathes there, and its next run-out falls at the surface: the check
 # never runs again. A run-out at the surface kills the counter for good, which happens to the bear
 # at its first run-out under some seeds (it never gains again, or never surfaces). Yes when for one of the
-# seeds 1 to 8 the gains are 10 then 20, 448 steps apart, the surface task and `bBreathe` follow, and the
+# seeds 1 to 24 the gains are 10 then 20, 448 steps apart, the surface task and `bBreathe` follow, and the
 # bear gains nothing after its breath.
 tank_breath() { # tank_breath <map> <x,y>: reads $seed
   d=$(mktemp -d)
@@ -1272,7 +1272,7 @@ check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happin
 # rating 5.3), so its bear is content; every recomputation ends with the reachability test (5.8), which
 # draws. Prints the exhibits each bear entered and when (steps of 67 ms). The tank bear goes ashore at
 # step 226 and is home at step 374 on most seeds, and the land bear swims back ashore on most (not on
-# seeds 6 and 16 within 14000 steps): yes when for one of the seeds 1 to 8 the tank bear enters the land
+# seeds 6 and 16 within 14000 steps): yes when for one of the seeds 1 to 24 the tank bear enters the land
 # exhibit (2) and then the tank (1), and the land bear enters the tank and then the land exhibit again.
 tank_cross() { # tank_cross <map> <tank bear> <land bear> [print]: reads $seed
   rz sim "$1" --ticks 14000 --seed "$seed" --log 2>/dev/null | awk -v a="$2" -v b="$3" -v mode="${4:-property}" '
@@ -1289,7 +1289,7 @@ check expansion-trial 97902:1@1899 'seed=2 tank_cross maps/scn28b.zoo 93962 9790
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
 # mode its walks end on water tiles too, where it chooses from its water table (`bInWater`), and
 # the land mode comes back. Prints each tile a walk ended on with the set chosen there and the change
-# of mode, for 3500 steps. Yes when for one of the seeds 1 to 8 the animal goes into the water mode,
+# of mode, for 3500 steps. Yes when for one of the seeds 1 to 24 the animal goes into the water mode,
 # chooses `bInWater` in it and goes back to land.
 water_mode() { # water_mode <map> <animal>: reads $seed
   rz sim "$1" --ticks 3500 --seed "$seed" --reset-fences --log 2>/dev/null | awk -v a="$2" '
@@ -1335,7 +1335,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
 # reproduction check that rolls it. The step of the first birth depends on the stream: over the seeds 1
 # to 16 it falls between step 297 and 15581, and seed 6 has none in 40000 steps. Two checks:
-# - a property: one of the seeds 1 to 8 gives a birth of young within 30000 steps (twice the latest
+# - a property: one of the seeds 1 to 24 gives a birth of young within 30000 steps (twice the latest
 #   first birth of the 15 seeds that have one), with mates;
 # - Sentinel: seed 2: the pairs, the step of the first birth and the young (`sim_twice` and the CI job `hashes`
 #   check that two runs agree).
@@ -1362,7 +1362,7 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
 # random stream: 9 of the seeds 1 to 16 lay one in the 7200 steps (the first between steps 576 and 6701), and
 # its hatching waits for a keeper to heal the egg (an untended egg is below its hit points when its time
 # is up). Two checks:
-# - a property: one of the seeds 1 to 8 lays a clutch (eggs) that hatches after it;
+# - a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it;
 # - Sentinel: seed 5: the step of the first clutch, the number of eggs, and the step of the first hatching.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id> [print]: reads $seed
   d=$(mktemp -d)
