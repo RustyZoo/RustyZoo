@@ -35,8 +35,8 @@ fn rubble<'a>(cat: &'a Catalogue, subtype: &str) -> Option<&'a EntityType> {
         .find(|t| t.class == "rubble" && t.type_name == b"other" && t.subtype == subtype.as_bytes())
 }
 
-/// Takes entity `id` off the map and leaves its rubble (4.6): a building lets its users go first
-/// (guest buildings 11.1). Whether there was such an entity.
+/// Takes entity `id` off the map and leaves its rubble (4.6): a building empties its grandstands
+/// (shows 30.3 point 2) and lets its users go first (guest buildings 11.1). Whether there was such an entity.
 pub(crate) fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(at) = world.find(id) else {
         return false;
@@ -47,6 +47,7 @@ pub(crate) fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool 
     };
     world.forget_undo(id);
     if entity.class == "building" {
+        crate::show::empty_grandstands_of(world, kit.cat, id);
         lift(world, kit.cat, id, kit.rng);
     } else {
         world.unrecorded(|w| w.remove(id));
@@ -56,7 +57,7 @@ pub(crate) fn turn_to_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool 
 
 /// The pieces of the rubble of item `id` (scenery or building), which stays in the list: a unit's
 /// turn cannot take an entity out, so the caller queues its removal for the next pass. A building
-/// lets its users go first. Whether it exists.
+/// empties its grandstands and lets its users go first. Whether it exists.
 pub(crate) fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     let Some(at) = world.find(id) else {
         return false;
@@ -66,6 +67,7 @@ pub(crate) fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
         return false;
     };
     if entity.class == "building" {
+        crate::show::empty_grandstands_of(world, kit.cat, id);
         crate::building::leave::push_out(world, kit.cat, id);
         crate::guest::litter::spill(world, kit.cat, id, kit.rng);
     }
