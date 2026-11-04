@@ -339,6 +339,22 @@ impl Calendar {
     }
 }
 
+/// The computer's calendar day in UTC, as (month, day) (cheats 6.1 point 2). A test build answers
+/// (0, 0): no test depends on today's date.
+pub(crate) fn utc_day() -> (u32, u32) {
+    if cfg!(test) {
+        return (0, 0);
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+    utc_day_of(now.map_or(0, |d| d.as_secs()))
+}
+
+/// The (month, day) in UTC of `secs` seconds after 1 January 1970.
+fn utc_day_of(secs: u64) -> (u32, u32) {
+    let date = Date::from_days((secs / 86_400) as i64, 0);
+    (date.month, date.day)
+}
+
 /// The days of a month of a year of the proleptic Gregorian calendar (`month` 1 to 12).
 fn days_in_month(year: u32, month: u32) -> u32 {
     match month {

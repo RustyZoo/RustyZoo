@@ -2,6 +2,7 @@
 //! exhibit is offered to the cheats before the name is stored.
 
 use super::App;
+use super::cheat_guest::palette_set;
 use crate::cheat::{Cheat, Named, Subject};
 use crate::text::from_cp1252;
 
@@ -57,20 +58,35 @@ impl App<'_> {
         self.hook(class, &named, selected, &text);
     }
 
-    /// The hook of a guest created this step (cheats 6): the seasonal items of the game date and
-    /// the yellow brick path.
+    /// The hook of a guest created this step (cheats 6): the flying objects, the seasonal items of
+    /// the game date and the yellow brick path.
     pub(super) fn guest_created(&mut self) {
         let date = self.sim.calendar().date();
         let Some(game) = &self.game else { return };
         let trio = game.world.units.cheat.lions_tigers_bears;
+        for fly in self.cheats.season.flights(date.month, date.day) {
+            self.sim.note(fly.line());
+        }
         let set = self.cheats.season.guest_created(date.month, date.day, trio);
         self.make_available(&set);
     }
 
-    /// The start of a game (cheats 6): the seasonal items and the yellow brick path are
-    /// unavailable until a hook makes them available.
+    /// The start hook (cheats 6.3): the seasonal items and the yellow brick path are unavailable
+    /// until a hook makes them available. On the computer's 31 October (UTC) the permanent witch
+    /// comes once per run, every guest and every recolourable building takes the Halloween colours
+    /// and the jack-o'-lantern is available again.
     pub(super) fn game_started(&mut self) {
-        self.make_available(&crate::cheat::Season::game_started());
+        let real = (self.sim.real_day)() == (10, 31);
+        let cat = self.renderer.catalogue();
+        let Some(game) = &mut self.game else { return };
+        let (set, fly) = self.cheats.season.game_started(real);
+        if let Some(fly) = fly {
+            self.sim.note(fly.line());
+        }
+        if real {
+            palette_set(&mut game.world, cat, [10, 2, 11], [7, 5]);
+        }
+        self.make_available(&set);
     }
 
     /// Sets the availability of the types of each name id, and makes the open list again.
