@@ -14,7 +14,7 @@ impl Cx<'_, '_> {
     /// Duties 3.1: the job of a keeper whom the show of his exhibit `x` needs: the show job on the
     /// platform, else the way to the inside ladder. False when it needs no keeper of his type.
     pub(super) fn show_job(&mut self, x: u32, key: u32) -> bool {
-        if !show::needs_keeper(self.world, x, key) {
+        if !show::needs_keeper(self.world, self.ctx.cat, x, key) {
             return false;
         }
         let job = if self.unit.tank == 2 {

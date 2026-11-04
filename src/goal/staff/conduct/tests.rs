@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 const KEEPER: u32 = 7;
 const MARINE: u32 = 9552;
+const SPECIES: u32 = 5401;
 
 fn marine() -> Catalogue {
     let mut cat = Catalogue::default();
@@ -23,6 +24,17 @@ fn marine() -> Catalogue {
             crate::config::Config::parse(b"[Characteristics/Integers]\ncUnderwater=1\n").unwrap(),
         )),
         name_id: MARINE as i32,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    // The animal type of the scheduled species (the specialist's type is its keeper type).
+    cat.push(EntityType {
+        class: "animals",
+        type_name: b"seal".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: SPECIES as i32,
         footprint: [1, 1, 1],
         height: 0,
     });
@@ -198,6 +210,7 @@ fn the_duties_give_job_19_on_the_platform_and_job_23_off_it() {
     let mut w = show_tank();
     show_mut(&mut w).ready = true;
     show_mut(&mut w).keeper = MARINE;
+    w.zoo.shows.infos[0].as_mut().unwrap().schedule = vec![SPECIES];
     let job = |w: &mut World, tank: u8| {
         with_cx(w, |cx| {
             cx.unit.tank = tank;
@@ -221,6 +234,7 @@ fn the_show_job_runs_from_the_duties_to_the_stop_and_he_leaves_at_the_next_updat
     let mut w = show_tank();
     show_mut(&mut w).ready = true;
     show_mut(&mut w).keeper = MARINE;
+    w.zoo.shows.infos[0].as_mut().unwrap().schedule = vec![SPECIES];
     let (cat, data, mut rng) = (marine(), Walker::new("fWalk(0,0)"), Rng::default());
     let at = w.find(KEEPER).unwrap();
     let r = &mut w.units.get_mut(KEEPER).unwrap().goal.record;

@@ -61,20 +61,22 @@ fn the_unit_lists_of_the_current_species_make_its_record_and_an_idle_stop_makes_
 #[test]
 fn the_specialists_need_test_makes_his_record_whatever_the_ready_flag() {
     let tank = tank_of(&staged(vec![]).0, 0).unwrap();
-    for (ready, keeper, made_one) in [
-        (false, KEEPER, true),
-        (true, KEEPER, true),
-        (true, 0, false),
+    // The keeper type is the scheduled one: the seals' (an animal type) or none (type 0).
+    for (ready, schedule, made_one) in [
+        (false, vec![SEAL], true),
+        (true, vec![SEAL], true),
+        (true, vec![], false),
     ] {
-        let (mut w, _) = without(KEEPER);
+        let (mut w, cat) = without(KEEPER);
         let info = info_mut(&mut w);
-        (info.show.ready, info.show.keeper) = (ready, keeper);
-        needs_keeper(&mut w, tank, KEEPER);
+        (info.show.ready, info.schedule) = (ready, schedule.clone());
+        info.show.keeper = 0;
+        needs_keeper(&mut w, &cat, tank, KEEPER);
         let record = info_of_show(&w).record(KEEPER);
         assert_eq!(
             record,
             made_one.then(|| made(KEEPER)).as_ref(),
-            "{ready} {keeper}"
+            "{ready} {schedule:?}"
         );
     }
 }

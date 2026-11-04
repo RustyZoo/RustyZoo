@@ -11,16 +11,16 @@ use crate::unit::{Ctx, Kind, Unit};
 use crate::world::World;
 
 /// Whether exhibit `x` holds a show that needs a keeper of type `t` (shows 22.1 point 1): `t` is
-/// its keeper type, its unit list of `t` is empty and the show is ready. The list is a lookup: it
-/// makes the record of `t` (shows 32.7 point 1).
-pub(crate) fn needs_keeper(world: &mut World, x: u32, t: u32) -> bool {
+/// the keeper type of its scheduled species, its unit list of `t` is empty and the show is ready.
+/// The list is a lookup: it makes the record of `t` (shows 32.7 point 1.2).
+pub(crate) fn needs_keeper(world: &mut World, cat: &Catalogue, x: u32, t: u32) -> bool {
     let date = crate::timing::file_time(world.units.now);
     let Some(n) = info_slot(world, x) else {
         return false;
     };
     let Some(i) = world.zoo.shows.infos[n]
         .as_mut()
-        .filter(|i| i.show.keeper == t)
+        .filter(|i| cycle::keeper_type(cat, i.scheduled().unwrap_or(0)) == t)
     else {
         return false;
     };

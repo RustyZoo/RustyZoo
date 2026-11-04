@@ -154,9 +154,7 @@ impl Cycle<'_> {
 
     /// 9552 when `species` is an animal type, else 0 (shows 3.1).
     fn keeper_type(&self, species: u32) -> u32 {
-        let animal = (self.cat.types.iter())
-            .any(|t| t.class == "animals" && u32::try_from(t.name_id) == Ok(species));
-        if animal { KEEPER } else { 0 }
+        keeper_type(self.cat, species)
     }
 
     /// The first item with trick id `id` in the show's current script (shows 23.2).
@@ -709,4 +707,11 @@ impl Cycle<'_> {
             }
         }
     }
+}
+
+/// 9552 when `species` is an animal type of the catalogue, else 0 (shows 3.1).
+pub(super) fn keeper_type(cat: &Catalogue, species: u32) -> u32 {
+    let animal =
+        (cat.types.iter()).any(|t| t.class == "animals" && u32::try_from(t.name_id) == Ok(species));
+    if animal { KEEPER } else { 0 }
 }

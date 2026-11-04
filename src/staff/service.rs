@@ -215,7 +215,7 @@ pub(crate) fn needs(world: &mut World, cat: &Catalogue, x: u32, who: &EntityType
         return true;
     }
     let serviced = exhibit.rating.serviced as u32;
-    if crate::show::needs_keeper(world, x, who.name_id as u32) {
+    if crate::show::needs_keeper(world, cat, x, who.name_id as u32) {
         return true;
     }
     let now = world.units.ai_ticks;
