@@ -274,7 +274,7 @@ fn a_guest_walking_to_a_grandstand_that_was_emptied_is_refused_and_thinks_crowde
 }
 
 #[test]
-fn a_guest_walking_to_a_grandstand_turned_to_rubble_clears_its_goal() {
+fn a_guest_bound_for_a_rubbled_grandstand_thinks_nothing_and_clears_its_goal() {
     let rubbled = |w: &mut World, cat: &Catalogue| {
         let shape = |_: &crate::zoo::Entity| None;
         let mut kit = crate::rubble::Kit {
@@ -287,7 +287,7 @@ fn a_guest_walking_to_a_grandstand_turned_to_rubble_clears_its_goal() {
         assert!(w.find(7).is_none());
     };
     for entrance in [false, true] {
-        let (_, goal, wandered) = bound_for_the_stand(rubbled, entrance);
-        assert_eq!((goal, wandered), ((None, 0), true));
+        let (thoughts, goal, wandered) = bound_for_the_stand(rubbled, entrance);
+        assert_eq!((thoughts, goal, wandered), (vec![], (None, 0), true));
     }
 }
