@@ -21,6 +21,7 @@ use rustyzoo::vfs::Vfs;
 
 use crate::{findcmd, layout, run, simcmd, textcmd};
 
+use usage::HELP;
 pub use usage::USAGE;
 
 pub enum CliError {
@@ -48,6 +49,9 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
     let words: Vec<&str> = words.iter().map(String::as_str).collect();
 
     match words.as_slice() {
+        ["help" | "--help" | "-h"] => {
+            ignore_closed_pipe(io::stdout().lock().write_all(HELP.as_bytes()))
+        }
         ["window-smoke"] => Ok(checks::window_smoke()?),
         ["ls"] => files::list(open_game(data_dir)?, None),
         ["ls", pattern] => files::list(open_game(data_dir)?, Some(pattern)),
