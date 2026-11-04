@@ -114,7 +114,8 @@ pub(crate) fn advance(world: &mut World, at: usize, step: u32, removals: &mut Ve
         }
     };
     let n = i32::try_from(n).unwrap_or(i32::MAX);
-    let (dx, dy) = STEP[(c.rotation % 8) as usize];
+    // A facing outside 0..7 gives the step (0, 0): the creature stays.
+    let (dx, dy) = STEP.get(c.rotation as usize).copied().unwrap_or((0, 0));
     let (x, y) = (c.x.saturating_add(dx * n), c.y.saturating_add(dy * n));
     let (id, z, rotation) = (c.id, c.z, c.rotation);
     // Cut towards zero: the creature is still on the map one tile beyond the low edges.
@@ -264,6 +265,17 @@ mod tests {
             assert_eq!(flight.acc, 6700 * k % 1000);
         }
         assert!(removals.is_empty());
+    }
+
+    #[test]
+    fn a_facing_outside_0_to_7_does_not_move_the_creature() {
+        for facing in [8, 12, 1 << 20, u32::MAX] {
+            let mut w = flying((100, 100), facing, 1000);
+            let mut removals = Vec::new();
+            advance(&mut w, 0, 50, &mut removals);
+            assert_eq!(state(&w).0, (100, 100, 0), "facing {facing}");
+            assert!(removals.is_empty());
+        }
     }
 
     #[test]
