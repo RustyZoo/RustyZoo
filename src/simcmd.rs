@@ -1,17 +1,10 @@
 //! `rustyzoo sim`: runs a map for a number of fixed steps without an interface and prints the log
 //! of the steps or the hash of the state (the same on every system).
 
-use rustyzoo::animal::Class;
 use rustyzoo::entity::Catalogue;
-use rustyzoo::exhibit::TankConfig;
 use rustyzoo::money::Money;
-use rustyzoo::place;
-use rustyzoo::render::MapRenderer;
 use rustyzoo::sim::drive::{self, Run};
-use rustyzoo::strings;
-use rustyzoo::terrain;
 use rustyzoo::vfs::Vfs;
-use rustyzoo::world::{Decay, World};
 use rustyzoo::zoo::Zoo;
 
 use crate::cli::{CliError, Report};
@@ -109,22 +102,11 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");
         Vec::new()
     });
-    let language = strings::Language::of(vfs.root());
-    let start = |catalogue, zoo, money, saved| {
-        let renderer = MapRenderer::new(vfs, &catalogue);
-        let mut world = World::with_language(zoo, |e| renderer.shape(e), language.clone());
-        world.set_water(place::water(&terrain::types(vfs)));
-        world.set_tank_config(TankConfig::load(vfs));
-        world.units.show = rustyzoo::show::Params::load(vfs);
-        world.set_decay(Decay::load(vfs));
-        let files = (vfs.ini(), &economy[..]);
-        let types = (catalogue, Class::load(vfs));
-        match saved {
-            false => Run::start(files, types, world, money, flags.seed, flags.fences),
-            true => Run::resume(files, types, world, money, flags.seed),
-        }
+    let start = |catalogue, (zoo, money), saved: bool| {
+        let fences = (!saved).then_some(flags.fences);
+        Run::from_vfs(vfs, &economy, catalogue, (zoo, money), flags.seed, fences)
     };
-    let mut run = start(catalogue, zoo, money, false);
+    let mut run = start(catalogue, (zoo, money), false);
     let mut report = Report::new();
     let mut commands = commands.into_iter().peekable();
     for step in 0..flags.ticks {
@@ -133,8 +115,8 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
                 drive::Command::Save(file) => run
                     .save()
                     .and_then(|bytes| std::fs::write(file, bytes).map_err(|e| e.to_string())),
-                drive::Command::Load(file) => load(file, &run.cat).map(|(zoo, money)| {
-                    run = start(std::mem::take(&mut run.cat), zoo, money, true);
+                drive::Command::Load(file) => load(file, &run.cat).map(|loaded| {
+                    run = start(std::mem::take(&mut run.cat), loaded, true);
                 }),
                 _ => run
                     .apply(&command)
