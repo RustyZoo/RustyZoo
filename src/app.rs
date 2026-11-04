@@ -205,6 +205,11 @@ impl Game {
                 animation: "idle".into(),
                 frame,
             }))
+            .chain(self.world.portal_frames().map(|(id, frame)| Shown {
+                id,
+                animation: "portal".into(),
+                frame,
+            }))
             .collect()
     }
 

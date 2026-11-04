@@ -26,7 +26,7 @@ mod audience;
 mod cycle;
 mod keeper;
 mod performer;
-mod portals;
+pub(crate) mod portals;
 mod relay;
 pub(crate) mod toy;
 pub mod trick;
@@ -34,7 +34,7 @@ mod units;
 
 pub(crate) use audience::{find, pay};
 pub(crate) use keeper::{cue, needs_keeper, rejoin, removed};
-pub(crate) use portals::{open_portals, portal};
+pub(crate) use portals::{advance as advance_portals, open_portals, portal};
 pub(crate) use relay::{listen_grandstand, listen_world};
 pub(crate) use units::{Move, counted, join, leave, settle};
 

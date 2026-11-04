@@ -630,6 +630,30 @@ fn the_shelter_check_draws_once_when_the_species_has_a_chance() {
 }
 
 #[test]
+fn a_shelter_choice_writes_the_animalrest_need() {
+    // Shows 32.1 point 2: the choice of a building writes the index of `animalrest`; no choice,
+    // no write.
+    let k = Keys {
+        building_use: i32::MAX,
+        ..keys()
+    };
+    for (nearest, want) in [
+        (vec![7], crate::guest::REST_NEED),
+        (vec![], crate::guest::NO_NEED),
+    ] {
+        let mut env = in_exhibit();
+        env.shelter.nearest = nearest;
+        let mut a = well();
+        a.need = crate::guest::NO_NEED;
+        let out = fire_one(&mut a, SHELTER, &k, &env);
+        assert_eq!(
+            (a.need, out.shelter.is_some()),
+            (want, want != crate::guest::NO_NEED)
+        );
+    }
+}
+
+#[test]
 fn zero_negative_and_huge_keys_never_stop_a_run() {
     for v in ["0", "-1", "2147483647", "-2147483648"] {
         let keys = [

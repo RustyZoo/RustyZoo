@@ -116,7 +116,8 @@ fn the_flag_setter_closes_the_portal_when_it_changes_in_play_and_not_when_a_zoo_
         c.and_then(|c| c.fence).is_some_and(|f| f.open)
     };
     open(&mut world, 3, 3, 6);
-    // The same pair again: the flag does not change, the open byte stays.
+    // The same pair again: the flag does not change, the open byte stays (the original closes
+    // it for the callers of 31.4 only; issue 1168).
     touch(&mut world);
     assert!(is_open(&world, 3, 3, 6));
     // A flag set by hand on the line goes at the recompute, and the byte of that piece with it
@@ -283,4 +284,182 @@ fn a_pair_is_not_straight_when_only_one_of_its_two_tiles_holds_a_single_piece() 
         assert!(s.portals.is_empty(), "({plain}, {show})");
         assert!((2..=rows).all(|y| !flag(&w, 3, y, 6) && !flag(&w, 2, y, 2)));
     }
+}
+
+/// The portal animation of the tests: four frames of 100 ms.
+const FRAMES: crate::behaviour::Timing = crate::behaviour::Timing {
+    count: 4,
+    delay: 100,
+};
+
+/// The position and the id of the portal piece on the west line of the show tank.
+fn portal_piece(world: &World) -> (usize, u32) {
+    let at = piece(world, 3, 3, 6);
+    (at, world.zoo.entities[at].common.as_ref().unwrap().id)
+}
+
+/// The frame the wall `id` shows, among four; a wall without a player shows frame 0.
+fn shown(world: &World, id: u32) -> u32 {
+    let found = world.portal_frames().find(|f| f.0 == id);
+    found.map_or(0, |f| f.1.min(3))
+}
+
+/// `set_open` of shows 21.5 on the portal piece.
+fn open_it(world: &mut World, at: usize, open: bool) {
+    let cat = crate::entity::Catalogue::default();
+    crate::show::portals::set_open(world, &cat, Some(at), open, false);
+}
+
+/// Steps of `ms` milliseconds: the frame shown after each.
+fn run(world: &mut World, at: usize, ms: u32, n: usize) -> Vec<u32> {
+    let id = portal_piece(world).1;
+    (0..n)
+        .map(|_| {
+            world.portal_advance(at, Some(FRAMES), ms);
+            shown(world, id)
+        })
+        .collect()
+}
+
+#[test]
+fn a_portal_opens_through_its_frames_closes_back_down_and_rests_on_the_last_or_the_first() {
+    // 32.6 points 2 to 5: each frame lasts its delay, the open portal rests on the last frame,
+    // the closed one on frame 0.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    assert_eq!(shown(&world, id), 0, "closed at rest");
+    open_it(&mut world, at, true);
+    assert_eq!(run(&mut world, at, 100, 6), [1, 2, 3, 3, 3, 3]);
+    open_it(&mut world, at, false);
+    assert_eq!(run(&mut world, at, 100, 6), [2, 1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn a_change_before_the_end_restarts_from_the_other_end_with_a_jump() {
+    // 32.6 point 6.
+    let mut world = trio(4, false);
+    let (at, _) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    assert_eq!(run(&mut world, at, 50, 4), [0, 1, 1, 2]);
+    open_it(&mut world, at, false);
+    assert_eq!(
+        shown(&world, portal_piece(&world).1),
+        3,
+        "the other end at once"
+    );
+    assert_eq!(run(&mut world, at, 50, 3), [3, 2, 2]);
+}
+
+#[test]
+fn a_portal_takes_its_new_direction_at_once() {
+    // 32.6 points 2 and 6: the call that sets the base clears the player, before any advance:
+    // opening shows frame 0, closing the last frame, also when it interrupts a run.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    assert_eq!(shown(&world, id), 0);
+    run(&mut world, at, 100, 6);
+    open_it(&mut world, at, false);
+    assert_eq!(shown(&world, id), 3);
+    run(&mut world, at, 100, 1);
+    open_it(&mut world, at, true);
+    assert_eq!(shown(&world, id), 0, "a reopening interrupts the closing");
+}
+
+#[test]
+fn a_flagged_portal_shows_its_closed_picture_at_once_whatever_it_showed() {
+    // 32.6 point 7: the flag setter clears open and the player; the portal ends closed, byte 0
+    // and frame 0, from a run or from the open rest frame.
+    for (run_for, closed_first) in [(2, false), (6, false), (6, true)] {
+        let mut world = trio(4, false);
+        let (at, id) = portal_piece(&world);
+        open_it(&mut world, at, true);
+        run(&mut world, at, 100, run_for);
+        if closed_first {
+            open_it(&mut world, at, false);
+            run(&mut world, at, 100, 1);
+        }
+        assert_ne!(shown(&world, id), 0);
+        world.set_flag(at, false);
+        world.set_flag(at, true);
+        let fence = |w: &World| w.zoo.entities[at].common.as_ref().unwrap().fence.unwrap();
+        assert!(
+            !fence(&world).open && fence(&world).portal,
+            "byte 0, flag set"
+        );
+        assert_eq!(shown(&world, id), 0, "frame 0 at once");
+        assert_eq!(run(&mut world, at, 100, 5), [0; 5], "and it stays");
+        // The next opening plays from the first frame.
+        open_it(&mut world, at, true);
+        assert_eq!(run(&mut world, at, 100, 4), [1, 2, 3, 3]);
+    }
+}
+
+#[test]
+fn an_unrelated_edit_leaves_a_staying_portal_open() {
+    // 32.6 point 7: an entity added far from the tanks (a guest arriving) does not touch a
+    // portal: byte and frame stay.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    run(&mut world, at, 100, 6);
+    touch(&mut world);
+    let fence = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .unwrap()
+        .fence
+        .unwrap();
+    assert!(fence.open && fence.portal);
+    assert_eq!(shown(&world, id), 3);
+}
+
+#[test]
+fn a_loaded_portal_shows_the_rest_picture_of_its_saved_byte() {
+    // 32.6 point 8 and O29: the open byte is all that is saved; a flag the recompute leaves
+    // alone shows its picture too.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    run(&mut world, at, 50, 1);
+    let mut saved = reloaded(&world, 0, true);
+    let (at2, id2) = portal_piece(&saved);
+    assert_eq!(id2, id);
+    assert!(
+        saved.zoo.entities[at2]
+            .common
+            .as_ref()
+            .unwrap()
+            .fence
+            .unwrap()
+            .open
+    );
+    assert_eq!(shown(&saved, id), 3, "open: the last frame");
+    assert_eq!(run(&mut saved, at2, 500, 3), [3, 3, 3], "nothing animates");
+    open_it(&mut world, at, false);
+    run(&mut world, at, 500, 1);
+    let closed = reloaded(&world, 0, true);
+    assert_eq!(shown(&closed, id), 0, "closed: frame 0");
+    // A piece of a line to the grounds, flagged and open in the file, is not a pair of the link.
+    let (north, flagged) = (piece(&world, 3, 2, 0), reloaded_id(&world, 3, 2, 0));
+    let mut zoo = world.saved(|_| true);
+    let fence = zoo.entities[north]
+        .common
+        .as_mut()
+        .unwrap()
+        .fence
+        .as_mut()
+        .unwrap();
+    (fence.portal, fence.open) = (true, true);
+    let loaded = World::new(zoo, tank_shape);
+    assert_eq!(shown(&loaded, flagged), 3);
+}
+
+/// The id of the piece on side `d` of tile (`x`, `y`).
+fn reloaded_id(world: &World, x: i32, y: i32, d: usize) -> u32 {
+    world.zoo.entities[piece(world, x, y, d)]
+        .common
+        .as_ref()
+        .unwrap()
+        .id
 }

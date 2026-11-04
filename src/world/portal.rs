@@ -4,7 +4,8 @@
 //!
 //! The original recomputes a show tank's links and portals at each edit (31.4); the world does
 //! it for every show tank after each edit. The flags of the old portals are cleared and the new
-//! ones set in one pass, so a portal that stays keeps its open byte.
+//! ones set in one pass, so a portal that stays keeps its open byte (the original closes it, but
+//! only for the callers of shows 31.4; the world cannot tell them apart yet, issue 1168).
 
 use super::World;
 use crate::exhibit::Exhibits;
@@ -35,9 +36,20 @@ impl World {
         };
         fence.portal = v;
         if !self.reading {
-            fence.open = false;
+            self.close_portal(at);
         }
         self.dirty = true;
+    }
+
+    /// What the flag setter does in play: the open byte goes back to 0 and the run stops (shows
+    /// 32.6 point 7).
+    fn close_portal(&mut self, at: usize) {
+        let Some(c) = self.zoo.entities[at].common.as_mut() else {
+            return;
+        };
+        c.fence.iter_mut().for_each(|f| f.open = false);
+        let id = c.id;
+        self.portal_reset(id);
     }
 
     /// The id of the entity at position `at`.

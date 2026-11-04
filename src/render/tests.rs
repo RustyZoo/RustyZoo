@@ -2704,3 +2704,50 @@ fn the_bubbles_go_round_their_frames_from_the_cycle() {
     assert_eq!(bubble_frame(500, 83, 0), 0);
     assert_eq!(bubble_frame(u32::MAX, 1, 3), (u32::MAX % 3) as usize);
 }
+
+#[test]
+#[ignore = "needs the game or the expansion trial: set ZT_DATA_DIR to the install folder"]
+fn a_portal_wall_draws_the_frame_its_player_shows() {
+    // Shows 32.6 point 5: frame 0 closed, the last frame open; a wall with no player shows frame 0.
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo::parse(&vfs.read("maps/scn28.zoo").unwrap())
+        .and_then(|z| z.checked(&catalogue))
+        .unwrap();
+    let portals: Vec<u32> = (zoo.entities.iter())
+        .filter_map(|e| e.common.as_ref())
+        .filter(|c| c.fence.is_some_and(|f| f.portal))
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(portals.len(), 2, "one pair");
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let mut stage = |frame: Option<u32>| {
+        let shown = (portals.iter())
+            .filter_map(|&id| {
+                frame.map(|frame| Shown {
+                    id,
+                    animation: "portal".into(),
+                    frame,
+                })
+            })
+            .collect();
+        let extra = Extra {
+            shown,
+            ..Extra::default()
+        };
+        renderer.stage_with(&zoo, 0, false, &extra).unwrap()
+    };
+    let (rest, first, last) = (stage(None), stage(Some(0)), stage(Some(u32::MAX)));
+    let b = rest.bounds_at(0);
+    let (size, at) = (
+        ((b[2] - b[0]) as u32, (b[3] - b[1]) as u32),
+        (b[0] as i32, b[1] as i32),
+    );
+    let changed = |new: &Staged, old: &Staged| new.changes(old, size, at, 0, false).unwrap();
+    assert!(changed(&first, &rest).is_empty(), "no player is frame 0");
+    assert!(
+        !changed(&last, &first).is_empty(),
+        "the last frame is another picture"
+    );
+}

@@ -349,13 +349,21 @@ impl MapRenderer<'_> {
                 let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z + 16 * step);
                 let view = anim.view_of(obj.facing as u8, scene.rotation);
                 let palette = self.stack_palette(&anim, &view, meta);
+                // The portal piece shows the frame of its player (shows 32.6).
+                let frame = match (name == "portal", meta.shown) {
+                    (true, Some(("portal", frame))) => {
+                        let sprite = anim.sprites.get(view.file);
+                        frame.min(sprite.map_or(0, |s| s.0.frames.len().saturating_sub(1)))
+                    }
+                    _ => 0,
+                };
                 out.push(Placed {
                     x,
                     y,
                     piece: None,
                     grid: false,
                     lift: 0,
-                    pic: Pic::Anim(anim, view, palette, 0),
+                    pic: Pic::Anim(anim, view, palette, frame),
                 });
             }
         }
