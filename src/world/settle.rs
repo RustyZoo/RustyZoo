@@ -322,6 +322,7 @@ impl World {
         for e in old.list().iter().filter(|e| !kept_ids.contains(&e.id)) {
             self.units.thoughts.drop_exhibit(e.id);
             self.unmake_gone(old, e.id);
+            self.drop_portals(old, e.id);
             if let Some(at) = e.gate.and_then(|g| self.find(g)) {
                 self.make_fence(at);
             }

@@ -23,7 +23,7 @@ impl World {
             done.push(id);
             match self.tank(id).is_some_and(|t| t.show) {
                 true => {
-                    self.make_show(id);
+                    self.make_show(id, self.units.ai_ticks);
                     if morph {
                         self.morph_walls(id);
                     }
@@ -41,15 +41,16 @@ impl World {
             .map(|(n, _)| n)
     }
 
-    /// Make show, first part (31.1 point 2): an exhibit with no show info gets a new one. Its id is
+    /// Make show, first part (31.1 point 2): an exhibit with no show info gets a new one, due 90
+    /// after the AI clock `clock`. Its id is
     /// the show id counter plus 1 (modulo 65535), and the info is kept in the habitat record of the
     /// exhibit, or in a new one for an exhibit made in play. The counter is spent even when the id
     /// is taken (only after it wrapped), which leaves the exhibit without an info.
-    fn make_show(&mut self, id: u32) {
+    fn make_show(&mut self, id: u32, clock: u32) {
         if self.info_slot_in(&self.exhibits, id).is_some() {
             return;
         }
-        let next = (self.units.ai_ticks as i32).wrapping_add(FREQUENCY);
+        let next = (clock as i32).wrapping_add(FREQUENCY);
         let shows = &mut self.zoo.shows;
         shows.next_show = shows.next_show.wrapping_add(1);
         let show = shows.next_show % 65535;
@@ -162,13 +163,26 @@ impl World {
         shows.next_show = shows.next_show.wrapping_add(count as u16);
     }
 
-    /// The load makes each show tank twice (31.2 step 0), each time with a fresh id; the stored
-    /// info replaces the second (31.6 points 1, 2 and 5): the counter moves up by two for each.
-    pub(super) fn spend_loaded_ids(&mut self) {
+    /// The load (31.6 points 1, 2 and 5): each show tank is made twice (31.2 step 0), the second
+    /// time with an info of its own, which the stored one replaces: the counter moves up by two
+    /// for each, and a show tank whose record holds no info keeps the fresh one, due 90 after the
+    /// loaded AI clock (O25).
+    pub(super) fn load_infos(&mut self) {
+        let clock = self.zoo.clocks.ai_ticks;
         let tanks = self.exhibits.list().iter();
-        let count = tanks.filter(|e| e.tank.is_some_and(|t| t.show)).count();
-        let shows = &mut self.zoo.shows;
-        shows.next_show = shows.next_show.wrapping_add(2 * count as u16);
+        let tanks: Vec<u32> = tanks
+            .filter(|e| e.tank.is_some_and(|t| t.show))
+            .map(|e| e.id)
+            .collect();
+        for id in tanks {
+            self.spend_temporary_ids([id].into_iter());
+            if self.info_slot_in(&self.exhibits, id).is_some() {
+                let shows = &mut self.zoo.shows;
+                shows.next_show = shows.next_show.wrapping_add(1);
+            } else {
+                self.make_show(id, clock);
+            }
+        }
     }
 
     /// The grandstands facing a show tank take its show id when the decision ends (31.2 steps 9

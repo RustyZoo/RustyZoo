@@ -1123,6 +1123,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
 mod decision;
 mod filter;
 mod neighbours;
+mod portal;
 mod rating;
 mod show;
 mod tank;

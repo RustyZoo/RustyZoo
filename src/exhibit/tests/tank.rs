@@ -11,6 +11,10 @@ type Piece = (&'static str, (i32, i32, u32));
 pub(super) fn wall(class: &str, (x, y, d): (i32, i32, u32)) -> Entity {
     let mut e = entity(class, x, y, d);
     e.subtype = "f".into();
+    // A placed piece has its condition record.
+    if let Some(c) = e.common.as_mut() {
+        c.fence = Some(Default::default());
+    }
     e
 }
 
