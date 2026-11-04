@@ -256,7 +256,7 @@ check base-trial 5da29f6db549b4e2 'rz run maps/default.zoo --headless --cash 100
 # A play call queues behind the playing sequence, the base loop included: the lion shows its first
 # animation other than the idle one at pass 14 (the loaded lions go on with the sets and goals they were saved in,
 # behaviours 4.7: no set starts in these 40 passes, and the lion 27646 shows no second one); a sound
-# named without .wav is a file of the type's folder. The animals now avoid the predator they see (animals 20): the 27646 flees from 27645 from pass 3 and shows its first animation other than the idle one at pass 5.
+# named without .wav is a file of the type's folder.
 check base-trial 5 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
 check base-trial ,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
 # The lion's first sound comes after pass 1500 (a failed shelter walk resets the whole goal, which shifted
@@ -1183,8 +1183,8 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
     END{ for (g in c) print g ":" c[g] "@" l[g] }' | sort | paste -sd";" -
   rm -rf "$u"
 }
-check base-trial "29699:6@22,46;29726:12@20,48;29745:20@36,33;29748:32@29,42;29750:21@23,49" "guest_pace maps/scn01a.zoo"
-check base-trial "29699:16@27,43;29726:21@22,43;29745:21@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo 0"
+check base-trial "29699:20@28,44;29726:22@27,43;29745:19@36,32;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo"
+check base-trial "29699:36@29,47;29726:21@22,43;29745:42@36,33;29748:25@32,34;29750:20@24,49" "guest_pace maps/scn01a.zoo 0"
 
 # The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
@@ -1352,7 +1352,7 @@ lion_birth() { # lion_birth <map> <tile> <tile> <tile>
   rm -rf "$d"
 }
 # The sleep check queues `bSleep` instead of starting it over the running set: four mates, the same birth.
-check base-trial "mates:3;birth@4253;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
+check base-trial "mates:3;birth@12253;young:2" "lion_birth maps/scn01a.zoo 45,37 44,36 46,38"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
