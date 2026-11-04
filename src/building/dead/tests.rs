@@ -4,6 +4,7 @@ use super::*;
 use crate::building::{Live, can_add};
 use crate::config::Config;
 use crate::exhibit::TankConfig;
+use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world_with};
 use std::sync::Arc;
 
@@ -377,6 +378,44 @@ fn an_animal_a_worker_and_a_guide_in_the_tank_stop_and_wait() {
         assert_eq!(stirred_units(&[(class, 20, (6, 6))]).1, [0], "{class}");
         assert!((1000..5000).contains(&stirred_units(&[(class, 20, (5, 3))]).1[0]));
     }
+}
+
+#[test]
+fn a_sleeping_animal_in_the_tank_wakes_at_the_reset() {
+    let (mut w, cat, id) = flooded_with(vec![entity("animals", "", 20, centre((6, 6)), 0)]);
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    stand(&mut w, 20, (2, 3));
+    let Part::Animal(a) = &mut w.units.get_mut(20).unwrap().part else {
+        panic!("an animal")
+    };
+    a.sleeping = true;
+    w.take_stirred();
+    w.stir(id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let Part::Animal(a) = &w.units.get(20).unwrap().part else {
+        panic!("an animal")
+    };
+    assert!(!a.sleeping);
+}
+
+#[test]
+fn a_helicopter_in_the_tank_is_left_alone() {
+    // It keeps its goal and takes no draw: the guest after it takes the first one.
+    let units = [("helicopter", 20, (2, 3)), ("guests", 1, (3, 2))];
+    let (mut w, cat, id) = flooded_with(vec![entity("helicopter", "", 20, centre((6, 6)), 0)]);
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    w.units.get_mut(1).unwrap().hidden = false;
+    for (_, unit, at) in units {
+        stand(&mut w, unit, at);
+    }
+    w.units.get_mut(20).unwrap().goal.record.task = crate::goal::DUTIES;
+    w.take_stirred();
+    w.stir(id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let heli = w.units.get(20).unwrap();
+    assert_eq!((heli.goal.record.task, heli.wait), (crate::goal::DUTIES, 0));
+    let first = 1000 + crate::sim::Rng::default().pick(4000) as i32;
+    assert_eq!(w.units.get(1).unwrap().wait, first);
 }
 
 #[test]

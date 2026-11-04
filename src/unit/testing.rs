@@ -120,7 +120,7 @@ pub(crate) fn shape(e: &Entity) -> Option<Shape> {
             ..thing(Class::Wall, (1, 1), true)
         }),
         "animals" if e.type_name == "big" => Some(thing(Class::Unit, (3, 2), false)),
-        "animals" | "guests" | "keeper" | "maint" | "tour" => {
+        "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter" => {
             Some(thing(Class::Unit, (1, 1), false))
         }
         _ => None,

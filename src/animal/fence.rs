@@ -90,9 +90,6 @@ pub(crate) fn test(
     let Some(d) = own.and_then(|t| side(world, t, (point.0, point.1), k.fence_offset)) else {
         return;
     };
-    if let Part::Animal(a) = &mut unit.part {
-        a.sleeping = false;
-    }
     crate::goal::stop_all(unit);
     world.place_unit(at, point, d as u32);
     if !escape::start_new(unit, world, data, ctx.rng, at, (TEST, false)) {
