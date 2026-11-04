@@ -173,7 +173,7 @@ pub(crate) enum Held {
 }
 
 /// The tile step of each map direction, `0..8`.
-const STEP: [(i32, i32); 8] = [
+pub(crate) const STEP: [(i32, i32); 8] = [
     (0, -1),
     (1, -1),
     (1, 0),

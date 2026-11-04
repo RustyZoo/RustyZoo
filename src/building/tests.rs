@@ -34,6 +34,41 @@ fn an_outside_user_faces_the_building_only_for_a_set_user_facing_of_1() {
 }
 
 #[test]
+fn the_keys_of_a_return_building_are_on_only_for_1_and_the_strict_capacity_is_a_number() {
+    let flags = [
+        "cReturnBuilding",
+        "cUserTracker",
+        "cIdler",
+        "cExhibitViewer",
+    ];
+    for (text, on) in [
+        ("", false),
+        ("0", false),
+        ("-1", false),
+        ("2", false),
+        ("99999999999", false),
+        ("1", true),
+    ] {
+        for (i, key) in flags.iter().enumerate() {
+            let file = format!("[Characteristics/Integers]\n{key}={text}\n");
+            let k = Kind::of(&ty(&file), 3.0).ret;
+            let got = [k.building, k.tracker, k.idler, k.viewer];
+            assert_eq!(got, std::array::from_fn(|j| j == i && on), "{key}={text:?}");
+        }
+        let slot = format!("[slots]\nname=a\n[a]\nisreturnslot={text}\n");
+        assert_eq!(
+            Kind::of(&ty(&slot), 3.0).slots[0].return_slot,
+            on,
+            "{text:?}"
+        );
+    }
+    for (text, strict) in [("", 0), ("0", 0), ("-1", -1), ("2", 2)] {
+        let file = format!("[Characteristics/Integers]\ncStrictBuildingCapacity={text}\n");
+        assert_eq!(Kind::of(&ty(&file), 3.0).ret.strict, strict, "{text:?}");
+    }
+}
+
+#[test]
 fn a_type_declares_its_slots_prices_items_and_needs_with_the_defaults_of_the_program() {
     let k = Kind::of(
         &ty(
@@ -248,6 +283,8 @@ fn animal(swims: bool, large: bool) -> Species {
         large,
         tile: Some((1, 1)),
         grandstand: false,
+        unit: 0,
+        returning: None,
     }
 }
 

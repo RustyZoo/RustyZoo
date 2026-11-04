@@ -125,7 +125,7 @@ fn a_man_that_came_out_of_a_changing_room_drowns_in_the_suit_and_forgets_the_ret
         (Some("bReturnchroom1"), "bSurfDrown"),
     ] {
         let mut w = pond(Guest {
-            return_set: set,
+            return_set: set.map(String::from),
             returning: Some(7),
             ..man()
         });
@@ -134,7 +134,7 @@ fn a_man_that_came_out_of_a_changing_room_drowns_in_the_suit_and_forgets_the_ret
             panic!()
         };
         assert_eq!(
-            (g.return_set, g.returning),
+            (g.return_set.as_deref(), g.returning),
             (Some(expected), None),
             "{set:?}"
         );

@@ -32,12 +32,12 @@ impl Cx<'_, '_> {
         self.world.units.post(WARNING, id);
         self.think(THOUGHT, None);
         if let Part::Guest(g) = &mut self.unit.part {
-            let set = if g.return_set == Some(CHANGING_ROOM) {
+            let set = if g.return_set.as_deref() == Some(CHANGING_ROOM) {
                 SUIT
             } else {
                 SURF
             };
-            (g.return_set, g.returning) = (Some(set), None);
+            (g.return_set, g.returning) = (Some(set.into()), None);
             self.start_with(set, false, true);
         }
         true
