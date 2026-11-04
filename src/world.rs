@@ -33,6 +33,7 @@ mod exhibit;
 mod filter;
 mod held;
 mod portal;
+mod portal_anim;
 mod save;
 mod settle;
 mod tank;
@@ -182,6 +183,8 @@ pub struct World {
     show_moves: Vec<crate::show::Move>,
     /// A saved zoo is being read: a portal flag that changes keeps the open byte (shows 31.3 point 7).
     reading: bool,
+    /// The sprite players of the portal walls, by the id of the piece (shows 32.6; not saved).
+    portal_players: std::collections::HashMap<u32, portal_anim::Player>,
 }
 
 impl World {
@@ -228,6 +231,7 @@ impl World {
             research: Default::default(),
             show_moves: Vec::new(),
             reading: true,
+            portal_players: Default::default(),
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
@@ -251,6 +255,7 @@ impl World {
         world.load_thoughts();
         world.dirty = false;
         world.reading = false;
+        world.portals_at_rest();
         world.wet.clear();
         world.stirred.clear();
         world

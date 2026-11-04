@@ -186,7 +186,10 @@ pub(super) fn shelter(
     }
     let n = env.shelter.nearest.len() as u32;
     if n > 0 {
-        (a.building, a.toy) = (env.shelter.nearest[rng.pick(n) as usize], false);
+        (a.building, a.need) = (
+            env.shelter.nearest[rng.pick(n) as usize],
+            crate::guest::REST_NEED,
+        );
         out.shelter = Some(a.building);
     }
 }

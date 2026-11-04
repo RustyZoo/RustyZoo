@@ -665,6 +665,8 @@ fn a_negative_period_draws_a_remainder_and_never_fires() {
     let a = Animal::create(&keys(), &class, "f", &mut rng);
     assert!(drew(&rng, 16));
     assert!((0..3).contains(&a.counters[HABITAT]) && a.counters[BORED] >= 0);
+    // A new animal serves no need (shows 32.1 point 1).
+    assert_eq!(a.need, crate::guest::NO_NEED);
     let mut c = 0;
     assert!(fire(&mut c, -3) && c == -4);
     assert!(!(0..9).any(|_| fire(&mut c, -3)));

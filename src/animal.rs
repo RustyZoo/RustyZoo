@@ -265,12 +265,14 @@ pub(crate) struct Animal {
     /// for a destination.
     pub terrain: u8,
     /// The shelter it aims at (animals 6): the building's id, 0 for none, and the slot and entrance
-    /// it was given by the goals (guest buildings 6.2). The need served is `animalrest`.
+    /// it was given by the goals (guest buildings 6.2). The need served is [`Animal::need`].
     pub building: u32,
     pub slot: usize,
     pub entrance: crate::building::Point,
-    /// The need served at that building is `showtrick`, not `animalrest`: it is a toy (shows 23.4).
-    pub toy: bool,
+    /// The need being served, as the raw saved byte (shows 32.1): an index of
+    /// [`crate::guest::NEED_LIST`], [`crate::guest::NO_NEED`] for none. A toy trick writes `showtrick`,
+    /// a shelter choice `animalrest`; a goal reset leaves it, so it outlives the trick.
+    pub need: u8,
     /// Playing (it hunts, or plays the friendly chase), caught prey (its hunt got its catch), the
     /// kept prey and the chase stamp (an AI clock value); animals 20. A goal reset lowers the first two and the kept prey.
     pub playing: bool,
@@ -310,6 +312,7 @@ impl Animal {
             reset: class.reset_interval,
             crate_count: class.boxed.wrapping_sub(1),
             crowd_direction: -1,
+            need: crate::guest::NO_NEED,
             ..Animal::default()
         }
     }

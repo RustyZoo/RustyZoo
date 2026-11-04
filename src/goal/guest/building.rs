@@ -197,13 +197,11 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// The unit has no building target and serves no need; its slot is forgotten (slot 0).
+    /// The unit has no building target and a guest serves no need; the slot is forgotten (slot 0).
+    /// An animal keeps the need byte it has (shows 32.1 point 2).
     pub(in crate::goal) fn clear_target(&mut self) {
         if let Some(g) = self.guest() {
             g.need = None;
-        }
-        if let Part::Animal(a) = &mut self.unit.part {
-            a.toy = false;
         }
         if let Some((b, s, _)) = self.aim() {
             (*b, *s) = (0, 0);
@@ -230,10 +228,12 @@ impl Cx<'_, '_> {
     fn need(&mut self) -> Option<&'static str> {
         match &self.unit.part {
             Part::Guest(g) => g.need,
-            Part::Animal(a) => (a.building != 0).then_some(match a.toy {
-                true => SHOWTRICK,
-                false => crate::animal::NEED,
-            }),
+            Part::Animal(a) => {
+                (a.building != 0).then_some(match a.need == crate::guest::TOY_NEED {
+                    true => SHOWTRICK,
+                    false => crate::animal::NEED,
+                })
+            }
             _ => None,
         }
     }
