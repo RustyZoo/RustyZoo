@@ -67,6 +67,11 @@ fn walls(zoo: &mut crate::zoo::Zoo) {
 /// A tank of tiles (2, 2) to (4, 4) with a cave on (3, 3), a guest 1 who uses it and a guest 2, filled to
 /// the wall height 9 (level 8). Returns the world, the catalogue and the tank's id.
 fn flooded() -> (World, Catalogue, u32) {
+    flooded_with(Vec::new())
+}
+
+/// `flooded` with the entities `extra` after the guests.
+fn flooded_with(extra: Vec<crate::zoo::Entity>) -> (World, Catalogue, u32) {
     let mut cat = Catalogue::default();
     cat.push(cave());
     let mut w = world_with((8, 8), |zoo| {
@@ -78,6 +83,7 @@ fn flooded() -> (World, Catalogue, u32) {
             .push(entity("guests", "man", 2, centre((6, 6)), 0));
         zoo.entities
             .push(entity("guests", "man", 1, centre((6, 6)), 0));
+        zoo.entities.extend(extra);
     });
     w.set_tank_config(CONFIG);
     w.set_paused(true);
@@ -333,6 +339,68 @@ fn a_guest_on_the_outer_gate_tile_is_reset() {
     assert!(a == 0 && (1000..5000).contains(&b));
     // Without a gate there is no gate tile: the same guest is left alone.
     assert_eq!(stir_two((6, 6), (5, 3), false), (0, 0));
+}
+
+/// Stirs the flooded tank with `units` (class, id, tile, in list order) standing as given, none
+/// busy, put in place after the tank is filled (ids 1 and 2 are the guests of the fixture); the waits in the order given.
+fn stirred_units(units: &[(&str, u32, (i32, i32))]) -> (World, Vec<i32>) {
+    let extra = (units.iter().filter(|u| u.1 > 2))
+        .map(|&(class, id, _)| entity(class, "", id, centre((6, 6)), 0))
+        .collect();
+    let (mut w, cat, id) = flooded_with(extra);
+    w.set_gate(id, 107);
+    w.units.buildings.get_mut(&7).unwrap().users.clear();
+    w.units.get_mut(1).unwrap().hidden = false;
+    stand(&mut w, 1, (6, 6));
+    stand(&mut w, 2, (6, 6));
+    for &(_, unit, at) in units {
+        stand(&mut w, unit, at);
+    }
+    w.take_stirred();
+    w.stir(id);
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let waits = units
+        .iter()
+        .map(|u| w.units.get(u.1).unwrap().wait)
+        .collect();
+    (w, waits)
+}
+
+#[test]
+fn an_animal_a_worker_and_a_guide_in_the_tank_stop_and_wait() {
+    // Point 22: the unit's reset, 1000 to 4999 ms, no goal.
+    for class in ["animals", "maint", "tour"] {
+        let (w, waits) = stirred_units(&[(class, 20, (2, 3))]);
+        assert!((1000..5000).contains(&waits[0]), "{class}");
+        assert_eq!(w.units.get(20).unwrap().goal.record.task, crate::goal::NONE);
+        // Left of the tank, and a unit on the gate tile too.
+        assert_eq!(stirred_units(&[(class, 20, (6, 6))]).1, [0], "{class}");
+        assert!((1000..5000).contains(&stirred_units(&[(class, 20, (5, 3))]).1[0]));
+    }
+}
+
+#[test]
+fn a_keeper_in_the_tank_waits_and_starts_its_duties_at_once() {
+    let (w, waits) = stirred_units(&[("keeper", 20, (2, 3))]);
+    assert!((1000..5000).contains(&waits[0]));
+    let record = &w.units.get(20).unwrap().goal.record;
+    assert_eq!((record.task, record.mode), (crate::goal::DUTIES, 0));
+}
+
+#[test]
+fn mixed_units_draw_in_the_order_of_the_tank_tiles_then_the_gate_tile() {
+    // The list order is guests 2 and 1, the animal, the keeper; the draws go by tile: the keeper on
+    // tile (3, 2), guest 1 on (2, 3), then the animal on the gate tile (5, 3). Guest 2 is outside.
+    let units = [
+        ("animals", 20, (5, 3)),
+        ("keeper", 21, (3, 2)),
+        ("guests", 1, (2, 3)),
+    ];
+    let (w, waits) = stirred_units(&units);
+    let mut rng = crate::sim::Rng::default();
+    let draws: Vec<i32> = (0..3).map(|_| 1000 + rng.pick(4000) as i32).collect();
+    assert_eq!(waits, [draws[2], draws[0], draws[1]]);
+    assert_eq!(w.units.get(2).unwrap().wait, 0);
 }
 
 #[test]

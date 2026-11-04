@@ -4,7 +4,7 @@
 //! member forgets the targets it could not reach, a keeper in an exhibit starts its duties, an
 //! animal in a tank aborts the show of the unit it fears or hunts there.
 
-use super::{Cx, DUTIES, RECOVER};
+use super::{Cx, DUTIES, RECOVER, stop_all};
 use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::show::abort_show_for;
@@ -62,10 +62,10 @@ pub(super) fn run(
     with_unit(world, &mut ctx, data, id, f);
 }
 
-/// Guest buildings 12.2 point 22: the guests standing in tank `tank` or on its outer gate tile get
-/// the guest's AI reset: the tank's tiles in their order, then the gate tile, each tile's units in
-/// list order.
-pub(crate) fn stir_guests(world: &mut World, cat: &Catalogue, rng: &mut Rng, tank: u32) {
+/// Guest buildings 12.2 point 22: the units standing in tank `tank` or on its outer gate tile get
+/// the AI reset of their kind: the tank's tiles in their order, then the gate tile, each tile's
+/// units in list order. A helicopter is left alone (the spec names no reset for it).
+pub(crate) fn stir_units(world: &mut World, cat: &Catalogue, rng: &mut Rng, tank: u32) {
     let outer = crate::staff::service::gate_tiles(world, tank).map(|g| g.1);
     let tiles = world.tiles_of(tank).into_iter().chain(outer);
     let ids: Vec<u32> = tiles
@@ -75,12 +75,28 @@ pub(crate) fn stir_guests(world: &mut World, cat: &Catalogue, rng: &mut Rng, tan
             world
                 .units
                 .get(id)
-                .filter(|u| u.kind == Kind::Guest && !u.carried)?;
+                .filter(|u| u.kind != Kind::Heli && !u.carried)?;
             Some(id)
         })
         .collect();
     for id in ids {
-        run(world, cat, rng, &NoData, id, |cx| cx.guest_reset_ai());
+        run(world, cat, rng, &NoData, id, |cx| cx.reset_ai());
+    }
+}
+
+impl Cx<'_, '_> {
+    /// The AI reset of the unit's kind: a guest's (guest buildings 12.2 point 21); any other unit
+    /// stops everything and waits 1000 to 4999 ms (simulation 8.1), and a keeper then starts its
+    /// duties at once (mode 0, task 0x6e).
+    fn reset_ai(&mut self) {
+        if self.unit.kind == Kind::Guest {
+            return self.guest_reset_ai();
+        }
+        stop_all(self.unit);
+        self.unit.wait = 1000 + self.ctx.rng.pick(4000) as i32;
+        if self.unit.kind == Kind::Keeper {
+            self.set_task(DUTIES, 0, 0, None);
+        }
     }
 }
 

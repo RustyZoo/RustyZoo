@@ -545,6 +545,7 @@ fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
     // decayed, it sets the tank's flag.
     let mut g = Game::new("cFixFenceModifier=1");
     g.w = amphibious_world(2, &[(5, "bear", (3, 3))]);
+    crate::unit::testing::still_water(&mut g.w);
     let bear = "[Characteristics/Integers]\ncBashStrength=1\n";
     g.cat.push(ty("animals", "bear", "", bear));
     let wall = "[Characteristics/Integers]\ncLife=5\n";

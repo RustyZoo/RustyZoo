@@ -37,7 +37,7 @@ mod tests;
 mod trick;
 
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
-pub(crate) use dropped::{dropped, picked_up, reset_unit, stir_guests};
+pub(crate) use dropped::{dropped, picked_up, reset_unit, stir_units};
 pub(crate) use entry::{crowd, send, use_call};
 use guest::Ride;
 pub(crate) use guest::{IN_BUILDING, LEAVE, rides_loaded};
