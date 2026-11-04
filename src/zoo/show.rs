@@ -312,32 +312,36 @@ impl ShowInfo {
         }
     }
 
-    /// The record of type `t`. The original makes an empty one on a lookup; nothing reads it, so
-    /// none is made here.
+    /// The record of type `t`, for a reader that is no lookup of the original (see `lookup`).
     pub(crate) fn record(&self, t: u32) -> Option<&TypeRecord> {
         self.records.iter().find(|r| r.key == t)
     }
 
-    /// A seat of price `r` is sold on file time `date` (shows 7.3 point 3): the receipts of the
-    /// type record of the show's species (made when missing, in key order, with no script and no
-    /// pending one) and then of the info, this month and in all, and the attendance in the same
-    /// four places.
-    pub(crate) fn book(&mut self, r: f32, date: u64) {
-        let species = self.show.species;
-        let at = match self.records.binary_search_by_key(&species, |t| t.key) {
+    /// The record of type `t`, made empty when there is none (shows 3.2, 32.7): no script, no
+    /// pending one, no figure, dated `date`, put in key order.
+    pub(crate) fn lookup(&mut self, t: u32, date: u64) -> &mut TypeRecord {
+        let at = match self.records.binary_search_by_key(&t, |r| r.key) {
             Ok(at) => at,
             Err(at) => {
-                (self.records).insert(at, TypeRecord::new(species, u16::MAX, date));
+                (self.records).insert(at, TypeRecord::new(t, u16::MAX, date));
                 at
             }
         };
+        &mut self.records[at]
+    }
+
+    /// A seat of price `r` is sold on file time `date` (shows 7.3 point 3): the receipts of the
+    /// type record of the show's species (made when missing) and then of the info, this month and
+    /// in all, and the attendance in the same four places.
+    pub(crate) fn book(&mut self, r: f32, date: u64) {
+        let species = self.show.species;
         let sold = |receipts: &mut [u32; 3], attendance: &mut [u32; 3]| {
             for n in [0, 2] {
                 receipts[n] = (f32::from_bits(receipts[n]) + r).to_bits();
                 attendance[n] = attendance[n].wrapping_add(1);
             }
         };
-        let record = &mut self.records[at];
+        let record = self.lookup(species, date);
         sold(&mut record.receipts, &mut record.attendance);
         sold(&mut self.receipts, &mut self.attendance);
     }
@@ -358,7 +362,8 @@ impl ShowInfo {
         *total = (f32::from_bits(*total) + upkeep).to_bits();
     }
 
-    /// The units of type `t` that take part (shows 3.2).
+    /// The units of type `t` that take part (shows 3.2), read without a record made (tests).
+    #[cfg(test)]
     pub(crate) fn units(&self, t: u32) -> &[u32] {
         self.record(t).map_or(&[], |r| &r.units)
     }
@@ -440,7 +445,10 @@ impl ShowInfo {
         o.u32(self.schedule.len() as u32);
         self.schedule.iter().for_each(|&n| o.u32(n));
         o.u32(self.records.len() as u32);
-        self.records.iter().for_each(|t| t.write(o));
+        // Saved in increasing type id (shows 32.7 point 4).
+        let mut records: Vec<_> = self.records.iter().collect();
+        records.sort_by_key(|t| t.key);
+        records.into_iter().for_each(|t| t.write(o));
         o.u32(self.events.len() as u32);
         for e in &self.events {
             o.event(e);
@@ -548,7 +556,10 @@ impl Show {
             o.u32(n);
         }
         o.u32(self.items.len() as u32);
-        for s in &self.items {
+        // The item states of a map by animal id come in increasing id (shows 32.7 point 4).
+        let mut items: Vec<_> = self.items.iter().collect();
+        items.sort_by_key(|s| s.animal);
+        for s in items {
             o.u16(s.script);
             o.u32(s.animal);
             o.u16(s.item as u16);

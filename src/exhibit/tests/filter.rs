@@ -365,18 +365,21 @@ fn keeper(marine: bool) -> EntityType {
 fn only_a_marine_keeper_is_called_to_a_tank_and_by_water_below_the_murky_limit() {
     let (marine, land) = (keeper(true), keeper(false));
     let (mut world, cat, _) = filtered(10, [1, 1], KEYS);
-    let needs = |w: &World, who| crate::staff::service::needs(w, &cat, 1, who);
+    let needs = |w: &mut World, who| crate::staff::service::needs(w, &cat, 1, who);
     // Clean water and nobody to look after: no one is needed. A land keeper never is.
-    assert!(!needs(&world, &marine) && !needs(&world, &land));
+    assert!(!needs(&mut world, &marine) && !needs(&mut world, &land));
     world.set_purity(1, 60);
-    assert!(!needs(&world, &marine), "the limit itself is clean enough");
+    assert!(
+        !needs(&mut world, &marine),
+        "the limit itself is clean enough"
+    );
     world.set_purity(1, 59);
-    assert!(needs(&world, &marine));
-    assert!(!needs(&world, &land));
+    assert!(needs(&mut world, &marine));
+    assert!(!needs(&mut world, &land));
     // A tank without water is not murky, and a marine keeper has no business on land.
     world.set_paused(true);
     world.drain(1);
-    assert!(!needs(&world, &marine));
+    assert!(!needs(&mut world, &marine));
 }
 
 #[test]

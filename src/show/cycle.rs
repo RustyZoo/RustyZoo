@@ -9,6 +9,7 @@ use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
+use crate::timing::file_time;
 use crate::world::World;
 use crate::zoo::{Item, ItemState, ShowInfo};
 
@@ -130,12 +131,25 @@ impl Cycle<'_> {
         tank.is_some_and(|t| t.level == 0)
     }
 
-    fn units(&self, t: u32) -> usize {
-        self.info.units(t).len()
+    /// The unit list of type `t`; a type with no record gets an empty one, as in the original
+    /// (shows 32.7 point 1).
+    fn list(&mut self, t: u32) -> Vec<u32> {
+        let date = file_time(self.world.units.now);
+        self.info.lookup(t, date).units.clone()
     }
 
-    fn has_keeper(&self) -> bool {
+    fn units(&mut self, t: u32) -> usize {
+        self.list(t).len()
+    }
+
+    fn has_keeper(&mut self) -> bool {
         self.units(KEEPER) > 0
+    }
+
+    /// The script id of the scheduled species, 0 for none (shows 5.2); the species gets a record.
+    fn scheduled_script(&mut self) -> u16 {
+        let date = file_time(self.world.units.now);
+        (self.info.scheduled()).map_or(0, |t| self.info.lookup(t, date).script)
     }
 
     /// 9552 when `species` is an animal type, else 0 (shows 3.1).
@@ -213,7 +227,7 @@ impl Cycle<'_> {
 
     /// The show's update; the code is not used.
     fn update(&mut self) -> i32 {
-        let s = self.info.scheduled_script();
+        let s = self.scheduled_script();
         if s == 0 {
             return self.end(6);
         }
@@ -311,7 +325,7 @@ impl Cycle<'_> {
     // ---- Start (shows 5.3)
 
     fn start(&mut self) -> i32 {
-        let s = self.info.scheduled_script();
+        let s = self.scheduled_script();
         let sp = (self.world.zoo.shows.scripts.iter())
             .find(|x| x.id == s)
             .map_or(0, |x| x.kind);
@@ -332,7 +346,7 @@ impl Cycle<'_> {
         }
         self.info.show.items.clear();
         let id = self.id();
-        for u in self.info.units(sp).to_vec() {
+        for u in self.list(sp) {
             if !self.is_unit(u) {
                 if let Some(r) = self.info.records.iter_mut().find(|r| r.key == sp) {
                     r.units.retain(|&x| x != u);
@@ -358,7 +372,7 @@ impl Cycle<'_> {
                 }
             }
         }
-        if self.info.units(sp).is_empty() {
+        if self.units(sp) == 0 {
             return 1;
         }
         let now = self.now;
@@ -392,7 +406,7 @@ impl Cycle<'_> {
     /// do (shows 5.3 `validate`).
     fn validate(&mut self) -> i32 {
         let sp = self.info.show.species;
-        let list = self.info.units(sp).to_vec();
+        let list = self.list(sp);
         if list.is_empty() {
             return 1;
         }
@@ -434,7 +448,7 @@ impl Cycle<'_> {
         if count == 0 {
             return 6;
         }
-        let list = self.info.units(species).to_vec();
+        let list = self.list(species);
         let (mut all_done, mut all_ready) = (true, true);
         for &u in &list {
             if self.world.find(u).is_none() {
@@ -626,7 +640,7 @@ impl Cycle<'_> {
     /// The show goes back to its idle state; its animals are released.
     fn reinit(&mut self) {
         let id = self.id();
-        for u in self.info.units(self.info.show.species).to_vec() {
+        for u in self.list(self.info.show.species) {
             if self.world.units.get(u).is_some_and(|x| x.show == id) {
                 performer::release(self.world, self.cat, u);
             }

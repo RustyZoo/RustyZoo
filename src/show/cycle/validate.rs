@@ -3,7 +3,8 @@
 use super::Cycle;
 use crate::building::Species;
 use crate::exhibit::GROUNDS;
-use crate::show::{info_of, toy::find_toy};
+use crate::show::{info_slot, toy::find_toy};
+use crate::timing::file_time;
 use crate::unit::Part;
 
 impl Cycle<'_> {
@@ -15,7 +16,7 @@ impl Cycle<'_> {
         if i == -1 {
             return 0;
         }
-        let first = self.info.units(self.info.show.species).first().copied();
+        let first = self.list(self.info.show.species).first().copied();
         let Some(a) = first.filter(|&a| self.is_unit(a)) else {
             return 4;
         };
@@ -28,6 +29,22 @@ impl Cycle<'_> {
         self.can_do(a, trick)
     }
 
+    /// Whether the show info of tank `x` (another than this one) has units of its scheduled
+    /// keeper type; its record of that type is made when it has none (shows 32.7 point 1).
+    fn other_has_keeper(&mut self, x: u32) -> bool {
+        let date = file_time(self.world.units.now);
+        let Some(n) = info_slot(self.world, x) else {
+            return true;
+        };
+        let Some(scheduled) = (self.world.zoo.shows.info(n)).map(|i| i.scheduled().unwrap_or(0))
+        else {
+            return true;
+        };
+        let keeper = self.keeper_type(scheduled);
+        let info = self.world.zoo.shows.infos[n].as_mut().expect("a show info");
+        !info.lookup(keeper, date).units.is_empty()
+    }
+
     /// `validate` of 23.6 for animal `a` and the trick `trick`.
     fn can_do(&mut self, a: u32, trick: u16) -> i32 {
         let Some(at) = self.world.find(a) else {
@@ -38,10 +55,7 @@ impl Cycle<'_> {
         let keeper = match own {
             Some(x) if Some(x) == self.exhibit => self.has_keeper(),
             // Another tank's show reads the keeper type of its scheduled species (shows 3.2).
-            Some(x) => info_of(self.world, x).is_none_or(|i| {
-                !i.units(self.keeper_type(i.scheduled().unwrap_or(0)))
-                    .is_empty()
-            }),
+            Some(x) => self.other_has_keeper(x),
             None => true,
         };
         if !keeper {

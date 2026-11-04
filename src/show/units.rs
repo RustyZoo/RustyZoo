@@ -168,15 +168,7 @@ fn remove_unit(world: &mut World, n: usize, id: u32, ty: &EntityType) {
 fn record(world: &mut World, n: usize, key: u32) -> &mut TypeRecord {
     let date = file_time(world.units.now);
     let info = world.zoo.shows.infos[n].as_mut().expect("a show info");
-    let at = match info.records.binary_search_by_key(&key, |r| r.key) {
-        Ok(at) => at,
-        Err(at) => {
-            info.records
-                .insert(at, TypeRecord::new(key, u16::MAX, date));
-            at
-        }
-    };
-    &mut info.records[at]
+    info.lookup(key, date)
 }
 
 /// `create_default_script` and `add_script` (shows 19.2, 5.6): the items become a script with the

@@ -41,12 +41,13 @@ fn world_event(kind: u16, target: u32, channel: u8, data: u32, extra: u16, delay
     }
 }
 
-/// Whether show `id` has a marine specialist.
-fn has_keeper(world: &World, id: u32) -> bool {
-    let infos = world.zoo.shows.infos.iter().flatten();
-    infos
-        .into_iter()
-        .any(|i| u32::from(i.id) == id && !i.units(KEEPER).is_empty())
+/// Whether show `id` has a marine specialist; its record of his type is made when it has none
+/// (shows 32.7 point 1).
+fn has_keeper(world: &mut World, id: u32) -> bool {
+    let date = crate::timing::file_time(world.units.now);
+    let infos = world.zoo.shows.infos.iter_mut().flatten();
+    let mut found = infos.filter(|i| u32::from(i.id) == id);
+    found.any(|i| !i.lookup(KEEPER, date).units.is_empty())
 }
 
 /// The sound of a reaction or of an end (shows 6.2 `show_sound`): the grandstands that face the
@@ -76,7 +77,7 @@ fn show_sound(world: &World, cat: &Catalogue, rng: &mut Rng, show: u32, kind: u1
 /// The world manager's listen (shows 6.2), after the AI manager of the same step: the show events
 /// of the step go to the tank and to the grandstands that belong to the show, and the cheer or the
 /// boo that follows an end is posted for later.
-pub(crate) fn listen_world(world: &World, cat: &Catalogue, events: &mut Events, rng: &mut Rng) {
+pub(crate) fn listen_world(world: &mut World, cat: &Catalogue, events: &mut Events, rng: &mut Rng) {
     let heard: Vec<Event> = events.listen_all(WORLD_CHANNEL).cloned().collect();
     let stands = grandstands(world, cat);
     // Only the first abort of the step counts.
