@@ -235,7 +235,8 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # cuts the lion off, seed 1 (the first) and seeds 3, 4 and 6 reach the pile. The keeper food and drink walks go next to the pile
 # (animals needs 7.1) and draw once per call, which moves the shared draws again: seed 1 no longer reaches the pile; seed 3 is the first
 # that eats the pile both with and without the neighbour walk (seed 2 only with it). The loaded lions now go on with the friendly chase they were saved in (animals 20.8): it ends at step 51 and the draws move, so seed 3 no longer reaches the pile; seed 1 does, with the same steps.
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# Seed 8 is the first from 1 that shows the keeper food walk on both builds (master and this branch); seed 1 shows it on this branch only.
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 8 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # A fence piece of the lions' pen removed (the bulldozer's deletion) opens the pen onto the grounds: the pen is
 # deleted and its three lions stand loose, each escaping at its next escape check (animals 11).
 check base-trial 27646,44033,27645 'printf "5 bulldoze 18548\n" >"$tmp/open"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/open" --log 2>/dev/null | awk "/ animal escape /{l=l (l?\",\":\"\") \$NF} END{print l}"'
@@ -1026,11 +1027,12 @@ check expansion-trial 'carry,29780,;push;drop,29780,37,42;income_$450' "building
 # A guest picked up by hand while it uses a building (guest buildings 11.2): the first guest to use the burger
 # stand of scn19 (seed 1, the first from 1 where a guest is inside to be picked up since the avoid and the chase of animals (animals 20) moved the draws, seed 6 had none then; before that seed 6, on the change before it (the neighbour walk of keeper food moves the draws; seed 2 has one only with it): the guests of the types the trial does not list are gone) is inside at pass 1088. It is selected by a click (pass 1088), picked up by a second
 # click (1091) and put back by Escape (1093); it leaves the stand as a normal leave, so the stand's panel read at
-# pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed; $896 on seed 1).
+# pass 1098 shows the price factor booked as income ($847 before, $854 after; $847 when it stays listed; $896 on seed 2).
+# Seed 2 is the first from 1 that shows it on both builds (seed 1 has no guest inside on master, so no carry).
 guest_picked() { # guest_picked <map>
   d=$(mktemp -d)
   printf '1086 mouse 830 230\n1087 down\n1088 up\n1090 down\n1091 up\n1093 key escape\n1096 mouse 875 230\n1097 down\n1098 up\n' >"$d/script"
-  rz run "$1" --headless --passes 1102 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 1102 --clock 67 --seed 2 --script "$d/script" 2>/dev/null |
     awk '$4 == "world" && ($5 == "carry" || $5 == "putback") { w = w $5 "," $6 ";" }
       $4 == "panel" && $5 == "building" && $6 == 31076 { for (i = 7; i < NF; i++) if ($i == "income") l = "income_" $(i + 1) }
       END { print w l }'
