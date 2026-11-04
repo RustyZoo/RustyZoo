@@ -439,6 +439,7 @@ fn put(
             filter: None,
             building: None,
             rubble: None,
+            flight: None,
             raw: Default::default(),
         }),
     };

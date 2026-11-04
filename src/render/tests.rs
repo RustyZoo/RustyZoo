@@ -367,6 +367,84 @@ fn ambient_animals_are_overlays_painted_after_the_objects_of_their_tile() {
     );
 }
 
+/// Objects at the given points of a 6 by 6 map: the kind and the position of each.
+fn flights_scene(rotation: u8, objects: &[(Kind, i32, i32)]) -> Scene {
+    let objects = objects
+        .iter()
+        .map(|&(kind, x, y)| Object {
+            kind,
+            x,
+            y,
+            z: 0,
+            facing: 0,
+            footprint: (1, 1),
+            late: false,
+            height: 0,
+        })
+        .collect();
+    Scene::new(6, 6, rotation, &flat_map(6, 6), objects)
+}
+
+#[test]
+fn flights_are_painted_after_the_whole_map_oldest_first() {
+    // A flight over the first tile of the map, then a tree on the last one, then another flight.
+    let scene = flights_scene(
+        0,
+        &[
+            (Kind::Flight, 10, 10),
+            (Kind::Fixed, 330, 330),
+            (Kind::Flight, 330, 10),
+        ],
+    );
+    let order = paint_order(&scene);
+    let n = order.len();
+    assert_eq!(order[n - 2..], [Item::Object(0), Item::Object(2)]);
+    assert!(order.contains(&Item::Object(1)));
+}
+
+#[test]
+fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_objects() {
+    let at = |order: &[Item], item| order.iter().position(|&i| i == item);
+    // The tile (0, 4) holds a tree; the flight, 300 units up and to the right of its shadow point
+    // at rotation 0, has its shadow there.
+    let tree = (Kind::Fixed, 16, 4 * 64 + 16);
+    let scene = flights_scene(0, &[(Kind::Flight, 300, 0), tree]);
+    let order = paint_order(&scene);
+    assert_eq!(
+        at(&order, Item::Shadow(0)).map(|p| p + 1),
+        at(&order, Item::Object(1))
+    );
+    // Another rotation moves the point: (+300, +300) at rotation 1 is off the tile (0, 4).
+    let scene = flights_scene(1, &[(Kind::Flight, 300, 0), tree]);
+    assert_eq!(at(&paint_order(&scene), Item::Shadow(0)), None);
+    // A point off the map has no shadow.
+    let scene = flights_scene(0, &[(Kind::Flight, 10, 10)]);
+    assert!(
+        !paint_order(&scene)
+            .iter()
+            .any(|i| matches!(i, Item::Shadow(_)))
+    );
+}
+
+#[test]
+fn the_shadow_point_is_300_units_away_on_both_axes_for_each_rotation() {
+    let at = |r| crate::render::order::shadow_point(r, 1000, 2000);
+    assert_eq!(
+        [at(0), at(1), at(2), at(3), at(4)],
+        [
+            (700, 2300),
+            (1300, 2300),
+            (1300, 1700),
+            (700, 1700),
+            (700, 2300)
+        ]
+    );
+    assert_eq!(
+        crate::render::order::shadow_point(0, i32::MIN, i32::MAX),
+        (i32::MIN, i32::MAX)
+    );
+}
+
 #[test]
 fn an_object_that_paints_last_goes_after_the_others_of_its_tile() {
     let unit = |y: i32, late: bool| Object {

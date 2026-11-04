@@ -17,6 +17,7 @@ pub mod entity;
 pub mod exhibit;
 #[cfg(test)]
 mod fixtures;
+mod flight;
 pub mod framelog;
 pub mod goal;
 pub mod ground;
