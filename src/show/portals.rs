@@ -71,13 +71,30 @@ pub(crate) fn open_portals(world: &mut World, cat: &Catalogue, s: u32) {
     }
 }
 
+/// The step of the entity at `at` for the portals (shows 32.6 point 4): a portal wall's player
+/// advances by `step` milliseconds.
+pub(crate) fn advance(world: &mut World, data: &dyn crate::behaviour::Data, at: usize, step: u32) {
+    if !world.portal_players_any() {
+        return;
+    }
+    let timing = data.timing(&world.zoo.entities[at], "portal");
+    world.portal_advance(at, timing, step);
+}
+
 /// `set_open` (shows 21.5 point 3): a wall whose open byte is not `open` takes it, is drawn again
 /// and, with `sound`, makes the sound of its type.
-fn set_open(world: &mut World, cat: &Catalogue, wall: Option<usize>, open: bool, sound: bool) {
+pub(crate) fn set_open(
+    world: &mut World,
+    cat: &Catalogue,
+    wall: Option<usize>,
+    open: bool,
+    sound: bool,
+) {
     let Some(at) = wall.filter(|&at| world.set_portal(at, open)) else {
         return;
     };
     let id = world.zoo.entities[at].common.as_ref().map_or(0, |c| c.id);
+    world.portal_play(id, open);
     let heard = sound.then(|| heard(world, cat, at, open)).flatten();
     world.units.push_sound(id, heard);
 }

@@ -82,6 +82,10 @@ pub(crate) const NEED_LIST: [&str; 16] = [
     "showtrick",
     "fungift",
 ];
+/// The indexes of `animalrest` and `showtrick` in [`NEED_LIST`], and the byte for no need (shows 32.1).
+pub(crate) const REST_NEED: u8 = 11;
+pub(crate) const TOY_NEED: u8 = 14;
+pub(crate) const NO_NEED: u8 = 0xff;
 /// The replaceable colours of a guest type, one draw each at creation.
 const COLOURS: usize = 4;
 /// The checks, in the order of their countdowns: hunger, thirst, bathroom, leave, gift, energy,

@@ -82,7 +82,7 @@ impl Cx<'_, '_> {
             return 3;
         };
         if let Part::Animal(a) = &mut self.unit.part {
-            (a.building, a.toy) = (toy, true);
+            (a.building, a.need) = (toy, crate::guest::TOY_NEED);
         }
         (self.unit.trick, self.unit.show) = (it.id, show);
         0
@@ -104,7 +104,7 @@ impl Cx<'_, '_> {
 
     /// Whether the animal is on its way to a toy for its trick (the need served is `showtrick`).
     pub(super) fn toy_need(&self) -> bool {
-        matches!(&self.unit.part, Part::Animal(a) if a.toy && a.building != 0)
+        matches!(&self.unit.part, Part::Animal(a) if a.need == crate::guest::TOY_NEED && a.building != 0)
     }
 
     /// The name of the trick the unit is doing, which its use set carries (guest buildings 6.4.1).

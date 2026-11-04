@@ -281,6 +281,9 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        if let Part::Animal(a) = &u.part {
+            block.need = a.need;
+        }
         (block.b5, block.b6) = (u8::from(u.called), u8::from(u.back));
         // The trick id and the show id are read only when their flag is exactly 1; a block that
         // reads as the live value is left as it is (shows 26 point 2).

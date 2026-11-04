@@ -6,6 +6,7 @@
 //! flag and the kept predator.
 
 use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
+use crate::unit::Part;
 use crate::world::World;
 use crate::zoo::{Target, UnitBlock};
 
@@ -112,7 +113,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1);
         let call = (block.b5, block.b6);
-        let cost = block.w4;
+        let (cost, need) = (block.w4, block.need);
         let task = u8::try_from(block.target.goal).ok();
         // A helicopter's building tasks are its own (staff 7.11.1): it is no user of the building here.
         let inside =
@@ -126,6 +127,10 @@ pub(crate) fn load(world: &mut World, now: u32) {
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
             (unit.held, unit.show, unit.trick) = (held, show, trick);
+            // The need being served comes back as it was saved (shows 32.1 point 3).
+            if let Part::Animal(a) = &mut unit.part {
+                a.need = need;
+            }
             (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
             (unit.frightened, unit.predator) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).

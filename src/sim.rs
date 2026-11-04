@@ -738,6 +738,7 @@ impl Sim {
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 unit::gate::advance(world, cat, data, at, step);
+                crate::show::advance_portals(world, data, at, step);
                 update(world, at, step);
                 // A grandstand reads the events of its show (shows 6.3).
                 crate::show::listen_grandstand(world, cat, &mut self.events, &mut self.rng, at);

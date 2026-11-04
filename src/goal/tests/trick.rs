@@ -271,7 +271,10 @@ fn a_toy_trick_aims_at_a_free_toy_and_serves_the_trick_need() {
     assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
     let u = unit(&w);
     let Part::Animal(a) = &u.part else { panic!() };
-    assert_eq!((a.building, a.toy, u.trick), (9, true, WAVE));
+    assert_eq!(
+        (a.building, a.need, u.trick),
+        (9, crate::guest::TOY_NEED, WAVE)
+    );
     // The only toy of the kind stands in the same area; one draw among one.
     assert_ne!(rng.state(), Rng::default().state());
     // No toy of that kind: the trick fails and nothing is aimed at.
@@ -300,7 +303,9 @@ fn a_toy_that_cannot_take_the_animal_aborts_the_trick_and_leaving_one_ends_it() 
         cx.set_enters();
     });
     assert_eq!(kinds(&w), [event::FAILED]);
-    assert!(matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && !a.toy));
+    assert!(
+        matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && a.need == crate::guest::TOY_NEED)
+    );
     // Leaving: the trick is done.
     w.units.posts.clear();
     let mut w = zoo(trick(1, "wave"));
@@ -335,7 +340,9 @@ fn a_trick_animal_whose_toy_is_full_at_arrival_aborts_the_item() {
     });
     let kinds: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
     assert_eq!(kinds, [event::FAILED]);
-    assert!(matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && !a.toy));
+    assert!(
+        matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && a.need == crate::guest::TOY_NEED)
+    );
 }
 
 #[test]
@@ -352,7 +359,9 @@ fn a_trick_animal_whose_toy_is_gone_at_entry_aborts_the_item() {
     });
     let kinds: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
     assert_eq!(kinds, [event::FAILED]);
-    assert!(matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && !a.toy));
+    assert!(
+        matches!(&unit(&w).part, Part::Animal(a) if a.building == 0 && a.need == crate::guest::TOY_NEED)
+    );
 }
 
 /// A swimmer in the middle of the show tank (full to level 4), which has a gate, with the script
@@ -648,5 +657,74 @@ fn an_animal_is_never_turned_away_at_the_entrance_for_the_price() {
         });
         assert_eq!(unit(&w).goal.record.task, ENTER_BUILDING, "{price}");
         assert!(w.units.posts.is_empty());
+    }
+}
+
+/// The unit block of the seal in the zoo a save of `w` writes.
+fn saved_block(w: &mut World, cat: &Catalogue) -> crate::zoo::UnitBlock {
+    let c = w.zoo.entities[0].common.as_mut().unwrap();
+    (c.raw, c.unit) = (crate::zoo::Raw::read(), Some(Default::default()));
+    let u = w.units.get_mut(1).unwrap();
+    (u.started, u.typed) = (true, true);
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, cat);
+    *zoo.entities[0].common.take().unwrap().unit.unwrap()
+}
+
+fn need(w: &World) -> u8 {
+    let Part::Animal(a) = &unit(w).part else {
+        panic!()
+    };
+    a.need
+}
+
+#[test]
+fn the_need_of_a_toy_trick_outlives_the_goal_reset_and_is_saved() {
+    // Shows 32.1 points 2 and 3: the animal's goal reset does not write the need; a save writes it.
+    let (cat, mut w, mut rng) = (types(""), zoo(trick(1, "wave")), Rng::default());
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| cx.reset());
+    assert_eq!(need(&w), crate::guest::TOY_NEED);
+    let Part::Animal(a) = &unit(&w).part else {
+        panic!()
+    };
+    assert_eq!(a.building, 0, "the target goes, the need stays");
+    assert_eq!(saved_block(&mut w, &cat).need, crate::guest::TOY_NEED);
+}
+
+#[test]
+fn a_pick_up_writes_no_need() {
+    // Shows 32.1 point 1.
+    let (cat, mut w, mut rng) = (types(""), zoo(trick(1, "wave")), Rng::default());
+    assert_eq!(ask(&mut w, &cat, &mut rng, &NoData), 0);
+    assert!(crate::place::unit::pick_up(&mut w, &cat, 1, 0).is_some());
+    assert_eq!(need(&w), crate::guest::NO_NEED);
+}
+
+#[test]
+fn a_saved_need_is_read_back_whatever_it_is_and_a_toy_user_goes_on_with_its_trick() {
+    // Shows 32.1 points 3 and 5: nothing is derived from the building or the task after the load.
+    let (cat, mut rng) = (types(""), Rng::default());
+    for saved in [crate::guest::TOY_NEED, crate::guest::REST_NEED, 0, 255] {
+        let mut w = zoo(trick(1, "wave"));
+        let block = crate::zoo::UnitBlock {
+            need: saved,
+            ..Default::default()
+        };
+        w.zoo.entities[0].common.as_mut().unwrap().unit = Some(Box::new(block));
+        crate::unit::resume::load(&mut w, 0);
+        assert_eq!(need(&w), saved);
+        // The user of the toy: the trick's use set and the exit of the set finish the item.
+        let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part else {
+            panic!()
+        };
+        a.building = 9;
+        on(&cat, &mut w, &mut rng, &Sets::walking(), |cx| {
+            cx.set_task(USE, 0, 9, None);
+            cx.set_exits();
+        });
+        let posts: Vec<u16> = w.units.posts.iter().map(|e| e.kind).collect();
+        let toy = saved == crate::guest::TOY_NEED;
+        assert_eq!(posts, if toy { vec![event::FINISHED] } else { vec![] });
     }
 }
