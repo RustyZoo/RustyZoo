@@ -347,28 +347,6 @@ fn an_expensive_attraction_or_show_is_refused_at_the_entrance_and_added_to_the_s
 }
 
 #[test]
-fn a_guest_turned_away_for_the_price_clears_its_goal_and_wanders() {
-    // Shows 30.6 point 2: the ending is the guest's clear goal, with the wandered flag.
-    let cat = types_with(&STAND.replace("food", "food\nfun"));
-    let mut w = zoo();
-    hungry(&mut w);
-    let live = crate::building::Live {
-        price: 4.0,
-        ..Default::default()
-    };
-    w.units.buildings.insert(7, live);
-    let wandered = with_cx(&cat, &mut w, |cx| {
-        cx.seek("food");
-        cx.unit.goal.wandered = false;
-        cx.set_task(ENTRANCE, 0, 7, None);
-        cx.entrance_arrived();
-        (cx.record().task, cx.unit.goal.wandered)
-    });
-    assert_eq!(wandered, (0, true));
-    assert!(thoughts(&w).contains(&10073));
-}
-
-#[test]
 fn a_show_building_joins_the_seen_list_and_a_plain_stand_never_does() {
     for (need, seen) in [("fun", 1), ("showtrick", 1), ("", 0)] {
         let cat = types_with(&STAND.replace("food", &format!("food\n{need}")));

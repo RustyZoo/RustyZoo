@@ -655,6 +655,36 @@ fn a_returning_guest_refused_for_the_price_keeps_its_goal() {
 }
 
 #[test]
+fn a_guest_turned_away_for_the_price_clears_its_goal_and_wanders_but_a_returning_one_keeps_it() {
+    // Shows 30.6 point 2: the ending is the guest's clear goal, with the wandered flag; a
+    // returning guest keeps its goal (guest buildings 12.2 point 20).
+    for (returning, cleared) in [(Some(8060), false), (None, true)] {
+        let (cat, mut w) = lake("dolshack");
+        let live = Live {
+            price: 1e6,
+            members: vec![1],
+            ..Default::default()
+        };
+        w.units.buildings.insert(9, live);
+        set(&mut w, |g| (g.returning, g.building) = (returning, 9));
+        w.units.get_mut(1).unwrap().goal.record.task = crate::goal::ENTRANCE;
+        if returning.is_some() {
+            set(&mut w, |g| g.slot = 1);
+        }
+        with_cx(&cat, &mut w, |cx| {
+            cx.unit.goal.wandered = false;
+            cx.entrance_arrived();
+            let task = cx.record().task;
+            assert_eq!(
+                (task == crate::goal::ENTRANCE, cx.unit.goal.wandered),
+                (!cleared, cleared)
+            );
+        });
+        assert!(thoughts(&w).contains(&10073), "{returning:?}");
+    }
+}
+
+#[test]
 fn a_guest_holding_a_return_building_travels_in_water() {
     let (_, mut w) = lake("boatshak");
     let at = w.find(1).unwrap();
