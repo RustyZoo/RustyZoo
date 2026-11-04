@@ -10,60 +10,6 @@ use rustyzoo::anim::{self, AnimSet, Animation};
 use rustyzoo::sprite::{self, write_png};
 use rustyzoo::vfs::Vfs;
 
-fn frame_file_name(number: usize, shadow: bool, extra: bool) -> String {
-    let shadow = if shadow { "-shadow" } else { "" };
-    let extra = if extra { "-extra" } else { "" };
-    format!("{number:03}{shadow}{extra}.png")
-}
-
-pub fn dump_sprite(vfs: &Vfs, member: &str, dir: &Path) -> Result<(), CliError> {
-    let (sprite, palette, warning) = sprite::load(vfs, member)?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let mut report = Report::new();
-    report.line(format_args!(
-        "{member}: {} frames{}, delay {} ms, palette {:?}",
-        sprite.frames.len(),
-        if sprite.extra.is_some() {
-            " + 1 extra"
-        } else {
-            ""
-        },
-        sprite.delay_ms,
-        sprite.palette,
-    ));
-    if let Some(warning) = warning {
-        report.line(format_args!("warning: {}", warning.escape_debug()));
-    }
-    for (number, frame) in sprite.all_frames().enumerate() {
-        let name = frame_file_name(number, frame.shadow, number == sprite.frames.len());
-        let empty = frame.width == 0 || frame.height == 0;
-        report.line(format_args!(
-            "  {name}: {}x{} x offset {} y offset {} unknown {}{}",
-            frame.width,
-            frame.height,
-            frame.x_offset,
-            frame.y_offset,
-            frame.unknown,
-            if empty { " (empty, no file)" } else { "" },
-        ));
-        if empty {
-            continue;
-        }
-        let mut image = Framebuffer::new(frame.width.into(), frame.height.into());
-        if frame.shadow {
-            // A shadow frame only darkens what is behind it: show it on white.
-            image.pixels.fill(255);
-        }
-        frame.draw(&palette, &mut image, 0, 0);
-        let path = dir.join(&name);
-        let file =
-            File::create(&path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
-        write_png(&image, io::BufWriter::new(file))
-            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-    }
-    report.finish()
-}
-
 /// Decodes every sprite file (a member whose last path component has no extension).
 pub fn check_sprites(vfs: &Vfs) -> Result<(), CliError> {
     let mut report = Report::new();
@@ -259,18 +205,5 @@ pub fn check_anis(vfs: &Vfs) -> Result<(), CliError> {
     match failed {
         0 => Ok(()),
         _ => Err(format!("{failed} of {sets} animation sets failed").into()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::frame_file_name;
-
-    #[test]
-    fn frame_files_are_named_by_number_shadow_and_extra() {
-        assert_eq!(frame_file_name(0, false, false), "000.png");
-        assert_eq!(frame_file_name(12, true, false), "012-shadow.png");
-        assert_eq!(frame_file_name(1234, false, true), "1234-extra.png");
-        assert_eq!(frame_file_name(21, true, true), "021-shadow-extra.png");
     }
 }

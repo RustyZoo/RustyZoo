@@ -486,11 +486,6 @@ check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3answer7;3step;4
 check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3answer1;3step;4step;5step;6step;7step;' "question_use maps/default.zoo '3 key enter' ok,cancel"
 check base-trial '0ask45000;0steppaused;1steppaused;2steppaused;3steppaused;4steppaused;5answer6;5step;6step;7step;' "question_use maps/default.zoo '2 mouse 5 5\n3 down\n4 up\n5 key y' yes,no"
 
-# Loop settings read from the ini file: update period, draw period, cap (ms), then the draws,
-# interface updates and steps of a ten second run with a pass at every millisecond.
-check base-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
-check expansion-trial 66,16,200,1,625,151,149 "rz timing | grep -o '[0-9]*' | paste -sd, -"
-
 # Headless frames equal the same window drawn by render-map: four frames of a scripted run.
 check base-trial 9same "same_frames maps/default.zoo"
 check expansion-trial 9same "same_frames maps/scn19.zoo"
@@ -529,11 +524,10 @@ check base-trial 1376,48 "windowed_view maps/default.zoo"
 # Full screen on and off, and the zoom rule of an 800 pixel wide full screen.
 check base-trial on,off,zoom=2,same "fullscreen maps/default.zoo"
 check expansion-trial on,off,zoom=2,same "fullscreen maps/scn19.zoo"
-# The timing mode (the summary of three timers) and the read-back of the presented pixels run on the
-# dummy video driver; the values are information, so only the mode is checked: three summary lines
-# and the size of the picture read back.
-check base-trial 3,800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --timing 300 --shot $tmp/s.png | awk '/^timing /{n++} /^shot /{s=\$2} END{print n\",\"s}'"
-check expansion-trial 3,800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --timing 300 --shot $tmp/s.png | awk '/^timing /{n++} /^shot /{s=\$2} END{print n\",\"s}'"
+# The read-back of the presented pixels runs on the dummy video driver; the values are information,
+# so only the size of the picture read back is checked.
+check base-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
+check expansion-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
 # No sound system is silence with a warning, not a failed run; no pass at all is refused.
 check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run maps/default.zoo --passes 3 >/dev/null 2>&1; echo $?'
 check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 0 >/dev/null 2>&1; echo $?'

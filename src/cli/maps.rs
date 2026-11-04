@@ -1,12 +1,10 @@
 //! The commands that read and check maps, movies and the ratings of exhibits.
 
-use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io;
 use std::path::Path;
 
-use super::files::escape;
 use super::{CliError, Report, open_game};
 use rustyzoo::entity::Catalogue;
 use rustyzoo::exhibit::{rating, viewing};
@@ -17,9 +15,6 @@ use rustyzoo::strings;
 use rustyzoo::vfs::Vfs;
 use rustyzoo::world::World;
 use rustyzoo::zoo::{Zoo, ZooError};
-
-/// How many entities `map-info` lists one by one.
-const MAP_INFO_ENTITIES: usize = 5;
 
 pub fn load_map(vfs: &Vfs, member: &str) -> Result<Zoo, CliError> {
     let bytes = vfs.read(member)?;
@@ -84,65 +79,6 @@ fn read_source(data_dir: Option<OsString>, source: &str) -> Result<Vec<u8>, CliE
     } else {
         Ok(open_game(data_dir)?.read(source)?)
     }
-}
-
-pub fn map_info(data_dir: Option<OsString>, source: &str) -> Result<(), CliError> {
-    let zoo = Zoo::parse(&read_source(data_dir, source)?).map_err(|e| format!("{source}: {e}"))?;
-    let mut report = Report::new();
-    report.line(format_args!("member: {source}"));
-    report.line(format_args!("version: {}", zoo.version));
-    report.line(format_args!("locale: {}", zoo.locale));
-    report.line(format_args!("expansion: {}", zoo.expansion));
-    report.line(format_args!("map size: {}x{}", zoo.width, zoo.height));
-    report.line(format_args!(
-        "entrance: {},{}",
-        zoo.entrance.0, zoo.entrance.1
-    ));
-    report.line(format_args!("habitats: {}", zoo.habitat_tiles.len()));
-    report.line(format_args!("id counter: {}", zoo.id_counter));
-    report.line(format_args!("tiles: {}", zoo.tiles.len()));
-    let mut terrain = BTreeMap::new();
-    for tile in &zoo.tiles {
-        *terrain.entry(tile.terrain).or_insert(0usize) += 1;
-    }
-    for (kind, count) in terrain {
-        report.line(format_args!("  terrain {kind}: {count}"));
-    }
-    let skipped = zoo.entities.iter().filter(|e| e.common.is_none()).count();
-    report.line(format_args!(
-        "entities: {} ({skipped} without a decoded body)",
-        zoo.entities.len()
-    ));
-    let mut classes = BTreeMap::new();
-    for entity in &zoo.entities {
-        *classes.entry(entity.class.as_str()).or_insert(0usize) += 1;
-    }
-    for (class, count) in classes {
-        report.line(format_args!("  class {}: {count}", escape(class)));
-    }
-    for entity in zoo.entities.iter().take(MAP_INFO_ENTITIES) {
-        let names = format!(
-            "{}/{}/{}",
-            escape(&entity.class),
-            escape(&entity.type_name),
-            escape(&entity.subtype)
-        );
-        match &entity.common {
-            Some(c) => report.line(format_args!(
-                "  {names} tile {},{} position {},{},{} rotation {} id {} name \"{}\"",
-                c.x.div_euclid(64),
-                c.y.div_euclid(64),
-                c.x,
-                c.y,
-                c.z,
-                c.rotation,
-                c.id,
-                escape(&c.name)
-            )),
-            None => report.line(format_args!("  {names} (body skipped)")),
-        }
-    }
-    report.finish()
 }
 
 /// Reads every `.zoo` member. A file the original refuses by its header (not a saved game, a
