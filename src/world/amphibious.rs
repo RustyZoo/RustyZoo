@@ -8,7 +8,7 @@
 //!
 //! The show neighbours (exhibits and money 3.11) are made here too, by the same rebuild: a show tank
 //! and a plain tank that touch, both filled and at least 4 high, with their wall tops at one level.
-//! The portal wall pair is not made; a saved portal flag is read and drawn as it is.
+//! The portal wall pair of each link is made by [`super::portal`].
 
 use super::World;
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank};
@@ -76,7 +76,7 @@ impl World {
     }
 
     /// 3.11: whether tanks `x` and `y`, which touch, are show neighbours.
-    fn show_pair(&self, x: u32, y: u32) -> bool {
+    pub(super) fn show_pair(&self, x: u32, y: u32) -> bool {
         let tank = |id: u32| self.exhibits.get(id).and_then(|e| e.tank);
         let top = |id: u32, k: &Tank| Some(i64::from(self.floor(id)?) + i64::from(k.height));
         let (Some(a), Some(b)) = (tank(x), tank(y)) else {
@@ -146,6 +146,7 @@ impl World {
                     .push(crate::show::Move::Link { plain: x, show, on });
             }
         }
+        self.pair_portals();
     }
 }
 

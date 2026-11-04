@@ -46,6 +46,8 @@ pub struct Exhibit {
     /// became so: a show tank and a plain tank that touch, both filled and at least 4 high, with
     /// wall tops at one level. Made again with the amphibious links.
     pub show_near: Vec<u32>,
+    /// The portals of a show tank towards its show neighbours (shows 31.3 points 6 and 8).
+    pub(crate) portals: Vec<crate::world::Portal>,
     /// Its records, species list and timers (habitat rating).
     pub rating: rating::State,
     /// What its panel shows besides the rating.
@@ -468,6 +470,7 @@ impl Exhibits {
             filter: None,
             amphibious: Vec::new(),
             show_near: Vec::new(),
+            portals: Vec::new(),
             rating: rating::State::new(),
             stats: Stats::default(),
             areas: Vec::new(),
