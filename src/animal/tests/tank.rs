@@ -413,6 +413,7 @@ fn region(w: &World) -> u32 {
 fn an_amphibious_animal_sent_to_land_crosses_the_connector_and_comes_back() {
     use crate::unit::testing::{Walker, amphibious_world};
     let mut w = amphibious_world(2, &[(1, "polar", (4, 3))]);
+    crate::unit::testing::still_water(&mut w);
     let u = w.units.get_mut(1).unwrap();
     (
         u.typed,
@@ -587,6 +588,7 @@ struct Meal {
 fn manta_meal(keys: &str, seed: u32, delay: usize) -> Meal {
     use crate::unit::testing::tank_world;
     let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
+    crate::unit::testing::still_water(&mut w);
     let species = |class: &'static str, name: &[u8], sub: &[u8], keys: &str, id| EntityType {
         class,
         type_name: name.to_vec(),
