@@ -26,6 +26,7 @@ pub(crate) use undo::{Spot, Step, Undone};
 
 mod amphibious;
 mod areas;
+mod decide;
 mod edges;
 mod edit;
 mod exhibit;
@@ -230,6 +231,7 @@ impl World {
         world.load_gates();
         world.load_tanks();
         world.retank(false);
+        world.spend_loaded_ids();
         world.name_loaded();
         world.relink();
         // The loaded animals are placed in file order and join the show lists with the first step

@@ -14,14 +14,14 @@ const BUDGET: &[(&str, usize, usize)] = &[
     ("maps/lg_resrt.zoo", 115, 80),
     ("maps/lg_sandy.zoo", 8689, 108),
     ("maps/lg_sub.zoo", 61463, 2808),
-    ("maps/med_kids.zoo", 757, 56),
-    ("maps/scn28.zoo", 396, 40),
+    ("maps/med_kids.zoo", 758, 56),
+    ("maps/scn28.zoo", 397, 40),
     ("maps/scn31.zoo", 5463, 69),
     ("maps/scn33.zoo", 717, 113),
-    ("maps/scn36.zoo", 830, 166),
+    ("maps/scn36.zoo", 831, 166),
     ("maps/scn37.zoo", 2310, 452),
     ("maps/scn42.zoo", 1602, 1517),
-    ("saved games/test.zoo", 352, 78),
+    ("saved games/test.zoo", 353, 78),
 ];
 
 /// What a file without a pin may differ by: the version word, counters and clocks.

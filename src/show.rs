@@ -168,12 +168,8 @@ pub(crate) fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
 }
 
 /// The position in the shows section of the show info of exhibit `id`, if it has one.
-fn info_slot(world: &World, id: u32) -> Option<usize> {
-    let tiles = world.zoo.habitat_tiles.iter();
-    let n = tiles
-        .map(|&(x, y)| world.tile_index(x, y))
-        .position(|t| t.is_some_and(|t| world.exhibits().region(t) == Some(id)))?;
-    world.zoo.shows.info(n).map(|_| n)
+pub(crate) fn info_slot(world: &World, id: u32) -> Option<usize> {
+    world.info_slot_in(world.exhibits(), id)
 }
 
 /// The first item with trick id `trick` in the current script of the show info `show` (shows 23.2).

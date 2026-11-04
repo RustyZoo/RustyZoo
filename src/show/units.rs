@@ -26,6 +26,8 @@ pub(crate) enum Move {
     },
     /// A show-neighbour link between a plain tank and a show tank was made (`on`) or dropped.
     Link { plain: u32, show: u32, on: bool },
+    /// A show decision ended: the grandstands facing a show tank take its show id (shows 31.2).
+    Associate,
 }
 
 /// The animal type of the entity with this name, if it performs.
@@ -58,6 +60,7 @@ pub(crate) fn settle(world: &mut World, cat: &Catalogue) {
                     walk(world, cat, x, id, ty, false, &mut Vec::new());
                 }
             }
+            Move::Associate => super::associate(world, cat),
             Move::Link { plain, show, on } => {
                 let Some(n) = super::info_slot(world, show) else {
                     continue;
