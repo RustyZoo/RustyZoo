@@ -148,9 +148,8 @@ fn an_animals_goal_reset_lowers_frightened() {
     assert!(!w.units.get(1).unwrap().frightened);
 }
 
-/// The hunt rungs (animals 20.1) of animal 1 with `task` read before the ladder; the unit goes
-/// back into the table as the goal update leaves it.
-fn rungs(w: &mut World, task: u8) -> Option<bool> {
+/// Runs `f` on the goal context of animal 1; the unit goes back into the table as `f` leaves it.
+fn on_one<R>(w: &mut World, f: impl FnOnce(&mut Cx) -> R) -> R {
     let mut u = w.units.get(1).unwrap().clone();
     let at = w.find(1).unwrap();
     let (events, mut removals, mut rng, cat) = (Events::default(), vec![], Rng::default(), cat());
@@ -168,9 +167,14 @@ fn rungs(w: &mut World, task: u8) -> Option<bool> {
         at,
         data: &NoData,
     };
-    let r = cx.hunt_rungs(task);
+    let r = f(&mut cx);
     *w.units.get_mut(1).unwrap() = u;
     r
+}
+
+/// The hunt rungs (animals 20.1) of animal 1 with `task` read before the ladder.
+fn rungs(w: &mut World, task: u8) -> Option<bool> {
+    on_one(w, |cx| cx.hunt_rungs(task))
 }
 
 /// The show of the orca is announced: the orca is on the unit list of its species.
@@ -288,4 +292,68 @@ fn the_escape_check_raises_playing_after_one_abort_and_afraid_for_a_playmate() {
     animal_part(&mut w, 3).prey = 1;
     let unit = escape_check(&mut w, false);
     assert!(unit.frightened && posted(&w).is_empty());
+}
+
+/// The tank with the shark turned into an orca that hunts the orca 1 (a playmate that chases it)
+/// and the manta ray crated, so that nothing else is in sight.
+fn playmate_tank() -> World {
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 2);
+    let at = w.find(3).unwrap();
+    w.zoo.entities[at].type_name = "orca".into();
+    animal_part(&mut w, 3).prey = 1;
+    w
+}
+
+#[test]
+fn the_playmate_avoid_and_the_caught_rung_abort_no_show() {
+    // 20.5 point 1: the show is announced, so an abort would post its two events.
+    let mut w = playmate_tank();
+    announce(&mut w);
+    w.units.get_mut(1).unwrap().frightened = true;
+    assert_eq!(rungs(&mut w, 0), Some(false));
+    let u = w.units.get(1).unwrap();
+    assert_eq!((u.goal.record.task, u.goal.record.target.id), (AVOID, 3));
+    assert!(posted(&w).is_empty(), "the playmate avoid");
+    // The caught rung with a kept predator found by the look.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    announce(&mut w);
+    w.units.get_mut(1).unwrap().caught = true;
+    assert_eq!(rungs(&mut w, 0), Some(false));
+    let u = w.units.get(1).unwrap();
+    assert_eq!((u.goal.record.task, u.predator), (AVOID, 3));
+    assert!(posted(&w).is_empty(), "the caught rung");
+}
+
+#[test]
+fn the_escape_check_playmate_and_prey_branches_need_a_calm_animal() {
+    // 11.7, playmate branch: afraid is raised for a calm animal only.
+    let afraid = |edit: &dyn Fn(&mut World)| {
+        let mut w = playmate_tank();
+        edit(&mut w);
+        on_one(&mut w, |cx| cx.escape_dispatch(0));
+        assert!(posted(&w).is_empty());
+        w.units.get(1).unwrap().frightened
+    };
+    assert!(afraid(&|_| ()));
+    assert!(!afraid(&|w| animal_part(w, 1).playing = true), "playing");
+    assert!(!afraid(&|w| animal_part(w, 1).escaped = true), "escaped");
+    assert!(
+        !afraid(&|w| animal_part(w, 1).rampaging = true),
+        "rampaging"
+    );
+    assert!(
+        !afraid(&|w| w.units.get_mut(1).unwrap().caught = true),
+        "occupied"
+    );
+    // The prey branch: a playing or tranquilised animal starts nothing, and aborts nothing.
+    for tranq in [false, true] {
+        let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+        crate_animal(&mut w, 3);
+        let a = animal_part(&mut w, 1);
+        (a.playing, a.tranq) = (!tranq, tranq);
+        on_one(&mut w, |cx| cx.escape_dispatch(0));
+        assert!(posted(&w).is_empty(), "{tranq}");
+        assert_eq!(animal_part(&mut w, 1).playing, !tranq);
+    }
 }

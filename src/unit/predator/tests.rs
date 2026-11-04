@@ -514,3 +514,14 @@ fn a_guest_is_prey_while_not_seized_and_staff_only_on_the_grounds() {
     let w = zoo((19, 19), &[(60, "trex", "m", (10, 10), false)]);
     assert_eq!(hunt_mode(&w, &cat, 60, 0), KEEPER);
 }
+
+#[test]
+fn a_staff_member_in_an_exhibit_is_no_prey() {
+    // 11.8.1 point 5: the trex hunts the keeper on the grounds, but not in its own pen.
+    let cat = cat(None);
+    let mut w = zoo((19, 19), &[(60, "trex", "m", (4, 4), false)]);
+    let at = w.find(KEEPER).unwrap();
+    let (x, y) = centre((3, 3));
+    w.place_unit(at, (x, y, 0), 0);
+    assert_eq!(hunt_mode(&w, &cat, 60, 0), 0);
+}

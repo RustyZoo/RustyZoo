@@ -52,11 +52,15 @@ pub(crate) struct AnimalRecord {
     pub dates: [u64; 2],
     /// The escaped flag: the animal stands loose on the zoo grounds (animals 11.1).
     pub escaped: bool,
+    /// The hunt state: playing, caught prey and the kept prey's id (animals 20.8 point 2).
+    pub playing: bool,
+    pub caught_prey: bool,
+    pub prey: u32,
     /// The escape walk record, when the escape walk flag is 1 (animals 11.3).
     pub escape: Option<Escape>,
     /// The home exhibit's gate tile, (-1, -1) for none.
     pub home: [i32; 2],
-    /// The fields the engine does not model, in file order and in the form of version 106 (68
+    /// The fields the engine does not model, in file order and in the form of version 106 (62
     /// bytes): a segment the vector is too short for takes the value of a new animal.
     pub spare: Vec<u8>,
 }
@@ -121,7 +125,7 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
     spare.extend(r.take(1)?);
     a.escaped = r.u8()? != 0;
     a.counters[4] = Some(r.i32()?);
-    spare.extend(r.take(6)?);
+    (a.playing, a.caught_prey, a.prey) = (r.u8()? != 0, r.u8()? != 0, r.u32()?);
     (a.baby, a.interval) = (r.i32()?, r.i32()?);
     spare.extend(r.take(4)?);
     a.dates = [r.u64()?, r.u64()?];
@@ -243,7 +247,8 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
     s.put(o, &[0]);
     o.u8(flag(a.escaped));
     o.i32(c(4));
-    s.put(o, &[0; 6]);
+    o.bytes(&[flag(a.playing), flag(a.caught_prey)]);
+    o.u32(a.prey);
     o.i32(a.baby);
     o.i32(a.interval);
     s.put(o, &[0; 4]);

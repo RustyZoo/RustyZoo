@@ -351,6 +351,7 @@ impl Animal {
         self.rampaging = r.rampaging;
         self.rampage = r.rampage;
         self.escaped = r.escaped;
+        (self.playing, self.caught_prey, self.prey) = (r.playing, r.caught_prey, r.prey);
         (self.claim, self.tranq) = (r.claim, r.tranq);
         // The flags are rebuilt from their words (animals 11.3).
         self.walk = r.escape.map(|e| crate::zoo::Escape {
@@ -377,6 +378,9 @@ impl Animal {
         };
         AnimalRecord {
             escaped: self.escaped,
+            playing: self.playing,
+            caught_prey: self.caught_prey,
+            prey: self.prey,
             escape: self.walk,
             happiness: self.happiness,
             hunger: self.hunger,

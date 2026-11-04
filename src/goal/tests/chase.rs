@@ -466,3 +466,97 @@ fn an_afraid_or_playing_animal_answers_no_call_to_a_show() {
     on(&mut w, ALLO, &[], |cx| cx.animal_ladder(RANDOM));
     assert_eq!(record(&w, ALLO).0, crate::goal::GO_TO_SHOW);
 }
+
+#[test]
+fn a_chase_with_no_path_stops_forced_and_the_prey_lets_go() {
+    // 20.2 points 3 and 6: the target is gone, so there is no path; the kept prey is of another
+    // type and lets go all the same.
+    let mut w = zoo(&[(ALLO, "allo", (10, 10)), (VELO, "velocira", (14, 10))]);
+    animal(&mut w, ALLO).prey = VELO;
+    animal(&mut w, ALLO).playing = true;
+    w.units.get_mut(VELO).unwrap().predator = ALLO;
+    let u = w.units.get_mut(ALLO).unwrap();
+    (u.goal.record.task, u.goal.record.target.id, u.held) = (CHASE, 99, true);
+    on(&mut w, ALLO, &[], |cx| cx.hunt_decide());
+    assert_eq!(unit_of(&w, VELO).predator, 0);
+    let a = animal(&mut w, ALLO).clone();
+    assert_eq!((a.prey, a.playing), (0, false));
+    assert_eq!((record(&w, ALLO).0, unit_of(&w, ALLO).held), (NONE, false));
+    // The end of a chase that is not forced leaves the predator of a prey of another type.
+    let mut w = zoo(&[(ALLO, "allo", (10, 10)), (VELO, "velocira", (14, 10))]);
+    animal(&mut w, ALLO).prey = VELO;
+    w.units.get_mut(VELO).unwrap().predator = ALLO;
+    on(&mut w, ALLO, &[], |cx| cx.stop_chase(false));
+    assert_eq!(unit_of(&w, VELO).predator, ALLO);
+}
+
+#[test]
+fn a_hunter_gives_up_a_guest_already_seized() {
+    // 20.3 points 1 and 3: nothing is done to the guest, no set starts, nothing is thought.
+    let give_up = |seized: bool, caught: bool| {
+        let mut w = zoo(&[(ALLO, "allo", (10, 10))]);
+        let g = w.units.get_mut(GUEST).unwrap();
+        (g.caught, g.predator) = (caught, if caught { 77 } else { 0 });
+        if let Part::Guest(g) = &mut g.part {
+            g.seized = seized;
+        }
+        let h = w.units.get_mut(ALLO).unwrap();
+        (h.goal.record.task, h.goal.record.target.id) = (CHASE, GUEST);
+        animal(&mut w, ALLO).prey = GUEST;
+        on(&mut w, ALLO, &[], |cx| cx.hunt_complete());
+        let (h, g) = (unit_of(&w, ALLO), unit_of(&w, GUEST));
+        assert_eq!(record(&w, ALLO).0, NONE, "{seized} {caught}");
+        assert!(!h.held && h.runner.top().is_none() && !g.held && g.runner.top().is_none());
+        assert!(w.units.thoughts.of(GUEST).is_empty());
+        assert_eq!(g.predator, if caught { 77 } else { 0 });
+        assert!(!animal(&mut w, ALLO).caught_prey);
+    };
+    give_up(true, false);
+    give_up(false, true);
+}
+
+#[test]
+fn an_animal_defends_once_per_avoid_goal() {
+    // 20.4 point 4: the velocira avoiding an allo within 3 tiles defends, and never again.
+    let mut w = zoo(&[(ALLO, "allo", (10, 10)), (VELO, "velocira", (12, 10))]);
+    let u = w.units.get_mut(VELO).unwrap();
+    (u.goal.record.task, u.goal.record.target.id) = (AVOID, ALLO);
+    on(&mut w, VELO, &[], |cx| cx.defence());
+    assert_eq!(unit_of(&w, VELO).goal.record.job, 18);
+    assert_eq!(animal(&mut w, VELO).pre, [true, false]);
+    // The job is over: the goal marks the defence over and does not start another.
+    on(&mut w, VELO, &[], |cx| {
+        cx.set_job(0, 0, None);
+        cx.defence();
+    });
+    assert_eq!(unit_of(&w, VELO).goal.record.job, 0);
+    assert_eq!(animal(&mut w, VELO).pre, [true, true]);
+    on(&mut w, VELO, &[], |cx| cx.defence());
+    assert_eq!(unit_of(&w, VELO).goal.record.job, 0);
+}
+
+#[test]
+fn the_chase_walks_on_when_the_preattack_job_is_gone() {
+    // 20.2 point 2.1, 20.4 point 5: with the job running nothing is decided; once it is gone the
+    // preattack is over and the chase starts its walk.
+    let mut w = zoo(&[(ALLO, "allo", (10, 10)), (VELO, "velocira", (14, 10))]);
+    let u = w.units.get_mut(ALLO).unwrap();
+    (u.goal.record.task, u.goal.record.target.id) = (CHASE, VELO);
+    animal(&mut w, ALLO).pre = [true, false];
+    let walk = |w: &mut World, job: u8| {
+        w.units.get_mut(ALLO).unwrap().goal.record.job = job;
+        on(w, ALLO, &[], |cx| {
+            cx.hunt_check_done();
+            cx.hunt_decide();
+        });
+        (
+            animal(w, ALLO).pre,
+            unit_of(w, ALLO).runner.top().map(String::from),
+        )
+    };
+    assert_eq!(walk(&mut w, 18), ([true, false], None));
+    assert_eq!(
+        walk(&mut w, 0),
+        ([true, true], Some("bChasePrey".to_string()))
+    );
+}
