@@ -265,7 +265,7 @@ pub(crate) struct Animal {
     /// for a destination.
     pub terrain: u8,
     /// The shelter it aims at (animals 6): the building's id, 0 for none, and the slot and entrance
-    /// it was given by the goals (guest buildings 6.2). The need served is `animalrest`.
+    /// it was given by the goals (guest buildings 6.2). The need served is [`Animal::need`].
     pub building: u32,
     pub slot: usize,
     pub entrance: crate::building::Point,
