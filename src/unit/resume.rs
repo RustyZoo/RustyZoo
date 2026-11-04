@@ -114,6 +114,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let fright = (block.b1 != 0, block.w1, block.b2 != 0);
         let call = (block.b5, block.b6);
         let (cost, need) = (block.w4, block.need);
+        let own = (block.p1, crate::unit::own::tile_under(world, block.p1));
         let task = u8::try_from(block.target.goal).ok();
         // A helicopter's building tasks are its own (staff 7.11.1): it is no user of the building here.
         let inside =
@@ -130,6 +131,8 @@ pub(crate) fn load(world: &mut World, now: u32) {
             // The need being served comes back as it was saved (shows 32.1 point 3).
             if let Part::Animal(a) = &mut unit.part {
                 a.need = need;
+                // The position is read; the tile is the one under it (shows 32.2 point 6).
+                (unit.own_pos, unit.own_tile) = (own.0, own.1);
             }
             (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
             (unit.frightened, unit.predator, unit.caught) = fright;
@@ -292,11 +295,15 @@ mod tests {
 
     /// A keeper at tile (1, 1) saved with `block`, in a file of version `version`; `resume::load`
     /// has run.
-    fn saved_block_in(version: u32, mut block: UnitBlock) -> World {
+    fn saved_block_in(version: u32, block: UnitBlock) -> World {
+        block_of("keeper", version, block)
+    }
+
+    /// The same for a unit of the class `class`.
+    fn block_of(class: &'static str, version: u32, mut block: UnitBlock) -> World {
         let mut w = world_with((12, 4), |zoo| {
             zoo.version = version;
-            zoo.entities
-                .push(entity("keeper", "x", 1, centre((1, 1)), 0));
+            zoo.entities.push(entity(class, "x", 1, centre((1, 1)), 0));
         });
         crate::goal::quiet(&mut w);
         block.behaviour.levels[0] = Level {
@@ -568,9 +575,13 @@ mod tests {
 
     /// The keeper's block in the zoo a save of the world of [`walking`] writes.
     fn saved_block(w: &World) -> UnitBlock {
+        saved_of("keeper", w)
+    }
+
+    fn saved_of(class: &'static str, w: &World) -> UnitBlock {
         let mut cat = crate::entity::Catalogue::default();
         cat.push(crate::entity::EntityType {
-            class: "keeper",
+            class,
             type_name: b"x".to_vec(),
             subtype: Vec::new(),
             file: None,
@@ -588,6 +599,40 @@ mod tests {
             .unit
             .clone()
             .unwrap()
+    }
+
+    #[test]
+    fn the_position_of_the_own_target_tile_is_saved_and_the_tile_is_built_from_it_at_load() {
+        // Shows 32.2 point 6.
+        let none = UnitBlock {
+            p1: [-1; 3],
+            ..Default::default()
+        };
+        let w = block_of("animals", 106, none);
+        let u = w.units.get(1).unwrap();
+        assert_eq!((u.own_tile, u.own_pos), (None, [-1; 3]));
+        // Read as it is: the tile under the position, the position not moved to the centre.
+        let p = [5 * 64 + 17, 64 + 3, 40];
+        let w = block_of(
+            "animals",
+            106,
+            UnitBlock {
+                p1: p,
+                ..Default::default()
+            },
+        );
+        let u = w.units.get(1).unwrap();
+        assert_eq!((u.own_tile, u.own_pos), (w.tile_index(5, 1), p));
+        // A started animal writes the position only; the tile comes back from it.
+        let mut w = block_of("animals", 106, UnitBlock::default());
+        let (mut u, tile) = (w.units.get(1).unwrap().clone(), w.tile_index(7, 2));
+        (u.started, u.typed) = (true, true);
+        u.aim(&w, tile);
+        *w.units.get_mut(1).unwrap() = u;
+        let saved = saved_of("animals", &w);
+        assert_eq!(saved.p1[..2], [7 * 64 + 32, 2 * 64 + 32]);
+        let back = block_of("animals", 106, saved);
+        assert_eq!(back.units.get(1).unwrap().own_tile, tile);
     }
 
     #[test]

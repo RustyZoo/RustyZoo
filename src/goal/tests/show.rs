@@ -208,7 +208,12 @@ fn it_swims_to_the_tile_of_its_portal_and_aims_across_the_wall() {
         cx.go_show_decide();
     });
     let u = unit(&w);
-    assert_eq!(u.goal.record.target.tile, Some(tile(6, 3)));
+    // The tile across is the animal's own target (shows 32.2 point 4, its centre the position);
+    // the goal record's target is the walk's destination, the portal tile.
+    assert_eq!(u.own_tile, Some(tile(6, 3)));
+    let z = 16 * w.zoo.tiles[tile(6, 3)].elevation;
+    assert_eq!(u.own_pos, [6 * 64 + 32, 3 * 64 + 32, z]);
+    assert_eq!(u.goal.record.target.tile, Some(tile(5, 3)));
     assert_eq!(u.path.last(), Some(&tile(5, 3)));
     assert!(
         u.called && u.runner.top() == Some("bRun"),
@@ -300,7 +305,8 @@ fn an_animal_sent_home_swims_to_the_portal_and_crosses_back() {
         cx.return_decide();
     });
     let u = unit(&w);
-    assert_eq!(u.goal.record.target.tile, Some(tile(5, 3)));
+    assert_eq!(u.own_tile, Some(tile(5, 3)));
+    assert_eq!(u.goal.record.target.tile, Some(tile(6, 3)));
     assert_eq!(u.path.last(), Some(&tile(6, 3)));
     w.place_unit(w.find(1).unwrap(), (6 * 64 + 32, 3 * 64 + 32, 32), 6);
     w.units.get_mut(1).unwrap().destination = Some((6 * 64 + 32, 3 * 64 + 32, 32));
@@ -372,7 +378,7 @@ fn the_portal_opens_while_an_animal_crosses_and_closes_after_with_one_sound_each
     // An animal of T on its way to S opens both walls, and one sound plays.
     let u = w.units.get_mut(1).unwrap();
     u.goal.record.task = GO_TO_SHOW;
-    u.goal.record.target.tile = Some(tile(6, 3));
+    u.own_tile = Some(tile(6, 3));
     crate::show::open_portals(&mut w, &cat, s);
     assert_eq!(open(&w), [true, true]);
     let sounds = w.units.take_sounds();
@@ -408,7 +414,7 @@ fn an_animal_of_the_show_tank_on_its_way_home_opens_the_portal_too() {
     let mut w = staged((7, 3), true);
     let u = w.units.get_mut(1).unwrap();
     u.goal.record.task = RETURN_FROM_SHOW;
-    u.goal.record.target.tile = Some(tile(5, 3));
+    u.own_tile = Some(tile(5, 3));
     let s = w.tank_at(tile(6, 3)).unwrap();
     crate::show::open_portals(&mut w, &cat(), s);
     let wall = w.edge(tile(5, 3), 2).unwrap();
@@ -428,7 +434,7 @@ fn the_exhibit_update_of_a_step_opens_the_portal_for_a_crossing_animal() {
     let mut w = staged((4, 3), true);
     let u = w.units.get_mut(1).unwrap();
     u.goal.record.task = GO_TO_SHOW;
-    u.goal.record.target.tile = Some(tile(6, 3));
+    u.own_tile = Some(tile(6, 3));
     let wall = w.edge(tile(5, 3), 2).unwrap();
     let open = |w: &World| {
         w.zoo.entities[wall]
@@ -441,5 +447,64 @@ fn the_exhibit_update_of_a_step_opens_the_portal_for_a_crossing_animal() {
     };
     assert!(!open(&w));
     run_with(&mut w, &mut sim(), &sets(), 1);
+    assert!(open(&w));
+}
+
+#[test]
+fn the_animal_is_occupied_while_it_is_in_a_show_as_it_is_at_that_moment() {
+    // Shows 32.3 point 3: the ladder's "doing something" does not read the status tick's copy.
+    let mut w = staged((4, 3), true);
+    let occupied = |w: &mut World| with_orca(w, |cx| cx.occupied());
+    // Sent home since the last status tick: in a show, though the copy says no.
+    w.units.get_mut(1).unwrap().back = true;
+    assert!(occupied(&mut w));
+    // Back home since: not in a show, though the copy says yes.
+    let u = w.units.get_mut(1).unwrap();
+    u.back = false;
+    if let Part::Animal(a) = &mut u.part {
+        a.in_show = true;
+    }
+    assert!(!occupied(&mut w));
+}
+
+#[test]
+fn a_goal_reset_empties_the_own_target_tile_and_a_clear_of_the_record_alone_leaves_it() {
+    // Shows 32.2 point 4: the reset writes none with flag 1; the record's own clear does not.
+    let mut w = staged((4, 3), true);
+    let aim = |w: &mut World| {
+        let mut u = unit(w).clone();
+        u.aim(w, Some(tile(6, 3)));
+        *w.units.get_mut(1).unwrap() = u;
+    };
+    aim(&mut w);
+    with_orca(&mut w, |cx| cx.reset());
+    assert_eq!((unit(&w).own_tile, unit(&w).own_pos), (None, [-1; 3]));
+    aim(&mut w);
+    with_orca(&mut w, |cx| cx.record().target.clear());
+    assert_eq!(unit(&w).own_tile, Some(tile(6, 3)));
+}
+
+#[test]
+fn the_portal_reads_the_own_target_tile_and_not_the_goal_records() {
+    // Shows 32.2 point 7, 21.5 point 1.
+    let mut w = staged((4, 3), true);
+    let u = w.units.get_mut(1).unwrap();
+    u.goal.record.task = GO_TO_SHOW;
+    u.goal.record.target.tile = Some(tile(6, 3));
+    let s = w.tank_at(tile(6, 3)).unwrap();
+    let wall = w.edge(tile(5, 3), 2).unwrap();
+    let open = |w: &World| {
+        w.zoo.entities[wall]
+            .common
+            .as_ref()
+            .unwrap()
+            .fence
+            .unwrap()
+            .open
+    };
+    crate::show::open_portals(&mut w, &cat(), s);
+    assert!(!open(&w));
+    w.units.get_mut(1).unwrap().own_tile = Some(tile(6, 3));
+    crate::show::open_portals(&mut w, &cat(), s);
     assert!(open(&w));
 }

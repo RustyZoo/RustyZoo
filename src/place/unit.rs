@@ -640,6 +640,10 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
         crate::unit::Part::Guest(g) => g.returning = None,
         _ => {}
     }
+    if unit.kind == crate::unit::Kind::Animal {
+        // The state clear writes the own target tile and its position directly (shows 32.2 point 4).
+        unit.clear_own();
+    }
     unit.moving = false;
     unit.destination = None;
     unit.path.clear();

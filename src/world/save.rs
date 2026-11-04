@@ -285,7 +285,9 @@ impl World {
             .collect();
         block.b7 = u8::from(u.held);
         if let Part::Animal(a) = &u.part {
-            block.need = a.need;
+            // The need being served and the position of the own target tile; the tile is rebuilt
+            // at load (shows 32.1 point 3, 32.2 point 6).
+            (block.need, block.p1) = (a.need, u.own_pos);
         }
         (block.b5, block.b6) = (u8::from(u.called), u8::from(u.back));
         // The trick id and the show id are read only when their flag is exactly 1; a block that

@@ -17,7 +17,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
 use crate::place::bulldozer::type_of;
 use crate::sim::{Event, Events, Rng, SHOW_CHANNEL};
-use crate::unit::Unit;
+use crate::unit::{Part, Unit};
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{Item, ShowInfo};
@@ -200,26 +200,32 @@ pub(crate) fn exhibit_of(world: &World, id: u16) -> Option<u32> {
 
 /// Whether `unit` is in a show (shows 18.2): it is an animal that performs, and it is on its way
 /// home or was started in a show whose info holds an item state for it (`held` tells that of the
-/// show id it is given).
+/// show id it is given). `at` is the unit's place in the entity list; only an animal looks at its
+/// type (shows 32.5 point 3).
 pub(crate) fn in_show(
     world: &World,
     cat: &Catalogue,
     unit: &Unit,
+    at: usize,
     held: impl FnOnce(u16) -> bool,
 ) -> bool {
-    let at = world.find(unit.id);
-    let ty = at.and_then(|at| type_of(cat, &world.zoo.entities[at]));
-    ty.is_some_and(trick::performs) && (unit.back || (unit.show != 0 && held(unit.show)))
+    // The answer needs all three; the cheap tests come first, the type's trick list last.
+    let animal = matches!(unit.part, Part::Animal(_));
+    let ty = || type_of(cat, world.zoo.entities.get(at)?);
+    animal
+        && (unit.back || (unit.show != 0 && held(unit.show)))
+        && ty().is_some_and(trick::performs)
 }
 
-/// [`in_show`] when no show info is out of the world.
-pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit) -> bool {
+/// [`in_show`] when no show info is out of the world: computed at each reader, nothing keeps a
+/// copy (shows 32.3 point 1).
+pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit, at: usize) -> bool {
     let held = |show: u16| {
         let infos = world.zoo.shows.infos.iter().flatten();
         let mut infos = infos.filter(|i| i.id == show);
         infos.any(|i| i.show.items.iter().any(|s| s.animal == unit.id))
     };
-    in_show(world, cat, unit, held)
+    in_show(world, cat, unit, at, held)
 }
 
 /// `abort_show` (shows 21.6): the show of the show id `id` is aborted when it has an info. The

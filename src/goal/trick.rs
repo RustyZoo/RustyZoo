@@ -97,7 +97,7 @@ impl Cx<'_, '_> {
     /// a show tells its item aborted before the reset, so a toy trick never waits for ever. A guest
     /// then raises its wandered flag, whoever calls (the sit and trash shortcut is not here).
     pub(super) fn clear_goal(&mut self) {
-        if in_show_now(self.world, self.ctx.cat, self.unit) {
+        if in_show_now(self.world, self.ctx.cat, self.unit, self.at) {
             self.tell_trick(event::FAILED);
         }
         self.reset();
