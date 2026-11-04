@@ -1,6 +1,6 @@
 use super::*;
+use crate::fixtures::Install;
 use crate::research::{Category, Level, Program};
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree as Layout};
 

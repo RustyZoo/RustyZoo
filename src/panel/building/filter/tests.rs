@@ -1,8 +1,8 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures::Install;
 use crate::panel::follow::tests as follow;
-use crate::sprite::tests::Install;
 use crate::timing::{DAY_MS, file_time};
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};

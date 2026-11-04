@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::config::Config;
+use crate::fixtures;
 use crate::world::TankKind;
 use crate::zoo::{Common, Fence, Tile, Zoo};
 
@@ -20,16 +21,7 @@ const MARINE: usize = 10;
 const GUEST: usize = 11;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
-    EntityType {
-        class: "animals",
-        type_name: name.into(),
-        subtype: subtype.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
+    fixtures::ty("animals", name, subtype, ini)
 }
 
 fn staff(class: &'static str, name: &str, cost: u32) -> EntityType {

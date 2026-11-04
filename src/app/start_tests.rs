@@ -3,10 +3,10 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::menu::{Menu, Start};
 use crate::money::Money;
 use crate::render::tests::{cache_install, cache_install_with, frame_file};
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
 use crate::vfs::Vfs;

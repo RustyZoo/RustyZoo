@@ -1,22 +1,15 @@
 //! The declarations of a building type, the price thresholds and the placing of slots.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::sim::Rng;
 use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world_with};
-use std::sync::Arc;
 
 fn ty(text: &str) -> EntityType {
     EntityType {
-        class: "building",
-        type_name: b"stand".to_vec(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(Arc::new(Config::parse(text.as_bytes()).unwrap())),
-        name_id: 0,
         footprint: [2, 2, 1],
-        height: 0,
+        ..fixtures::ty("building", "stand", "", text)
     }
 }
 

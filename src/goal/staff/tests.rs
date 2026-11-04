@@ -3,15 +3,14 @@
 use super::*;
 use crate::animal::Animal;
 use crate::behaviour::{Call, Data, Heard, Number, Row, Timing, parse_call};
-use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::fixtures::unit_ty;
 use crate::money::Money;
 use crate::sim::Sim;
 use crate::unit::testing::{centre, entity, rates, world_with};
 use crate::world::World;
 use crate::zoo::{Clocks, Entity, HabitatInfo};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 const KEEPER: u32 = 1;
 const ZEBRA_A: u32 = 10;
@@ -88,48 +87,27 @@ fn zebra(w: &mut World, id: u32) -> &mut Animal {
     }
 }
 
-fn ty(class: &'static str, name: &str, sub: &str, id: i32, keys: &str) -> EntityType {
-    let unit = matches!(class, "animals" | "keeper");
-    let head = if unit {
-        format!("[{sub}/Characteristics/Integers]")
-    } else {
-        "[Characteristics/Integers]".into()
-    };
-    EntityType {
-        class,
-        type_name: name.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(Arc::new(
-            Config::parse(format!("{head}\n{keys}\n").as_bytes()).unwrap(),
-        )),
-        name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
-}
-
 fn catalogue() -> Catalogue {
     let mut cat = Catalogue::default();
     let keeper = "cFoodPerTile=1000\ncSicklyAnimalPct=15\ncDirt=6062\ncDirt=6093";
     for t in [
-        ty("keeper", "keeper", "m", 9500, keeper),
-        ty(
+        unit_ty("keeper", "keeper", "m", 9500, keeper),
+        unit_ty(
             "animals",
             "zebra",
             "f",
             1,
             "cNeededFood=100\ncPurchaseCost=1000",
         ),
-        ty(
+        unit_ty(
             "food",
             "food",
             "herbchow",
             6060,
             "cPurchaseCost=50\ncMaxFoodUnits=1000\ncFood=1",
         ),
-        ty("objects", "other", "poo", 6062, "cStink=1"),
-        ty(
+        unit_ty("objects", "other", "poo", 6062, "cStink=1"),
+        unit_ty(
             "building",
             "compost",
             "",
@@ -541,7 +519,7 @@ fn the_sickly_percentage_is_cut_to_0_and_100_and_a_food_need_of_0_sends_no_food(
     zebra(&mut g.w, ZEBRA_A).health = 450;
     let sick = |g: &mut Game, keys: &str| {
         let mut cat = Catalogue::default();
-        cat.push(ty("keeper", "keeper", "m", 9500, keys));
+        cat.push(unit_ty("keeper", "keeper", "m", 9500, keys));
         let who = cat.find("keeper", b"keeper", b"m").unwrap();
         let mine = service::animals(&g.w, &g.cat, pen, who);
         mine.iter().map(|a| a.sick).collect::<Vec<_>>()
@@ -564,8 +542,8 @@ fn the_sickly_percentage_is_cut_to_0_and_100_and_a_food_need_of_0_sends_no_food(
     // The animals of a species that needs no food get none.
     let mut cat = Catalogue::default();
     for t in [
-        ty("keeper", "keeper", "m", 9500, ""),
-        ty("animals", "zebra", "f", 1, "cNeededFood=0"),
+        unit_ty("keeper", "keeper", "m", 9500, ""),
+        unit_ty("animals", "zebra", "f", 1, "cNeededFood=0"),
     ] {
         cat.push(t);
     }
@@ -679,7 +657,7 @@ fn a_visit_with_nothing_to_do_ends_at_once_and_is_not_started_again_by_the_ladde
 fn layers() -> Game {
     let mut g = Game::new(&[PEN_A]);
     for (name, sub, id) in [("emu", "f", 2), ("emu", "m", 3), ("kiwi", "f", 4)] {
-        g.cat.push(ty("animals", name, sub, id, "cLaysEggs=1"));
+        g.cat.push(unit_ty("animals", name, sub, id, "cLaysEggs=1"));
     }
     g.w.units.names.insert(2, "Emu".into());
     g.w.units.names.insert(4, "Kiwi".into());
@@ -801,7 +779,7 @@ fn stay_game(key: &str) -> Game {
         .iter()
         .position(|t| t.type_name == b"zebra")
         .unwrap();
-    g.cat.types[at] = ty("animals", "zebra", "f", 1, &keys);
+    g.cat.types[at] = unit_ty("animals", "zebra", "f", 1, &keys);
     assert!(g.put("herbchow", (6, 4), 1000));
     zebra(&mut g.w, ZEBRA_A).health = 100;
     g
@@ -851,7 +829,7 @@ fn the_stay_sick_after_a_species_change_is_the_new_types() {
     let changed = (1..80).find_map(|seed| {
         let mut g = stay_game("");
         for t in g.cat.types.iter_mut().filter(|t| t.name_id > 1) {
-            t.config = ty("animals", "", "f", 0, "cLaysEggs=1\ncStaySick=1").config;
+            t.config = unit_ty("animals", "", "f", 0, "cLaysEggs=1\ncStaySick=1").config;
         }
         g.sim.set_seed(seed);
         g.w.units.cheat.heal_changes_species = true;

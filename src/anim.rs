@@ -309,7 +309,8 @@ impl Animation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sprite::tests::{Install, sized, sprite_file};
+    use crate::fixtures::Install;
+    use crate::sprite::tests::{sized, sprite_file};
 
     /// The frame data of a `width` by `height` frame with the given offsets and rows.
     fn frame(width: u16, height: u16, x_offset: i16, y_offset: i16, rows: &[u8]) -> Vec<u8> {

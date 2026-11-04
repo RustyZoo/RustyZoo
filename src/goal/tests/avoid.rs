@@ -3,11 +3,10 @@
 
 use super::*;
 use crate::animal::Animal;
-use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures;
 use crate::guest::Guest;
 use crate::unit::Staff;
-use std::sync::Arc;
 
 const GUEST: u32 = 1;
 const KEEPER: u32 = 2;
@@ -15,14 +14,8 @@ const BEAST: u32 = 50;
 
 fn ty(class: &'static str, name: &str, sub: &str, id: i32, text: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(Arc::new(Config::parse(text.as_bytes()).unwrap())),
         name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, name, sub, text)
     }
 }
 

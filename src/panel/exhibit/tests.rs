@@ -394,7 +394,7 @@ impl crate::ui::draw::Strings for NoWords {
 
 #[test]
 fn an_exhibit_that_becomes_current_shows_the_selected_tabs_layout() {
-    use crate::sprite::tests::Install;
+    use crate::fixtures::Install;
     use crate::ui::layout::Tree;
     let tab = |id: i32| format!("[t{id}]\ntype=UIButton\nid={id}\nx=0\ny=0\ndx=4\ndy=4\n");
     let sub = |id: i32| format!("[s{id}]\ntype=UILayout\nlayout=ui/t{id}.lyt\n");
@@ -459,7 +459,7 @@ fn an_exhibit_that_becomes_current_shows_the_selected_tabs_layout() {
 
 #[test]
 fn the_thoughts_about_the_exhibit_are_listed_with_the_exhibits_name_for_the_percent_s() {
-    use crate::sprite::tests::Install;
+    use crate::fixtures::Install;
     use crate::ui::layout::Tree;
     struct Look;
     impl crate::ui::draw::Strings for Look {

@@ -1,27 +1,25 @@
 //! Turning to rubble (cheats 4.6) on synthetic worlds.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::unit::testing::{centre, entity, world_with};
 
 fn ty(
     class: &'static str,
     kind: &str,
     sub: &str,
-    name_id: i32,
+    _name_id: i32,
     fp: [i32; 2],
     keys: &str,
 ) -> EntityType {
-    let text = format!("[Characteristics/Integers]\n{keys}\n");
     EntityType {
-        class,
-        type_name: kind.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(text.as_bytes()).unwrap())),
-        name_id,
         footprint: [fp[0], fp[1], 1],
-        height: 0,
+        ..fixtures::ty(
+            class,
+            kind,
+            sub,
+            &format!("[Characteristics/Integers]\n{keys}\n"),
+        )
     }
 }
 

@@ -3,6 +3,7 @@
 use super::*;
 use crate::building::Prices;
 use crate::entity::{Catalogue, EntityType};
+use crate::fixtures;
 use crate::goal::guest::tests::walks;
 use crate::guest::{BATHROOM, HAPPINESS, HUNGER, THIRST};
 use crate::money::{self, Money};
@@ -10,7 +11,6 @@ use crate::sim::{Events, Rng, Sim};
 use crate::unit::testing::{centre, entity, world_with};
 use crate::unit::{Ctx, Unit};
 use crate::world::World;
-use std::sync::Arc;
 
 mod placed;
 
@@ -52,16 +52,8 @@ const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\
 
 fn ty(class: &'static str, name: &str, text: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.as_bytes().to_vec(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(Arc::new(
-            crate::config::Config::parse(text.as_bytes()).unwrap(),
-        )),
-        name_id: 0,
         footprint: [2, 2, 1],
-        height: 0,
+        ..fixtures::ty(class, name, "", text)
     }
 }
 

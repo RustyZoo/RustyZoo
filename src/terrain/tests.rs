@@ -1,8 +1,8 @@
 //! The brush, the acceptance rules, the session and its cost, on synthetic maps.
 
 use super::*;
+use crate::fixtures::Install;
 use crate::render::order::Kind;
-use crate::sprite::tests::Install;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, Zoo};
 use crate::zoom::Zoom;

@@ -88,8 +88,8 @@ fn a_typed_price_cuts_the_host_money_group_not_a_comma() {
 
 use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures::Install;
 use crate::panel::follow::tests as follow;
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, SELECTED, Tree};
 use crate::unit::testing::{centre, entity, world};

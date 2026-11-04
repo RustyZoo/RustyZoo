@@ -2,10 +2,10 @@
 
 use super::*;
 use crate::entity::EntityType;
+use crate::fixtures;
 use crate::show::event;
 use crate::unit::testing::{Walker, world_with};
 use crate::zoo::{Item, ItemState, Script, ShowInfo};
-use std::sync::Arc;
 
 const SEAL: u32 = 5400;
 const TOY: u32 = 9100;
@@ -14,16 +14,8 @@ const WAVE: u16 = 11200;
 
 fn ty(class: &'static str, name: &str, subtype: &str, id: u32, text: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.as_bytes().to_vec(),
-        subtype: subtype.as_bytes().to_vec(),
-        file: None,
-        config: Some(Arc::new(
-            crate::config::Config::parse(text.as_bytes()).unwrap(),
-        )),
         name_id: id as i32,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, name, subtype, text)
     }
 }
 

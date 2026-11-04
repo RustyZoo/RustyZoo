@@ -1,7 +1,7 @@
 //! The bulldozer on synthetic maps.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, Tile, Zoo};
 
@@ -13,14 +13,8 @@ fn ty(
     footprint: [i32; 3],
 ) -> EntityType {
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: subtype.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
         footprint,
-        height: 0,
+        ..fixtures::ty(class, name, subtype, ini)
     }
 }
 

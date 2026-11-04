@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::vfs::Vfs;
 
 /// A true colour TGA image of the given size.

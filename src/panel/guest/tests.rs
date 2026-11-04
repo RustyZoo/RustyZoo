@@ -48,8 +48,8 @@ fn the_time_in_the_park_is_banded_by_hours_of_calendar_time() {
 
 use crate::building::items::Item;
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::panel::follow::tests as follow;
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
 use crate::unit::testing::{centre, entity, world};

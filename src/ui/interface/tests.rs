@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::Mouse;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::vfs::Vfs;
 
 struct NoTexts;

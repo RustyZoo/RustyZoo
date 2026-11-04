@@ -2,10 +2,10 @@
 
 use super::start_tests::*;
 use super::*;
+use crate::fixtures::Install;
 use crate::lists::Scenario as Listed;
 use crate::menu::Start;
 use crate::money::Money;
-use crate::sprite::tests::Install;
 use crate::ui::layout::{DISABLED, SELECTED};
 use crate::zoo::Zoo;
 

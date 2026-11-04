@@ -148,8 +148,8 @@ fn a_unit_stamped_in_2000_reads_its_age_in_2001() {
     assert_eq!(band(now, Calendar::at(-9000 * HOUR).elapsed_ms()), 2);
 }
 
+use crate::fixtures::Install;
 use crate::panel::follow::tests as follow;
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{DISABLED, HIDDEN, Tree};
 use crate::unit::testing::{centre, entity, world};

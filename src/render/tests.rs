@@ -1,6 +1,7 @@
 use super::order::{Glass, Item, Kind, Object, Scene, TankSpec, paint_order, project, sort_key};
 use super::*;
-use crate::sprite::{screen, tests::Install};
+use crate::fixtures::Install;
+use crate::sprite::screen;
 use crate::zoo::Tile;
 
 pub(crate) fn flat() -> Tile {

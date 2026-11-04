@@ -121,7 +121,7 @@ fn the_follow_button_shows_the_types_picture_when_shown_and_when_forced_only() {
     ];
     let members = follow::members();
     files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
-    let install = crate::sprite::tests::Install::new("staff-panel-follow", &files);
+    let install = crate::fixtures::Install::new("staff-panel-follow", &files);
     let vfs = Vfs::open(&install.0).unwrap();
     let mut tree = crate::ui::layout::Tree::load(&vfs, "ui/root.lyt", 0);
     tree.resolve(100, 80, |_| 12);
@@ -176,7 +176,7 @@ fn the_training_icons_show_for_the_bits_of_the_mask_with_the_tooltips_of_the_typ
     ];
     let members = follow::members();
     files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
-    let install = crate::sprite::tests::Install::new("staff-panel-training", &files);
+    let install = crate::fixtures::Install::new("staff-panel-training", &files);
     let vfs = Vfs::open(&install.0).unwrap();
     let mut tree = crate::ui::layout::Tree::load(&vfs, "ui/root.lyt", 0);
     tree.resolve(100, 80, |_| 12);

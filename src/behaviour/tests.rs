@@ -320,7 +320,8 @@ fn full_game_survey() {
 
 #[test]
 fn the_library_reads_sets_tables_timings_numbers_and_sounds_of_a_type() {
-    use crate::sprite::tests::{Install, sized, sprite_file};
+    use crate::fixtures::Install;
+    use crate::sprite::tests::{sized, sprite_file};
     let mut frame = Vec::new();
     for field in [1u16, 1, 0, 0, 0] {
         frame.extend(field.to_le_bytes());
