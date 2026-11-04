@@ -262,3 +262,25 @@ fn a_loaded_show_tank_whose_record_holds_no_info_keeps_a_fresh_one_and_a_stored_
     assert_eq!((info.id, info.frequency, info.next), (counter + 2, 90, 590));
     assert_eq!(fresh.zoo.shows.next_show, counter + 2);
 }
+
+/// Plain tank on columns 1 and 2 down to row `plain`, show tank on columns 3 and 4 down to `show`.
+fn uneven(plain: i32, show: i32) -> World {
+    let mut world = tanks(&[], &[], &[]);
+    build(&mut world, "tank", (1, 2, 2, plain));
+    world.begin();
+    for (class, p) in ring("show", 3, 2, 4, show) {
+        put_wall(&mut world, class, p);
+    }
+    world
+}
+
+#[test]
+fn a_pair_is_not_straight_when_only_one_of_its_two_tiles_holds_a_single_piece() {
+    for (plain, show, rows) in [(3, 5, 3), (5, 3, 3)] {
+        let w = uneven(plain, show);
+        let s = w.exhibits().get(id_at(&w, 3, 2)).unwrap();
+        assert_eq!(s.show_near, [id_at(&w, 1, 2)], "linked ({plain}, {show})");
+        assert!(s.portals.is_empty(), "({plain}, {show})");
+        assert!((2..=rows).all(|y| !flag(&w, 3, y, 6) && !flag(&w, 2, y, 2)));
+    }
+}
