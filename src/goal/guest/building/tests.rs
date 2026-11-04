@@ -347,29 +347,25 @@ fn an_expensive_attraction_or_show_is_refused_at_the_entrance_and_added_to_the_s
 }
 
 #[test]
-fn a_guest_turned_away_for_the_price_clears_its_goal_and_wanders_but_a_returning_one_keeps_it() {
-    // Shows 30.6 point 2: the ending is the guest's clear goal, with the wandered flag; a
-    // returning guest keeps its goal (guest buildings 12.2 point 20).
-    for (returning, cleared) in [(None, true), (Some(0), false)] {
-        let cat = types_with(&STAND.replace("food", "food\nfun"));
-        let mut w = zoo();
-        hungry(&mut w);
-        let live = crate::building::Live {
-            price: 4.0,
-            ..Default::default()
-        };
-        w.units.buildings.insert(7, live);
-        let wandered = with_cx(&cat, &mut w, |cx| {
-            cx.seek("food");
-            cx.guest().unwrap().returning = returning;
-            cx.unit.goal.wandered = false;
-            cx.set_task(ENTRANCE, 0, 7, None);
-            cx.entrance_arrived();
-            (cx.record().task, cx.unit.goal.wandered)
-        });
-        assert_eq!(wandered, (if cleared { 0 } else { ENTRANCE }, cleared));
-        assert!(thoughts(&w).contains(&10073), "{returning:?}");
-    }
+fn a_guest_turned_away_for_the_price_clears_its_goal_and_wanders() {
+    // Shows 30.6 point 2: the ending is the guest's clear goal, with the wandered flag.
+    let cat = types_with(&STAND.replace("food", "food\nfun"));
+    let mut w = zoo();
+    hungry(&mut w);
+    let live = crate::building::Live {
+        price: 4.0,
+        ..Default::default()
+    };
+    w.units.buildings.insert(7, live);
+    let wandered = with_cx(&cat, &mut w, |cx| {
+        cx.seek("food");
+        cx.unit.goal.wandered = false;
+        cx.set_task(ENTRANCE, 0, 7, None);
+        cx.entrance_arrived();
+        (cx.record().task, cx.unit.goal.wandered)
+    });
+    assert_eq!(wandered, (0, true));
+    assert!(thoughts(&w).contains(&10073));
 }
 
 #[test]

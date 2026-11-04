@@ -323,8 +323,8 @@ fn set(w: &mut World, id: u32, edit: impl FnOnce(&mut Animal)) {
 #[test]
 fn only_an_adult_or_a_baby_attacker_hunts_and_a_young_prey_counts() {
     let mut cat = cat(None);
-    cat.push(ty("animals", "lion", "y", 5006, "cPrey=5001"));
-    cat.push(ty("animals", "zebra", "y", 5001, ""));
+    cat.push(unit_ty("animals", "lion", "y", 5006, "cPrey=5001"));
+    cat.push(unit_ty("animals", "zebra", "y", 5001, ""));
     // A young lion hunts nothing, a young zebra is prey.
     let w = zoo(
         (0, 0),
@@ -344,14 +344,14 @@ fn only_an_adult_or_a_baby_attacker_hunts_and_a_young_prey_counts() {
     assert_eq!(hunt(&w, &cat, 50), 51);
     // With `cBabiesAttack` 1 the young trex hunts.
     let mut babies = Catalogue::default();
-    babies.push(ty(
+    babies.push(unit_ty(
         "animals",
         "trex",
         "y",
         7001,
         "cPrey=5001\ncBabiesAttack=1",
     ));
-    babies.push(ty("animals", "zebra", "m", 5001, ""));
+    babies.push(unit_ty("animals", "zebra", "m", 5001, ""));
     let w = zoo(
         (0, 0),
         &[
@@ -374,7 +374,7 @@ fn only_an_adult_or_a_baby_attacker_hunts_and_a_young_prey_counts() {
 #[test]
 fn a_crated_unit_is_no_prey_and_an_egg_only_to_an_egg_eater_of_another_species() {
     let mut cat = cat(None);
-    cat.push(ty("animals", "croc", "m", 5200, "cEatsEggs=1"));
+    cat.push(unit_ty("animals", "croc", "m", 5200, "cEatsEggs=1"));
     let mut w = zoo(
         (0, 0),
         &[
