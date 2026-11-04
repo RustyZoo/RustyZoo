@@ -257,7 +257,7 @@ check base-trial 5da29f6db549b4e2 'rz run maps/default.zoo --headless --cash 100
 # animation other than the idle one at pass 14 (the loaded lions go on with the sets and goals they were saved in,
 # behaviours 4.7: no set starts in these 40 passes, and the lion 27646 shows no second one); a sound
 # named without .wav is a file of the type's folder.
-check base-trial 5 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
+check base-trial 14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit anim 27646 / && \$NF != \"idle\" {print \$2}" | head -2 | paste -sd, -'
 check base-trial ,14 'rz run maps/scn01a.zoo --headless --bare --passes 40 --clock 67 --seed 1 2>/dev/null | awk "/ unit set 27645 / && s == \"\" {s=\$NF} / unit anim 27645 / && \$NF != \"idle\" && a == \"\" {a=\$2} END {print s \",\" a}"'
 # The lion's first sound comes after pass 1500 (a failed shelter walk resets the whole goal, which shifted
 # the draws of the run), so this run is 3000 passes long.
