@@ -11,13 +11,12 @@
 
 use crate::behaviour::Data;
 use crate::building::kind_of;
-#[cfg(test)]
 use crate::building::leave::push_out;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
 use crate::place::bulldozer::type_of;
-use crate::sim::{Events, Rng};
+use crate::sim::{Event, Events, Rng, SHOW_CHANNEL};
 use crate::unit::Unit;
 use crate::vfs::Vfs;
 use crate::world::World;
@@ -249,6 +248,49 @@ pub(crate) fn abort_show_for(world: &mut World, cat: &Catalogue, unit: &mut Unit
     }
 }
 
+/// [`empty_grandstands`] with the events it posts going out with the next step's, as
+/// [`abort_show`] does.
+pub(crate) fn empty_grandstands_of(world: &mut World, cat: &Catalogue, id: u32) {
+    let mut events = Events::default();
+    empty_grandstands(world, cat, &mut events, id);
+    world.units.posts.extend(events.take_posted());
+}
+
+/// [`empty_grandstands_of`] for `unit`, which is out of the world's table for its turn: it goes
+/// back in while the audience is put out, itself among it when it is seated.
+pub(crate) fn empty_grandstands_for(world: &mut World, cat: &Catalogue, unit: &mut Unit, id: u32) {
+    let at = unit.id;
+    let Some(slot) = world.units.get_mut(at) else {
+        return;
+    };
+    std::mem::swap(unit, slot);
+    empty_grandstands_of(world, cat, id);
+    if let Some(slot) = world.units.get_mut(at) {
+        std::mem::swap(unit, slot);
+    }
+}
+
+/// The drain of tank `exhibit` (shows 30.4 point 3) posts the abort event of its show info, which
+/// reads it at the next step. The removal of an exhibit posts one too, but nobody reads it.
+pub(crate) fn drained(world: &mut World, exhibit: u32) {
+    let Some(id) = info_of(world, exhibit)
+        .map(|i| u32::from(i.id))
+        .filter(|&i| i != 0)
+    else {
+        return;
+    };
+    world.units.posts.push(Event {
+        sender: id,
+        target: id,
+        data: 0,
+        extra: 0,
+        kind: event::ABORT,
+        delay: 1,
+        sender_channel: SHOW_CHANNEL,
+        channel: SHOW_CHANNEL,
+    });
+}
+
 /// The grandstands of a world in the order of the building list, as (id, position in the entity
 /// list).
 fn grandstands(world: &World, cat: &Catalogue) -> Vec<(u32, usize)> {
@@ -407,10 +449,9 @@ pub(crate) fn new_month(world: &mut World, cat: &Catalogue) {
     }
 }
 
-/// Shows 10.1: the grandstand `id` is emptied when it belongs to a show whose info exists. The
-/// show is aborted first (shows 5.6), the grandstand's "show soon" flag goes down and the
-/// grandstands that face the show's tank lose their users.
-#[cfg(test)]
+/// `empty_grandstands` (shows 30.3 point 1): the grandstand `id` is emptied when it belongs to a
+/// show whose info exists. The show is aborted first (shows 5.6, any state), the grandstand's
+/// "show soon" flag goes down and the grandstands that face the show's tank lose their users.
 pub(crate) fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events, id: u32) {
     let Some(at) = world.find(id) else { return };
     let default = world.units.prices.default;
@@ -435,10 +476,9 @@ fn has_info(world: &World, id: u16) -> bool {
     world.zoo.shows.infos.iter().flatten().any(|i| i.id == id)
 }
 
-/// Shows 10.2: every grandstand that faces the tank of show `id` loses all its users at once (a
-/// forced leave) and its "show soon" flag goes down. Nothing happens for a show with no info or
-/// whose tank is gone.
-#[cfg(test)]
+/// Shows 30.3 point 1: every grandstand that faces the tank of show `id` loses all its users at
+/// once (a forced leave) and its "show soon" flag goes down. Nothing happens for a show with no
+/// info or whose tank is gone.
 pub(crate) fn empty_show_grandstands(world: &mut World, cat: &Catalogue, id: u16) {
     let Some(exhibit) = exhibit_of(world, id) else {
         return;
