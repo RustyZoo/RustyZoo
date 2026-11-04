@@ -520,7 +520,7 @@ windowed_save() {
   printf '20 key s ctrl\n25 char N\n26 char u\n27 char i\n28 char t\n40 key enter\n80 quit\n' >"$d/script"
   rm -rf "$tmp/user"
   SDL_VIDEO_DRIVER=dummy rz run "$1" --size 800x600 --passes 120 --script "$d/script" --log "$d/log" >/dev/null 2>&1
-  sed -n 's|^lastfile=.*/||p' "$tmp/user/zoo.ini"
+  sed -n 's|^lastfile=.*[/\\]||p' "$tmp/user/zoo.ini"
   rm -rf "${d:?}"
 }
 check base-trial Nuit.zoo "windowed_save maps/default.zoo"
