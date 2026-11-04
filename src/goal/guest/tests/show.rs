@@ -238,3 +238,56 @@ fn leaving_a_grandstand_makes_the_price_reaction_and_the_status_tick_takes_it_la
         );
     }
 }
+
+/// Guest 1 on its way to stand 7 for the show (task 0x66), then `act` runs, then the guest
+/// arrives with `arrive`; the thoughts, the goal (need, building) and the wandered flag after it.
+fn bound_for_the_stand(
+    act: impl FnOnce(&mut World, &Catalogue),
+    entrance: bool,
+) -> (Vec<i32>, (Option<&'static str>, u32), bool) {
+    let (mut w, cat) = zoo(true);
+    let mut rng = Rng::default();
+    assert!(with_cx_in(&cat, &walks(), &mut w, &mut rng, |cx| cx.next_site()));
+    act(&mut w, &cat);
+    with_cx_in(&cat, &walks(), &mut w, &mut rng, |cx| match entrance {
+        true => cx.entrance_arrived(),
+        false => cx.building_arrived(),
+    });
+    let thoughts = w.units.thoughts.of(1).iter().map(|t| t.text).collect();
+    (thoughts, need(&w), w.units.get(1).unwrap().goal.wandered)
+}
+
+#[test]
+fn a_guest_walking_to_a_grandstand_that_was_emptied_is_refused_and_thinks_crowded() {
+    // Shows 30.3 point 6: the flag is down, at the arrival and again at the entrance.
+    let emptied = |w: &mut World, cat: &Catalogue| crate::show::empty_grandstands_of(w, cat, 7);
+    for entrance in [false, true] {
+        let (thoughts, goal, wandered) = bound_for_the_stand(emptied, entrance);
+        assert_eq!((thoughts, goal, wandered), (vec![10243], (None, 0), true));
+    }
+    // Control: with the flag up the guest goes on.
+    let (thoughts, goal, wandered) = bound_for_the_stand(|_, _| {}, false);
+    assert_eq!(
+        (thoughts, goal, wandered),
+        (vec![], (Some("grandstand"), 7), false)
+    );
+}
+
+#[test]
+fn a_guest_bound_for_a_rubbled_grandstand_thinks_nothing_and_clears_its_goal() {
+    let rubbled = |w: &mut World, cat: &Catalogue| {
+        let shape = |_: &crate::zoo::Entity| None;
+        let mut kit = crate::rubble::Kit {
+            cat,
+            rng: &mut Rng::default(),
+            template: "piece-%s",
+            shape: &shape,
+        };
+        crate::rubble::turn_to_rubble(w, &mut kit, 7);
+        assert!(w.find(7).is_none());
+    };
+    for entrance in [false, true] {
+        let (thoughts, goal, wandered) = bound_for_the_stand(rubbled, entrance);
+        assert_eq!((thoughts, goal, wandered), (vec![], (None, 0), true));
+    }
+}

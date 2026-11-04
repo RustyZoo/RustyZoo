@@ -283,6 +283,10 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn building_arrived(&mut self) {
         self.cost_back();
         let id = self.target().0;
+        // A building that is gone (rubble) only ends the goal: no thought, no note (goals 11.3).
+        if self.building(id).is_none() {
+            return self.clear_goal();
+        }
         let slot = self.open_slot(id);
         let tile = slot.and_then(|(_, p)| self.tile_at(p));
         match (slot, tile) {
