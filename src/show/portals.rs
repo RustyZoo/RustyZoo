@@ -43,17 +43,16 @@ pub(crate) fn portal(world: &World, from: u32, to: u32) -> Option<(usize, usize)
 }
 
 /// Whether an animal of exhibit `from` is on its way through to exhibit `to` (task 133 or 134
-/// with its target tile in `to`).
+/// with its own target tile in `to`).
 fn crossing(world: &World, from: u32, to: u32) -> bool {
     let region = |t: Option<usize>| t.and_then(|t| crate::animal::food::exhibit_of(world, t));
+    // The cheap tests first: only an animal on its way across looks for its place in the list.
     world.units.iter().any(|u| {
         let task = u.goal.record.task;
-        let animal = matches!(u.part, Part::Animal(_));
-        let at = world.find(u.id).and_then(|at| world.exhibit_of(at));
-        animal
+        matches!(u.part, Part::Animal(_))
             && (crate::goal::GO_TO_SHOW..=crate::goal::RETURN_FROM_SHOW).contains(&task)
-            && at == Some(from)
-            && region(u.goal.record.target.tile) == Some(to)
+            && region(u.own_tile) == Some(to)
+            && world.find(u.id).and_then(|at| world.exhibit_of(at)) == Some(from)
     })
 }
 

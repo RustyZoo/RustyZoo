@@ -199,7 +199,10 @@ impl Cycle<'_> {
             return false;
         };
         let held = |i: &ShowInfo| i.show.items.iter().any(|st| st.animal == u);
-        super::in_show(self.world, self.cat, unit, |show| {
+        let Some(at) = self.world.find(u) else {
+            return false;
+        };
+        super::in_show(self.world, self.cat, unit, at, |show| {
             self.show(show, held).unwrap_or(false)
         })
     }

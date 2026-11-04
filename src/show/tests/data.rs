@@ -196,7 +196,9 @@ fn the_portal_of_scn28_opens_for_an_orca_on_its_way_to_the_show_and_closes_after
     let go = |run: &mut Run, task: u8| {
         let u = run.world.units.get_mut(orca).unwrap();
         u.goal.record.task = task;
+        // The walk's start sets the record's target; the own target tile is the portal's (32.2).
         u.goal.record.target.tile = Some(target);
+        u.own_tile = Some(target);
         crate::show::open_portals(&mut run.world, &run.cat, SHOW);
     };
     // The orca is called: both walls open, one open sound.
