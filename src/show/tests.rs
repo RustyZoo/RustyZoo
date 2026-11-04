@@ -5,6 +5,7 @@ mod audience;
 mod call;
 mod cycle;
 mod empty;
+mod lookups;
 mod performer;
 mod relay;
 mod validate;

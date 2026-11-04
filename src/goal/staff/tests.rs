@@ -378,34 +378,38 @@ fn the_last_animal_going_calls_the_workers_for_the_dung_and_the_food_left() {
 fn the_exhibit_with_the_most_trouble_comes_first_and_one_keeper_goes_to_a_place() {
     let mut g = Game::new(&[PEN_A, PEN_B]);
     let (a, b) = (g.exhibit((4, 3)), g.exhibit((13, 3)));
-    let keeper = type_of(&g.cat, &g.w.zoo.entities[g.w.find(KEEPER).unwrap()]).unwrap();
-    let choose = |g: &Game, here| service::choose(&g.w, &g.cat, keeper, &[], here, &[]);
+    let cat = catalogue();
+    let keeper = type_of(&cat, &g.w.zoo.entities[g.w.find(KEEPER).unwrap()]).unwrap();
+    let choose = |g: &mut Game, here| service::choose(&mut g.w, &cat, keeper, &[], here, &[]);
     // The keeper that the first step sent to the first pen is not on his way here.
     g.w.exhibits_mut().get_mut(a).unwrap().rating.coming = 0;
     // Both are due (never serviced) and tie: the list order wins, the one he stands in does not.
-    assert_eq!((choose(&g, None), choose(&g, Some(a))), (Some(a), Some(b)));
+    assert_eq!(
+        (choose(&mut g, None), choose(&mut g, Some(a))),
+        (Some(a), Some(b))
+    );
     // A hungry zebra with no food puts its exhibit first.
     zebra(&mut g.w, ZEBRA_B).hunger = 100;
-    assert_eq!(choose(&g, None), Some(b));
+    assert_eq!(choose(&mut g, None), Some(b));
     // A keeper on his way keeps the first pass away; the second needs a long wait.
     g.w.exhibits_mut().get_mut(b).unwrap().rating.coming = 1;
-    assert_eq!(choose(&g, None), Some(a));
+    assert_eq!(choose(&mut g, None), Some(a));
     g.w.exhibits_mut().get_mut(a).unwrap().rating.coming = 1;
-    assert_eq!(choose(&g, None), None);
+    assert_eq!(choose(&mut g, None), None);
     g.w.units.ai_ticks = 5000;
-    assert_eq!(choose(&g, None), Some(b));
+    assert_eq!(choose(&mut g, None), Some(b));
     // Serviced a moment ago, with nothing wrong: no exhibit needs him.
     zebra(&mut g.w, ZEBRA_B).hunger = 0;
     for x in [a, b] {
         let e = g.w.exhibits_mut().get_mut(x).unwrap();
         (e.rating.coming, e.rating.serviced) = (0, 4990);
     }
-    assert_eq!(choose(&g, None), None);
+    assert_eq!(choose(&mut g, None), None);
     g.w.units.service_interval = 5;
-    assert_eq!(choose(&g, None), Some(a), "10 ticks are more than 5");
+    assert_eq!(choose(&mut g, None), Some(a), "10 ticks are more than 5");
     // Assigned exhibits only.
     assert_eq!(
-        service::choose(&g.w, &g.cat, keeper, &[b], None, &[]),
+        service::choose(&mut g.w, &cat, keeper, &[b], None, &[]),
         Some(b)
     );
 }

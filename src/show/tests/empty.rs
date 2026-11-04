@@ -79,7 +79,7 @@ fn an_emptied_audience_gets_no_show_event() {
     w.units.posts.iter().for_each(|e| events.post(e.clone()));
     events.age();
     let mut rng = Rng::default();
-    crate::show::listen_world(&w, &cat, &mut events, &mut rng);
+    crate::show::listen_world(&mut w, &cat, &mut events, &mut rng);
     events.age();
     for at in 0..w.zoo.entities.len() {
         crate::show::listen_grandstand(&mut w, &cat, &mut events, &mut rng, at);
@@ -109,7 +109,7 @@ fn an_emptied_audience_gets_no_show_event() {
         channel: crate::sim::WORLD_CHANNEL,
     });
     events.age();
-    crate::show::listen_world(&w, &cat, &mut events, &mut rng);
+    crate::show::listen_world(&mut w, &cat, &mut events, &mut rng);
     events.age();
     for at in 0..w.zoo.entities.len() {
         crate::show::listen_grandstand(&mut w, &cat, &mut events, &mut rng, at);

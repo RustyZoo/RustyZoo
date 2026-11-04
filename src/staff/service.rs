@@ -192,7 +192,7 @@ pub(crate) fn claimed(world: &World) -> Vec<usize> {
 /// `murkyWaterPurity` calls the marine keeper (point 4), as does a show that needs him (point 5).
 /// The amphibious neighbours and the nested
 /// tanks wait for their issues.
-pub(crate) fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
+pub(crate) fn needs(world: &mut World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
     let Some(exhibit) = world.exhibits().get(x) else {
         return false;
     };
@@ -214,10 +214,11 @@ pub(crate) fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) ->
     {
         return true;
     }
-    if crate::show::needs_keeper(world, x, who.name_id as u32) {
+    let serviced = exhibit.rating.serviced as u32;
+    if crate::show::needs_keeper(world, cat, x, who.name_id as u32) {
         return true;
     }
-    let (now, serviced) = (world.units.ai_ticks, exhibit.rating.serviced as u32);
+    let now = world.units.ai_ticks;
     let due = serviced == 0 || now.wrapping_sub(serviced) > world.units.service_interval;
     !mine.is_empty() && due
 }
@@ -226,7 +227,7 @@ pub(crate) fn needs(world: &World, cat: &Catalogue, x: u32, who: &EntityType) ->
 /// assigned exhibits, else every exhibit; the zoo grounds never (open point 4); the stable sort
 /// keeps the list order (open point 5).
 pub(crate) fn choose(
-    world: &World,
+    world: &mut World,
     cat: &Catalogue,
     who: &EntityType,
     assigned: &[u32],
@@ -241,7 +242,7 @@ pub(crate) fn choose(
     };
     list.retain(|&x| x != GROUNDS && world.exhibits().get(x).is_some());
     let claimed = claimed(world);
-    let ticks = |x: u32| {
+    let ticks = |world: &World, x: u32| {
         let serviced = world
             .exhibits()
             .get(x)
@@ -257,20 +258,19 @@ pub(crate) fn choose(
             count(&|a| a.dying),
             count(&|a| !a.egg && a.unfed()),
             free.count(),
-            ticks(x),
+            ticks(world, x),
         )
     };
     let mut keyed: Vec<_> = list.into_iter().map(|x| (Reverse(key(x)), x)).collect();
     keyed.sort_by_key(|k| k.0);
-    let open = |x: u32| Some(x) != here && needs(world, cat, x, who);
-    let coming = |x: u32| world.exhibits().get(x).map_or(0, |e| e.rating.coming) as usize;
-    let first = keyed
-        .iter()
-        .map(|k| k.1)
-        .find(|&x| open(x) && present(world, x) == 0 && coming(x) == 0);
+    let open = |w: &mut World, x: u32| Some(x) != here && needs(w, cat, x, who);
+    let coming = |w: &World, x: u32| w.exhibits().get(x).map_or(0, |e| e.rating.coming) as usize;
+    let first = (keyed.iter().map(|k| k.1))
+        .find(|&x| open(world, x) && present(world, x) == 0 && coming(world, x) == 0);
     first.or_else(|| {
-        (keyed.iter().map(|k| k.1))
-            .find(|&x| open(x) && present(world, x) + coming(x) < 2 && ticks(x) > LONG)
+        (keyed.iter().map(|k| k.1)).find(|&x| {
+            open(world, x) && present(world, x) + coming(world, x) < 2 && ticks(world, x) > LONG
+        })
     })
 }
 
