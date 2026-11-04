@@ -359,6 +359,7 @@ fn a_trick_animal_whose_toy_is_gone_at_entry_aborts_the_item() {
 /// of a food trick.
 fn tank() -> World {
     let mut w = crate::unit::testing::tank_world(5, 4, &[(1, (3, 3), 16)]);
+    crate::unit::testing::still_water(&mut w);
     let u = w.units.get_mut(1).unwrap();
     (u.typed, u.started, u.mover.underwater, u.mover.depth) = (true, true, true, 1);
     if let Part::Animal(a) = &mut u.part {

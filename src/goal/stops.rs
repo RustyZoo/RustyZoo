@@ -29,6 +29,7 @@ pub(crate) fn stop_all(unit: &mut Unit) {
     unit.wait = 0;
     if let Part::Animal(a) = &mut unit.part {
         (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
+        a.sleeping = false;
     }
 }
 

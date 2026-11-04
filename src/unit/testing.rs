@@ -120,7 +120,7 @@ pub(crate) fn shape(e: &Entity) -> Option<Shape> {
             ..thing(Class::Wall, (1, 1), true)
         }),
         "animals" if e.type_name == "big" => Some(thing(Class::Unit, (3, 2), false)),
-        "animals" | "guests" | "keeper" | "maint" | "tour" => {
+        "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter" => {
             Some(thing(Class::Unit, (1, 1), false))
         }
         _ => None,
@@ -238,6 +238,20 @@ impl crate::behaviour::Data for Walker {
 /// ids at a tile and a height.
 pub(crate) fn tank_world(height: u32, level: u32, animals: &[(u32, (i32, i32), i32)]) -> World {
     tank_world_with(height, level, animals, Vec::new())
+}
+
+/// The tanks of `w` have nothing to stir their units for (guest buildings 12.2 point 22): the stirs
+/// of the setup are dropped and the first tank is full as it stands, so its water does not move at
+/// the first step.
+pub(crate) fn still_water(w: &mut World) {
+    w.take_stirred();
+    let tank = (w.exhibits().list().iter()).find_map(|e| e.tank);
+    let Some(tank) = tank else { return };
+    let offset = tank.level as i32 - tank.height as i32;
+    w.set_tank_config(crate::exhibit::TankConfig {
+        offset,
+        ..*w.tank_config()
+    });
 }
 
 /// [`tank_world`] with more entities in the zoo.
