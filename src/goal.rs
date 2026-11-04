@@ -9,9 +9,6 @@
 //! issues are variants of [`Goal`] and rungs of the ladder.
 //!
 //! Going somewhere is [`Cx::go_to`]: a path through the finder, the destination, the walk set.
-//! The chase task (0x74) stays off in M6 (goals O11): the original's ladder starts it now and
-//! then for a second or two; the ladder here never does.
-//!
 //! The log family `unit`: `unit goal <id> <task> <mode> <target id or -> <tile x,y or ->` when
 //! the task changes and `unit job <id> <job>` when the job does, with the original's names.
 
@@ -23,6 +20,7 @@ use crate::zoo::Entity;
 
 mod animal;
 mod avoid;
+mod chase;
 mod dropped;
 mod drown;
 mod entry;
@@ -315,7 +313,7 @@ impl Cx<'_, '_> {
         &mut self.unit.goal.record
     }
 
-    fn now(&self) -> u32 {
+    pub(crate) fn now(&self) -> u32 {
         self.world.units.ai_ticks
     }
 
@@ -393,11 +391,12 @@ impl Cx<'_, '_> {
         self.cost_back();
         match &mut self.unit.part {
             Part::Guest(g) => g.stand = false,
-            // An animal's reset lowers its need flags too and ends its escape walk (12.1, animals
-            // 9.2, 11.3); the playing, prey and chase-partner ones belong to M7.
+            // An animal's reset lowers its need flags too and ends its escape walk, and it lets go of
+            // its kept predator and its kept prey (12.1, animals 9.2, 11.3).
             Part::Animal(a) => {
                 (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
-                self.unit.afraid = false;
+                (a.playing, a.caught_prey, a.prey) = (false, false, 0);
+                (self.unit.frightened, self.unit.predator) = (false, 0);
             }
             _ => {}
         }
@@ -460,7 +459,7 @@ impl Cx<'_, '_> {
                 self.set_task(NONE, 0, 0, None);
                 return false;
             }
-            Kind::Animal => self.animal_ladder(task),
+            Kind::Animal => return self.animal_ladder(task),
             Kind::Guest => self.guest_ladder(task, done),
             Kind::Keeper => self.keeper_ladder(task, done),
             Kind::Worker => self.worker_ladder(task, done),
@@ -548,6 +547,7 @@ impl Cx<'_, '_> {
             let refused = match self.unit.goal.sub {
                 Some(Sub::Keeper(job)) => !self.job_init(job),
                 Some(Sub::Worker(job)) => !self.work_init(job),
+                Some(Sub::Preattack) => !self.preattack_init(),
                 _ => false,
             };
             if refused {

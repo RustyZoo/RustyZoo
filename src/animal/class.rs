@@ -28,6 +28,8 @@ pub struct Class {
     pub boxed: i32,
     /// `cRattleChance`: the percent chance a crate check shakes the crate (unit placing 9.2).
     pub rattle: i32,
+    /// `cDefenseRadius`: the tiles within which two preattack animals fight (animals 20.4).
+    pub defense_radius: i32,
 }
 
 impl Default for Class {
@@ -81,6 +83,7 @@ impl Class {
             mate_pick_delay: int("cMatePickDelay", 3),
             boxed: int("cBoxedCheck", 2),
             rattle: int("cRattleChance", 10),
+            defense_radius: int("cDefenseRadius", 2),
         }
     }
 }

@@ -271,6 +271,15 @@ pub(crate) struct Animal {
     pub entrance: crate::building::Point,
     /// The need served at that building is `showtrick`, not `animalrest`: it is a toy (shows 23.4).
     pub toy: bool,
+    /// Playing (it hunts, or plays the friendly chase), caught prey (its hunt got its catch), the
+    /// kept prey and the chase stamp (an AI clock value); animals 20. A goal reset lowers the first two and the kept prey.
+    pub playing: bool,
+    pub caught_prey: bool,
+    pub prey: u32,
+    pub stamp: u32,
+    /// The goal flags of the preattack and of the defence, started and over (animals 20.2, 20.4);
+    /// the chase goal and the avoid goal each start them down.
+    pub pre: [bool; 2],
 }
 
 impl Animal {

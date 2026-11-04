@@ -625,7 +625,6 @@ impl Cx<'_, '_> {
         }
         let (Some(entered), Some(kind)) = (entered, kind) else {
             self.clear_goal();
-            self.unit.goal.wandered = true;
             return;
         };
         let over = self.now().wrapping_sub(entered) >= kind.time_inside.max(0) as u32;

@@ -85,25 +85,25 @@ fn escape_check(w: &mut World, in_show: bool) -> Unit {
 fn a_threat_seen_by_the_escape_check_aborts_the_show_of_an_animal_that_is_not_in_it() {
     let mut w = tank([(3, 3), (4, 3), (3, 2)]);
     let unit = escape_check(&mut w, false);
-    assert!(unit.afraid);
+    assert!(unit.frightened);
     assert_eq!(posted(&w), [event::ABORTED, event::ENDED]);
     assert_eq!(next(&w), 590);
     // Already afraid: no second abort. A threat gone: the flag goes down.
     w.units.posts.clear();
-    w.units.get_mut(1).unwrap().afraid = true;
-    assert!(escape_check(&mut w, false).afraid);
+    w.units.get_mut(1).unwrap().frightened = true;
+    assert!(escape_check(&mut w, false).frightened);
     assert!(posted(&w).is_empty());
     if let Part::Animal(a) = &mut w.units.get_mut(3).unwrap().part {
         a.crated = true;
     }
-    assert!(!escape_check(&mut w, false).afraid);
+    assert!(!escape_check(&mut w, false).frightened);
 }
 
 #[test]
 fn an_animal_in_a_show_runs_no_escape_check_so_it_neither_flees_nor_aborts() {
     let mut w = tank([(3, 3), (4, 3), (3, 2)]);
     let unit = escape_check(&mut w, true);
-    assert!(!unit.afraid && posted(&w).is_empty());
+    assert!(!unit.frightened && posted(&w).is_empty());
     assert_eq!(next(&w), 0);
 }
 
@@ -141,9 +141,151 @@ fn an_animal_dropped_with_no_threat_and_no_prey_or_out_of_a_tank_aborts_nothing(
 }
 
 #[test]
-fn an_animals_goal_reset_lowers_afraid() {
+fn an_animals_goal_reset_lowers_frightened() {
     let (mut w, mut rng) = (map("animals"), Rng::default());
-    w.units.get_mut(1).unwrap().afraid = true;
+    w.units.get_mut(1).unwrap().frightened = true;
     with_cx(&mut w, &mut rng, |cx| cx.reset());
-    assert!(!w.units.get(1).unwrap().afraid);
+    assert!(!w.units.get(1).unwrap().frightened);
+}
+
+/// The hunt rungs (animals 20.1) of animal 1 with `task` read before the ladder; the unit goes
+/// back into the table as the goal update leaves it.
+fn rungs(w: &mut World, task: u8) -> Option<bool> {
+    let mut u = w.units.get(1).unwrap().clone();
+    let at = w.find(1).unwrap();
+    let (events, mut removals, mut rng, cat) = (Events::default(), vec![], Rng::default(), cat());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    let mut cx = Cx {
+        unit: &mut u,
+        world: w,
+        ctx: &mut ctx,
+        at,
+        data: &NoData,
+    };
+    let r = cx.hunt_rungs(task);
+    *w.units.get_mut(1).unwrap() = u;
+    r
+}
+
+/// The show of the orca is announced: the orca is on the unit list of its species.
+fn announce(w: &mut World) {
+    let info = w.zoo.shows.infos[0].as_mut().unwrap();
+    info.records.push(crate::zoo::TypeRecord {
+        units: vec![1],
+        ..crate::zoo::TypeRecord::new(ORCA as u32, 0, 0)
+    });
+    info.show.species = ORCA as u32;
+}
+
+fn animal_part(w: &mut World, id: u32) -> &mut crate::animal::Animal {
+    match &mut w.units.get_mut(id).unwrap().part {
+        Part::Animal(a) => a,
+        _ => unreachable!(),
+    }
+}
+
+fn crate_animal(w: &mut World, id: u32) {
+    animal_part(w, id).crated = true;
+}
+
+#[test]
+fn the_avoid_start_aborts_the_show_and_the_next_escape_check_aborts_it_again() {
+    // 20.5 point 7 (a) and points 2 and 3: the reset inside the abort leaves afraid down.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    announce(&mut w);
+    w.units.get_mut(1).unwrap().frightened = true;
+    assert_eq!(rungs(&mut w, 0), Some(false));
+    assert_eq!(posted(&w), [event::ABORTED, event::ENDED]);
+    let u = w.units.get(1).unwrap();
+    assert_eq!(
+        (u.goal.record.task, u.goal.record.target.id, u.predator),
+        (AVOID, 3, 3)
+    );
+    assert!(!u.frightened && u.back && !u.called);
+    let unit = escape_check(&mut w, false);
+    assert!(unit.frightened);
+    assert_eq!(posted(&w).len(), 4);
+}
+
+#[test]
+fn the_hunt_start_aborts_the_show_and_the_friendly_chase_does_not() {
+    // 20.5 point 7 (b) and (c).
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    announce(&mut w);
+    crate_animal(&mut w, 3);
+    animal_part(&mut w, 1).playing = true;
+    assert_eq!(rungs(&mut w, 0), Some(false));
+    assert_eq!(posted(&w), [event::ABORTED, event::ENDED]);
+    let u = w.units.get(1).unwrap();
+    assert_eq!((u.goal.record.task, u.goal.record.target.id), (CHASE, 2));
+    assert!(!animal_part(&mut w, 1).playing);
+    // The shark is an orca now and the manta ray is crated: a friend, no abort.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 2);
+    let at = w.find(3).unwrap();
+    w.zoo.entities[at].type_name = "orca".into();
+    animal_part(&mut w, 1).playing = true;
+    assert_eq!(rungs(&mut w, 0), Some(false));
+    assert!(posted(&w).is_empty());
+    assert_eq!(w.units.get(1).unwrap().goal.record.task, CHASE);
+}
+
+#[test]
+fn a_playmate_alone_starts_no_avoid_of_an_escaped_animal() {
+    // 20.5 point 7 (d).
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 2);
+    crate_animal(&mut w, 3);
+    let at = w.find(3).unwrap();
+    w.zoo.entities[at].type_name = "orca".into();
+    animal_part(&mut w, 3).crated = false;
+    animal_part(&mut w, 3).prey = 1;
+    w.units.get_mut(1).unwrap().frightened = true;
+    animal_part(&mut w, 1).escaped = true;
+    assert_eq!(rungs(&mut w, 0), None);
+    assert!(w.units.get(1).unwrap().frightened && posted(&w).is_empty());
+}
+
+#[test]
+fn the_escape_check_raises_playing_after_one_abort_and_afraid_for_a_playmate() {
+    // 11.7, 20.5 point 4: a prey in sight and no threat.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 3);
+    let unit = escape_check(&mut w, false);
+    assert!(matches!(&unit.part, Part::Animal(a) if a.playing));
+    assert_eq!(posted(&w), [event::ABORTED, event::ENDED]);
+    // Already playing, in a chase or an avoid, caught or tranquilised: nothing.
+    for (task, caught) in [(CHASE, false), (AVOID, false), (0, true)] {
+        let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+        crate_animal(&mut w, 3);
+        let u = w.units.get_mut(1).unwrap();
+        (u.goal.record.task, u.caught) = (task, caught);
+        let unit = escape_check(&mut w, false);
+        assert!(
+            matches!(&unit.part, Part::Animal(a) if !a.playing),
+            "{task}"
+        );
+        assert!(posted(&w).is_empty());
+    }
+    // A task 0x75 is reset by the none-found branch, and the prey branch sees the old task.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 3);
+    w.units.get_mut(1).unwrap().goal.record.task = AVOID;
+    assert_eq!(escape_check(&mut w, false).goal.record.task, 0);
+    // A playmate that hunts it raises afraid with no abort.
+    let mut w = tank([(3, 3), (4, 3), (3, 2)]);
+    crate_animal(&mut w, 3);
+    crate_animal(&mut w, 2);
+    animal_part(&mut w, 3).crated = false;
+    let at = w.find(3).unwrap();
+    w.zoo.entities[at].type_name = "orca".into();
+    animal_part(&mut w, 3).prey = 1;
+    let unit = escape_check(&mut w, false);
+    assert!(unit.frightened && posted(&w).is_empty());
 }

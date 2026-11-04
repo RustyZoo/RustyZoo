@@ -1726,6 +1726,23 @@ fn the_enter_decide_clears_the_goal_when_the_building_is_gone() {
         cx.set_task(ENTER_BUILDING, 0, 99, None);
         cx.enter_decide();
         assert_eq!(cx.record().task, 0);
+        // Every guest clear goal raises the wandered flag (goals 12.2).
+        assert!(cx.unit.goal.wandered);
+    });
+}
+
+#[test]
+fn every_guest_clear_goal_raises_wandered_the_follower_and_the_gone_building_too() {
+    let (cat, mut w) = (types(), at_the_entrance());
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().building = 99;
+        cx.set_task(crate::goal::GO_BUILDING, 0, 99, None);
+        cx.building_arrived();
+        assert_eq!((cx.record().task, cx.unit.goal.wandered), (0, true));
+        cx.unit.goal.wandered = false;
+        cx.set_task(crate::goal::LEG, 0, 0, None);
+        crate::goal::Goal::Follow.decide(cx);
+        assert_eq!((cx.record().task, cx.unit.goal.wandered), (0, true));
     });
 }
 
@@ -2087,6 +2104,7 @@ fn a_full_building_is_crowded_at_every_step_before_the_price_is_looked_at() {
         assert_eq!(about, [(10243, Some(7))], "{price} {step}");
         assert_eq!(guest(&w).seen.len(), 1, "{price} {step}");
         assert_eq!(guest(&w).building, 0, "{price} {step}");
+        assert!(w.units.get(1).unwrap().goal.wandered, "{price} {step}");
     }
 }
 

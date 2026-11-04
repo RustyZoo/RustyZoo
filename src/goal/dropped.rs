@@ -155,7 +155,7 @@ impl Cx<'_, '_> {
             return;
         }
         let found = match self.predator(0) {
-            0 => find_prey(self.world, self.ctx.cat, self.unit, self.at),
+            0 => find_prey(self.world, self.ctx.cat, self.unit, self.at, 0),
             threat => threat,
         };
         let show = self.world.units.get(found).map_or(0, |u| u.show);
