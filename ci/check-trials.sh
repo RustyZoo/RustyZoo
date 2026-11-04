@@ -234,8 +234,8 @@ check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 
 # of a guest queues `bSick` (behaviours 4.2.1) instead of starting it over the walk, which moves the shared draws: seed 2 now
 # cuts the lion off, seed 1 (the first) and seeds 3, 4 and 6 reach the pile. The keeper food and drink walks go next to the pile
 # (animals needs 7.1) and draw once per call, which moves the shared draws again: seed 1 no longer reaches the pile; seed 3 is the first
-# that eats the pile both with and without the neighbour walk (seed 2 only with it).
-check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 3 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
+# that eats the pile both with and without the neighbour walk (seed 2 only with it). The loaded lions now go on with the friendly chase they were saved in (animals 20.8): it ends at step 51 and the draws move, so seed 3 no longer reaches the pile; seed 1 does, with the same steps.
+check base-trial 'keeperfood;30,10,0' 'printf "0 food 45,38 carnchow 50\n" >"$tmp/food"; rz sim maps/scn01a.zoo --ticks 1000 --seed 1 --script "$tmp/food" --log 2>/dev/null | awk "/ unit goal 27645 keeperfood /{g=\"keeperfood\"} / animal eat 27645 /{l=l (l?\",\":\"\") \$(NF-1)} END{print g \";\" l}"'
 # A fence piece of the lions' pen removed (the bulldozer's deletion) opens the pen onto the grounds: the pen is
 # deleted and its three lions stand loose, each escaping at its next escape check (animals 11).
 check base-trial 27646,44033,27645 'printf "5 bulldoze 18548\n" >"$tmp/open"; rz sim maps/scn01a.zoo --ticks 400 --seed 1 --script "$tmp/open" --log 2>/dev/null | awk "/ animal escape /{l=l (l?\",\":\"\") \$NF} END{print l}"'
