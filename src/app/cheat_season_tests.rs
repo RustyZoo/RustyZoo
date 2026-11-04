@@ -306,6 +306,10 @@ fn real_other_day() -> (u32, u32) {
     (10, 30)
 }
 
+fn real_31_december() -> (u32, u32) {
+    (12, 31)
+}
+
 /// The colours of the entities of the open game, in list order.
 fn colours(app: &App) -> Vec<Vec<u8>> {
     let zoo = &app.game.as_ref().unwrap().world.zoo;
@@ -315,7 +319,7 @@ fn colours(app: &App) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// The open game's world is a man, a woman and a tent, colours all 1.
+/// The open game's world is a man, a woman, a tent and a keeper, colours all 1.
 fn dress(app: &mut App) {
     use crate::unit::testing::{centre, entity, world_with};
     let mut world = world_with((10, 10), |zoo| {
@@ -323,6 +327,7 @@ fn dress(app: &mut App) {
             (1, "guests", "man"),
             (2, "guests", "woman"),
             (3, "building", "tent"),
+            (4, "keeper", "keeper"),
         ] {
             let mut e = entity(class, kind, id, centre((id as i32, 1)), 0);
             e.common.as_mut().unwrap().colors = vec![1; 4];
@@ -362,6 +367,8 @@ fn every_start_on_the_real_31_october_gives_the_jack_o_lantern_back_and_recolour
             app.game_started();
             assert_eq!(on(app, cat), [false, true, false, false]);
             let want = [vec![10, 2, 1, 1], vec![10, 11, 1, 1], vec![7, 5, 1, 1]];
+            // The keeper (staff) keeps its colours.
+            let want = [want.to_vec(), vec![vec![1; 4]]].concat();
             assert_eq!(
                 colours(app)[..],
                 want,
@@ -446,5 +453,36 @@ fn a_start_and_a_file_load_stop_the_loops_so_the_sleigh_comes_again() {
         today(app, 12, 25);
         app.guest_created();
         assert!(app.sim.take_lines().contains(&"fly 5083".to_string()));
+    });
+}
+
+#[test]
+fn a_real_31_of_another_month_is_no_halloween_at_the_start_and_at_the_arrival() {
+    run(|app, cat| {
+        app.sim.real_day = real_31_december;
+        dress(app);
+        app.game_started();
+        assert_eq!(on(app, cat), [false; 4]);
+        assert!(colours(app).iter().all(|c| c[..] == [1; 4]));
+        assert!(!app.cheats.season.halloween);
+        assert!(!app.sim.take_lines().iter().any(|l| l.starts_with("fly")));
+    });
+    assert_ne!(
+        crate::guest::tests::arrival_shirt(real_31_december),
+        10,
+        "an uncoloured guest at the arrival"
+    );
+}
+
+#[test]
+fn a_start_on_the_real_31_october_leaves_the_staff_colours() {
+    run(|app, _| {
+        app.sim.real_day = real_halloween;
+        dress(app);
+        app.game_started();
+        let staff = &app.game.as_ref().unwrap().world.zoo.entities;
+        let keeper = staff.iter().find(|e| e.class == "keeper").unwrap();
+        assert_eq!(keeper.common.as_ref().unwrap().colors, [1; 4]);
+        assert_eq!(colours(app)[0][0], 10, "the guests were recoloured");
     });
 }

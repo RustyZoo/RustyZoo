@@ -1134,23 +1134,25 @@ fn a_guest_made_on_the_game_or_the_real_31_october_is_orange_and_black() {
     assert_eq!(arrival_colours(date(11, 31), false).0, plain);
 }
 
+/// The shirt colour of the first guest the entrance makes when the computer's date is `day`.
+pub(crate) fn arrival_shirt(day: fn() -> (u32, u32)) -> u8 {
+    let mut run = game("", true);
+    run.sim.real_day = day;
+    run.sim.status.settings.create_chance = [100; 5];
+    (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
+    let mut log = Vec::new();
+    while added(&log).is_empty() {
+        log.extend(run.step(67));
+    }
+    let guest = run.world.zoo.entities.iter().find(|e| e.class == "guests");
+    guest.unwrap().common.as_ref().unwrap().colors[0]
+}
+
 #[test]
 fn the_step_passes_the_computers_date_to_the_arrival() {
-    let colours = |day: fn() -> (u32, u32)| {
-        let mut run = game("", true);
-        run.sim.real_day = day;
-        run.sim.status.settings.create_chance = [100; 5];
-        (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
-        let mut log = Vec::new();
-        while added(&log).is_empty() {
-            log.extend(run.step(67));
-        }
-        let guest = run.world.zoo.entities.iter().find(|e| e.class == "guests");
-        guest.unwrap().common.as_ref().unwrap().colors[0]
-    };
-    assert_eq!(colours(|| (10, 31)), 10);
+    assert_eq!(arrival_shirt(|| (10, 31)), 10);
     assert_ne!(
-        colours(|| (10, 30)),
+        arrival_shirt(|| (10, 30)),
         10,
         "the draws of this seed are not orange"
     );
