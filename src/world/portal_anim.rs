@@ -1,9 +1,8 @@
 //! The sprite player of a portal wall (shows 32.6): the opening and closing animation. Only the
 //! open byte is saved; the player is not, so a loaded portal shows the rest picture of its byte.
 //!
-//! The player advances only while it animates, so a recompute of the links that stops the
-//! animation leaves the portal on the frame it had until the next opening (O28, an original
-//! bug, issue 1158).
+//! Setting the base sequence clears the player at once (point 2), so a new direction shows its
+//! first step before any advance; a flagged portal ends closed on frame 0 (point 7).
 
 use super::World;
 use crate::behaviour::Timing;
@@ -19,8 +18,6 @@ pub(crate) struct Player {
     count: u32,
     /// The run that follows an open or close, not finished yet.
     animating: bool,
-    /// The base sequence asked for (its `reverse` flag), taken at the next advance only.
-    cut: Option<bool>,
 }
 
 impl Player {
@@ -33,15 +30,18 @@ impl Player {
         }
     }
 
-    /// One step of `step` ms (shows 32.6 point 4): a player that animates takes its cut base,
-    /// then runs; at the end of the run it stops and asks for the base of the rest picture.
+    /// `set_portal_anim` (shows 32.6 point 2): the base sequence takes `reverse` and the player is
+    /// cleared at once, back to the first step of the base.
+    fn base(&mut self, reverse: bool) {
+        (self.reverse, self.frame, self.elapsed) = (reverse, 0, 0);
+    }
+
+    /// One step of `step` ms (shows 32.6 point 4): a player that animates runs; at the end of the
+    /// run it stops and takes the base of the rest picture.
     fn advance(&mut self, timing: Timing, open: bool, step: u32) {
         self.count = timing.count;
         if !self.animating {
             return;
-        }
-        if let Some(reverse) = self.cut.take() {
-            (self.reverse, self.frame, self.elapsed) = (reverse, 0, 0);
         }
         self.elapsed = self.elapsed.saturating_add(step);
         let Timing { count, delay } = timing;
@@ -52,24 +52,27 @@ impl Player {
             self.frame = (self.frame + 1).min(count - 1);
         }
         if ended {
-            (self.animating, self.cut) = (false, Some(open));
+            self.animating = false;
+            self.base(open);
         }
     }
 }
 
 impl World {
     /// `set_open` (shows 32.6 point 3): the wall `id` opens or closes, its player animates with
-    /// the base of the new direction.
+    /// the base of the new direction, which shows at once.
     pub(crate) fn portal_play(&mut self, id: u32, open: bool) {
         let p = self.portal_players.entry(id).or_default();
-        (p.animating, p.cut) = (true, Some(!open));
+        p.animating = true;
+        p.base(!open);
     }
 
-    /// The flag setter's and the links recompute's reset (point 7): the run stops, the picture
-    /// stays.
+    /// The flag setter's reset (point 7): the run stops and the player is cleared on the forward
+    /// base, frame 0, whatever the wall showed.
     pub(crate) fn portal_reset(&mut self, id: u32) {
         if let Some(p) = self.portal_players.get_mut(&id) {
-            (p.animating, p.cut) = (false, Some(false));
+            p.animating = false;
+            p.base(false);
         }
     }
 

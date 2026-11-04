@@ -116,11 +116,10 @@ fn the_flag_setter_closes_the_portal_when_it_changes_in_play_and_not_when_a_zoo_
         c.and_then(|c| c.fence).is_some_and(|f| f.open)
     };
     open(&mut world, 3, 3, 6);
-    // The same pair again: the original clears the flag and sets it, each a change, so the open
-    // byte goes (32.6 point 7).
+    // The same pair again: the flag does not change, the open byte stays (the original closes
+    // it for the callers of 31.4 only; issue 1168).
     touch(&mut world);
-    assert!(!is_open(&world, 3, 3, 6) && flag(&world, 3, 3, 6));
-    open(&mut world, 3, 3, 6);
+    assert!(is_open(&world, 3, 3, 6));
     // A flag set by hand on the line goes at the recompute, and the byte of that piece with it
     // in play; a zoo read keeps it.
     let at = piece(&world, 3, 4, 6);
@@ -330,14 +329,8 @@ fn a_portal_opens_through_its_frames_closes_back_down_and_rests_on_the_last_or_t
     let (at, id) = portal_piece(&world);
     assert_eq!(shown(&world, id), 0, "closed at rest");
     open_it(&mut world, at, true);
-    assert_eq!(shown(&world, id), 0, "the new base waits for the advance");
     assert_eq!(run(&mut world, at, 100, 6), [1, 2, 3, 3, 3, 3]);
     open_it(&mut world, at, false);
-    assert_eq!(
-        shown(&world, id),
-        3,
-        "the last frame stays until the advance"
-    );
     assert_eq!(run(&mut world, at, 100, 6), [2, 1, 0, 0, 0, 0]);
 }
 
@@ -350,43 +343,75 @@ fn a_change_before_the_end_restarts_from_the_other_end_with_a_jump() {
     assert_eq!(run(&mut world, at, 50, 4), [0, 1, 1, 2]);
     open_it(&mut world, at, false);
     assert_eq!(
-        run(&mut world, at, 50, 3),
-        [3, 2, 2],
-        "frame 3, the other end"
+        shown(&world, portal_piece(&world).1),
+        3,
+        "the other end at once"
     );
+    assert_eq!(run(&mut world, at, 50, 3), [3, 2, 2]);
 }
 
 #[test]
-fn a_links_recompute_during_a_run_freezes_the_portal_on_its_frame_until_its_next_opening() {
-    // 32.6 point 7, O28 (issue 1158): the flag setter stops the run and closes the byte; nothing
-    // advances the player afterwards.
-    for open in [false, true] {
+fn a_portal_takes_its_new_direction_at_once() {
+    // 32.6 points 2 and 6: the call that sets the base clears the player, before any advance:
+    // opening shows frame 0, closing the last frame, also when it interrupts a run.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    assert_eq!(shown(&world, id), 0);
+    run(&mut world, at, 100, 6);
+    open_it(&mut world, at, false);
+    assert_eq!(shown(&world, id), 3);
+    run(&mut world, at, 100, 1);
+    open_it(&mut world, at, true);
+    assert_eq!(shown(&world, id), 0, "a reopening interrupts the closing");
+}
+
+#[test]
+fn a_flagged_portal_shows_its_closed_picture_at_once_whatever_it_showed() {
+    // 32.6 point 7: the flag setter clears open and the player; the portal ends closed, byte 0
+    // and frame 0, from a run or from the open rest frame.
+    for (run_for, closed_first) in [(2, false), (6, false), (6, true)] {
         let mut world = trio(4, false);
         let (at, id) = portal_piece(&world);
         open_it(&mut world, at, true);
-        run(&mut world, at, 100, 6);
-        if !open {
+        run(&mut world, at, 100, run_for);
+        if closed_first {
             open_it(&mut world, at, false);
+            run(&mut world, at, 100, 1);
         }
-        let frames = run(&mut world, at, 100, 2);
-        let stopped = frames[1];
-        touch(&mut world);
+        assert_ne!(shown(&world, id), 0);
+        world.set_flag(at, false);
+        world.set_flag(at, true);
         let fence = |w: &World| w.zoo.entities[at].common.as_ref().unwrap().fence.unwrap();
         assert!(
             !fence(&world).open && fence(&world).portal,
-            "closed byte, flag set"
+            "byte 0, flag set"
         );
-        assert_eq!(
-            run(&mut world, at, 100, 5),
-            [stopped; 5],
-            "closing: {}",
-            !open
-        );
-        // The next opening plays again from the first frame.
+        assert_eq!(shown(&world, id), 0, "frame 0 at once");
+        assert_eq!(run(&mut world, at, 100, 5), [0; 5], "and it stays");
+        // The next opening plays from the first frame.
         open_it(&mut world, at, true);
         assert_eq!(run(&mut world, at, 100, 4), [1, 2, 3, 3]);
-        assert_eq!(shown(&world, id), 3);
     }
+}
+
+#[test]
+fn an_unrelated_edit_leaves_a_staying_portal_open() {
+    // 32.6 point 7: an entity added far from the tanks (a guest arriving) does not touch a
+    // portal: byte and frame stay.
+    let mut world = trio(4, false);
+    let (at, id) = portal_piece(&world);
+    open_it(&mut world, at, true);
+    run(&mut world, at, 100, 6);
+    touch(&mut world);
+    let fence = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .unwrap()
+        .fence
+        .unwrap();
+    assert!(fence.open && fence.portal);
+    assert_eq!(shown(&world, id), 3);
 }
 
 #[test]
