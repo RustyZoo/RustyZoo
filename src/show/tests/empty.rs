@@ -228,10 +228,71 @@ fn a_guest_that_sees_an_animal_that_does_not_rampage_empties_nothing() {
     assert!(show_events(&w).is_empty());
 }
 
+/// Guest 1, frightened and not yet in any task, takes its goal update (the ladder's fright
+/// point). Whether it took the avoid task.
+fn ladder(w: &mut World, cat: &Catalogue) -> bool {
+    w.units.get_mut(1).unwrap().frightened = true;
+    let mut unit = w.units.get(1).unwrap().clone();
+    let at = w.find(1).unwrap();
+    let (mut rng, events, mut removals) = (Rng::default(), Events::default(), Vec::new());
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat,
+    };
+    crate::goal::update(&mut unit, w, &mut ctx, at, &NoData);
+    let avoids = unit.goal.record.task == crate::goal::AVOID;
+    *w.units.get_mut(1).unwrap() = unit;
+    avoids
+}
+
+#[test]
+fn a_frightened_guest_bound_for_a_grandstand_empties_it_from_the_ladder() {
+    let (mut w, cat, _) = frightened(true);
+    ladder(&mut w, &cat);
+    assert_eq!(show_events(&w), [event::ABORTED, event::ENDED]);
+    assert!(!info_of_show(&w).show.running);
+    assert!(w.units.buildings[&7].users.is_empty());
+    // An animal that does not rampage empties nothing.
+    let (mut w, cat, _) = frightened(false);
+    ladder(&mut w, &cat);
+    assert!(show_events(&w).is_empty());
+    assert_eq!(w.units.buildings[&7].users.len(), 2);
+}
+
+#[test]
+fn a_frightened_guest_bound_for_a_grandstand_does_not_avoid() {
+    for rampaging in [true, false] {
+        let (mut w, cat, _) = frightened(rampaging);
+        assert!(!ladder(&mut w, &cat));
+        assert!(w.units.get(1).unwrap().frightened);
+    }
+    // Bound for no grandstand, it avoids the animal.
+    let (mut w, cat, _) = frightened(true);
+    if let Part::Guest(g) = &mut w.units.get_mut(1).unwrap().part {
+        g.building = 0;
+    }
+    assert!(ladder(&mut w, &cat));
+}
+
 #[test]
 fn a_deleted_grandstand_aborts_nothing() {
     let (mut w, cat, _) = started(vec![item(0, 3, 5)]);
     crate::building::lift(&mut w, &cat, 7, &mut Rng::default());
+    assert!(show_events(&w).is_empty());
+    assert!(info_of_show(&w).show.running);
+}
+
+#[test]
+fn deleting_a_grandstand_with_the_bulldozer_aborts_nothing() {
+    let (mut w, cat, _) = started(vec![item(0, 3, 5)]);
+    seat(&mut w);
+    let mut money = crate::money::Money::default();
+    let removed = crate::place::bulldozer::remove(&mut w, &mut money, &cat, 7, &mut Rng::default());
+    assert!(removed.is_some());
+    assert!(w.find(7).is_none());
     assert!(show_events(&w).is_empty());
     assert!(info_of_show(&w).show.running);
 }
@@ -250,7 +311,7 @@ fn draining_the_tank_of_a_show_aborts_it_at_the_next_step() {
     let sent: Vec<u16> = heard(&events).iter().map(|e| e.0).collect();
     assert_eq!(sent, [event::ABORTED, event::ENDED]);
     assert_eq!(info_of_show(&w).next, 10 + 90);
-    // A tank with no show info posts nothing; one with an animal in it refuses and posts nothing.
+    // A tank with no show info posts nothing.
     let (mut w, ..) = staged(vec![item(0, 3, 5)]);
     let other = w
         .exhibits()
@@ -261,6 +322,40 @@ fn draining_the_tank_of_a_show_aborts_it_at_the_next_step() {
         .unwrap();
     w.drain(other);
     assert!(posted(&w).is_empty());
+}
+
+#[test]
+fn draining_a_tank_with_an_animal_in_it_posts_nothing() {
+    let (mut w, _) = staged(vec![item(0, 3, 5)]);
+    let tank = super::cycle::tank_mut(&mut w).id;
+    let seal = entity("animals", "seal", 99, centre((6, 1)), 0);
+    let shape = crate::world::Shape {
+        kind: crate::render::order::Kind::Unit,
+        footprint: (1, 1),
+        fence: false,
+        wall: false,
+        gate: false,
+        gated: false,
+        tank: crate::world::TankKind::NONE,
+        walkable: (false, false),
+        forms: None,
+        rubbleable: false,
+    };
+    w.add_rated(seal, Some(shape), false);
+    assert!(!w.drain(tank));
+    assert!(w.tank(tank).unwrap().filled);
+    assert!(posted(&w).is_empty());
+}
+
+#[test]
+fn changing_the_salinity_of_a_show_tank_aborts_its_show() {
+    let (mut w, _) = staged(vec![item(0, 3, 5)]);
+    let tank = super::cycle::tank_mut(&mut w).id;
+    // The same salinity returns before the drain.
+    assert!(w.set_salinity(tank, false));
+    assert!(posted(&w).is_empty());
+    assert!(w.set_salinity(tank, true));
+    assert_eq!(posted(&w), [event::ABORT]);
 }
 
 #[test]

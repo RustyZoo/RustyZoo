@@ -453,9 +453,7 @@ pub(crate) fn new_month(world: &mut World, cat: &Catalogue) {
 /// show whose info exists. The show is aborted first (shows 5.6, any state), the grandstand's
 /// "show soon" flag goes down and the grandstands that face the show's tank lose their users.
 pub(crate) fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut Events, id: u32) {
-    let Some(at) = world.find(id) else { return };
-    let default = world.units.prices.default;
-    if !kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
+    if !is_grandstand(world, cat, id) {
         return;
     }
     let Some(show) = world.units.buildings.get(&id).map(|l| l.show_id) else {
@@ -469,6 +467,14 @@ pub(crate) fn empty_grandstands(world: &mut World, cat: &Catalogue, events: &mut
         live.fill = 0;
     }
     empty_show_grandstands(world, cat, show);
+}
+
+/// Whether the entity `id` is a grandstand.
+pub(crate) fn is_grandstand(world: &World, cat: &Catalogue, id: u32) -> bool {
+    let default = world.units.prices.default;
+    (world.find(id)).is_some_and(|at| {
+        kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand"))
+    })
 }
 
 /// Whether a show info with this show id exists.

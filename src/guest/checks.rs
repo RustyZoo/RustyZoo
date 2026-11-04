@@ -157,9 +157,7 @@ fn chase(cx: &mut Cx, g: &mut Guest, k: &Keys, grounds: bool) {
     // A rampaging animal in sight of a guest that goes to a grandstand, seated or not, empties its
     // grandstands (6.2 point 3.1, shows 30.3 point 3).
     let building = g.building;
-    let rampaging = cx.world.units.get(p);
-    if building != 0 && rampaging.is_some_and(|u| matches!(&u.part, Part::Animal(a) if a.rampaging))
-    {
+    if building != 0 && cx.rampaging(p) {
         cx.unit.part = Part::Guest(std::mem::take(g));
         crate::show::empty_grandstands_for(cx.world, cx.ctx.cat, cx.unit, building);
         if let Part::Guest(back) = &mut cx.unit.part {
