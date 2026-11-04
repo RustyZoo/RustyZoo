@@ -810,6 +810,7 @@ fn without_a_guest_type_or_an_entrance_tile_nothing_is_made_and_nothing_is_drawn
             max_guests: 1000,
             date: date(3, 4),
             reset: 0,
+            real_halloween: false,
         };
         let made = arrive(&mut world, cat, &mut rng, &mut money, &a);
         (made, drawn(&seeded(1), &rng), money.cash)
@@ -1068,4 +1069,89 @@ fn a_gone_exhibit_leaves_the_entrance_tile_of_a_thought_with_an_object() {
     list.drop_exhibit(4);
     let kept = list.about(7);
     assert_eq!((kept[0].exhibit, kept[0].gate), (None, Some(12)));
+}
+
+#[test]
+fn halloween_colours_are_the_orange_shirt_and_the_charcoal_trousers_or_skirt() {
+    let mut g = Guest {
+        colours: vec![3, 4, 5, 6],
+        ..Guest::default()
+    };
+    g.halloween();
+    assert_eq!(g.colours, [10, 2, 5, 6], "a man keeps hair and skin");
+    g.female = true;
+    g.halloween();
+    assert_eq!(g.colours, [10, 11, 5, 6]);
+    // Too few colours to change: nothing, and no panic.
+    let mut few = Guest {
+        colours: vec![3],
+        ..Guest::default()
+    };
+    few.halloween();
+    assert_eq!(few.colours, [3]);
+}
+
+/// The colours and the sex of the one guest an arrival on `game` date with the computer's date
+/// flag `real` makes.
+fn arrival_colours(game: Date, real: bool) -> (Vec<u8>, bool) {
+    let mut world = zoo(true);
+    let (mut rng, mut money) = (seeded(7), Money::default());
+    let a = Arrival {
+        price: 9.0,
+        multiple: 3.5,
+        guests: 0,
+        max_guests: 1000,
+        date: game,
+        reset: 0,
+        real_halloween: real,
+    };
+    assert!(arrive(&mut world, &types(), &mut rng, &mut money, &a));
+    let e = world
+        .zoo
+        .entities
+        .iter()
+        .find(|e| e.class == "guests")
+        .unwrap();
+    let c = e.common.as_ref().unwrap();
+    let female = matches!(world.units.get(c.id).map(|u| &u.part),
+        Some(crate::unit::Part::Guest(g)) if g.female);
+    (c.colors.clone(), female)
+}
+
+#[test]
+fn a_guest_made_on_the_game_or_the_real_31_october_is_orange_and_black() {
+    let (plain, female) = arrival_colours(date(3, 4), false);
+    let legs = if female { 11 } else { 2 };
+    let mut want = plain.clone();
+    (want[0], want[1]) = (10, legs);
+    assert_eq!(
+        arrival_colours(date(10, 31), false).0,
+        want,
+        "the game date"
+    );
+    assert_eq!(arrival_colours(date(3, 4), true).0, want, "the real date");
+    assert_eq!(arrival_colours(date(10, 30), false).0, plain);
+    assert_eq!(arrival_colours(date(11, 31), false).0, plain);
+}
+
+#[test]
+fn the_step_passes_the_computers_date_to_the_arrival() {
+    let colours = |day: fn() -> (u32, u32)| {
+        let mut run = game("", true);
+        run.sim.real_day = day;
+        run.sim.status.settings.create_chance = [100; 5];
+        (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
+        let mut log = Vec::new();
+        while added(&log).is_empty() {
+            log.extend(run.step(67));
+        }
+        let guest = run.world.zoo.entities.iter().find(|e| e.class == "guests");
+        guest.unwrap().common.as_ref().unwrap().colors[0]
+    };
+    assert_eq!(colours(|| (10, 31)), 10);
+    assert_ne!(
+        colours(|| (10, 30)),
+        10,
+        "the draws of this seed are not orange"
+    );
 }

@@ -24,8 +24,7 @@
 //! when no trash can will take it.
 //! Gawk scenery ([`gawk`]) is a site like an exhibit: the list of scenery worth a look, the weight
 //! of what a guest has not seen and the choice of the nearest object.
-//! Missing so far (other issues): the Halloween colours; the entrance tiles other than the zoo
-//! entrance of the map.
+//! Missing so far (other issues): the entrance tiles other than the zoo entrance of the map.
 //!
 //! The log family `guest`: `guest add <id> <adult|child>` for each guest made, `guest status <id>
 //! <happiness> <hunger> <thirst> <bathroom> <energy>` after each update of the values, `guest
@@ -359,6 +358,14 @@ impl Guest {
         }
     }
 
+    /// The Halloween colours (guests 5.2 point 11): shirt palette 10, and trousers 2 or, for a
+    /// female, skirt 11. The hair and the skin keep their draws.
+    pub(crate) fn halloween(&mut self) {
+        if let [shirt, legs, ..] = &mut self.colours[..] {
+            (*shirt, *legs) = (10, if self.female { 11 } else { 2 });
+        }
+    }
+
     /// The guest forgets the sites it has seen (guests visit 3.6).
     pub(crate) fn forget(&mut self) {
         self.seen.clear();
@@ -443,6 +450,8 @@ pub(crate) struct Arrival {
     pub date: Date,
     /// `[AI] GuestResetInterval`.
     pub reset: i32,
+    /// The computer's date is 31 October (UTC): the guest gets the Halloween colours.
+    pub real_halloween: bool,
 }
 
 /// Whether an animal is loose on the zoo grounds.
@@ -562,7 +571,10 @@ pub(crate) fn arrive(
         return false;
     };
     let ty = types[rng.pick(types.len() as u32) as usize];
-    let guest = Guest::create(&Keys::of(ty), ty, &favourites(cat), a.date, a.reset, rng);
+    let mut guest = Guest::create(&Keys::of(ty), ty, &favourites(cat), a.date, a.reset, rng);
+    if a.real_halloween || (a.date.month, a.date.day) == (10, 31) {
+        guest.halloween();
+    }
     // The tile is drawn from the entrance tiles, one draw with a single tile.
     rng.pick(1);
     let width = world.zoo.width as usize;

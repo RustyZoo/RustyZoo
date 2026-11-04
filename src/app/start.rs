@@ -38,6 +38,8 @@ impl App<'_> {
         money: Money,
         saved: bool,
     ) -> Result<(), RenderError> {
+        // Every file load stops the loops of the sleigh and the biplane (cheats 6.4, 6.5.1).
+        self.cheats.season.loops_stopped();
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
         let goals = (zoo.scenario_states(), zoo.version >= 86);

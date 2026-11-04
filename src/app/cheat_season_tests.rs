@@ -28,6 +28,19 @@ fn items() -> Catalogue {
             height: 0,
         });
     }
+    // A recolourable building, for the Halloween colours.
+    cat.push(EntityType {
+        class: "building",
+        type_name: b"tent".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            Config::parse(b"[Characteristics/Integers]\ncIsColorReplaced=1\n").unwrap(),
+        )),
+        name_id: 1,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
     cat
 }
 
@@ -283,4 +296,155 @@ fn an_ini_reward_that_makes_an_item_available_is_kept_after_the_start_hook() {
             assert_eq!(on(app, cat), [false, true, false, false]);
         },
     );
+}
+
+fn real_halloween() -> (u32, u32) {
+    (10, 31)
+}
+
+fn real_other_day() -> (u32, u32) {
+    (10, 30)
+}
+
+/// The colours of the entities of the open game, in list order.
+fn colours(app: &App) -> Vec<Vec<u8>> {
+    let zoo = &app.game.as_ref().unwrap().world.zoo;
+    zoo.entities
+        .iter()
+        .map(|e| e.common.as_ref().unwrap().colors.clone())
+        .collect()
+}
+
+/// The open game's world is a man, a woman and a tent, colours all 1.
+fn dress(app: &mut App) {
+    use crate::unit::testing::{centre, entity, world_with};
+    let mut world = world_with((10, 10), |zoo| {
+        for (id, class, kind) in [
+            (1, "guests", "man"),
+            (2, "guests", "woman"),
+            (3, "building", "tent"),
+        ] {
+            let mut e = entity(class, kind, id, centre((id as i32, 1)), 0);
+            e.common.as_mut().unwrap().colors = vec![1; 4];
+            zoo.entities.push(e);
+        }
+    });
+    if let Some(crate::unit::Part::Guest(g)) = world.units.get_mut(2).map(|u| &mut u.part) {
+        g.female = true;
+    }
+    app.game.as_mut().unwrap().world = world;
+}
+
+#[test]
+fn a_start_on_the_real_31_october_raises_the_flag_and_launches_the_permanent_witch_once() {
+    run(|app, _| {
+        app.sim.real_day = real_halloween;
+        assert!(!app.cheats.season.halloween);
+        app.game_started();
+        assert!(app.cheats.season.halloween);
+        app.game_started();
+        let log = app.sim.take_lines();
+        let witches = log.iter().filter(|l| l.as_str() == "fly 5084 30").count();
+        assert_eq!(witches, 1, "{log:?}");
+        // Another real day does not lower the flag.
+        app.sim.real_day = real_other_day;
+        app.game_started();
+        assert!(app.cheats.season.halloween);
+    });
+}
+
+#[test]
+fn every_start_on_the_real_31_october_gives_the_jack_o_lantern_back_and_recolours() {
+    run(|app, cat| {
+        app.sim.real_day = real_halloween;
+        for _ in 0..2 {
+            dress(app);
+            app.game_started();
+            assert_eq!(on(app, cat), [false, true, false, false]);
+            let want = [vec![10, 2, 1, 1], vec![10, 11, 1, 1], vec![7, 5, 1, 1]];
+            assert_eq!(
+                colours(app)[..],
+                want,
+                "guests (10, 2 or 11), buildings (7, 5)"
+            );
+        }
+    });
+}
+
+#[test]
+fn a_start_on_another_real_day_recolours_nothing_and_leaves_the_four_items_unavailable() {
+    run(|app, cat| {
+        app.sim.real_day = real_other_day;
+        dress(app);
+        app.game_started();
+        assert_eq!(on(app, cat), [false; 4]);
+        assert!(colours(app).iter().all(|c| c[..] == [1; 4]));
+        assert!(!app.cheats.season.halloween);
+        assert!(!app.sim.take_lines().iter().any(|l| l.starts_with("fly")));
+    });
+}
+
+#[test]
+fn after_a_real_halloween_start_the_game_date_no_longer_offers_the_jack_o_lantern() {
+    run(|app, cat| {
+        app.sim.real_day = real_halloween;
+        app.game_started();
+        // A later start on another real day takes 7078 away and nothing gives it back (6.5.4).
+        app.sim.real_day = real_other_day;
+        app.game_started();
+        today(app, 10, 31);
+        app.guest_created();
+        assert_eq!(on(app, cat), [false; 4]);
+    });
+}
+
+#[test]
+fn a_guest_created_on_the_game_date_launches_the_flying_objects() {
+    run(|app, _| {
+        let log = |app: &mut App, month, day| {
+            today(app, month, day);
+            app.guest_created();
+            app.sim
+                .take_lines()
+                .into_iter()
+                .filter(|l| l.starts_with("fly"))
+                .collect::<Vec<_>>()
+        };
+        app.sim.take_lines();
+        assert_eq!(log(app, 12, 25), ["fly 5083"]);
+        assert_eq!(
+            log(app, 12, 25),
+            Vec::<String>::new(),
+            "the sleigh once while its flag is up"
+        );
+        assert_eq!(log(app, 12, 26), Vec::<String>::new());
+        assert_eq!(
+            log(app, 12, 25),
+            ["fly 5083"],
+            "another day lowered the flag"
+        );
+        assert_eq!(log(app, 9, 15), ["fly 5082"]);
+        assert_eq!(log(app, 9, 15), Vec::<String>::new());
+        // The witch comes at every creation, with or without the permanent flag.
+        assert_eq!(log(app, 10, 31), ["fly 5084"]);
+        app.cheats.season.halloween = true;
+        assert_eq!(log(app, 10, 31), ["fly 5084"]);
+    });
+}
+
+#[test]
+fn a_start_and_a_file_load_stop_the_loops_so_the_sleigh_comes_again() {
+    run(|app, _| {
+        today(app, 12, 25);
+        app.guest_created();
+        app.game_started();
+        app.sim.take_lines();
+        today(app, 12, 25);
+        app.guest_created();
+        assert!(app.sim.take_lines().contains(&"fly 5083".to_string()));
+        app.open_game(tile_with(&[]), Money::default()).unwrap();
+        today(app, 12, 25);
+        app.guest_created();
+        assert!(app.sim.take_lines().contains(&"fly 5083".to_string()));
+    });
 }
