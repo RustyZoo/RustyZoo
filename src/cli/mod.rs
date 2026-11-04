@@ -70,9 +70,6 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["check-behaviours", "--type", name] => {
             files::check_behaviours(&open_game(data_dir)?, Some(name))
         }
-        ["dump-sprite", member, dir] => {
-            sprites::dump_sprite(&open_game(data_dir)?, member, Path::new(dir))
-        }
         ["check-sprites"] => sprites::check_sprites(&open_game(data_dir)?),
         ["which", member] => files::which(open_game(data_dir)?, member),
         ["movie-info", source] => maps::movie_info(data_dir, source, None),
@@ -80,7 +77,6 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
             let k = k.parse().ok().filter(|k| *k > 0).ok_or(CliError::Usage)?;
             maps::movie_info(data_dir, source, Some((k, Path::new(dir))))
         }
-        ["map-info", source] => maps::map_info(data_dir, source),
         ["check-maps"] => maps::check_maps(&open_game(data_dir)?),
         ["check-exhibits", map] => maps::check_exhibits(&open_game(data_dir)?, map),
         ["check-rating", map] => maps::check_rating(&open_game(data_dir)?, map),
@@ -101,7 +97,6 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
             Some((text, flags)) => textcmd::draw_text(out, text, flags),
             None => Err(CliError::Usage),
         },
-        ["timing"] => checks::timing(&open_game(data_dir)?),
         ["check-ground"] => ground::check_ground(&open_game(data_dir)?),
         ["render-ground", key, out] => {
             ground::render_ground(&open_game(data_dir)?, key, Path::new(out))

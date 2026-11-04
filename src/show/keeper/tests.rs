@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 const MARINE: u32 = 9552;
 const TANK: u32 = 1;
+const SPECIES: u32 = 5401;
 
 fn marine() -> Catalogue {
     let mut cat = Catalogue::default();
@@ -30,6 +31,22 @@ fn marine() -> Catalogue {
     cat
 }
 
+/// The specialist's type and an animal type, for the keeper type of a scheduled species.
+fn marine_and_animal() -> Catalogue {
+    let mut cat = marine();
+    cat.push(EntityType {
+        class: "animals",
+        type_name: b"seal".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: SPECIES as i32,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
 fn info(w: &mut World) -> &mut crate::zoo::ShowInfo {
     w.zoo.shows.infos[0].as_mut().unwrap()
 }
@@ -39,6 +56,7 @@ fn announced() -> World {
     let mut w = show_tank();
     info(&mut w).show.ready = true;
     info(&mut w).show.keeper = MARINE;
+    info(&mut w).schedule = vec![SPECIES];
     w
 }
 
@@ -91,33 +109,57 @@ fn heard(sender: u32, kind: u16, extra: u16) -> Event {
 
 #[test]
 fn a_ready_show_needs_a_keeper_of_its_type_only_while_none_is_in_its_list() {
-    let mut w = show_tank();
-    assert!(!needs_keeper(&w, TANK, MARINE), "not announced");
+    let (mut w, cat) = (show_tank(), marine_and_animal());
+    assert!(!needs_keeper(&mut w, &cat, TANK, MARINE), "not announced");
     info(&mut w).show.ready = true;
-    assert!(!needs_keeper(&w, TANK, MARINE), "no keeper type yet");
-    info(&mut w).show.keeper = MARINE;
-    assert!(needs_keeper(&w, TANK, MARINE));
-    assert!(!needs_keeper(&w, TANK, 9500), "a keeper of another type");
-    assert!(!needs_keeper(&w, TANK, 0));
-    assert!(!needs_keeper(&w, 99, MARINE), "no such exhibit");
-    assert!(!needs_keeper(&w, 0, MARINE), "the grounds");
-    units::join(&mut w, &marine(), TANK, 7, &marine().types[0]);
-    assert!(!needs_keeper(&w, TANK, MARINE), "he is in the list");
+    assert!(
+        !needs_keeper(&mut w, &cat, TANK, MARINE),
+        "no animal scheduled"
+    );
+    info(&mut w).schedule = vec![SPECIES];
+    assert!(needs_keeper(&mut w, &cat, TANK, MARINE));
+    assert!(
+        !needs_keeper(&mut w, &cat, TANK, 9500),
+        "a keeper of another type"
+    );
+    assert!(!needs_keeper(&mut w, &cat, TANK, 0));
+    assert!(!needs_keeper(&mut w, &cat, 99, MARINE), "no such exhibit");
+    assert!(!needs_keeper(&mut w, &cat, 0, MARINE), "the grounds");
+    units::join(&mut w, &cat, TANK, 7, &cat.types[0]);
+    assert!(
+        !needs_keeper(&mut w, &cat, TANK, MARINE),
+        "he is in the list"
+    );
     units::leave(&mut w, 1001, 7, MARINE);
-    assert!(needs_keeper(&w, TANK, MARINE));
+    assert!(needs_keeper(&mut w, &cat, TANK, MARINE));
     info(&mut w).show.ready = false;
-    assert!(!needs_keeper(&w, TANK, MARINE));
+    assert!(!needs_keeper(&mut w, &cat, TANK, MARINE));
+}
+
+#[test]
+fn the_specialists_need_test_reads_the_scheduled_keeper_type() {
+    // The stored keeper type (0 in a new show, left by a stop) is not what is compared.
+    for stored in [0, MARINE] {
+        let (mut w, cat) = (show_tank(), marine_and_animal());
+        info(&mut w).show.ready = true;
+        info(&mut w).show.keeper = stored;
+        info(&mut w).schedule = vec![SPECIES];
+        assert!(needs_keeper(&mut w, &cat, TANK, MARINE), "{stored}");
+        // A species that is no animal type schedules the type 0.
+        info(&mut w).schedule = vec![7];
+        assert!(!needs_keeper(&mut w, &cat, TANK, MARINE), "{stored}");
+    }
 }
 
 #[test]
 fn an_exhibit_with_a_ready_show_calls_the_marine_keeper_and_no_other() {
-    let cat = marine();
+    let cat = marine_and_animal();
     let who = &cat.types[0];
     let mut w = announced();
     info(&mut w).show.ready = false;
-    assert!(!crate::staff::service::needs(&w, &cat, TANK, who));
+    assert!(!crate::staff::service::needs(&mut w, &cat, TANK, who));
     info(&mut w).show.ready = true;
-    assert!(crate::staff::service::needs(&w, &cat, TANK, who));
+    assert!(crate::staff::service::needs(&mut w, &cat, TANK, who));
     let other = EntityType {
         class: "keeper",
         type_name: b"zookeeper".to_vec(),
@@ -128,7 +170,7 @@ fn an_exhibit_with_a_ready_show_calls_the_marine_keeper_and_no_other() {
         footprint: [1, 1, 1],
         height: 0,
     };
-    assert!(!crate::staff::service::needs(&w, &cat, TANK, &other));
+    assert!(!crate::staff::service::needs(&mut w, &cat, TANK, &other));
 }
 
 #[test]

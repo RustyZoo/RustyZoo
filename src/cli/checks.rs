@@ -2,44 +2,16 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::io::{self, Write};
 
-use super::{CliError, Report, ignore_closed_pipe};
+use super::{CliError, Report};
 use crate::audio;
 use rustyzoo::Framebuffer;
 use rustyzoo::bitmap;
 use rustyzoo::config::Config;
 use rustyzoo::music::Music;
-use rustyzoo::timing::Timers;
 use rustyzoo::vfs::Vfs;
 use sdl3::audio::AudioSpec;
 use sdl3::pixels::PixelFormat;
-
-/// The loop settings of the ini file, and a simulated run with a pass at every millisecond.
-pub fn timing(vfs: &Vfs) -> Result<(), CliError> {
-    let mut timers = Timers::from_config(&Config::parse(vfs.ini())?);
-    let mut out = io::stdout().lock();
-    let first = writeln!(
-        out,
-        "periods: update {} ms, draw {} ms, cap {} ms",
-        timers.update_period(),
-        timers.draw_period(),
-        timers.cap()
-    );
-    ignore_closed_pipe(first)?;
-    timers.pass(0, 1.0);
-    let (mut draws, mut interfaces, mut steps) = (0, 0, 0);
-    for now in 1..=10_000 {
-        let pass = timers.pass(now, 1.0);
-        draws += u32::from(pass.draw);
-        interfaces += u32::from(pass.interface.is_some());
-        steps += u32::from(pass.step.is_some());
-    }
-    ignore_closed_pipe(writeln!(
-        out,
-        "ten seconds, clock of 1 ms: {draws} draws, {interfaces} interface updates, {steps} steps"
-    ))
-}
 
 /// Converts every root bitmap of the terrain and compares it with its shipped copy.
 pub fn check_bitmaps(vfs: &Vfs) -> Result<(), CliError> {

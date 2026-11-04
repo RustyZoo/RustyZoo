@@ -61,7 +61,7 @@ fn two_shows() -> (World, Catalogue) {
     (w, cat)
 }
 
-fn relay(w: &World, cat: &Catalogue, events: &mut Events) -> Rng {
+fn relay(w: &mut World, cat: &Catalogue, events: &mut Events) -> Rng {
     let mut rng = Rng::default();
     rng.seed(1);
     listen_world(w, cat, events, &mut rng);
@@ -84,9 +84,9 @@ fn drawn(n: usize) -> Rng {
 
 #[test]
 fn the_world_tells_the_tank_and_only_the_grandstands_of_the_show() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     let mut events = queue(vec![shown(0x2711, 1001, 0, 1)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     assert_eq!(
         waiting(&events),
         [
@@ -101,15 +101,15 @@ fn an_announce_of_a_show_without_a_specialist_or_an_info_is_not_relayed() {
     let (mut w, cat) = two_shows();
     super::cycle::info_mut(&mut w).records[1].units.clear();
     let mut events = queue(vec![shown(0x2711, 1001, 0, 1), shown(0x2711, 4242, 0, 1)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     assert!(waiting(&events).is_empty());
 }
 
 #[test]
 fn a_start_reaches_the_grandstands_as_the_start_note_and_the_tank_as_the_start() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     let mut events = queue(vec![shown(0x2713, 1001, 0, 0)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     let sent = waiting(&events);
     assert_eq!(sent[0].0, 0x2713);
     assert_eq!(sent[1].0, 0x2712);
@@ -117,9 +117,9 @@ fn a_start_reaches_the_grandstands_as_the_start_note_and_the_tank_as_the_start()
 
 #[test]
 fn the_relayed_data_word_is_passed_whole() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     let mut events = queue(vec![shown(0x2715, 1001, 0x1_0064, 95)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     let sent = waiting(&events);
     assert_eq!((sent[0].3, sent[0].4), (0x1_0064, 95));
     assert_eq!((sent[1].3, sent[1].4), (0x1_0064, 95));
@@ -129,7 +129,7 @@ fn the_relayed_data_word_is_passed_whole() {
 
 #[test]
 fn events_that_are_not_shows_events_or_not_due_are_left_alone() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     let late = Event {
         delay: 2,
         ..shown(0x2715, 1001, 80, 100)
@@ -139,22 +139,22 @@ fn events_that_are_not_shows_events_or_not_due_are_left_alone() {
         shown(0x2719, 1001, 0, 0),
         late,
     ]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     assert!(waiting(&events).is_empty());
 }
 
 #[test]
 fn an_end_is_cheered_later_and_an_abort_or_an_aborted_end_is_booed_later() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     let cheer = (0x2735, 0, WORLD_CHANNEL, 1001, 80, 135, 0);
     let boo = (0x2736, 0, WORLD_CHANNEL, 1001, 0, 135, 0);
     // An end alone is cheered.
     let mut events = queue(vec![shown(0x2715, 1001, 80, 100)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     assert_eq!(waiting(&events).last(), Some(&cheer));
     // An abort in the same step makes the end a boo too, and is itself booed.
     let mut events = queue(vec![shown(0x2717, 1001, 0, 0), shown(0x2715, 1001, 0, 94)]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     let sent = waiting(&events);
     assert_eq!(sent.iter().filter(|e| e.0 == 0x2736).count(), 2);
     assert!(sent.iter().all(|e| e.0 != 0x2735));
@@ -163,21 +163,21 @@ fn an_end_is_cheered_later_and_an_abort_or_an_aborted_end_is_booed_later() {
 
 #[test]
 fn only_the_first_abort_of_a_step_makes_its_show_a_boo() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     // The second show aborted too, but only the first abort is looked at: its end is cheered.
     let mut events = queue(vec![
         shown(0x2717, 1001, 0, 0),
         shown(0x2717, 1002, 0, 0),
         shown(0x2715, 1002, 80, 100),
     ]);
-    relay(&w, &cat, &mut events);
+    relay(&mut w, &cat, &mut events);
     let sent = waiting(&events);
     assert!(sent.contains(&(0x2735, 0, WORLD_CHANNEL, 1002, 80, 135, 0)));
 }
 
 #[test]
 fn a_reaction_draws_one_number_for_the_sound_when_a_grandstand_faces_the_show() {
-    let (w, cat) = two_shows();
+    let (mut w, cat) = two_shows();
     // Bad, good and great draw; neutral, the announce and the start do not.
     for (kind, draws) in [
         (0x272a, 1),
@@ -187,13 +187,13 @@ fn a_reaction_draws_one_number_for_the_sound_when_a_grandstand_faces_the_show() 
         (0x2713, 0),
     ] {
         let mut events = queue(vec![shown(kind, 1001, 5, 0)]);
-        let rng = relay(&w, &cat, &mut events);
+        let rng = relay(&mut w, &cat, &mut events);
         assert_eq!(rng, drawn(draws), "{kind:x}");
     }
     // The cheer and the boo of an end, 135 steps on, draw as well.
     for kind in [0x2735, 0x2736] {
         let mut events = queue(vec![shown(kind, 0, 1001, 80)]);
-        assert_eq!(relay(&w, &cat, &mut events), drawn(1), "{kind:x}");
+        assert_eq!(relay(&mut w, &cat, &mut events), drawn(1), "{kind:x}");
         assert!(waiting(&events).is_empty());
     }
 }
@@ -204,7 +204,7 @@ fn no_number_is_drawn_for_a_show_no_grandstand_faces() {
     let at = w.find(7).unwrap();
     w.zoo.entities[at].common.as_mut().unwrap().rotation = 6;
     let mut events = queue(vec![shown(0x272c, 1001, 5, 1), shown(0x2735, 0, 1001, 80)]);
-    assert_eq!(relay(&w, &cat, &mut events), untouched());
+    assert_eq!(relay(&mut w, &cat, &mut events), untouched());
     // The stored show id still sends the reaction to the grandstand.
     assert_eq!(waiting(&events).len(), 2);
 }

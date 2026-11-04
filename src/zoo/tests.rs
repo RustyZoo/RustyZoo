@@ -3418,3 +3418,41 @@ fn a_changed_show_is_written_into_its_habitat_and_a_removed_one_leaves_none() {
     assert_eq!(back.shows.infos, [None, None]);
     assert_eq!(back.tanks, zoo.tanks);
 }
+
+#[test]
+fn the_type_records_of_a_show_are_written_in_type_id_order() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let info = zoo.shows.infos[0].as_mut().unwrap();
+    let base = info.records.first().cloned().expect("a type record");
+    let rec = |key| TypeRecord {
+        key,
+        ..base.clone()
+    };
+    info.records = vec![rec(9552), rec(5400), rec(0), rec(u32::MAX)];
+    let unsorted = zoo.write(&money).unwrap();
+    let info = zoo.shows.infos[0].as_mut().unwrap();
+    info.records = vec![rec(0), rec(5400), rec(9552), rec(u32::MAX)];
+    assert_eq!(unsorted, zoo.write(&money).unwrap());
+}
+
+#[test]
+fn the_item_states_of_a_show_are_written_in_animal_id_order() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(106)).unwrap();
+    let state = |animal| ItemState {
+        script: 0,
+        animal,
+        item: 1,
+        finished: false,
+        aborted: false,
+        cue_sent: false,
+        ready: false,
+        started: false,
+        done: false,
+    };
+    let show = &mut zoo.shows.infos[0].as_mut().unwrap().show;
+    show.items = vec![state(30), state(21), state(u32::MAX), state(22)];
+    let unsorted = zoo.write(&money).unwrap();
+    let show = &mut zoo.shows.infos[0].as_mut().unwrap().show;
+    show.items = vec![state(21), state(22), state(30), state(u32::MAX)];
+    assert_eq!(unsorted, zoo.write(&money).unwrap());
+}

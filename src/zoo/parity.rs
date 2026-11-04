@@ -67,6 +67,16 @@ fn compare(old: &[u8], new: &[u8]) -> BTreeMap<String, (usize, isize)> {
 
 /// The file `member` of the install saved back by a run started on it, or why it is refused.
 fn resaved(vfs: &crate::vfs::Vfs, cat: Catalogue, member: &str) -> Result<Vec<u8>, String> {
+    resaved_after(vfs, cat, member, |_| {})
+}
+
+/// [`resaved`] after `before` has changed the started run (the parity measure steps no run).
+fn resaved_after(
+    vfs: &crate::vfs::Vfs,
+    cat: Catalogue,
+    member: &str,
+    before: impl FnOnce(&mut Run),
+) -> Result<Vec<u8>, String> {
     let (zoo, money) = Zoo::parse_money(&vfs.read(member).unwrap())
         .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
         .unwrap();
@@ -79,7 +89,9 @@ fn resaved(vfs: &crate::vfs::Vfs, cat: Catalogue, member: &str) -> Result<Vec<u8
     world.set_decay(Decay::load(vfs));
     let economy = vfs.read("economy.cfg").unwrap_or_default();
     let types = (cat, Class::load(vfs));
-    Run::start((vfs.ini(), &economy), types, world, money, 1, false).save()
+    let mut run = Run::start((vfs.ini(), &economy), types, world, money, 1, false);
+    before(&mut run);
+    run.save()
 }
 
 /// A file of version 105 or 106 saved back: the report of its sections, the bytes that differ and
@@ -169,4 +181,65 @@ fn what_differs_is_counted_by_section() {
     let by = compare(&file, &other);
     assert_eq!((by["tiles"], by["tail"]), ((1, 0), (2, 2)));
     assert_eq!(by.values().map(|v| v.0).sum::<usize>(), 3);
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn a_stepped_scn28_save_holds_the_record_that_the_specialists_need_test_made() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let old = Zoo::parse(&vfs.read("maps/scn28.zoo").unwrap()).unwrap();
+    let key = 9552;
+    let mut now = 0;
+    let saved = resaved_after(
+        &vfs,
+        Catalogue::load(&vfs).unwrap(),
+        "maps/scn28.zoo",
+        |run| {
+            // A show whose keeper type is not set yet (a new tank, or after a stop), no record of him.
+            let info = run
+                .world
+                .zoo
+                .shows
+                .infos
+                .iter_mut()
+                .flatten()
+                .next()
+                .unwrap();
+            info.records.retain(|r| r.key != key);
+            info.show.keeper = 0;
+            // He is called in the first steps: the step that makes the record dates it.
+            for _ in 0..5 {
+                run.step(100);
+                let info = run.world.zoo.shows.infos.iter().flatten().next().unwrap();
+                if info.record(key).is_some() {
+                    break;
+                }
+            }
+            now = run.world.units.now;
+        },
+    )
+    .unwrap();
+    let new = Zoo::parse(&saved).unwrap();
+    let (old, new) = (
+        old.shows.infos.iter().flatten().next().unwrap(),
+        new.shows.infos.iter().flatten().next().unwrap(),
+    );
+    let keys: Vec<_> = new.records.iter().map(|r| r.key).collect();
+    assert!(keys.is_sorted(), "{keys:?}");
+    let made = new.record(key).expect("the record of the specialist type");
+    assert_eq!(
+        made,
+        &TypeRecord::new(key, u16::MAX, crate::timing::file_time(now))
+    );
+    assert_eq!(made.date, crate::timing::file_time(now));
+    // The other records are the file's.
+    let rest = |i: &ShowInfo| {
+        i.records
+            .iter()
+            .filter(|r| r.key != key)
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(rest(new), rest(old));
 }

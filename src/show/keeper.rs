@@ -1,7 +1,7 @@
 //! The marine specialist's side of a show (shows 22): when a show needs him, his cues, his place
 //! in the unit list after a load and his removal. His job (19) is in the keeper goals.
 
-use super::{cycle, event, has_info, info_of, units};
+use super::{cycle, event, has_info, info_slot, units};
 use crate::behaviour::Data;
 use crate::entity::Catalogue;
 use crate::goal::Cx;
@@ -11,9 +11,20 @@ use crate::unit::{Ctx, Kind, Unit};
 use crate::world::World;
 
 /// Whether exhibit `x` holds a show that needs a keeper of type `t` (shows 22.1 point 1): `t` is
-/// its keeper type, its unit list of `t` is empty and the show is ready.
-pub(crate) fn needs_keeper(world: &World, x: u32, t: u32) -> bool {
-    info_of(world, x).is_some_and(|i| i.show.keeper == t && i.units(t).is_empty() && i.show.ready)
+/// the keeper type of its scheduled species, its unit list of `t` is empty and the show is ready.
+/// The list is a lookup: it makes the record of `t` (shows 32.7 point 1.2).
+pub(crate) fn needs_keeper(world: &mut World, cat: &Catalogue, x: u32, t: u32) -> bool {
+    let date = crate::timing::file_time(world.units.now);
+    let Some(n) = info_slot(world, x) else {
+        return false;
+    };
+    let Some(i) = world.zoo.shows.infos[n]
+        .as_mut()
+        .filter(|i| cycle::keeper_type(cat, i.scheduled().unwrap_or(0)) == t)
+    else {
+        return false;
+    };
+    i.lookup(t, date).units.is_empty() && i.show.ready
 }
 
 /// The set the specialist starts for the events he heard (shows 22.2 points 2 to 4): only those
