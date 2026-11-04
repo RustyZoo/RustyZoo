@@ -10,7 +10,7 @@ impl App<'_> {
     ///
     /// This is a bare map: the start hook of the date hooks does not run (cheats 6.4 point 6).
     pub(super) fn open_game(&mut self, zoo: Zoo, money: Money) -> Result<(), RenderError> {
-        self.open_game_with(zoo, money, false, false)
+        self.open_game_as(zoo, money, false)
     }
 
     /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) whose scenario cannot
@@ -30,23 +30,13 @@ impl App<'_> {
 
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps). A
-    /// start, or a saved game whose scenario block loads, runs the start hook (cheats 6.4).
+    /// saved game whose scenario block loads runs the start hook after the resume triggers
+    /// (cheats 6.3 point 2, 6.4).
     pub(super) fn open_game_as(
         &mut self,
         zoo: Zoo,
         money: Money,
         saved: bool,
-    ) -> Result<(), RenderError> {
-        self.open_game_with(zoo, money, saved, true)
-    }
-
-    /// [`App::open_game_as`]; `start` is false for a bare map, which never runs the start hook.
-    fn open_game_with(
-        &mut self,
-        zoo: Zoo,
-        money: Money,
-        saved: bool,
-        start: bool,
     ) -> Result<(), RenderError> {
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
@@ -160,13 +150,7 @@ impl App<'_> {
             carry: None,
             held: None,
         });
-        // The start of a game comes before the scenario's triggers and the research (cheats 6.3).
-        // A saved game runs it only when its scenario block loads: none, an empty or a failed
-        // block does not (6.4 points 5 to 7).
         let scenario = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f));
-        if start && (!saved || scenario.is_some()) {
-            self.game_started();
-        }
         // The scenario resumes first (its triggers, then the goal states), then the research
         // section completes the programs over their availability, then the ini rewards (7.3).
         if let Some(scenario) = scenario {
@@ -176,6 +160,9 @@ impl App<'_> {
                 s.gui().take_forced();
             }
             self.scenario_avail(false);
+            // The start hook follows the resume triggers; a saved game without a scenario block,
+            // with an empty or a failed one does not run it (cheats 6.3 point 2, 6.4 points 5 to 7).
+            self.game_started();
         }
         // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
         self.look_up_unlocks();
@@ -339,6 +326,8 @@ impl App<'_> {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
             self.scenario_forced();
             self.scenario_avail(true);
+            // The start hook follows the start triggers and the research tree (cheats 6.3 point 2).
+            self.game_started();
             self.look_up_unlocks();
         }
         let music = self.music.take();

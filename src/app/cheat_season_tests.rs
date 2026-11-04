@@ -5,7 +5,7 @@ use super::*;
 use crate::cheat::{HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
-use crate::render::tests::tile_with;
+use crate::render::tests::{cache_install_with, frame_file, tile_with};
 use crate::timing::Date;
 use crate::zoo::Clocks;
 
@@ -54,6 +54,21 @@ fn today(app: &mut App, month: u32, day: u32) {
     app.sim.start_game(0, clocks);
 }
 
+/// A scenario start of `s/a.scn`, which runs the start hook at the end of its set-up.
+fn restart(app: &mut App) {
+    app.open_game(tile_with(&[]), Money::default()).unwrap();
+    app.begin(&Start {
+        path: "scenario.zoo".into(),
+        label: "scenario".into(),
+        forget_last: true,
+        freeform: false,
+        cash: Default::default(),
+        reset: false,
+        reset_fences: false,
+        scenario: Some("s/a.scn".into()),
+    });
+}
+
 /// A game after a scenario start, which runs the start hook.
 fn run(body: impl FnOnce(&mut App, &Catalogue)) {
     with_world(
@@ -61,8 +76,7 @@ fn run(body: impl FnOnce(&mut App, &Catalogue)) {
         (false, false),
         (items(), &[]),
         |app, cat| {
-            app.open_zoo(tile_with(&[]), Money::default(), false)
-                .unwrap();
+            restart(app);
             body(app, cat);
         },
     );
@@ -87,8 +101,7 @@ fn a_scenario_or_freeform_start_makes_the_four_items_unavailable() {
     run(|app, cat| {
         assert_eq!(on(app, cat), [false; 4]);
         all_on(app);
-        app.open_zoo(tile_with(&[]), Money::default(), false)
-            .unwrap();
+        restart(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -195,8 +208,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
         app.guest_created();
         assert_eq!(on(app, cat), [false, false, false, true]);
         // A new game takes it away; the hook has spent its one time.
-        app.open_zoo(tile_with(&[]), Money::default(), false)
-            .unwrap();
+        restart(app);
         assert_eq!(on(app, cat), [false; 4]);
         app.game
             .as_mut()
@@ -216,5 +228,43 @@ fn the_hooks_do_nothing_without_a_game() {
         app.game = None;
         app.guest_created();
         app.game_started();
+    });
+}
+
+/// An app with the four items and the scenario `s/a.scn` of this text.
+fn with_scenario(name: &str, text: &str, body: impl FnOnce(&mut App, &Catalogue)) {
+    let files = [("s/a.scn", text.as_bytes().to_vec())];
+    let install = cache_install_with(name, frame_file(), &files);
+    let vfs = crate::vfs::Vfs::open(&install.0).unwrap();
+    let cat = items();
+    let mut app = App::empty(
+        MapRenderer::new(&vfs, &cat),
+        Timers::new(66, 16, 200),
+        (64, 48),
+        Settings::default(),
+    )
+    .unwrap();
+    body(&mut app, &cat);
+}
+
+/// A trigger that makes the jack-o'-lantern's id available.
+const MAKE: &str = "trulea=4\ntruleb=0\ntarga=7078\n";
+
+#[test]
+fn a_start_trigger_that_makes_an_item_available_is_undone_by_the_start_hook() {
+    let text = format!("[start]\ntriggers=t\n[t]\n{MAKE}");
+    with_scenario("cheat-season-start", &text, |app, cat| {
+        restart(app);
+        assert_eq!(on(app, cat), [false; 4]);
+    });
+}
+
+#[test]
+fn a_resume_trigger_that_makes_an_item_available_is_undone_by_the_start_hook() {
+    let text = format!("[resume]\ntriggers=t\n[t]\n{MAKE}");
+    with_scenario("cheat-season-resume", &text, |app, cat| {
+        app.open_zoo(zoo(Some("s/a.scn")), Money::default(), true)
+            .unwrap();
+        assert_eq!(on(app, cat), [false; 4]);
     });
 }
