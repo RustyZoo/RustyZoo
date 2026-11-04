@@ -409,4 +409,41 @@ mod tests {
         ]);
         assert!(huge.iter().all(is_error));
     }
+
+    /// A map loads, steps and hashes again: the same load gives the same hash, a step moves it,
+    /// and the cash command and the entity of a unit are answered.
+    #[test]
+    #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+    fn full_game_load_step_and_hash() {
+        let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+        let mut out = Vec::new();
+        let load = call("load", r#"{"map":"maps/default.zoo","seed":3}"#);
+        let hash = call("hash", "{}");
+        let step = call("step", r#"{"ticks":20}"#);
+        let cash = call("command", r#"{"text":"cash 1000"}"#);
+        let state = call("state", "{}");
+        let log = call("log", r#"{"lines":5}"#);
+        let requests = [
+            &load, &hash, &step, &hash, &load, &hash, &cash, &state, &log,
+        ];
+        serve(
+            &vfs,
+            requests.map(String::as_str).join("\n").as_bytes(),
+            &mut out,
+        )
+        .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let answers: Vec<Json> = text.lines().map(|l| json::parse(l).unwrap()).collect();
+        assert!(!answers.iter().any(is_error), "{text}");
+        let (before, after, again) = (
+            message(&answers[1]),
+            message(&answers[3]),
+            message(&answers[5]),
+        );
+        assert_eq!(before.len(), 16);
+        assert_ne!(before, after);
+        assert_eq!(before, again);
+        assert!(message(&answers[7]).contains("cash "));
+    }
 }
