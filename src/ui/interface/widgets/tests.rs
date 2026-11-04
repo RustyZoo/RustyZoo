@@ -1,7 +1,7 @@
 use super::*;
 use crate::Framebuffer;
 use crate::app::Mouse;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{HIDDEN, Picture, Tree};
 use crate::vfs::Vfs;

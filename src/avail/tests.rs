@@ -1,6 +1,6 @@
 use super::*;
 use crate::config::Config;
-use std::sync::Arc;
+use crate::fixtures;
 
 /// A type of this name id and startup value (`None`: the key is missing).
 fn ty(class: &'static str, name: &str, id: i32, startup: Option<i32>) -> EntityType {
@@ -8,14 +8,8 @@ fn ty(class: &'static str, name: &str, id: i32, startup: Option<i32>) -> EntityT
         format!("[Global]\nAvailableAtStartup={v}\n")
     });
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: b"f".to_vec(),
-        file: None,
-        config: Some(Arc::new(Config::parse(ini.as_bytes()).unwrap())),
         name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, name, "f", &ini)
     }
 }
 

@@ -2,7 +2,7 @@ use super::*;
 use crate::Framebuffer;
 use crate::config::Config;
 use crate::entity::Catalogue;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::Tree;
 

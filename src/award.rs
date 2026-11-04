@@ -101,6 +101,7 @@ pub(crate) fn add(held: &mut Vec<i32>, id: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::TempDir;
 
     fn held(ids: &[i32]) -> Vec<i32> {
         let mut list = Vec::new();
@@ -126,28 +127,14 @@ mod tests {
         assert_eq!(held(&[-1, -1]), [-1]);
     }
 
-    /// The folder of an install, removed when dropped.
-    struct Dir(std::path::PathBuf);
-
-    impl Drop for Dir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     /// An install with the given loose files and a `zoo.ini`.
-    fn install(name: &str, files: &[(&str, &str)]) -> (Vfs, Dir) {
-        let dir =
-            std::env::temp_dir().join(format!("rustyzoo-award-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
+    fn install(name: &str, files: &[(&str, &str)]) -> (Vfs, TempDir) {
+        let dir = TempDir::new(name);
+        dir.write("zoo.ini", b"[resource]\npath=.\n");
         for (path, text) in files {
-            let path = dir.join(path);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, text).unwrap();
+            dir.write(path, text.as_bytes());
         }
-        (Vfs::open(&dir).unwrap(), Dir(dir))
+        (Vfs::open(&dir.0).unwrap(), dir)
     }
 
     const ONE: &str = "[Version]\nversion = 1\n[Awards]\naward = 13\naward = 14\n\

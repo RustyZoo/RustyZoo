@@ -15,6 +15,8 @@ pub mod config;
 pub mod cursor;
 pub mod entity;
 pub mod exhibit;
+#[cfg(test)]
+mod fixtures;
 pub mod framelog;
 pub mod goal;
 pub mod ground;

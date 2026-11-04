@@ -3,10 +3,10 @@
 
 use super::*;
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::menu::Start;
 use crate::money::{CONSTRUCTION, NET, StartCash};
 use crate::render::tests::{cache_install_with, flat_map, frame_file, tile_with};
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{Kind, Tree};
 use crate::vfs::Vfs;

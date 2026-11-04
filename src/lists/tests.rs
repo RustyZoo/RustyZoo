@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 
 fn vfs(name: &str, members: &[(&str, &str)]) -> (Install, Vfs) {
     let members: Vec<(&str, Vec<u8>)> = members

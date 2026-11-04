@@ -247,37 +247,8 @@ impl StringTables {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::TempDir;
     use crate::pe::tests::library;
-    use std::path::PathBuf;
-
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> TempDir {
-            let path = std::env::temp_dir().join(format!(
-                "rustyzoo-strings-{}-{}-{name}",
-                std::process::id(),
-                {
-                    static N: std::sync::atomic::AtomicUsize =
-                        std::sync::atomic::AtomicUsize::new(0);
-                    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                }
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).unwrap();
-            TempDir(path)
-        }
-
-        fn write(&self, name: &str, content: &[u8]) {
-            std::fs::write(self.0.join(name), content).unwrap();
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
 
     /// Four libraries that overlap, in the layout of an install with one expansion.
     fn install(name: &str) -> TempDir {

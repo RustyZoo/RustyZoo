@@ -1,22 +1,15 @@
 //! The declarations of a building type, the price thresholds and the placing of slots.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::sim::Rng;
 use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world_with};
-use std::sync::Arc;
 
 fn ty(text: &str) -> EntityType {
     EntityType {
-        class: "building",
-        type_name: b"stand".to_vec(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(Arc::new(Config::parse(text.as_bytes()).unwrap())),
-        name_id: 0,
         footprint: [2, 2, 1],
-        height: 0,
+        ..fixtures::ty("building", "stand", "", text)
     }
 }
 
@@ -37,6 +30,41 @@ fn an_outside_user_faces_the_building_only_for_a_set_user_facing_of_1() {
             format!("[Characteristics/Integers]\ncSetUserFacing={text}\n")
         };
         assert_eq!(Kind::of(&ty(&file), 3.0).faces_user, on, "{text:?}");
+    }
+}
+
+#[test]
+fn the_keys_of_a_return_building_are_on_only_for_1_and_the_strict_capacity_is_a_number() {
+    let flags = [
+        "cReturnBuilding",
+        "cUserTracker",
+        "cIdler",
+        "cExhibitViewer",
+    ];
+    for (text, on) in [
+        ("", false),
+        ("0", false),
+        ("-1", false),
+        ("2", false),
+        ("99999999999", false),
+        ("1", true),
+    ] {
+        for (i, key) in flags.iter().enumerate() {
+            let file = format!("[Characteristics/Integers]\n{key}={text}\n");
+            let k = Kind::of(&ty(&file), 3.0).ret;
+            let got = [k.building, k.tracker, k.idler, k.viewer];
+            assert_eq!(got, std::array::from_fn(|j| j == i && on), "{key}={text:?}");
+        }
+        let slot = format!("[slots]\nname=a\n[a]\nisreturnslot={text}\n");
+        assert_eq!(
+            Kind::of(&ty(&slot), 3.0).slots[0].return_slot,
+            on,
+            "{text:?}"
+        );
+    }
+    for (text, strict) in [("", 0), ("0", 0), ("-1", -1), ("2", 2)] {
+        let file = format!("[Characteristics/Integers]\ncStrictBuildingCapacity={text}\n");
+        assert_eq!(Kind::of(&ty(&file), 3.0).ret.strict, strict, "{text:?}");
     }
 }
 
@@ -255,6 +283,8 @@ fn animal(swims: bool, large: bool) -> Species {
         large,
         tile: Some((1, 1)),
         grandstand: false,
+        unit: 0,
+        returning: None,
     }
 }
 

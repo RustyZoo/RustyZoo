@@ -2,12 +2,12 @@
 
 use super::*;
 use crate::app::Mouse;
+use crate::fixtures::Install;
 use crate::lists::Status;
 use crate::lists::{freeform_list, scenario_list};
 use crate::menu::{Request, Start};
 use crate::money::StartCash;
 use crate::scenario::Ended;
-use crate::sprite::tests::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, HIDDEN, Picture, Tree};
 

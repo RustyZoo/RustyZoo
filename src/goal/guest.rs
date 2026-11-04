@@ -15,6 +15,7 @@ use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::unit::Part;
 
 mod building;
+pub(super) use building::Ride;
 mod contagion;
 mod scenery;
 mod sites;

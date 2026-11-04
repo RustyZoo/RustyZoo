@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::{DISABLED, Picture, Tree};
 use crate::vfs::Vfs;

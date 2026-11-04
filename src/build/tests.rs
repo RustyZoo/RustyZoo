@@ -1,25 +1,13 @@
 use super::*;
 use crate::app::Mouse;
 use crate::config::Config;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
+use crate::fixtures::ty;
 use crate::ui::draw::Strings;
 use crate::ui::interface::Action;
 use crate::ui::layout::{DISABLED, Expansion, Kind, Tree};
 
 /// A type of the class with a definition file of this text.
-fn ty(class: &'static str, type_name: &str, subtype: &str, ini: &str) -> EntityType {
-    EntityType {
-        class,
-        type_name: type_name.into(),
-        subtype: subtype.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
-}
-
 fn catalogue(types: Vec<EntityType>) -> Catalogue {
     let mut cat = Catalogue::default();
     cat.types = types;

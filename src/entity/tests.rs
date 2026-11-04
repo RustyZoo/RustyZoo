@@ -1,9 +1,9 @@
 use std::io::Write;
-use std::path::PathBuf;
 
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+use crate::fixtures::Install;
 use crate::usertext;
 use crate::vfs::Vfs;
 
@@ -24,52 +24,24 @@ fn archive(members: &[(&str, &str)], method: CompressionMethod) -> Vec<u8> {
     zip.finish().unwrap().into_inner()
 }
 
-/// An installation made of one archive, in a fresh folder removed on drop.
-struct Install(PathBuf);
+/// An installation of one archive with these text members.
+fn install(name: &str, members: &[(&str, &str)]) -> Install {
+    let members: Vec<_> = members
+        .iter()
+        .map(|(member, text)| (*member, text.as_bytes().to_vec()))
+        .collect();
+    Install::new(name, &members)
+}
 
 impl Install {
-    fn new(name: &str, members: &[(&str, &str)]) -> Install {
-        let path = std::env::temp_dir().join(format!(
-            "rustyzoo-entity-{}-{}-{name}",
-            std::process::id(),
-            {
-                static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-                N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            }
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        std::fs::write(path.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
-        std::fs::write(
-            path.join("a.ztd"),
-            archive(members, CompressionMethod::Stored),
-        )
-        .unwrap();
-        Install(path)
-    }
-
-    /// Writes a loose file below the install folder.
-    fn loose(self, name: &str, content: &[u8]) -> Install {
-        let path = self.0.join(name);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, content).unwrap();
-        self
-    }
-
     fn load(&self) -> Result<Catalogue, EntityError> {
         Catalogue::load(&Vfs::open(&self.0).unwrap())
     }
 }
 
-impl Drop for Install {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
 /// The catalogue of an installation with these members.
 fn catalogue(name: &str, members: &[(&str, &str)]) -> Catalogue {
-    Install::new(name, members).load().unwrap()
+    install(name, members).load().unwrap()
 }
 
 #[test]
@@ -501,7 +473,7 @@ fn a_damaged_member_leaves_the_other_types_alone() {
     // Overwrite the start of the data of the first member (it is at offset 0).
     let header = 30 + usize::from(bytes[26]) + usize::from(bytes[28]);
     bytes[header..header + 20].fill(0xff);
-    let install = Install::new("damaged", &[]);
+    let install = install("damaged", &[]);
     std::fs::write(install.0.join("a.ztd"), bytes).unwrap();
     let c = install.load().unwrap();
     assert_eq!(names(&c), ["food/food/bone", "food/food/meat"]);
@@ -512,7 +484,7 @@ fn a_damaged_member_leaves_the_other_types_alone() {
 
 #[test]
 fn an_empty_loose_file_hides_the_member_and_the_type_keeps_the_defaults() {
-    let install = Install::new(
+    let install = install(
         "empty-loose",
         &[
             ("food.cfg", "[food]\nbone = b.ai\n"),
@@ -530,7 +502,7 @@ fn an_empty_loose_file_hides_the_member_and_the_type_keeps_the_defaults() {
 #[test]
 fn a_failure_of_the_system_is_an_error() {
     use std::os::unix::fs::PermissionsExt;
-    let install = Install::new("denied", &[("food.cfg", "[food]\nbone = b.ai\n")])
+    let install = install("denied", &[("food.cfg", "[food]\nbone = b.ai\n")])
         .loose("b.ai", b"[Animations]\n");
     let path = install.0.join("b.ai");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o0)).unwrap();
@@ -657,7 +629,7 @@ fn behaviour_sets_are_looked_up_by_class() {
 
 #[test]
 fn an_unknown_operation_fails_the_load_with_the_file_and_line() {
-    let install = Install::new(
+    let install = install(
         "bad-call",
         &[
             ("animals.cfg", "[animals]\nyak = y.ai\n"),
@@ -740,7 +712,7 @@ fn a_unit_with_a_default_subtype_never_reads_the_plain_name_id() {
 
 #[test]
 fn nested_search_directories_name_a_loose_user_file_twice() {
-    let install = Install::new(
+    let install = install(
         "nested",
         &[
             ("scener.cfg", "[objects]\nother\n[other]\nrock = r.ai\n"),

@@ -1,8 +1,10 @@
 //! A guest uses a hot dog stand and a restroom on a synthetic map.
 
 use super::*;
+use crate::behaviour::Data;
 use crate::building::Prices;
 use crate::entity::{Catalogue, EntityType};
+use crate::fixtures;
 use crate::goal::guest::tests::walks;
 use crate::guest::{BATHROOM, HAPPINESS, HUNGER, THIRST};
 use crate::money::{self, Money};
@@ -10,9 +12,9 @@ use crate::sim::{Events, Rng, Sim};
 use crate::unit::testing::{centre, entity, world_with};
 use crate::unit::{Ctx, Unit};
 use crate::world::World;
-use std::sync::Arc;
 
 mod placed;
+mod ride;
 
 const STAND: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeInside=3\n\
     [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Sells]\nhotdog\n\
@@ -52,16 +54,8 @@ const MAN: &str = "[Global]\nDefaultSubtype=man\n[man/Characteristics/Integers]\
 
 fn ty(class: &'static str, name: &str, text: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.as_bytes().to_vec(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(Arc::new(
-            crate::config::Config::parse(text.as_bytes()).unwrap(),
-        )),
-        name_id: 0,
         footprint: [2, 2, 1],
-        height: 0,
+        ..fixtures::ty(class, name, "", text)
     }
 }
 
@@ -154,23 +148,43 @@ fn zoo_of(name: Option<&str>) -> World {
 
 /// Runs `f` on the goal update context of guest 1.
 fn with_cx<R>(cat: &Catalogue, w: &mut World, f: impl FnOnce(&mut Cx) -> R) -> R {
+    with_data(cat, w, &walks(), f)
+}
+
+/// The same with the sets of `data`.
+fn with_data<R>(
+    cat: &Catalogue,
+    w: &mut World,
+    data: &dyn Data,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
+    with_rng(cat, w, data, &mut Rng::default(), f)
+}
+
+/// The same with the generator `rng`.
+fn with_rng<R>(
+    cat: &Catalogue,
+    w: &mut World,
+    data: &dyn Data,
+    rng: &mut Rng,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
     let mut u: Unit = w.units.get(1).unwrap().clone();
-    let (events, mut removals, mut rng) = (Events::default(), Vec::new(), Rng::default());
+    let (events, mut removals) = (Events::default(), Vec::new());
     let mut ctx = Ctx {
-        rng: &mut rng,
+        rng,
         events: &events,
         removals: &mut removals,
         step: 67,
         cat,
     };
-    let data = walks();
     let at = w.find(1).unwrap();
     let mut cx = Cx {
         unit: &mut u,
         world: w,
         ctx: &mut ctx,
         at,
-        data: &data,
+        data,
     };
     let r = f(&mut cx);
     *w.units.get_mut(1).unwrap() = u;

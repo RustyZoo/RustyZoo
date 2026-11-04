@@ -7,7 +7,7 @@ use crate::render::order::Kind;
 use crate::sim::Sim;
 use crate::timing::file_time;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Clocks, Common, Escape, Tile, UnitBlock, View, Zoo};
+use crate::zoo::{Clocks, Common, Escape, Tile, UnitBlock, Zoo};
 
 mod boxed;
 mod breed;
@@ -499,25 +499,13 @@ fn pens_with(animals: impl Fn(usize, i32) -> Vec<Entity>) -> World {
         edges: 0,
     };
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: SIZE as u32,
         height: SIZE as u32,
         entrance: (SIZE as u32 - 1, SIZE as u32 - 1),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 10_000,
         tiles: (0..SIZE * SIZE).map(|t| tile(t % SIZE)).collect(),
         entities,
-        view: View::default(),
-        clocks: Clocks::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     World::new(zoo, shape)
 }

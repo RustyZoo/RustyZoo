@@ -1,19 +1,14 @@
 use super::*;
 use crate::config::Config;
+use crate::fixtures;
 use crate::research::{Branch, Category, Done, Program, Tree};
 use std::sync::Arc;
 
 fn ty(class: &'static str, kind: &str, sub: &str, name_id: i32, expansion: i32) -> EntityType {
     let body = format!("[Characteristics/Integers]\ncExpansionID={expansion}\n");
     EntityType {
-        class,
-        type_name: kind.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(Arc::new(Config::parse(body.as_bytes()).unwrap())),
         name_id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, kind, sub, &body)
     }
 }
 

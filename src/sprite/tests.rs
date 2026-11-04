@@ -1,5 +1,6 @@
 use super::blend::{code, darken};
 use super::*;
+use crate::fixtures::Install;
 use crate::vfs::Vfs;
 
 /// Frame data: height (raw, may carry the shadow bit), width, offsets y = -3 and x = 5,
@@ -713,39 +714,6 @@ fn sprite_members_have_no_extension() {
     assert!(is_sprite_member("animals/lion.d/n"));
     assert!(!is_sprite_member("animals/lion/"));
     assert!(!is_sprite_member(""));
-}
-
-/// An install folder with the given members in one archive, removed on drop.
-pub(crate) struct Install(pub std::path::PathBuf);
-
-impl Install {
-    pub(crate) fn new(name: &str, members: &[(&str, Vec<u8>)]) -> Install {
-        let dir = std::env::temp_dir().join(format!(
-            "rustyzoo-sprite-{}-{}-{name}",
-            std::process::id(),
-            {
-                static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-                N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            }
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("zoo.ini"), "[resource]\npath=.\n").unwrap();
-        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        for (name, content) in members {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default())
-                .unwrap();
-            zip.write_all(content).unwrap();
-        }
-        std::fs::write(dir.join("a.ztd"), zip.finish().unwrap().into_inner()).unwrap();
-        Install(dir)
-    }
-}
-
-impl Drop for Install {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }
 
 /// A sprite file with one frame and the given palette path.

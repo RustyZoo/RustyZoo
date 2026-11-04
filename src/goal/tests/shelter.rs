@@ -4,9 +4,8 @@
 use super::*;
 use crate::animal::{self, Animal, Census, Class, Env, Keys, Shelter};
 use crate::building::{self, Live};
-use crate::entity::EntityType;
+use crate::fixtures::ty;
 use crate::unit::testing::world_with;
-use std::sync::Arc;
 
 /// A lion that always looks for a shelter; the tile of the walk to it needs no more.
 const LION: &str = "[Characteristics/Integers]\ncBuildingUseChance=100\n";
@@ -22,21 +21,6 @@ const STAND: &str = "[Characteristics/Integers]\ncCapacity=2\n[Satisfies]\nbuild
 
 /// The species id of the lion.
 const LION_ID: i32 = 5;
-
-fn ty(class: &'static str, name: &str, subtype: &str, text: &str) -> EntityType {
-    EntityType {
-        class,
-        type_name: name.as_bytes().to_vec(),
-        subtype: subtype.as_bytes().to_vec(),
-        file: None,
-        config: Some(Arc::new(
-            crate::config::Config::parse(text.as_bytes()).unwrap(),
-        )),
-        name_id: 0,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
-}
 
 fn types() -> Catalogue {
     types_with(CAVE)

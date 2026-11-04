@@ -299,7 +299,11 @@ pub(crate) fn attractiveness(world: &mut World, cat: &Catalogue, id: u32, rng: &
 /// 6.3: the animal of a thought, drawn from `all` for the band `lo..=hi` of happiness: the first
 /// in the band at or after the drawn index, else the last in it before. One draw, none for an
 /// empty list.
-fn pick(rng: &mut Rng, all: &[(u32, i32)], band: std::ops::RangeInclusive<i32>) -> Option<u32> {
+pub(crate) fn pick(
+    rng: &mut Rng,
+    all: &[(u32, i32)],
+    band: std::ops::RangeInclusive<i32>,
+) -> Option<u32> {
     let k = rng.pick(all.len() as u32) as usize;
     let in_band = |a: &&(u32, i32)| band.contains(&a.1);
     let (before, after) = all.split_at(k);

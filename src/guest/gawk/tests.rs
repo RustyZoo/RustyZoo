@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::render::order::Kind;
 use crate::unit::testing::{centre, entity};
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Tile, View, Zoo};
+use crate::zoo::{Tile, Zoo};
 
 fn kind(class: &'static str, name: &str, text: &str) -> EntityType {
     EntityType {
@@ -73,19 +73,9 @@ fn shape(e: &Entity) -> Option<Shape> {
 /// inside, urn 52 at (2, 1) outside, bench 53 at (7, 7) has no weight, stone 54 at (7, 2).
 fn zoo_map() -> World {
     let mut zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 8,
         height: 8,
         entrance: (1, 4),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![
             Tile {
@@ -97,9 +87,7 @@ fn zoo_map() -> World {
             64
         ],
         entities: vec![entity("gate", "", 1, (96, 288), 6)],
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     zoo.entities.extend((0..8).map(|row| {
         entity(

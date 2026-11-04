@@ -1,7 +1,7 @@
 //! The wages and the building upkeep of the month-end check.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::money::KEEPER_WAGES;
 use crate::sim::Sim;
 use crate::unit::testing::{centre, entity, world};
@@ -9,14 +9,8 @@ use crate::zoo::Clocks;
 
 fn ty(class: &'static str, name: &str, name_id: i32, ini: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
         name_id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, name, "", ini)
     }
 }
 

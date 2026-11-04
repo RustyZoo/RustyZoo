@@ -2,37 +2,26 @@
 
 use super::*;
 use crate::animal::Animal;
-use crate::config::Config;
+use crate::fixtures::unit_ty;
 use crate::unit::testing::{centre, entity, world_with};
-use std::sync::Arc;
 
 const GUEST: u32 = 1;
 const KEEPER: u32 = 2;
 
-fn ty(class: &'static str, name: &str, sub: &str, id: i32, keys: &str) -> EntityType {
-    EntityType {
-        class,
-        type_name: name.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(Arc::new(
-            Config::parse(format!("[{sub}/Characteristics/Integers]\n{keys}\n").as_bytes())
-                .unwrap(),
-        )),
-        name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
-}
-
 /// A lion eats men, a trex keepers too, a zebra nobody; `radius` is `cPredatorRadius`.
 fn cat(radius: Option<i32>) -> Catalogue {
     let mut cat = Catalogue::default();
-    cat.push(ty("animals", "lion", "m", 5006, "cPrey=5001\ncPrey=9503"));
-    cat.push(ty("animals", "trex", "m", 7001, "cPrey=9500"));
-    cat.push(ty("animals", "trex", "y", 7001, "cPrey=9500"));
-    cat.push(ty("animals", "zebra", "m", 5001, ""));
-    cat.push(ty("keeper", "keeper", "m", 9500, ""));
+    cat.push(unit_ty(
+        "animals",
+        "lion",
+        "m",
+        5006,
+        "cPrey=5001\ncPrey=9503",
+    ));
+    cat.push(unit_ty("animals", "trex", "m", 7001, "cPrey=9500"));
+    cat.push(unit_ty("animals", "trex", "y", 7001, "cPrey=9500"));
+    cat.push(unit_ty("animals", "zebra", "m", 5001, ""));
+    cat.push(unit_ty("keeper", "keeper", "m", 9500, ""));
     cat.predator_radius = radius;
     cat
 }
@@ -161,14 +150,14 @@ fn a_keeper_fears_an_adult_that_preys_on_keepers_only_on_the_grounds() {
     let w = zoo((10, 10), &[(50, "trex", "y", (12, 10), true)]);
     assert_eq!(look(&w, &cat(None), KEEPER, 0), 0);
     let mut babies = Catalogue::default();
-    babies.push(ty(
+    babies.push(unit_ty(
         "animals",
         "trex",
         "y",
         7001,
         "cPrey=9500\ncBabiesAttack=1",
     ));
-    babies.push(ty("keeper", "keeper", "m", 9500, ""));
+    babies.push(unit_ty("keeper", "keeper", "m", 9500, ""));
     assert_eq!(look(&w, &babies, KEEPER, 0), 50);
     // The playmate search never finds one for staff.
     let w = zoo((10, 10), &[(50, "trex", "m", (12, 10), true)]);

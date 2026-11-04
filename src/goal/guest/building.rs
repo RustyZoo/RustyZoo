@@ -19,6 +19,9 @@ use crate::unit::Part;
 use crate::zoo::Entity;
 
 mod litter;
+mod ride;
+
+pub(in crate::goal) use ride::Ride;
 
 /// The thought of a guest too crowded to be served by a building (guests 7.2).
 pub(super) const CROWDED: i32 = 10243;
@@ -66,7 +69,10 @@ impl Cx<'_, '_> {
         let e = self.world.zoo.entities.get(self.at)?;
         let egg = matches!(&self.unit.part, Part::Animal(a) if a.egg);
         let mut who = building::Species::of(self.ctx.cat, e, egg)?;
-        who.grandstand = matches!(&self.unit.part, Part::Guest(g) if g.need == Some("grandstand"));
+        if let Part::Guest(g) = &self.unit.part {
+            who.grandstand = g.need == Some("grandstand");
+            who.returning = g.returning;
+        }
         Some(who)
     }
 
@@ -180,7 +186,7 @@ impl Cx<'_, '_> {
         let Some(t) = self.tile_at(p) else {
             return false;
         };
-        if Some(t) != self.tile() && !self.start_walk(false, false, true) {
+        if Some(t) != self.tile() && !self.return_walk(true, false) {
             return false;
         }
         if let Some((_, s, e)) = self.aim() {
@@ -309,12 +315,13 @@ impl Cx<'_, '_> {
         if self.guest().is_some() && kind.commerce && shown && self.mood(id, &kind) == Mood::Angry {
             self.react(Mood::Angry, id);
             self.saw(id);
-            // The guest's clear goal; a returning guest keeps its goal (guest buildings 12.2
-            // point 20).
-            if self.guest().is_some_and(|g| g.returning.is_none()) {
-                self.reset();
-                self.unit.goal.wandered = true;
+            // A returning guest keeps its done goal: it is turned away again at each update
+            // (guest buildings 12.2 point 20, open point 13).
+            if self.guest().is_some_and(|g| g.returning.is_some()) {
+                return;
             }
+            self.reset();
+            self.unit.goal.wandered = true;
             return;
         }
         if let Some((_, s, _)) = self.aim() {
@@ -341,7 +348,7 @@ impl Cx<'_, '_> {
         };
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
         self.unit.through_building = true;
-        if !(self.path_to(t, false) && self.start_walk(false, false, false)) {
+        if !(self.path_to(t, false) && self.return_walk(false, false)) {
             self.unit.through_building = false;
             return self.clear_goal();
         }
@@ -461,10 +468,15 @@ impl Cx<'_, '_> {
         let (unit, now) = (self.unit.id, self.now());
         let live = (self.world.units.buildings.entry(id)).or_insert_with(|| Live::new(&kind));
         live.users.push((unit, slot, now));
+        // A returning guest is not counted, thinks nothing and buys nothing (12.2 point 14).
         let guest = matches!(self.unit.part, Part::Guest(_));
-        if guest {
+        let returning = matches!(&self.unit.part, Part::Guest(g) if g.returning.is_some());
+        if guest && !returning {
             live.guests[0] += 1;
             live.guests[2] += 1;
+        }
+        if returning {
+            live.members.retain(|&m| m != unit);
         }
         let price = live.price;
         self.world.units.building_note(format!("use {id} {unit}"));
@@ -493,6 +505,10 @@ impl Cx<'_, '_> {
         // Guest buildings 6.4 step 7, for a guest: the used thought, the items the building removes,
         // the sale.
         if !guest {
+            return true;
+        }
+        if returning {
+            self.pay_show(id, &kind, price);
             return true;
         }
         if !kind.used.is_empty() {
@@ -668,7 +684,7 @@ impl Cx<'_, '_> {
     /// Guest buildings 6.6: the building lets the guest go. A charging building books its price
     /// times its factor as concessions; the type's change record is given to the guest; a type
     /// whose users use the exit puts it there (6.7), any other shows a hidden guest where it stands.
-    fn remove_user(&mut self) {
+    pub(in crate::goal) fn remove_user(&mut self) {
         let id = self.target().0;
         let unit = self.unit.id;
         let Some((e, kind)) = self.building(id) else {
@@ -693,6 +709,7 @@ impl Cx<'_, '_> {
             }
             false => self.show(),
         }
+        building::ret::left(self.world, self.unit, id, &e, &kind, false);
     }
 
     /// Goals 6.2, guest buildings 11.3: a unit on tile `t` whose quarter 3 holds a building of a
@@ -757,6 +774,7 @@ impl Cx<'_, '_> {
     /// on after a stand (guests 8). Any other unit is only shown and reset.
     pub(in crate::goal) fn exit_done(&mut self) {
         self.unit.through_building = false;
+        let building = self.target_building();
         if self.aim().is_some() {
             self.remove_user();
         }
@@ -765,6 +783,12 @@ impl Cx<'_, '_> {
             self.world.paint_unit(self.at);
         }
         self.reset();
+        // A guest that has just left a return building rides on the water, wandered flag down
+        // (guest buildings 12.2 point 16).
+        if self.guest().is_some_and(|g| g.returning.is_some()) {
+            self.unit.animation = Default::default();
+            return self.set_task(super::super::RETURN_TO_BUILDING, 0, building, None);
+        }
         if let Some(g) = self.guest() {
             let food = g.items[0].is_some();
             self.unit.goal.wandered = !food;

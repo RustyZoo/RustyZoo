@@ -3,10 +3,9 @@
 
 use super::*;
 use crate::animal::Animal;
-use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures::unit_ty;
 use crate::unit::Staff;
-use std::sync::Arc;
 
 const KEEPER: u32 = 2;
 const BEAST: u32 = 50;
@@ -14,17 +13,7 @@ const OTHER: u32 = 51;
 const CAUGHT: u32 = 777;
 
 fn ty(class: &'static str, name: &str, id: i32, text: &str) -> EntityType {
-    let text = format!("[m/Characteristics/Integers]\n{text}\n");
-    EntityType {
-        class,
-        type_name: name.into(),
-        subtype: "m".into(),
-        file: None,
-        config: Some(Arc::new(Config::parse(text.as_bytes()).unwrap())),
-        name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
+    unit_ty(class, name, "m", id, text)
 }
 
 /// The zookeeper's weapon range is `range`, a zebra has 80 energy and a heron needs the helicopter.

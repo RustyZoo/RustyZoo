@@ -100,6 +100,7 @@ pub fn save(dir: &Path, section: &str, key: &str, value: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::TempDir;
 
     fn paths(os: &str, vars: &[(&str, &str)]) -> Option<PathBuf> {
         dir_of(os, |name| {
@@ -178,32 +179,8 @@ mod tests {
         assert_eq!(paths("linux", &[("RUSTYZOO_USER_DIR", "")]), None);
     }
 
-    struct Temp(PathBuf);
-
-    impl Temp {
-        fn new(name: &str) -> Temp {
-            let path = std::env::temp_dir().join(format!(
-                "rustyzoo-userdir-{}-{}-{name}",
-                std::process::id(),
-                {
-                    static N: std::sync::atomic::AtomicUsize =
-                        std::sync::atomic::AtomicUsize::new(0);
-                    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                }
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            Temp(path)
-        }
-    }
-
-    impl Drop for Temp {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn game(text: &str) -> (Temp, Vfs) {
-        let install = Temp::new(&format!("game-{}", text.len()));
+    fn game(text: &str) -> (TempDir, Vfs) {
+        let install = TempDir::absent(&format!("game-{}", text.len()));
         std::fs::create_dir_all(&install.0).unwrap();
         std::fs::write(install.0.join("zoo.ini"), text).unwrap();
         let vfs = Vfs::open(&install.0).unwrap();
@@ -214,7 +191,7 @@ mod tests {
     fn saved_settings_come_back_over_the_game_ini_and_the_game_is_not_written() {
         let text = "[resource]\npath=.\n[User]\nFullScreen=0\nscreenwidth=800\n";
         let (install, mut vfs) = game(text);
-        let user = Temp::new("save");
+        let user = TempDir::absent("save");
         let dir = user.0.join("nested/RustyZoo");
         // No folder yet: nothing changes.
         apply(&mut vfs, &dir).unwrap();
@@ -250,7 +227,7 @@ mod tests {
     #[test]
     fn a_damaged_settings_file_is_an_error_not_a_panic() {
         let (_install, mut vfs) = game("[resource]\npath=.\n");
-        let user = Temp::new("bad");
+        let user = TempDir::absent("bad");
         std::fs::create_dir_all(user.0.join("zoo.ini")).unwrap();
         assert!(
             apply(&mut vfs, &user.0)

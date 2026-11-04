@@ -3,13 +3,14 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::menu::Menu;
 use crate::render::Options;
 use crate::render::order::project;
 use crate::render::tests::{
     cache_install, cache_install_with, flat_map, frame_file, grid_members, tile_with,
 };
-use crate::sprite::tests::{Install, sized, sprite_file};
+use crate::sprite::tests::{sized, sprite_file};
 use crate::ui::interface::Interface;
 use crate::vfs::Vfs;
 
@@ -657,7 +658,7 @@ fn interface(name: &str) -> Interface {
         backcolor=255\nbackcolor=0\nbackcolor=0\n";
     let q = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
         [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ncolorasicon=1\n";
-    let install = crate::sprite::tests::Install::new(
+    let install = crate::fixtures::Install::new(
         &format!("app-ui-{name}"),
         &[
             ("ui/root.lyt", root.as_bytes().to_vec()),
@@ -859,7 +860,7 @@ fn a_visible_animation_that_changes_its_frame_paints_and_a_still_interface_does_
             .iter()
             .map(|(n, b)| (n.as_str(), b.clone()))
             .collect();
-        let install = crate::sprite::tests::Install::new("app-ui-anim-files", &members);
+        let install = crate::fixtures::Install::new("app-ui-anim-files", &members);
         let mut tree =
             crate::ui::layout::Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
         assert_eq!(tree.failure, None);
@@ -1222,7 +1223,7 @@ fn panel_interface(name: &str) -> Interface {
         [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";
     let panel = "[LayoutInfo]\nid=8\nx=0\ny=0\ndx=20\ndy=20\nstate=1\n";
     let q = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n";
-    let install = crate::sprite::tests::Install::new(
+    let install = crate::fixtures::Install::new(
         &format!("app-{name}"),
         &[
             ("ui/root.lyt", root.as_bytes().to_vec()),
@@ -1852,7 +1853,7 @@ fn name_interface(name: &str) -> Interface {
         [m]\ntype=UIText\nid=45306\nx=0\ny=0\ndx=80\ndy=10\n\
         [f]\ntype=UIEditableText\nid=45308\nx=0\ny=12\ndx=80\ndy=10\n\
         [o]\ntype=UIButton\nid=45312\nx=0\ny=24\ndx=8\ndy=8\ntarget=1\naction=5\ncolorasicon=1\n";
-    let install = crate::sprite::tests::Install::new(
+    let install = crate::fixtures::Install::new(
         &format!("app-name-{name}"),
         &[
             ("ui/root.lyt", root.as_bytes().to_vec()),

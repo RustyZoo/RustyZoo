@@ -363,6 +363,7 @@ pub struct Entity {
 
 /// A loaded map or saved game, up to the entities.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(test, derive(Default))]
 pub struct Zoo {
     pub version: u32,
     /// The Windows language identifier the file was written with (a stored 0 reads as 1033).

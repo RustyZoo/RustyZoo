@@ -2,8 +2,8 @@
 
 use crate::animal::dirt;
 use crate::behaviour::{Call, Data, Heard, Number, Row, Timing, parse_call};
-use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
+use crate::fixtures;
 use crate::guest::litter::{CAN_FILLING, DROPPED};
 use crate::money::Money;
 use crate::sim::Sim;
@@ -11,7 +11,6 @@ use crate::unit::testing::{centre, entity, rates, world_with};
 use crate::world::{Decay, World, piece_event};
 use crate::zoo::{Clocks, Entity};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 const WORKER: u32 = 1;
 const CAN: u32 = 11;
@@ -26,14 +25,8 @@ const PEN: (i32, i32, i32, i32, i32) = (3, 2, 7, 5, 5);
 
 fn ty(class: &'static str, name: &str, sub: &str, keys: &str) -> EntityType {
     EntityType {
-        class,
-        type_name: name.as_bytes().to_vec(),
-        subtype: sub.as_bytes().to_vec(),
-        file: None,
-        config: Some(Arc::new(Config::parse(keys.as_bytes()).unwrap())),
-        name_id: 0,
         footprint: [2, 2, 1],
-        height: 0,
+        ..fixtures::ty(class, name, sub, keys)
     }
 }
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::*;
 use crate::app::Mouse;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::text::Font;
 use crate::ui::draw::Strings;
 use crate::ui::layout::Tree;

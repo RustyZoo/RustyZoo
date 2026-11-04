@@ -118,7 +118,11 @@ pub(crate) fn pay(
             }
         }
     }
-    apply(unit, change);
+    // A return building gives the change record only to a returning guest (12.2 point 9).
+    let fresh = matches!(&unit.part, Part::Guest(g) if g.returning.is_none());
+    if !(kind.ret.building && fresh) {
+        apply(unit, change);
+    }
 }
 
 /// Guest buildings 6.6 point 4: the unit's own abort of a forced leave posts one event to itself
@@ -195,6 +199,7 @@ pub(crate) fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
         world.units.building_note(format!("push {id} {unit}"));
         crate::goal::stop_use(&mut u);
         put_out(world, cat, at, &mut u, &e, &kind, slot);
+        super::ret::left(world, &mut u, id, &e, &kind, true);
         if let Some(entry) = world.units.get_mut(unit) {
             *entry = u;
         }
@@ -237,6 +242,7 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
             }
             false => show(world, at, &mut u),
         }
+        super::ret::left(world, &mut u, building, &e, &kind, false);
     }
     crate::goal::stop_use(&mut u);
     if let Some(entry) = world.units.get_mut(id) {

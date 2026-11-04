@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::Mouse;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{FOCUSED, HIGHLIGHTED, SELECTED, Tree};
 use crate::vfs::Vfs;

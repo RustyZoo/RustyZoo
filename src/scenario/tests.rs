@@ -290,7 +290,7 @@ fn rule_7_reads_the_date_and_rule_99_its_argument_and_the_stubs_read_0() {
 
 #[test]
 fn a_scenario_is_read_from_the_install_and_an_unreadable_extra_file_is_skipped() {
-    use crate::sprite::tests::Install;
+    use crate::fixtures::Install;
     let main = "[start]\nextragoals=x/gone.scn\nextragoals=x/more.scn\n[goals]\ngoal=a\n";
     let install = Install::new(
         "scenario-prepare",
@@ -307,7 +307,7 @@ fn a_scenario_is_read_from_the_install_and_an_unreadable_extra_file_is_skipped()
 
 #[test]
 fn a_scenario_file_needs_a_line_starting_with_a_bracket() {
-    use crate::sprite::tests::Install;
+    use crate::fixtures::Install;
     let install = Install::new(
         "scenario-header",
         &[
@@ -329,7 +329,7 @@ fn a_scenario_file_needs_a_line_starting_with_a_bracket() {
 
 #[test]
 fn an_extra_value_names_every_file_its_prefix_and_suffix_match_and_no_other() {
-    use crate::sprite::tests::Install;
+    use crate::fixtures::Install;
     let main =
         "[start]\nextragoals=x/more.scn\nextragoals=x/more\nextragoals=x/more.\n[goals]\ngoal=a\n";
     let install = Install::new(

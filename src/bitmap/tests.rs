@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 
 pub(crate) const WHITE: [u8; 3] = [255, 255, 255];
 pub(crate) const RED: [u8; 3] = [255, 0, 0];

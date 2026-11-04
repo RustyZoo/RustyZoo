@@ -1,10 +1,9 @@
 use super::*;
 use crate::avail::Availability;
-use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures;
+use crate::fixtures::Install;
 use crate::money::Money;
-use crate::sprite::tests::Install;
-use std::sync::Arc;
 
 fn program(name: i32, cost: &str, target: i32, effect: i32) -> (String, Vec<u8>) {
     let body = format!("[research]\nname={name}\ncost={cost}\ntarget={target}\neffect={effect}\n");
@@ -179,16 +178,8 @@ fn the_share_counts_the_programs_done_and_is_100_for_none() {
 
 fn ty(name_id: i32) -> EntityType {
     EntityType {
-        class: "animals",
-        type_name: "t".into(),
-        subtype: b"f".to_vec(),
-        file: None,
-        config: Some(Arc::new(
-            Config::parse(b"[Global]\nAvailableAtStartup=1\n").unwrap(),
-        )),
         name_id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty("animals", "t", "f", "[Global]\nAvailableAtStartup=1\n")
     }
 }
 

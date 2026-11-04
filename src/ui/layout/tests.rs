@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 
 /// A 2 x 1 true colour TGA image.
 fn tga() -> Vec<u8> {
