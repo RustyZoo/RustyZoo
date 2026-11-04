@@ -41,7 +41,7 @@ impl App<'_> {
     /// popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
     pub(super) fn scenario_effects(&mut self) {
         self.scenario_forced();
-        self.scenario_avail(false);
+        self.scenario_avail();
         while let Some(act) = self.sim.scenario().and_then(|s| s.next_act()) {
             match act {
                 Act::Avail(made) => self.avail_run(made, false),
@@ -177,15 +177,21 @@ impl App<'_> {
         self.sim.absorb(&mut game.world);
     }
 
-    /// Carries out the availability triggers: with `rewards`, at the start of a game, the ini
-    /// rewards apply after them (research 7.4). A trigger that changed a flag tells its message or
+    /// Carries out the availability triggers. A trigger that changed a flag tells its message or
     /// popup, and an unlock (`truleb` 10) is stored with the rewards.
-    pub(super) fn scenario_avail(&mut self, rewards: bool) {
+    pub(super) fn scenario_avail(&mut self) {
         let made = self.sim.scenario().map(|s| s.gui().take_avail());
-        self.avail_run(made.unwrap_or_default(), rewards);
+        self.avail_run(made.unwrap_or_default(), false);
     }
 
-    /// [`scenario_avail`](Self::scenario_avail) for these changes.
+    /// The ini rewards of a start, which come after the triggers and the start hook (research 7.4,
+    /// cheats 6.3 point 2).
+    pub(super) fn scenario_rewards(&mut self) {
+        self.avail_run(Vec::new(), true);
+    }
+
+    /// [`scenario_avail`](Self::scenario_avail) for these changes; with `rewards`, the ini rewards
+    /// apply after them.
     fn avail_run(&mut self, made: Vec<Avail>, rewards: bool) {
         let (Some(game), vfs, cat) = (
             &mut self.game,
