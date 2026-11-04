@@ -344,34 +344,69 @@ mod tests {
         );
     }
 
+    fn message(answer: &Json) -> String {
+        let part = answer.get("result").and_then(|r| r.get("content"));
+        let Some(Json::Arr(parts)) = part else {
+            return String::new();
+        };
+        parts[0]
+            .get("text")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .into()
+    }
+
     #[test]
     fn a_tool_with_bad_arguments_or_no_game_is_an_error_not_the_end() {
-        let requests = [
-            call("state", "{}"),
-            call("hash", "{}"),
-            call("step", r#"{"ticks":1}"#),
-            call("step", "{}"),
-            call("step", r#"{"ticks":-1}"#),
-            call("step", r#"{"ticks":1e12}"#),
-            call("step", r#"{"ticks":1.5}"#),
-            call("step", r#"{"ticks":1,"dt":0}"#),
-            call("entity", r#"{"id":-1}"#),
-            call("command", r#"{"text":"cash 5"}"#),
-            call("command", r#"{"text":"save x"}"#),
-            call("load", "{}"),
-            call("load", r#"{"map":"maps/none.zoo"}"#),
-            call("load", r#"{"map":"a","file":"b"}"#),
-            call("load", r#"{"map":"maps/none.zoo","seed":-1}"#),
-            call("save", r#"{"file":"/none/x.zoo"}"#),
-            call("nothing", "{}"),
+        let cases = [
+            (call("state", "{}"), "no game"),
+            (call("hash", "{}"), "no game"),
+            (call("step", r#"{"ticks":1}"#), "no game"),
+            (call("step", r#"{"ticks":0}"#), "no game"),
+            (call("step", "{}"), "ticks must be"),
+            (call("step", r#"{"ticks":-1}"#), "ticks must be"),
+            (call("step", r#"{"ticks":1e12}"#), "ticks must be"),
+            (call("step", r#"{"ticks":1.5}"#), "ticks must be"),
+            (call("step", r#"{"ticks":"3"}"#), "ticks must be"),
+            (call("step", r#"{"ticks":1,"dt":0}"#), "dt must be"),
+            (call("step", r#"{"ticks":1,"dt":1e9}"#), "dt must be"),
+            (call("entity", r#"{"id":-1}"#), "id must be"),
+            (call("entity", r#"{"id":4294967296}"#), "id must be"),
+            (call("entity", r#"{"id":5}"#), "no game"),
+            (call("command", r#"{"text":"cash 5"}"#), "no game"),
+            (call("command", r#"{"text":"nothing"}"#), "unknown command"),
+            (
+                call("command", r#"{"text":"save x"}"#),
+                "save and load tools",
+            ),
+            (call("load", "{}"), "either map or file"),
+            (
+                call("load", r#"{"map":"a","file":"b"}"#),
+                "either map or file",
+            ),
+            (call("load", r#"{"map":"maps/none.zoo"}"#), "none.zoo"),
+            (call("load", r#"{"file":"/none/x.zoo"}"#), "/none/x.zoo"),
+            (call("load", r#"{"map":"m","seed":-1}"#), "seed must be"),
+            (call("save", r#"{"file":"/none/x.zoo"}"#), "no game"),
+            (call("nothing", "{}"), "unknown tool"),
         ];
-        let requests: Vec<&str> = requests.iter().map(String::as_str).collect();
+        let requests: Vec<&str> = cases.iter().map(|(r, _)| r.as_str()).collect();
         let answers = ask(&requests);
-        assert_eq!(answers.len(), requests.len());
-        for (request, answer) in requests.iter().zip(&answers) {
+        assert_eq!(answers.len(), cases.len());
+        for ((request, want), answer) in cases.iter().zip(&answers) {
             assert!(is_error(answer), "{request}");
+            assert!(
+                message(answer).contains(want),
+                "{request}: {}",
+                message(answer)
+            );
         }
         let log = ask(&[&call("log", "{}"), &call("log", r#"{"lines":0}"#)]);
         assert!(!is_error(&log[0]) && !is_error(&log[1]));
+        let huge = ask(&[
+            &call("log", r#"{"lines":1e9}"#),
+            &call("log", r#"{"lines":-1}"#),
+        ]);
+        assert!(huge.iter().all(is_error));
     }
 }
