@@ -292,6 +292,10 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     if let (true, Some(g)) = (read && e.class == "guests", c.guest.as_deref()) {
         pre = fresh::guest(Some(pre), g)?;
     }
+    // A flight's speed and accumulator come from the model.
+    if let (true, "ambient", Some(f)) = (read, e.class.as_str(), c.flight) {
+        pre = f.bytes().to_vec();
+    }
     let mut o = Out(Vec::new());
     if has_food(&e.class) {
         let keeps = e.class == "food"

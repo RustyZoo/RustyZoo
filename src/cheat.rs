@@ -241,8 +241,8 @@ pub(crate) const JACK_O_LANTERN: i32 = 7078;
 pub(crate) const SNOWMAN: i32 = 7079;
 pub(crate) const YELLOW_BRICK: i32 = 9111;
 
-/// A flying object a date hook launches (cheats 6), by the name id of its ambient type. There is no
-/// flight yet: the launch is told in the log (`sim fly ID [COUNT]`).
+/// A flying object a date hook launches (cheats 6), by the name id of its ambient type. The launch
+/// is told in the log (`sim fly ID [COUNT]`) and makes the flight ([`crate::flight`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fly {
     Biplane,
@@ -253,6 +253,26 @@ pub(crate) enum Fly {
 }
 
 impl Fly {
+    /// The name id of the ambient type the launch creates; none for the permanent witch, which only
+    /// sets the period of the witch's spawn list (ambients 7.4, not made yet).
+    pub(crate) fn type_id(self) -> Option<i32> {
+        match self {
+            Fly::Biplane => Some(5082),
+            Fly::Sleigh => Some(5083),
+            Fly::Witch => Some(5084),
+            Fly::PermanentWitch => None,
+        }
+    }
+
+    /// The loop the hook holds for a vehicle: its file and base term (ambients 6.1).
+    pub(crate) fn loop_sound(self) -> Option<(&'static str, i32)> {
+        match self {
+            Fly::Sleigh => Some(("sounds/sleigh.wav", 0)),
+            Fly::Biplane => Some(("sounds/biplane.wav", 1000)),
+            Fly::Witch | Fly::PermanentWitch => None,
+        }
+    }
+
     /// The log line of the launch, without the family.
     pub(crate) fn line(self) -> String {
         match self {

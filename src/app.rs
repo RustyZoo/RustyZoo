@@ -158,6 +158,9 @@ struct Game {
     carry: Option<place::unit::Carry>,
     /// The building it carries, when what it carries is one (unit placing 8.7).
     held: Option<crate::building::Held>,
+    /// The loops the date hook holds for the sleigh and the biplane: the flight, the file and the
+    /// base term (ambients 6). The game's end and a file load drop them with the game.
+    vehicles: Vec<(u32, &'static str, i32)>,
 }
 
 impl Game {
