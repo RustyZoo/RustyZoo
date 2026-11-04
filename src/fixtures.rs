@@ -24,8 +24,8 @@ pub(crate) fn ty(class: &'static str, name: &str, sub: &str, ini: &str) -> Entit
     }
 }
 
-/// A unit type: `keys` go in the `[sub/Characteristics/Integers]` section (the plain
-/// `[Characteristics/Integers]` one without a subtype).
+/// A type with `keys` in its characteristics: the `[sub/Characteristics/Integers]` section of an
+/// animal or a keeper, the plain `[Characteristics/Integers]` one of any other.
 pub(crate) fn unit_ty(
     class: &'static str,
     name: &str,
@@ -33,9 +33,9 @@ pub(crate) fn unit_ty(
     id: i32,
     keys: &str,
 ) -> EntityType {
-    let head = match sub.is_empty() {
-        true => "[Characteristics/Integers]".to_string(),
-        false => format!("[{sub}/Characteristics/Integers]"),
+    let head = match matches!(class, "animals" | "keeper") && !sub.is_empty() {
+        true => format!("[{sub}/Characteristics/Integers]"),
+        false => "[Characteristics/Integers]".to_string(),
     };
     EntityType {
         name_id: id,

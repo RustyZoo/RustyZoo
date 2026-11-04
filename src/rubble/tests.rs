@@ -8,11 +8,12 @@ fn ty(
     class: &'static str,
     kind: &str,
     sub: &str,
-    _name_id: i32,
+    name_id: i32,
     fp: [i32; 2],
     keys: &str,
 ) -> EntityType {
     EntityType {
+        name_id,
         footprint: [fp[0], fp[1], 1],
         ..fixtures::ty(
             class,

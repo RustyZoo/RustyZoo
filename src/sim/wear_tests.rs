@@ -306,8 +306,7 @@ fn the_bounds_are_read_from_the_class_file_with_the_defaults_for_what_is_missing
             dir.write("fences/fence.ai", text.as_bytes());
         }
         let vfs = crate::vfs::Vfs::open(&dir.0).unwrap();
-        let decay = Decay::load(&vfs);
-        decay
+        Decay::load(&vfs)
     };
     let default = Decay::default();
     assert_eq!(load("none", None), default);
