@@ -1,5 +1,5 @@
 use super::*;
-use crate::sprite::tests::Install;
+use crate::fixtures::Install;
 use crate::ui::draw::Strings;
 use crate::ui::interface::Action;
 use crate::ui::layout::{SELECTED, Tree};

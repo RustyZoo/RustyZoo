@@ -3,7 +3,7 @@
 use super::edges::edge_states;
 use super::*;
 use crate::render::order::Held;
-use crate::zoo::{Common, View};
+use crate::zoo::Common;
 
 fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
     let tile = Tile {
@@ -13,25 +13,12 @@ fn zoo(width: u32, height: u32, entrance: (u32, u32)) -> Zoo {
         edges: 0,
     };
     Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width,
         height,
         entrance,
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 100,
         tiles: vec![tile; (width * height) as usize],
-        entities: Vec::new(),
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     }
 }
 

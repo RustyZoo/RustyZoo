@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::*;
-use crate::sprite::tests::{Install, sized, sprite_file};
+use crate::fixtures::Install;
+use crate::sprite::tests::{sized, sprite_file};
 use crate::text::{fill_color, text_color};
 use crate::ui::widgets::{Caret, Row};
 use crate::vfs::Vfs;

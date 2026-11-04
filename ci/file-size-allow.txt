@@ -4,11 +4,9 @@ src/exhibit/rating.rs 1243
 src/goal.rs 1198
 src/place.rs 1068
 src/render.rs 1781
-src/timing.rs 1092
 src/ui/draw.rs 1164
 src/ui/interface/widgets.rs 1010
 src/ui/layout.rs 1006
 src/unit.rs 1211
-src/vfs.rs 1962
 src/world.rs 1537
 src/zoo.rs 1245

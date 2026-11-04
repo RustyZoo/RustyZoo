@@ -4,9 +4,9 @@
 use super::*;
 use crate::bitmap::tests::{WHITE, bmp24};
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::render::order::project;
 use crate::render::tests::{flat_map, frame_file, tile_with};
-use crate::sprite::tests::Install;
 use crate::terrain::Mode;
 use crate::ui::draw::Strings as UiStrings;
 use crate::ui::layout::Tree;

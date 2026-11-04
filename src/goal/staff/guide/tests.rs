@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::behaviour::{Call, Data, Heard, Number, Row, Timing, parse_call};
-use crate::config::Config;
-use crate::entity::{Catalogue, EntityType};
+use crate::entity::Catalogue;
+use crate::fixtures::unit_ty;
 use crate::goal::Goal;
 use crate::guest::Guest;
 use crate::money::Money;
@@ -13,28 +13,8 @@ use crate::unit::{Ctx, Staff};
 use crate::world::World;
 use crate::zoo::Clocks;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 const GUIDE: u32 = 2;
-
-fn ty(class: &'static str, name: &str, sub: &str, id: i32, keys: &str) -> EntityType {
-    let head = match sub.is_empty() {
-        true => "[Characteristics/Integers]".to_string(),
-        false => format!("[{sub}/Characteristics/Integers]"),
-    };
-    EntityType {
-        class,
-        type_name: name.into(),
-        subtype: sub.into(),
-        file: None,
-        config: Some(Arc::new(
-            Config::parse(format!("{head}\n{keys}\n").as_bytes()).unwrap(),
-        )),
-        name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
-}
 
 /// The guide's keys: a gathering at every status tick of the tiles within two, everybody follows;
 /// the lines of `over` replace the key they name.
@@ -55,9 +35,9 @@ fn catalogue(over: &str) -> Catalogue {
         }
     }
     let tour = format!("{tour}{over}");
-    cat.push(ty("guests", "man", "", 9503, man));
-    cat.push(ty("animals", "zebra", "", 5, ""));
-    cat.push(ty("tour", "tour", "m", 9502, &tour));
+    cat.push(unit_ty("guests", "man", "", 9503, man));
+    cat.push(unit_ty("animals", "zebra", "", 5, ""));
+    cat.push(unit_ty("tour", "tour", "m", 9502, &tour));
     cat
 }
 

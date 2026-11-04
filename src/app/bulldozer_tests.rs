@@ -4,6 +4,7 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
+use crate::fixtures;
 use crate::place::bulldozer::Question;
 use crate::render::order::project;
 use crate::render::tests::{cache_install_with, flat_map, frame_file, palette_file, tile_with};
@@ -95,15 +96,11 @@ fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3])
         true => ini.to_string(),
         false => format!("{ini}[Animations]\nidle=dozer/obj.ani\n"),
     };
+    let utf8 = |b| std::str::from_utf8(b).unwrap();
     EntityType {
-        class,
-        type_name: name.to_vec(),
-        subtype: subtype.to_vec(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
         name_id: 9001,
         footprint: fp,
-        height: 0,
+        ..fixtures::ty(class, utf8(name), utf8(subtype), &ini)
     }
 }
 
@@ -198,7 +195,7 @@ pub(super) fn catalogue() -> Catalogue {
     cat
 }
 
-fn install(name: &str, ini: &str) -> crate::sprite::tests::Install {
+fn install(name: &str, ini: &str) -> crate::fixtures::Install {
     // Every object is a square of 24 pixels around its anchor.
     let mut frame = Vec::new();
     for field in [24u16, 24, 12, 12, 0] {

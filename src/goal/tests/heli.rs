@@ -4,11 +4,10 @@
 use super::*;
 use crate::animal::Animal;
 use crate::building::birth::births;
-use crate::config::Config;
 use crate::entity::EntityType;
+use crate::fixtures;
 use crate::goal::{CAPTURE, ENTER_BUILDING, ENTRANCE, EXIT_BUILDING, USE};
 use crate::unit::{Ctx, Part, Standard, testing};
-use std::sync::Arc;
 
 const BASE: u32 = 1;
 const HERON: u32 = 50;
@@ -18,16 +17,9 @@ const SLOT: (i32, i32, i32) = (704, 640, 80);
 const EXIT: (i32, i32, i32) = (704, 640, 160);
 
 fn ty(class: &'static str, name: &str, id: i32, text: &str) -> EntityType {
-    let config = Config::parse(text.as_bytes()).unwrap();
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: "m".into(),
-        file: None,
-        config: Some(Arc::new(config)),
         name_id: id,
-        footprint: [1, 1, 1],
-        height: 0,
+        ..fixtures::ty(class, name, "m", text)
     }
 }
 

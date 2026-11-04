@@ -13,25 +13,10 @@ fn map(width: u32, height: u32, elevation: i32) -> Zoo {
         edges: 0,
     };
     Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width,
         height,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles: vec![tile; (width * height) as usize],
-        entities: Vec::new(),
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     }
 }
 

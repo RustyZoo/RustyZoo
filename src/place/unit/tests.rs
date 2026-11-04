@@ -3,8 +3,9 @@
 
 use super::*;
 use crate::config::Config;
+use crate::fixtures;
 use crate::world::TankKind;
-use crate::zoo::{Common, Fence, Tile, View, Zoo};
+use crate::zoo::{Common, Fence, Tile, Zoo};
 
 const ZEBRA: usize = 0;
 const FEMALE: usize = 1;
@@ -20,16 +21,7 @@ const MARINE: usize = 10;
 const GUEST: usize = 11;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
-    EntityType {
-        class: "animals",
-        type_name: name.into(),
-        subtype: subtype.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
-        footprint: [1, 1, 1],
-        height: 0,
-    }
+    fixtures::ty("animals", name, subtype, ini)
 }
 
 fn staff(class: &'static str, name: &str, cost: u32) -> EntityType {
@@ -173,25 +165,12 @@ fn world_with(mut entities: Vec<Entity>, edit: impl FnOnce(&mut Zoo)) -> World {
     let mut tiles = vec![flat; 64];
     tiles[5 * 8 + 5].terrain = 1;
     let mut zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        version: 0,
-        locale: 0,
-        expansion: 0,
         width: 8,
         height: 8,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
         id_counter: 1000,
         tiles,
         entities,
-        view: View::default(),
-        clocks: Default::default(),
-        names: Default::default(),
+        ..Default::default()
     };
     edit(&mut zoo);
     World::new(zoo, shape)

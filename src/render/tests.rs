@@ -1,6 +1,7 @@
 use super::order::{Glass, Item, Kind, Object, Scene, TankSpec, paint_order, project, sort_key};
 use super::*;
-use crate::sprite::{screen, tests::Install};
+use crate::fixtures::Install;
+use crate::sprite::screen;
 use crate::zoo::Tile;
 
 pub(crate) fn flat() -> Tile {
@@ -418,25 +419,12 @@ fn a_map_is_drawn_from_the_cache_on_a_black_background() {
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        view: Default::default(),
-        clocks: Default::default(),
-        names: Default::default(),
         version: 106,
         locale: 1033,
-        expansion: 0,
         width: 2,
         height: 2,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles: flat_map(2, 2),
-        entities: Vec::new(),
+        ..Default::default()
     };
     let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
     assert_eq!(
@@ -487,25 +475,13 @@ pub(crate) fn tile_with(entities: &[(&str, &str, &str)]) -> Zoo {
         }),
     };
     Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        view: Default::default(),
-        clocks: Default::default(),
-        names: Default::default(),
         version: 106,
         locale: 1033,
-        expansion: 0,
         width: 1,
         height: 1,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles: flat_map(1, 1),
         entities: entities.iter().map(entity).collect(),
+        ..Default::default()
     }
 }
 
@@ -1486,29 +1462,17 @@ fn absurd_heights_and_positions_give_an_error_or_a_picture_never_a_panic() {
         }),
     };
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        view: Default::default(),
-        clocks: Default::default(),
-        names: Default::default(),
         version: 106,
         locale: 1033,
-        expansion: 0,
         width: 3,
         height: 3,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles,
         entities: vec![
             entity("objects", i32::MAX, i32::MIN, i32::MAX),
             entity("fences", -1, 5, i32::MIN),
             entity("paths", 100, 100, 0),
         ],
+        ..Default::default()
     };
     for r in 0..8 {
         let _ = MapRenderer::new(&vfs, &catalogue).render(&zoo, r);
@@ -1533,25 +1497,12 @@ fn a_tile_the_cache_lacks_is_rendered_at_run_time() {
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        view: Default::default(),
-        clocks: Default::default(),
-        names: Default::default(),
         version: 106,
         locale: 1033,
-        expansion: 0,
         width: 2,
         height: 2,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles: flat_map(2, 2),
-        entities: Vec::new(),
+        ..Default::default()
     };
     let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
     assert_eq!(
@@ -1581,25 +1532,12 @@ fn cliffs_are_drawn_from_the_root_bitmaps_when_the_converted_copies_are_missing(
     step(&mut tiles, 2, 0, 0, 2);
     step(&mut tiles, 2, 0, 0, 4);
     let zoo = Zoo {
-        awards: Vec::new(),
-        kept: Default::default(),
-        shows: Default::default(),
-        view: Default::default(),
-        clocks: Default::default(),
-        names: Default::default(),
         version: 106,
         locale: 1033,
-        expansion: 0,
         width: 2,
         height: 2,
-        entrance: (0, 0),
-        habitat_tiles: Vec::new(),
-        habitat_gates: Vec::new(),
-        habitat_info: Vec::new(),
-        tanks: Vec::new(),
-        id_counter: 0,
         tiles,
-        entities: Vec::new(),
+        ..Default::default()
     };
     let cliffs = |members: &[(&str, Vec<u8>)]| {
         let install = Install::new("render-bitmaps", members);
@@ -1907,23 +1845,10 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
         let vfs = Vfs::open(&install.0).unwrap();
         let catalogue = Catalogue::load(&vfs).unwrap();
         let zoo = Zoo {
-            awards: Vec::new(),
-            kept: Default::default(),
-            shows: Default::default(),
-            view: Default::default(),
-            clocks: Default::default(),
-            names: Default::default(),
             version: 106,
             locale: 1033,
-            expansion: 0,
             width: 1,
             height: 1,
-            entrance: (0, 0),
-            habitat_tiles: Vec::new(),
-            habitat_gates: Vec::new(),
-            habitat_info: Vec::new(),
-            tanks: Vec::new(),
-            id_counter: 0,
             tiles: flat_map(1, 1),
             entities: vec![crate::zoo::Entity {
                 class: "building".into(),
@@ -1942,6 +1867,7 @@ fn a_recoloured_building_is_drawn_with_the_colours_its_record_stores() {
                     ..Default::default()
                 }),
             }],
+            ..Default::default()
         };
         let (image, summary) = MapRenderer::new(&vfs, &catalogue).render(&zoo, 0).unwrap();
         assert_eq!(summary.objects_drawn, 1, "{summary}");

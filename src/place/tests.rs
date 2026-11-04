@@ -1,8 +1,9 @@
 //! The pending object on synthetic maps.
 
 use super::*;
+use crate::fixtures;
 use crate::world::{Shape, Step, TankKind};
-use crate::zoo::{Common, Entity, Tile, View, Zoo};
+use crate::zoo::{Common, Entity, Tile, Zoo};
 
 #[test]
 fn the_pending_object_keeps_its_facing_on_screen_when_the_view_turns() {
@@ -68,14 +69,8 @@ fn the_four_footprint_cases_snap_as_the_worked_examples_do() {
 
 fn ty(class: &'static str, name: &str, ini: &str, footprint: [i32; 3]) -> EntityType {
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: Vec::new(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
         footprint,
-        height: 0,
+        ..fixtures::ty(class, name, "", ini)
     }
 }
 
@@ -272,25 +267,13 @@ fn world(entrance: (u32, u32), entities: Vec<Entity>, edit: impl Fn(&mut Vec<Til
     edit(&mut tiles);
     World::new(
         Zoo {
-            awards: Vec::new(),
-            kept: Default::default(),
-            shows: Default::default(),
-            version: 0,
-            locale: 0,
-            expansion: 0,
             width: 8,
             height: 8,
             entrance,
-            habitat_tiles: Vec::new(),
-            habitat_gates: Vec::new(),
-            habitat_info: Vec::new(),
-            tanks: Vec::new(),
             id_counter: 100,
             tiles,
             entities,
-            view: View::default(),
-            clocks: Default::default(),
-            names: Default::default(),
+            ..Default::default()
         },
         shape,
     )
@@ -561,7 +544,7 @@ fn the_tints_come_from_the_map_view_of_the_layout_and_default_to_the_shipped_one
         (shipped.valid, shipped.overwrite, shipped.invalid),
         ([0, 225, 0], [225, 112, 0], [225, 0, 0])
     );
-    let install = crate::sprite::tests::Install::new(
+    let install = crate::fixtures::Install::new(
         "place-tints",
         &[(
             "ui/gamescrn.lyt",
@@ -576,7 +559,7 @@ fn the_tints_come_from_the_map_view_of_the_layout_and_default_to_the_shipped_one
     assert_eq!(tints.invalid, shipped.invalid);
     assert_eq!(tints.overwrite, shipped.overwrite);
     // A missing layout gives the shipped colours.
-    let empty = crate::sprite::tests::Install::new("place-tints-none", &[]);
+    let empty = crate::fixtures::Install::new("place-tints-none", &[]);
     assert_eq!(
         Tints::load(&crate::vfs::Vfs::open(&empty.0).unwrap()),
         shipped

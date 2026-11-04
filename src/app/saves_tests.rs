@@ -5,9 +5,9 @@ use super::exhibits::NAME_FIELD;
 use super::start_tests::{CONTINUE, SIZE, click, interface, key, shown, started, with_menu};
 use super::*;
 use crate::entity::Catalogue;
+use crate::fixtures::Install;
 use crate::render::MapRenderer;
 use crate::render::tests::{cache_install, frame_file};
-use crate::sprite::tests::Install;
 use crate::vfs::Vfs;
 use crate::zoo::Zoo;
 

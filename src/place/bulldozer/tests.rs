@@ -1,9 +1,9 @@
 //! The bulldozer on synthetic maps.
 
 use super::*;
-use crate::config::Config;
+use crate::fixtures;
 use crate::world::{Shape, TankKind};
-use crate::zoo::{Common, Tile, View, Zoo};
+use crate::zoo::{Common, Tile, Zoo};
 
 fn ty(
     class: &'static str,
@@ -13,14 +13,8 @@ fn ty(
     footprint: [i32; 3],
 ) -> EntityType {
     EntityType {
-        class,
-        type_name: name.into(),
-        subtype: subtype.into(),
-        file: None,
-        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
-        name_id: 0,
         footprint,
-        height: 0,
+        ..fixtures::ty(class, name, subtype, ini)
     }
 }
 
@@ -130,25 +124,12 @@ fn world(mut entities: Vec<Entity>) -> World {
     };
     World::new(
         Zoo {
-            awards: Vec::new(),
-            kept: Default::default(),
-            shows: Default::default(),
-            version: 0,
-            locale: 0,
-            expansion: 0,
             width: 8,
             height: 8,
-            entrance: (0, 0),
-            habitat_tiles: Vec::new(),
-            habitat_gates: Vec::new(),
-            habitat_info: Vec::new(),
-            tanks: Vec::new(),
             id_counter: 1000,
             tiles: vec![flat; 64],
             entities,
-            view: View::default(),
-            clocks: Default::default(),
-            names: Default::default(),
+            ..Default::default()
         },
         shape,
     )

@@ -1,6 +1,6 @@
 use super::*;
+use crate::fixtures::Install;
 use crate::movie::tests::{avi, key_frame};
-use crate::sprite::tests::Install;
 
 /// Three frames at 29.97 per second (the second and third repeat the first): 100 ms.
 fn three() -> Movie {
