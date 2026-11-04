@@ -1,8 +1,8 @@
 //! A unit picked up by hand and put down again (unit placing 8.2, 8.5, 8.6). The pick-up stops
 //! the goal of the unit; the drop (and the put-back after a cancelled move) runs the rule of its
 //! kind: a guest on water outside a tank starts the recovery from water and thinks 10568, a staff
-//! member forgets the targets it could not reach, a keeper in an exhibit starts its duties, an animal in a tank
-//! aborts the show of the unit it hunts or fears there.
+//! member forgets the targets it could not reach, a keeper in an exhibit starts its duties, an
+//! animal in a tank aborts the show of the unit it fears or hunts there.
 
 use super::{Cx, DUTIES, RECOVER};
 use crate::behaviour::{Data, NoData};

@@ -72,11 +72,11 @@ pub(crate) const PREY: u8 = 2;
 
 /// The threat test (`checkPredator`) of the entity at position `e` in `mode` (0 a threat, 1 a
 /// playmate that chases the unit, [`PREY`] a prey of an animal: an animal whose type its prey list
-/// holds; inferred, the original's test is not read). An animal that is crated or an egg is none. For a guest the
-/// mode is ignored and a species whose prey list holds the man is one, whatever the animal does.
-/// For staff in mode 0 it must be an adult (or of a species with `cBabiesAttack` 1) whose prey
-/// list holds the member's type, and he must stand on the grounds and the animal must not be darted.
-/// Mode 1 asks for an animal chasing the unit, which no staff member ever is.
+/// holds, inferred as the mirror of the threat). An animal that is crated or an egg is none. For a guest the mode is ignored and a species whose prey list holds the man is one,
+/// whatever the animal does. For staff and animals in mode 0 it must be an adult (or of a species
+/// with `cBabiesAttack` 1) whose prey list holds the looker's type; a staff member must also stand
+/// on the grounds and the animal must not be darted. Mode 1 asks for an animal chasing the unit,
+/// which no staff member ever is.
 fn threat(world: &World, cat: &Catalogue, looker: &Looker, e: usize, mode: u8) -> bool {
     let entity = &world.zoo.entities[e];
     let Some(id) = entity.common.as_ref().map(|c| c.id) else {
