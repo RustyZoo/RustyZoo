@@ -232,10 +232,12 @@ fn the_hooks_do_nothing_without_a_game() {
 }
 
 /// An app with the four items and the scenario `s/a.scn` of this text.
-fn with_scenario(name: &str, text: &str, body: impl FnOnce(&mut App, &Catalogue)) {
+fn with_scenario(name: &str, text: &str, ini: &str, body: impl FnOnce(&mut App, &Catalogue)) {
     let files = [("s/a.scn", text.as_bytes().to_vec())];
     let install = cache_install_with(name, frame_file(), &files);
-    let vfs = crate::vfs::Vfs::open(&install.0).unwrap();
+    let mut vfs = crate::vfs::Vfs::open(&install.0).unwrap();
+    vfs.overlay_ini(&Config::parse(ini.as_bytes()).unwrap())
+        .unwrap();
     let cat = items();
     let mut app = App::empty(
         MapRenderer::new(&vfs, &cat),
@@ -253,7 +255,7 @@ const MAKE: &str = "trulea=4\ntruleb=0\ntarga=7078\n";
 #[test]
 fn a_start_trigger_that_makes_an_item_available_is_undone_by_the_start_hook() {
     let text = format!("[start]\ntriggers=t\n[t]\n{MAKE}");
-    with_scenario("cheat-season-start", &text, |app, cat| {
+    with_scenario("cheat-season-start", &text, "", |app, cat| {
         restart(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
@@ -262,9 +264,23 @@ fn a_start_trigger_that_makes_an_item_available_is_undone_by_the_start_hook() {
 #[test]
 fn a_resume_trigger_that_makes_an_item_available_is_undone_by_the_start_hook() {
     let text = format!("[resume]\ntriggers=t\n[t]\n{MAKE}");
-    with_scenario("cheat-season-resume", &text, |app, cat| {
+    with_scenario("cheat-season-resume", &text, "", |app, cat| {
         app.open_zoo(zoo(Some("s/a.scn")), Money::default(), true)
             .unwrap();
         assert_eq!(on(app, cat), [false; 4]);
     });
+}
+
+#[test]
+fn an_ini_reward_that_makes_an_item_available_is_kept_after_the_start_hook() {
+    let ini = "[user]\nunlockCount=1\nunlockEntity0=7078\n";
+    with_scenario(
+        "cheat-season-reward",
+        "[duration]\nnummonths=-1\n",
+        ini,
+        |app, cat| {
+            restart(app);
+            assert_eq!(on(app, cat), [false, true, false, false]);
+        },
+    );
 }

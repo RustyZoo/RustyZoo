@@ -159,7 +159,7 @@ impl App<'_> {
             if let Some(s) = self.sim.scenario() {
                 s.gui().take_forced();
             }
-            self.scenario_avail(false);
+            self.scenario_avail();
             // The start hook follows the resume triggers; a saved game without a scenario block,
             // with an empty or a failed one does not run it (cheats 6.3 point 2, 6.4 points 5 to 7).
             self.game_started();
@@ -325,9 +325,11 @@ impl App<'_> {
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
             self.scenario_forced();
-            self.scenario_avail(true);
-            // The start hook follows the start triggers and the research tree (cheats 6.3 point 2).
+            self.scenario_avail();
+            // The start hook follows the start triggers and the research tree (cheats 6.3 point 2);
+            // the ini rewards come after it.
             self.game_started();
+            self.scenario_rewards();
             self.look_up_unlocks();
         }
         let music = self.music.take();
