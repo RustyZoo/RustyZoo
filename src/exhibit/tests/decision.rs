@@ -10,14 +10,18 @@ use crate::zoo::{Show, ShowInfo};
 use std::sync::Arc;
 
 /// Closes the square of tiles `x0..=x1` by `y0..=y1` with pieces of `class`, one by one.
-fn build(world: &mut World, class: &'static str, (x0, y0, x1, y1): (i32, i32, i32, i32)) {
+pub(super) fn build(
+    world: &mut World,
+    class: &'static str,
+    (x0, y0, x1, y1): (i32, i32, i32, i32),
+) {
     world.begin();
     for (class, p) in ring(class, x0, y0, x1, y1) {
         put_wall(world, class, p);
     }
 }
 
-fn id_at(world: &World, x: usize, y: usize) -> u32 {
+pub(super) fn id_at(world: &World, x: usize, y: usize) -> u32 {
     world.tank_at(y * SIZE as usize + x).unwrap()
 }
 
@@ -262,10 +266,8 @@ fn the_counter_of_a_loaded_zoo_moves_up_by_two_for_each_of_its_show_tanks() {
     pieces.extend(ring("tank", 0, 5, 1, 6));
     let mut world = tanks(&pieces, &[], &[]);
     assert_eq!(world.zoo.shows.next_show, 1004);
-    assert!(
-        ids(&world).is_empty(),
-        "the stored infos come from the file"
-    );
+    // The file holds no info: each show tank keeps the fresh one of its second making (O25).
+    assert_eq!(ids(&world), [1002, 1004]);
     build(&mut world, "show", (0, 0, 1, 1));
     assert_eq!(info(&world, 0, 0).unwrap().id, 1006);
 }

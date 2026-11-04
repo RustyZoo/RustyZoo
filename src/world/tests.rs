@@ -569,6 +569,55 @@ fn the_shipped_maps_have_show_neighbours_where_the_tank_walls_say_so() {
 
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn the_load_flags_the_tile_pair_the_shipped_maps_store() {
+    // Shows 31.3 point 9, 31.6 point 3: the recompute from the boundary list of the show tank
+    // flags the pair the file flags; scn28b has no link and no flag changes.
+    use crate::entity::Catalogue;
+    use crate::render::MapRenderer;
+    let (vfs, maps) = shipped();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let renderer = MapRenderer::new(&vfs, &catalogue);
+    let flags = |zoo: &Zoo| -> Vec<bool> {
+        let fence = |e: &crate::zoo::Entity| e.common.as_ref().and_then(|c| c.fence);
+        zoo.entities
+            .iter()
+            .map(|e| fence(e).is_some_and(|f| f.portal))
+            .collect()
+    };
+    let mut linked = 0;
+    for map in maps {
+        let Ok(zoo) = Zoo::parse(&vfs.read(&map).unwrap()) else {
+            continue;
+        };
+        let before = flags(&zoo);
+        let world = World::new(zoo, |e| renderer.shape(e));
+        assert_eq!(flags(&world.zoo), before, "{map}");
+        let ids = |id: u32| world.find(id).map(|at| before[at]);
+        for e in world.exhibits().list() {
+            linked += usize::from(!e.portals.is_empty());
+            for p in &e.portals {
+                assert_eq!(
+                    (ids(p.mine), ids(p.theirs)),
+                    (Some(true), Some(true)),
+                    "{map}"
+                );
+            }
+        }
+        if map.to_ascii_lowercase().contains("scn28b") {
+            assert!(!before.contains(&true), "{map}");
+        }
+    }
+    assert!(
+        linked > 0
+            || !vfs
+                .list(None)
+                .iter()
+                .any(|m| m.to_ascii_lowercase().contains("scn28."))
+    );
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn loading_a_map_spends_two_show_ids_for_each_show_tank_and_makes_no_info() {
     // Shows 31.6 points 2 and 5: the stored infos stay, the counter moves up by two for each show
     // tank.

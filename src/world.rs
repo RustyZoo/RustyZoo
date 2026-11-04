@@ -32,6 +32,7 @@ mod edit;
 mod exhibit;
 mod filter;
 mod held;
+mod portal;
 mod save;
 mod settle;
 mod tank;
@@ -43,6 +44,7 @@ pub(crate) use filter::{
     Wear, months_since as filter_months_since, placed as placed_filter,
     sell_rate as filter_sell_rate, wear as filter_wear,
 };
+pub(crate) use portal::Portal;
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
 
@@ -178,6 +180,8 @@ pub struct World {
     /// The animals that came onto the map or left it, and the show-neighbour links made or dropped,
     /// that the show lists have not seen yet (shows 20; not saved, not hashed).
     show_moves: Vec<crate::show::Move>,
+    /// A saved zoo is being read: a portal flag that changes keeps the open byte (shows 31.3 point 7).
+    reading: bool,
 }
 
 impl World {
@@ -223,6 +227,7 @@ impl World {
             language,
             research: Default::default(),
             show_moves: Vec::new(),
+            reading: true,
         };
         world.mark_exterior();
         world.exhibits = Exhibits::new(&world);
@@ -231,7 +236,7 @@ impl World {
         world.load_gates();
         world.load_tanks();
         world.retank(false);
-        world.spend_loaded_ids();
+        world.load_infos();
         world.name_loaded();
         world.relink();
         // The loaded animals are placed in file order and join the show lists with the first step
@@ -245,6 +250,7 @@ impl World {
         world.units.sync(&world.zoo.entities);
         world.load_thoughts();
         world.dirty = false;
+        world.reading = false;
         world.wet.clear();
         world.stirred.clear();
         world
