@@ -26,6 +26,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem::take;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use rustyzoo::app::{App, Command};
 use rustyzoo::camera::Settings;
@@ -124,6 +125,9 @@ fn remember_cursors(on: bool) {
     }
 }
 
+/// The shortest time between two pictures of the start-up: about one refresh of a 60 Hz display.
+const LOADING_FRAME: Duration = Duration::from_millis(16);
+
 /// The commands of a script, in the order of their pass.
 type Script = std::iter::Peekable<std::vec::IntoIter<(u64, Command)>>;
 
@@ -145,7 +149,16 @@ fn start_up(
     let size = stage.screen.size;
     let (screen, texture, sound) = (&mut *stage.screen, &mut *stage.texture, &mut *stage.sound);
     let mut menu = None;
-    let mut present = |frame: &rustyzoo::Framebuffer| intro::show(screen, texture, frame);
+    // The bar moves at nearly every one of the 1,000 steps, and a present waits for the display:
+    // the picture is shown at most once per `LOADING_FRAME`, and the first one always.
+    let mut last: Option<Instant> = None;
+    let mut present = |frame: &rustyzoo::Framebuffer| {
+        if last.is_some_and(|at| at.elapsed() < LOADING_FRAME) {
+            return Ok(());
+        }
+        last = Some(Instant::now());
+        intro::show(screen, texture, frame)
+    };
     let mut music = || menu = sound.start_music(vfs, ini);
     let made = boot(vfs, ini, size, flags.show, &mut present, &mut music)?;
     Ok(Some((made, menu)))
@@ -172,6 +185,7 @@ fn make_app<'c>(
                 timers,
                 size,
             )?;
+            app.set_user_folder(userdir::dir());
             if let Some(ui) = crate::layout::load_interface(vfs, size, flags.show, flags.fill)? {
                 app.set_interface(ui);
             }

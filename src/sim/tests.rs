@@ -1424,11 +1424,18 @@ fn a_saved_game_opens_as_it_was_saved() {
             true => Run::resume(files, types, world, money, 1),
         }
     };
-    // The size of a record is a version's, not the game's: the saved file is of version 106.
-    let same = |a: &[crate::zoo::Entity], b: &[crate::zoo::Entity]| {
+    // The size of a record is a version's, not the game's: the saved file is of version 106. The
+    // raw bodies of the first file are the ones read, which the writer re-lays out (the fields a
+    // version lacks) and rewrites from the model (the unit block), so only the figures are
+    // compared; the bytes are compared after the second save, where both files are of version 106.
+    let same = |a: &[crate::zoo::Entity], b: &[crate::zoo::Entity], raw: bool| {
         a.len() == b.len()
             && a.iter().zip(b).all(|(x, y)| {
-                x.body_size.is_none() == y.body_size.is_none() && x.common == y.common
+                let (mut cx, cy) = (x.common.clone(), y.common.as_ref());
+                if let (false, Some(cx), Some(cy)) = (raw, cx.as_mut(), cy) {
+                    cx.raw = cy.raw.clone();
+                }
+                x.body_size.is_none() == y.body_size.is_none() && cx.as_ref() == cy
             })
     };
     for member in [
@@ -1450,7 +1457,10 @@ fn a_saved_game_opens_as_it_was_saved() {
         // (animals 3.5), so the loaded map's raw records are not the saved ones.
         let mut written = run.world.saved(|_| true);
         run.world.finish_save(&mut written, &cat);
-        assert!(same(&written.entities, &b.entities), "{member}: entities");
+        assert!(
+            same(&written.entities, &b.entities, false),
+            "{member}: entities"
+        );
         // A counter at 0 is not saved (it means the same as none).
         let named = |z: &crate::zoo::Zoo| {
             (z.names.iter())
@@ -1479,7 +1489,7 @@ fn a_saved_game_opens_as_it_was_saved() {
         // Saving the opened game again changes none of that.
         let twice = start(&back.save().unwrap(), true);
         assert!(
-            same(&twice.world.zoo.entities, &b.entities),
+            same(&twice.world.zoo.entities, &b.entities, true),
             "{member}: second save"
         );
         assert_eq!(

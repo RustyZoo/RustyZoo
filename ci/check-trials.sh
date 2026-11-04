@@ -514,6 +514,16 @@ windowed_view() {
 # The game size of the ini file (800x600 in both trials) at factor 1, on the dummy video driver.
 check base-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/default.zoo"
 check expansion-trial 800x600,1,800x600,800x600,800x600,frames,same "windowed maps/scn19.zoo"
+# A save in a window of a map (Ctrl+S, a name, Enter) sets `[user] lastfile`, as the headless run does.
+windowed_save() {
+  d=$(mktemp -d)
+  printf '20 key s ctrl\n25 char N\n26 char u\n27 char i\n28 char t\n40 key enter\n80 quit\n' >"$d/script"
+  rm -rf "$tmp/user"
+  SDL_VIDEO_DRIVER=dummy rz run "$1" --size 800x600 --passes 120 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  sed -n 's|^lastfile=.*[/\\]||p' "$tmp/user/zoo.ini"
+  rm -rf "${d:?}"
+}
+check base-trial Nuit.zoo "windowed_save maps/default.zoo"
 # Its view stays at the one the map stores (the pointer of the dummy driver is not read).
 check base-trial 1376,48 "windowed_view maps/default.zoo"
 # Full screen on and off, and the zoom rule of an 800 pixel wide full screen.
