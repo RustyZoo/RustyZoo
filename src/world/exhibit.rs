@@ -306,6 +306,10 @@ impl World {
         if let Some(i) = self.waiting.iter().position(|w| w.0 == id) {
             let (id, start, placed) = self.waiting.remove(i);
             self.choose_gate(id, start, placed);
+            // The last decision of a tank made in play (shows 31.2 step 9).
+            if self.tank(id).is_some() {
+                self.note_decision();
+            }
         }
     }
 

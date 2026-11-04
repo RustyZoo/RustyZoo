@@ -454,3 +454,14 @@ fn a_saved_grandstand_stores_its_live_show_soon_flag_as_the_fill_word() {
     w.units.buildings.get_mut(&7).unwrap().fill = 1;
     assert_eq!(fill(&w), 1);
 }
+
+#[test]
+fn the_pass_noted_by_a_finished_decision_gives_the_grandstands_their_show_id() {
+    // Shows 31.2 point 9: the show lists apply the note with the next step's moves.
+    let (mut w, cat) = world(9, "glass", &[(7, (1, 2), 2)]);
+    settle(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 0, "no note, no pass");
+    w.note_decision();
+    settle(&mut w, &cat);
+    assert_eq!(show_of(&w, 7), 1001);
+}

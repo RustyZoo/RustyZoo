@@ -568,6 +568,45 @@ fn the_shipped_maps_have_show_neighbours_where_the_tank_walls_say_so() {
 }
 
 #[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn loading_a_map_spends_two_show_ids_for_each_show_tank_and_makes_no_info() {
+    // Shows 31.6 points 2 and 5: the stored infos stay, the counter moves up by two for each show
+    // tank.
+    use crate::entity::Catalogue;
+    use crate::render::MapRenderer;
+    let (vfs, _) = shipped();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let renderer = MapRenderer::new(&vfs, &catalogue);
+    for (map, tanks) in [
+        ("maps/scn28", 1usize),
+        ("maps/scn28b", 1),
+        ("maps/med_kids", 1),
+        ("saved games/test", 2),
+    ] {
+        // The saved zoo is not in every install.
+        let Ok(bytes) = vfs.read(&format!("{map}.zoo")) else {
+            assert!(map.starts_with("saved"), "{map}");
+            continue;
+        };
+        let zoo = Zoo::parse(&bytes).unwrap();
+        let (counter, infos) = (zoo.shows.next_show, zoo.shows.infos.clone());
+        let world = World::new(zoo, |e| renderer.shape(e));
+        let shows = world.exhibits().list().iter();
+        let shows = shows.filter(|e| e.tank.is_some_and(|t| t.show)).count();
+        assert_eq!(shows, tanks, "{map}");
+        assert_eq!(
+            world.zoo.shows.next_show,
+            counter + 2 * tanks as u16,
+            "{map}"
+        );
+        assert_eq!(
+            world.zoo.shows.infos, infos,
+            "{map}: no info is made or lost"
+        );
+    }
+}
+
+#[test]
 fn a_save_writes_the_install_language() {
     let language = Language {
         number: 1036,

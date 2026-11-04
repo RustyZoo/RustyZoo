@@ -8,7 +8,7 @@ use crate::world::Step;
 type Piece = (&'static str, (i32, i32, u32));
 
 /// A wall piece of a class of `shape`: `tank`, `show`, or an ordinary `fences` piece.
-fn wall(class: &str, (x, y, d): (i32, i32, u32)) -> Entity {
+pub(super) fn wall(class: &str, (x, y, d): (i32, i32, u32)) -> Entity {
     let mut e = entity(class, x, y, d);
     e.subtype = "f".into();
     e

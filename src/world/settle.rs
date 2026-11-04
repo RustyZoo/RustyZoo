@@ -321,6 +321,7 @@ impl World {
         let into: HashMap<u32, u32> = lost.iter().copied().collect();
         for e in old.list().iter().filter(|e| !kept_ids.contains(&e.id)) {
             self.units.thoughts.drop_exhibit(e.id);
+            self.unmake_gone(old, e.id);
             if let Some(at) = e.gate.and_then(|g| self.find(g)) {
                 self.make_fence(at);
             }
@@ -377,6 +378,11 @@ impl World {
             changed.extend(lost.iter().map(|l| l.1).chain(split_kept.iter().copied()));
             self.floors(&changed);
         }
+        if !quiet {
+            let made = built.tanks.iter().filter(|t| t.1.is_none());
+            self.spend_temporary_ids(made.map(|t| t.0));
+        }
+        self.decide(&changed, false);
         for (id, inherited) in std::mem::take(&mut built.tanks) {
             self.make_tank(id, inherited, !quiet);
         }
@@ -387,6 +393,7 @@ impl World {
             let mut changed = self.retank(false);
             changed.extend(split_kept.iter().copied());
             self.floors(&changed);
+            self.decide(&changed, true);
         }
         for &id in &built.regate {
             if let Some(e) = self.exhibits.get_mut(id) {
@@ -395,6 +402,10 @@ impl World {
         }
         if !quiet {
             self.merge_tanks(old, lost);
+            // A tank left by a merge was decided again (shows 31.2 point 11).
+            if !lost.is_empty() {
+                self.note_decision();
+            }
         }
         self.relink();
     }

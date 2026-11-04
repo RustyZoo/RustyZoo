@@ -285,6 +285,7 @@ impl World {
             let mut changed = self.retank(false);
             changed.push(id);
             self.floors(&changed);
+            self.decide(&changed, true);
         }
         self.fill_values(id, inherited);
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();

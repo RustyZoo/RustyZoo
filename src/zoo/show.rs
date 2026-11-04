@@ -294,6 +294,24 @@ pub(crate) struct ItemState {
 }
 
 impl ShowInfo {
+    /// A new show info (shows 31.1 point 2): the show of 3.3 new, no type record, no schedule, every
+    /// figure 0, and the frequency and the next show time given.
+    pub(crate) fn new(id: u16, frequency: i32, next: i32) -> ShowInfo {
+        ShowInfo {
+            frequency,
+            index: 0,
+            schedule: Vec::new(),
+            records: Vec::new(),
+            events: Vec::new(),
+            next,
+            id,
+            upkeep: [0; 3],
+            receipts: [0; 3],
+            attendance: [0; 3],
+            show: Show::default(),
+        }
+    }
+
     /// The record of type `t`. The original makes an empty one on a lookup; nothing reads it, so
     /// none is made here.
     pub(crate) fn record(&self, t: u32) -> Option<&TypeRecord> {
