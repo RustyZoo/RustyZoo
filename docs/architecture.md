@@ -81,7 +81,7 @@ Everything read from a file is untrusted: malformed data gives an error, never a
 
 ## Commands
 
-`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `check-behaviours`, `dump-sprite`, `check-sprites`, `sim`, `movie-info`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see docs/usage.md. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
+`ls`, `cat`, `dump-strings`, `strings`, `check-config`, `check-behaviours`, `dump-sprite`, `check-sprites`, `sim`, `mcp` (a Model Context Protocol server over standard input and output: `src/mcp.rs`, a development aid that drives a `sim::drive::Run` the way `sim` does and changes no game behaviour; it has no JSON dependency, `src/mcp/json.rs` reads and writes the small subset it needs), `movie-info`, `check-layouts`, `dump-layout`, `text-width`, `draw-text` and `window-smoke`; see docs/usage.md. They read the data through the core and print text or PNG files, which is how the core is checked on real data.
 
 ## Design choices
 

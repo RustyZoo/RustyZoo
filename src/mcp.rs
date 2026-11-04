@@ -287,3 +287,91 @@ fn whole(args: &Json, key: &str, max: f64) -> Result<f64, String> {
     n.filter(|n| n.fract() == 0.0 && (0.0..=max).contains(n))
         .ok_or_else(|| format!("{key} must be a whole number from 0 to {max}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixtures::Install;
+
+    /// The answers (one per line) of a server without game data to the requests.
+    fn ask(requests: &[&str]) -> Vec<Json> {
+        let install = Install::new("mcp", &[]);
+        let vfs = Vfs::open(&install.0).unwrap();
+        let mut out = Vec::new();
+        serve(&vfs, requests.join("\n").as_bytes(), &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        text.lines().map(|l| json::parse(l).unwrap()).collect()
+    }
+
+    fn call(name: &str, arguments: &str) -> String {
+        format!(
+            r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"{name}","arguments":{arguments}}}}}"#
+        )
+    }
+
+    fn is_error(answer: &Json) -> bool {
+        answer.get("result").and_then(|r| r.get("isError")) == Some(&Json::Bool(true))
+    }
+
+    #[test]
+    fn the_server_answers_over_lines() {
+        let answers = ask(&[
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            r#"{"jsonrpc":"2.0","id":"a","method":"tools/list"}"#,
+            r#"{"jsonrpc":"2.0","id":3,"method":"nothing"}"#,
+            "not json",
+        ]);
+        assert_eq!(answers.len(), 4, "a notification gets no answer");
+        let version = answers[0]
+            .get("result")
+            .and_then(|r| r.get("protocolVersion"));
+        assert_eq!(version.and_then(Json::as_str), Some("2024-11-05"));
+        assert_eq!(answers[1].get("id"), Some(&Json::text("a")));
+        let tools = answers[1].get("result").and_then(|r| r.get("tools"));
+        let Some(Json::Arr(tools)) = tools else {
+            panic!("no tool list")
+        };
+        assert_eq!(tools.len(), TOOLS.len());
+        let code = |a: &Json| {
+            a.get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(Json::as_f64)
+        };
+        assert_eq!(
+            (code(&answers[2]), code(&answers[3])),
+            (Some(-32601.0), Some(-32700.0))
+        );
+    }
+
+    #[test]
+    fn a_tool_with_bad_arguments_or_no_game_is_an_error_not_the_end() {
+        let requests = [
+            call("state", "{}"),
+            call("hash", "{}"),
+            call("step", r#"{"ticks":1}"#),
+            call("step", "{}"),
+            call("step", r#"{"ticks":-1}"#),
+            call("step", r#"{"ticks":1e12}"#),
+            call("step", r#"{"ticks":1.5}"#),
+            call("step", r#"{"ticks":1,"dt":0}"#),
+            call("entity", r#"{"id":-1}"#),
+            call("command", r#"{"text":"cash 5"}"#),
+            call("command", r#"{"text":"save x"}"#),
+            call("load", "{}"),
+            call("load", r#"{"map":"maps/none.zoo"}"#),
+            call("load", r#"{"map":"a","file":"b"}"#),
+            call("load", r#"{"map":"maps/none.zoo","seed":-1}"#),
+            call("save", r#"{"file":"/none/x.zoo"}"#),
+            call("nothing", "{}"),
+        ];
+        let requests: Vec<&str> = requests.iter().map(String::as_str).collect();
+        let answers = ask(&requests);
+        assert_eq!(answers.len(), requests.len());
+        for (request, answer) in requests.iter().zip(&answers) {
+            assert!(is_error(answer), "{request}");
+        }
+        let log = ask(&[&call("log", "{}"), &call("log", r#"{"lines":0}"#)]);
+        assert!(!is_error(&log[0]) && !is_error(&log[1]));
+    }
+}

@@ -226,6 +226,8 @@ animating() {
 check base-trial same,animated,changing 'animating maps/scn01a.zoo'
 # The sim command runs the sets too.
 check base-trial yes 'rz sim maps/scn01a.zoo --ticks 160 --dt 67 --seed 1 --log 2>/dev/null | grep -q " unit set " && echo yes'
+# The MCP server steps a loaded map as sim does: the hash it answers after 160 steps is sim's.
+check base-trial same 'a=$(printf "%s\n" "{\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"load\",\"arguments\":{\"map\":\"maps/scn01a.zoo\"}}}" "{\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"step\",\"arguments\":{\"ticks\":160}}}" "{\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"hash\",\"arguments\":{}}}" | rz mcp 2>/dev/null | sed -n "s/.*\"text\":\"\([0-9a-f]\{16\}\)\".*/\1/p"); b=$(rz sim maps/scn01a.zoo --ticks 160 --hash 2>/dev/null); [ -n "$a" ] && [ "$a" = "$b" ] && echo same'
 # A hungry lion (27645) goes to the pile of 50 units that the script puts down, takes bites of 20, 20 and
 # what is left, and the pile goes. Seed 1 reaches the pile in the run: the loaded lion goes on with its
 # saved set first (behaviours 4.7), and at 600 steps it is still on its way. The lion's shelter walk (it aims at a
