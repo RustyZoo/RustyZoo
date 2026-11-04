@@ -9,6 +9,18 @@ fn a_file_time_reads_back_as_the_game_date() {
     assert_eq!(file_time(i64::MAX), u64::MAX);
 }
 
+#[test]
+fn the_real_day_is_read_in_utc_and_a_test_build_has_none() {
+    // 30 October 23:30 UTC is still the 30th (01:30 on the 31st at UTC+2), then midnight.
+    assert_eq!(utc_day_of(1_793_403_000), (10, 30));
+    assert_eq!(utc_day_of(1_793_404_800), (10, 31));
+    assert_eq!(utc_day_of(1_793_491_140), (10, 31));
+    assert_eq!(utc_day_of(1_835_438_400), (2, 29));
+    assert_eq!(utc_day_of(0), (1, 1));
+    let _ = utc_day_of(u64::MAX);
+    assert_eq!(utc_day(), (0, 0));
+}
+
 fn periods(ini: &str) -> (u32, u32, u32) {
     let t = Timers::from_config(&Config::parse(ini.as_bytes()).unwrap());
     (t.update_period(), t.draw_period(), t.cap())
