@@ -274,7 +274,23 @@ fn the_look_ahead_is_read_missing_zero_negative_and_huge_without_a_panic() {
         let to = cx.unit.goal.record.target.tile;
         (to.is_some_and(|t| t != 0), drew(&Rng::default(), &rng))
     };
-    for look in [None, Some(0), Some(-5), Some(i32::MIN), Some(i32::MAX)] {
+    for look in [
+        None,
+        Some(0),
+        Some(-1),
+        Some(-5),
+        Some(i32::MIN),
+        Some(i32::MAX),
+    ] {
         assert_eq!(run(look), (true, 1), "{look:?}");
     }
+}
+
+#[test]
+fn a_rampage_target_flag_occupies_the_animal_in_the_goal_ladder() {
+    // 21.4 point 3 and 4: the same "any of" flags as the animal's own.
+    let mut w = zoo(&[(ALLO, "allo", (10, 10))]);
+    assert!(!on(&mut w, ALLO, &[], |cx| cx.occupied()));
+    animal(&mut w, ALLO).rampage_target = true;
+    assert!(on(&mut w, ALLO, &[], |cx| cx.occupied()));
 }

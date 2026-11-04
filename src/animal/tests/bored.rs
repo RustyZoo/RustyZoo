@@ -203,3 +203,31 @@ fn a_rampage_target_flag_occupies_the_animal_and_is_saved() {
     back.restore(&record, &keys(), &Class::default());
     assert!(back.rampage_target);
 }
+
+#[test]
+fn a_rampage_target_flag_stops_the_fence_test_and_the_bored_draw() {
+    // 21.4 point 4: the zap check asks for no fence test and the bored check draws nothing.
+    let k = Keys {
+        test_fence: 100,
+        drink: 10,
+        chase: 10,
+        ..keys()
+    };
+    let prey = seeing(Sight {
+        prey: true,
+        ..Sight::default()
+    });
+    let go = |target: bool, counter: usize| {
+        let mut a = Animal {
+            rampage_target: target,
+            zap: 0,
+            ..animal()
+        };
+        a.counters[counter] = 0;
+        let out = crate::animal::run(&mut a, &k, &Class::default(), &prey, &mut Rng::default());
+        (out.fence, a.playing || a.thirsty)
+    };
+    // The zap check alone (the bored check would occupy the animal itself), then the bored check.
+    assert!(go(false, KEEPER).0 && !go(true, KEEPER).0);
+    assert!(go(false, BORED).1 && !go(true, BORED).1);
+}

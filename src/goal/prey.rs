@@ -71,7 +71,12 @@ impl Cx<'_, '_> {
         if l.wrapping_mul(l) > d2 {
             l = ((f64::from(d2).sqrt() - 1.0) as i32).max(0);
         }
-        let r = (self.ctx.rng.rand() % (l as u32).wrapping_add(1)) as usize;
+        let r = self
+            .ctx
+            .rng
+            .rand()
+            .checked_rem((l as u32).wrapping_add(1))
+            .unwrap_or(0) as usize;
         let node = path
             .get(r)
             .copied()
