@@ -58,9 +58,10 @@ impl World {
         }
     }
 
-    /// Adds a water effect of the world manager (simulation 7.2), which a save leaves out.
+    /// Adds a water effect of the world manager (simulation 7.2), which a save leaves out and
+    /// which marks no exhibit for a new rating, here or at its removal.
     pub(crate) fn add_wave(&mut self, entity: Entity, shape: Shape) -> Option<u32> {
-        let id = self.unrecorded(|w| w.add(entity, Some(shape)))?;
+        let id = self.unrecorded(|w| w.add_rated(entity, Some(shape), false))?;
         self.waves.insert(id);
         Some(id)
     }

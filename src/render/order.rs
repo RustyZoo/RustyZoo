@@ -510,15 +510,10 @@ impl Scene {
         (self.tiles[t].edges >> (2 * (3 - d / 2))) & 3
     }
 
-    /// Whether nothing stands on tile `t`: no object holds a quadrant, an edge slot or the path,
-    /// and no unit is on it.
+    /// Whether the four quadrant slots of tile `t` are empty (an edge piece, a path piece or a unit
+    /// does not count).
     pub(crate) fn is_empty(&self, t: usize) -> bool {
-        (self.quad[t]
-            .iter()
-            .chain(&self.edge[t])
-            .all(Option::is_none))
-            && self.path[t].is_none()
-            && self.list[t].is_empty()
+        self.quad[t].iter().all(Option::is_none)
     }
 
     /// The object on the edge of tile `t` in map direction `d`.

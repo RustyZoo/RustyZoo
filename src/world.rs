@@ -326,7 +326,7 @@ impl World {
         self.scene.index(tx, ty)
     }
 
-    /// Whether nothing stands on tile `t` (see [`Scene::is_empty`]).
+    /// Whether the four quadrant slots of tile `t` are empty (see [`Scene::is_empty`]).
     pub(crate) fn is_empty(&self, t: usize) -> bool {
         self.scene.is_empty(t)
     }

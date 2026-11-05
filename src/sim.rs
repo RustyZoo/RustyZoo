@@ -294,7 +294,7 @@ impl Sim {
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
-        self.ripples = ripple::Ripples::default();
+        self.ripples.clear();
         self.bulldozed.clear();
         self.scenario = None;
         self.research = None;

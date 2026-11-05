@@ -6,7 +6,7 @@
 //! issue 305). Here both loops cover the whole map and never leave it.
 //!
 //! The two tile bytes of the condition (the flag 8 and the byte not identified) are not kept by
-//! the engine: they count as clear.
+//! the engine: they count as clear. A ripple never marks an exhibit for a new rating.
 
 use super::Sim;
 use crate::entity::Catalogue;
@@ -33,11 +33,18 @@ pub(super) struct Ripples {
 impl Default for Ripples {
     fn default() -> Ripples {
         Ripples {
-            slots: vec![(LIFE + 1, None); SLOTS],
+            slots: vec![(0, None); SLOTS],
             count: 0,
             wet: 0,
             scan: 0,
         }
+    }
+}
+
+impl Ripples {
+    /// A new game empties the slots; the counters and N are the program's and stay.
+    pub(super) fn clear(&mut self) {
+        self.slots = Ripples::default().slots;
     }
 }
 
@@ -53,6 +60,8 @@ impl Sim {
             if *age > LIFE
                 && let Some(id) = effect.take()
             {
+                // The slot rests 4 s more before it is free again.
+                *age = 0;
                 self.removals.push(id);
             }
         }
@@ -109,8 +118,9 @@ impl Sim {
                     rotation: self.rng.rand() & 7,
                     ..Default::default()
                 });
-                if let Some(id) = world.add_wave(ripple.clone(), shape) {
-                    self.ripples.slots[slot] = (0, Some(id));
+                let id = world.add_wave(ripple.clone(), shape);
+                self.ripples.slots[slot] = (0, id);
+                if id.is_some() {
                     return;
                 }
             }
@@ -138,10 +148,18 @@ mod tests {
         cat
     }
 
-    fn sim(ini: &str) -> Sim {
+    /// A new game, whose slots are all resting.
+    fn fresh(ini: &str) -> Sim {
         let mut sim = Sim::new(ini.as_bytes());
         sim.set_seed(1);
         sim.start_game(0, Clocks::default());
+        sim
+    }
+
+    /// The same with every slot free.
+    fn sim(ini: &str) -> Sim {
+        let mut sim = fresh(ini);
+        sim.ripples.slots.iter_mut().for_each(|s| s.0 = LIFE + 1);
         sim
     }
 
@@ -263,5 +281,99 @@ mod tests {
         }
         // About one every 0.7 s, each shown 4 s.
         assert!((3..=SLOTS).contains(&peak), "{peak}");
+    }
+
+    #[test]
+    fn a_new_game_has_no_free_slot_for_four_seconds() {
+        let (cat, mut world) = (catalogue(), lake((20, 20), |_, _| true));
+        let mut sim = fresh("");
+        let money = &mut crate::money::Money::default();
+        let data = crate::behaviour::NoData;
+        for _ in 0..40 {
+            sim.step_game(&data, &cat, &mut world, money, 100, |_, _, _| {});
+        }
+        // The count of N is done (3 s) and the scans ran, but no slot is above 4000 yet.
+        assert!(sim.ripples.wet > 0 && ripples(&world).is_empty());
+        for _ in 0..200 {
+            sim.step_game(&data, &cat, &mut world, money, 100, |_, _, _| {});
+        }
+        assert!(!ripples(&world).is_empty());
+    }
+
+    #[test]
+    fn a_slot_rests_four_seconds_after_its_ripple_goes() {
+        let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
+        let mut sim = sim("");
+        sim.ripples.slots.truncate(1);
+        sim.ripples.wet = 1;
+        sim.scan(&mut world, &cat);
+        assert_eq!(ripples(&world).len(), 1);
+        sim.water_effects(&mut world, &cat, 4001);
+        assert_eq!(sim.ripples.slots, [(0, None)], "restarts at age 0");
+        sim.ripples.scan = 0;
+        sim.scan(&mut world, &cat);
+        assert_eq!(sim.ripples.slots, [(0, None)], "not free: nothing placed");
+        assert_eq!(ripples(&world).len(), 1);
+        sim.water_effects(&mut world, &cat, 4001);
+        assert_eq!(ripples(&world).len(), 2, "free again 4 s later");
+    }
+
+    #[test]
+    fn a_unit_or_an_edge_piece_does_not_stop_a_ripple() {
+        use crate::unit::testing::{centre, entity};
+        let cat = catalogue();
+        let mut world = world_with((1, 1), |zoo| {
+            zoo.tiles[0].terrain = 1;
+            zoo.entities
+                .push(entity("animals", "fish", 1, centre((0, 0)), 0));
+            zoo.entities.push(entity("fences", "f", 2, (32, 0), 0));
+        });
+        world.set_water(vec![false, true]);
+        assert!(world.is_empty(0));
+        let mut sim = sim("");
+        sim.ripples.wet = 1;
+        let before = sim.rng.clone();
+        sim.scan(&mut world, &cat);
+        assert_eq!(ripples(&world).len(), 1);
+        let mut rng = before;
+        (0..2).for_each(|_| _ = rng.rand());
+        assert_eq!(sim.rng.state(), rng.state());
+    }
+
+    #[test]
+    fn a_ripple_never_marks_its_exhibit_for_a_new_rating() {
+        use crate::unit::testing::tank_world;
+        let cat = catalogue();
+        let mut world = tank_world(4, 0, &[]);
+        world.set_water(vec![false, true]);
+        // Only the tank tiles are water, so the ripple lands in the tank.
+        let width = world.zoo.width as usize;
+        for t in 0..world.zoo.tiles.len() {
+            let (x, y) = (t % width, t / width);
+            world.zoo.tiles[t].terrain = u8::from((2..6).contains(&x) && (2..5).contains(&y));
+        }
+        let id = world.exhibits().list()[0].id;
+        let dirty = |w: &World| w.exhibits().get(id).unwrap().rating.dirty;
+        world.exhibits_mut().get_mut(id).unwrap().rating.dirty = false;
+        let mut sim = sim("");
+        sim.ripples.wet = 1;
+        sim.scan(&mut world, &cat);
+        let [(x, y, _)] = ripples(&world)[..] else {
+            panic!("{:?}", ripples(&world));
+        };
+        let t = world.tile_index(x, y).unwrap();
+        assert_eq!(world.exhibits().region(t), Some(id));
+        assert!(!dirty(&world));
+        let ripple = world
+            .zoo
+            .entities
+            .last()
+            .unwrap()
+            .common
+            .as_ref()
+            .unwrap()
+            .id;
+        assert!(world.remove(ripple));
+        assert!(!dirty(&world));
     }
 }
