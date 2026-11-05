@@ -36,6 +36,7 @@ use crate::render::order::project;
 use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::scenario::Scenario;
 use crate::sim::Sim;
+use crate::soundscape::Soundscape;
 use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
 use crate::text::format::{self, Arg};
@@ -164,16 +165,22 @@ struct Game {
 }
 
 impl Game {
+    /// The centre of the map view in view space, where the sounds are heard from (sound 5).
+    fn listener(&self) -> (i64, i64) {
+        let camera = &self.camera;
+        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
+        (
+            i64::from(camera.scroll.0) + w / 2,
+            i64::from(camera.scroll.1) + h / 2,
+        )
+    }
+
     /// Places sounds (entity, file, voice, base term) at their entity's position in the view
     /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
     /// is gone is dropped.
     fn placed(&self, sounds: impl Iterator<Item = (u32, String, String, i32)>) -> Vec<UnitSound> {
         let camera = &self.camera;
-        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
-        let listener = (
-            i64::from(camera.scroll.0) + w / 2,
-            i64::from(camera.scroll.1) + h / 2,
-        );
+        let listener = self.listener();
         let world = &self.world;
         sounds
             .filter_map(|(id, file, voice, base)| {
@@ -675,6 +682,8 @@ impl<'a> App<'a> {
         self.unit_sounds = self.unit_sounds_placed();
         self.loop_sounds = self.loop_sounds_placed();
         self.unit_sounds.append(&mut self.type_sounds);
+        let ambient = self.ambient_placed();
+        self.unit_sounds.extend(ambient);
         let sounds = self
             .unit_sounds
             .iter()

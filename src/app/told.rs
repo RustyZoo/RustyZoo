@@ -18,6 +18,31 @@ impl App<'_> {
         )
     }
 
+    /// Takes the ambient one-shots the steps asked for (sound 8.1) and places each one at its
+    /// offset from the centre of the map view; the voice of a file is its own.
+    pub(super) fn ambient_placed(&mut self) -> Vec<UnitSound> {
+        let shots = self.sim.take_shots();
+        let Some(game) = &self.game else {
+            return Vec::new();
+        };
+        let listener = game.listener();
+        (shots.into_iter())
+            .map(|s| {
+                let at = (listener.0 + i64::from(s.dx), listener.1 + i64::from(s.dy));
+                let (distance, pan) = positional(at, listener);
+                UnitSound {
+                    id: 0,
+                    voice: format!("ambient {}", s.file),
+                    file: s.file,
+                    base: 0,
+                    at,
+                    distance,
+                    pan,
+                }
+            })
+            .collect()
+    }
+
     /// The loops the tank filters play now, each placed in the view like a unit's sound; the voice
     /// of a loop is its filter's.
     pub(super) fn loop_sounds_placed(&self) -> Vec<UnitSound> {

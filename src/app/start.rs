@@ -59,6 +59,8 @@ impl App<'_> {
         self.scenario_clean();
         self.sim
             .start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
+        let soundscape = Soundscape::load(self.renderer.vfs(), file.as_deref());
+        self.sim.set_soundscape(soundscape);
         world.units.set_period(self.sim.ai.status_period);
         if saved {
             // The resume of a scenario sets the defaults up again, the game section then restores
@@ -281,6 +283,8 @@ impl App<'_> {
         }
         if let Some(file) = &start.scenario {
             self.scenario_economy(file);
+            let soundscape = Soundscape::load(self.renderer.vfs(), Some(file.as_str()));
+            self.sim.set_soundscape(soundscape);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(mut tree) =

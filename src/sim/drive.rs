@@ -6,6 +6,7 @@ use crate::animal::Class;
 use crate::behaviour::{Library, NoData, Timings};
 use crate::entity::Catalogue;
 use crate::money::Money;
+use crate::soundscape::Soundscape;
 use crate::unit::Part;
 use crate::vfs::Vfs;
 use crate::world::World;
@@ -252,7 +253,9 @@ impl Run {
         world.set_decay(crate::world::Decay::load(vfs));
         let files = (vfs.ini(), economy);
         let types = (cat, Class::load(vfs));
-        Run::open(files, types, world, money, seed, fences)
+        let mut run = Run::open(files, types, world, money, seed, fences);
+        run.sim.set_soundscape(Soundscape::load(vfs, None));
+        run
     }
 
     /// `fences` is `None` for a saved game, else the new game's reset of the fence pieces.
@@ -522,7 +525,8 @@ impl Run {
         lines.extend(
             (self.world.units.take_animal_lines().into_iter()).map(|l| format!("animal {l}")),
         );
-        // No interface plays the exhibit sounds here; the animal log tells them.
+        // No interface plays the ambient sounds or the exhibit sounds here; the logs tell them.
+        self.sim.take_shots();
         self.world.units.take_cheers();
         lines.extend(
             (self.world.units.take_guest_lines().into_iter()).map(|l| format!("guest {l}")),
