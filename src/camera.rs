@@ -289,15 +289,15 @@ impl Camera {
     }
 
     /// Full screen with a view of 800 pixels in width (8.3).
-    fn narrow(&self) -> bool {
+    pub(crate) fn narrow(&self) -> bool {
         self.fullscreen && self.size.0 == NARROW
     }
 
-    /// The window goes to full screen or back. A view at zoom 2 that full screen does not offer
-    /// is zoomed out to 0 with the steps of 8.1 (8.3).
+    /// The window goes to full screen or back. A view at zoom 2 or more that full screen does not
+    /// offer is zoomed out to 0 with the steps of 8.1 (8.3, 8.4 point 5).
     pub(crate) fn set_fullscreen(&mut self, map: &Zoo, fullscreen: bool) {
         self.fullscreen = fullscreen;
-        if self.narrow() && self.zoom == 2 {
+        if self.narrow() && self.zoom >= 2 {
             self.change(map, None, |c| c.zoom = 0);
         }
     }

@@ -216,10 +216,10 @@ impl Game {
             .collect()
     }
 
-    /// The Pause key and the space bar.
-    fn pause(&mut self) {
-        self.paused = !self.paused;
-        self.world.set_paused(self.paused);
+    /// Sets or clears the pause flag (the buttons are the app's, `main_buttons`).
+    fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        self.world.set_paused(paused);
     }
 
     /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
@@ -868,6 +868,7 @@ mod exhibits;
 mod gates;
 mod guest_panel;
 mod log;
+mod main_buttons;
 mod paint;
 pub use paint::{frame_hash, frame_hashes};
 #[cfg(test)]

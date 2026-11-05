@@ -7,6 +7,7 @@ impl App<'_> {
     /// The menu and the game act on what the player did since the last look: the answers to the
     /// questions, the actions of the lists and the cash field, the buttons selected.
     pub(super) fn acts(&mut self) {
+        self.main_pressed();
         let Some(ui) = &mut self.ui else { return };
         // The list of saved games was closed by its own Back button, or by a game that started.
         if self.listing.is_some() && !ui.shown(crate::menu::FREEFORM_LAYOUT) {
