@@ -404,11 +404,8 @@ pub struct Element {
     pub dynamic_width: bool,
     pub dynamic_height: bool,
     pub timer_duration: i32,
-    /// The size of the message line's list: the shown message and the waiting ones (`queueSize`).
-    pub queue_size: i32,
-    /// The colours of the message line's texts by kind modulo 3: general, good, urgent
-    /// (`generalcolor`, `goodcolor`, `urgentcolor`); a missing one is the text colour.
-    pub message_colors: [Rgb; 3],
+    /// The message line's keys.
+    pub queue: MessageLine,
     pub string_data: Vec<u8>,
     pub(crate) look: Look,
     /// The text the program gave the element, which shows instead of its `textid` or `textname`.
@@ -664,6 +661,26 @@ impl Tree {
             *counts.entry(element.kind.name()).or_insert(0) += 1;
         }
         counts
+    }
+}
+
+/// The keys of a message line (`ZTMessageQueue`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MessageLine {
+    /// `queueSize`: the size of the list, the shown message and the waiting ones.
+    pub size: i32,
+    /// The colours of the texts by kind modulo 3: general, good, urgent (`generalcolor`,
+    /// `goodcolor`, `urgentcolor`); a missing one is `fallback`, the text colour.
+    pub colors: [Rgb; 3],
+}
+
+impl MessageLine {
+    fn read(s: &Section, fallback: Rgb) -> MessageLine {
+        let colors = ["generalcolor", "goodcolor", "urgentcolor"];
+        MessageLine {
+            size: s.get("queueSize").and_then(to_int).unwrap_or(25),
+            colors: colors.map(|key| color(s, key).unwrap_or(fallback)),
+        }
     }
 }
 

@@ -66,7 +66,7 @@ impl Interface {
         }
         // The list holds `queueSize` entries and drops its oldest when full; a negative size never
         // drops (4.13 point 9).
-        let size = match self.tree.elements[i].queue_size {
+        let size = match self.tree.elements[i].queue.size {
             n if n < 0 => usize::MAX,
             n => usize::try_from(n).unwrap_or(0),
         };
@@ -94,7 +94,7 @@ impl Interface {
     /// Puts `text` on the message line `i` in the colour of its kind modulo 3.
     fn put_message(&mut self, i: usize, text: &[u8], kind: i32) {
         let e = &mut self.tree.elements[i];
-        e.look.fore_color = e.message_colors[kind.rem_euclid(3) as usize];
+        e.look.fore_color = e.queue.colors[kind.rem_euclid(3) as usize];
         self.put_text(i, text);
     }
 
