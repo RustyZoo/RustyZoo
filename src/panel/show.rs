@@ -1,6 +1,6 @@
 //! The show panel (information panels 19, shows 33; Marine Mania): a centred window with the
 //! exhibit's name, the admission of the selected species, the species drop-down and two tabs, the
-//! Show Script tab (the frequency drop-down; the trick editor is not built, 19.9) and the Show
+//! script tab (the frequency drop-down; the trick editor is not built, 19.9) and the Show
 //! Finances tab.
 //!
 //! [`Panel`] holds the exhibit `X` and the species `s` of shows 33.1 and fills the layouts from the
@@ -104,7 +104,7 @@ pub(crate) struct Panel {
     pub rows: Vec<u32>,
     /// The frequency is Never: the admission, species and trick controls are off.
     disabled: bool,
-    /// The grandstand that opened the panel on the Show Finances tab: deselecting it closes it.
+    /// The grandstand that opened the panel on the finances tab: deselecting it closes it.
     pub stand: Option<u32>,
     pub clock: Clock,
     /// The window was shown at the last look.
@@ -386,7 +386,7 @@ impl Panel {
         told
     }
 
-    /// `update_stats()` (19.8): the Show Finances tab. It looks up the record of the species the
+    /// `update_stats()` (19.8): the finances tab. It looks up the record of the species the
     /// show is playing, which makes the type 0 record between shows (shows 32.7).
     fn update_stats(&self, ui: &mut Interface, world: &mut World) {
         let (Some(x), Some(_)) = (self.exhibit, self.species) else {

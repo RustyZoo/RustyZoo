@@ -69,7 +69,7 @@ impl App<'_> {
     }
 
     /// Grandstand `stand` was selected (19.3 point 2): when it faces a show tank, the window
-    /// opens on Show Finances, until the grandstand is deselected.
+    /// opens on finances, until the grandstand is deselected.
     pub(super) fn show_stand(&mut self, stand: u32) {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
