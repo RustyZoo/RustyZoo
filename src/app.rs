@@ -255,7 +255,7 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     timers: Timers,
     quit: bool,
-    /// The message "The game is paused." is on the message line (input 4.5).
+    /// The paused message (string 400) is on the message line (input 4.5).
     pause_said: bool,
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
