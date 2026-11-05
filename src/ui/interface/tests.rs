@@ -146,7 +146,10 @@ fn the_message_line_shows_a_text_until_its_time_is_up() {
 
 /// The text the message line shows, and whether it is shown.
 fn shown(ui: &Interface) -> (Vec<u8>, bool) {
-    (ui.text(7001).unwrap(), ui.tree.elements[2].state & HIDDEN == 0)
+    (
+        ui.text(7001).unwrap(),
+        ui.tree.elements[2].state & HIDDEN == 0,
+    )
 }
 
 #[test]
@@ -158,7 +161,11 @@ fn messages_posted_together_come_in_order_one_per_duration() {
     ui.message(b"C");
     assert_eq!(shown(&ui), (b"A".to_vec(), true), "shown until the update");
     ui.update(1033);
-    assert_eq!(shown(&ui), (b"B".to_vec(), true), "a post ends the shown one");
+    assert_eq!(
+        shown(&ui),
+        (b"B".to_vec(), true),
+        "a post ends the shown one"
+    );
     ui.update(1066);
     ui.update(1132);
     assert_eq!(shown(&ui).0, b"B", "B has its whole count");
@@ -166,7 +173,7 @@ fn messages_posted_together_come_in_order_one_per_duration() {
     assert_eq!(shown(&ui), (b"C".to_vec(), true));
     ui.update(1266);
     ui.update(1366);
-    assert_eq!(shown(&ui).1, false, "nothing waits: the line hides");
+    assert!(!shown(&ui).1, "nothing waits: the line hides");
     assert_eq!(ui.text(7001), Some(Vec::new()));
 }
 
@@ -179,7 +186,11 @@ fn a_paused_line_with_nothing_waiting_keeps_its_text_and_restarts_the_count() {
     ui.update(1200);
     ui.update(1400);
     assert_eq!(shown(&ui), (b"paused".to_vec(), true), "stays");
-    assert_eq!(ui.tree.elements[2].countdown, Some(99), "the count restarted");
+    assert_eq!(
+        ui.tree.elements[2].countdown,
+        Some(99),
+        "the count restarted"
+    );
     // A message posted during the pause replaces it at once and is the one that stays.
     ui.message(b"other");
     ui.update(1433);
@@ -190,7 +201,7 @@ fn a_paused_line_with_nothing_waiting_keeps_its_text_and_restarts_the_count() {
     ui.hold_message(false);
     ui.end_message();
     ui.update(1733);
-    assert_eq!(shown(&ui).1, false);
+    assert!(!shown(&ui).1);
     // Paused, a waiting message is taken before the pause restarts the count.
     ui.hold_message(true);
     ui.message(b"1");
