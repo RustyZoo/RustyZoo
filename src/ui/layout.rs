@@ -520,7 +520,7 @@ pub struct Tree {
     /// The expansions installed: bit 1 and bit 2, the `id` of an `xpac*.cfg`.
     expansions: i32,
     /// The file each layout element was read from, to name it in a warning.
-    layout_files: HashMap<usize, String>,
+    pub(crate) layout_files: HashMap<usize, String>,
 }
 
 /// The expansions of the install: each `xpac*.cfg` with `[expansion] id` 1 or 2 sets that bit.
