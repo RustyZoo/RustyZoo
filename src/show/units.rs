@@ -28,6 +28,8 @@ pub(crate) enum Move {
     Link { plain: u32, show: u32, on: bool },
     /// A show decision ended: the grandstands facing a show tank take its show id (shows 31.2).
     Associate,
+    /// An exhibit that held a show info is gone: its show id and the tiles it held (shows 30.4).
+    Gone { show: u16, tiles: Vec<usize> },
 }
 
 /// The animal type of the entity with this name, if it performs.
@@ -61,6 +63,7 @@ pub(crate) fn settle(world: &mut World, cat: &Catalogue) {
                 }
             }
             Move::Associate => super::associate(world, cat),
+            Move::Gone { show, tiles } => super::exhibit_gone(world, cat, show, &tiles),
             Move::Link { plain, show, on } => {
                 let Some(n) = super::info_slot(world, show) else {
                     continue;

@@ -662,7 +662,7 @@ impl World {
                 continue;
             };
             let (tx, ty) = (c.x.div_euclid(64), c.y.div_euclid(64));
-            if shape.kind != Kind::Overlay
+            if !matches!(shape.kind, Kind::Overlay | Kind::Flight)
                 && (0..width).contains(&i64::from(tx))
                 && i64::from(ty) * width + i64::from(tx) == t as i64
             {

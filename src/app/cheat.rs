@@ -3,7 +3,8 @@
 
 use super::App;
 use super::cheat_guest::palette_set;
-use crate::cheat::{Cheat, Named, Subject};
+use crate::cheat::{Cheat, Fly, Named, Subject};
+use crate::flight;
 use crate::text::from_cp1252;
 
 impl App<'_> {
@@ -66,9 +67,28 @@ impl App<'_> {
         let trio = game.world.units.cheat.lions_tigers_bears;
         for fly in self.cheats.season.flights(date.month, date.day) {
             self.sim.note(fly.line());
+            self.launch(fly);
         }
         let set = self.cheats.season.guest_created(date.month, date.day, trio);
         self.make_available(&set);
+    }
+
+    /// Makes the flight of a launch (ambients 3.1) and, for the sleigh and the biplane, holds its
+    /// loop. A game without the type makes no flight and says so in the log (ambients 11.1).
+    fn launch(&mut self, fly: Fly) {
+        let (cat, Some(id)) = (self.renderer.catalogue(), fly.type_id()) else {
+            return;
+        };
+        let Some(ty) = flight::ambient(cat, id) else {
+            self.sim.note(format!("flight {id} missing"));
+            return;
+        };
+        let files = self.renderer.set_files(ty);
+        let Some(game) = &mut self.game else { return };
+        let made = flight::launch(&mut game.world, cat, ty, files, &mut self.sim.rng);
+        if let (Some(flight), Some((file, base))) = (made, fly.loop_sound()) {
+            game.vehicles.push((flight, file, base));
+        }
     }
 
     /// The start hook (cheats 6.3): the seasonal items and the yellow brick path are unavailable

@@ -28,7 +28,7 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
     match e.class.as_str() {
         // The fence figures are written from the model for every fence.
         "objects" | "food" | "paths" | "fences" | "tankwall" => {}
-        "ambient" => pre.bytes(&[0; 8]),
+        "ambient" => pre.bytes(&c.flight.unwrap_or_default().bytes()),
         "filter" => post.bytes(&filter(&c.filter.unwrap_or(Filter {
             built: now,
             serviced: now,

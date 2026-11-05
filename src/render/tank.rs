@@ -1,7 +1,7 @@
 //! The pictures of tank exhibits (map drawing 9.7, sprite drawing 3.6, 7.5 to 7.8): wall stacks,
 //! glass panes, water, underwater pictures and the shadows of units on the floor.
 
-use super::order::{Glass, ground_height};
+use super::order::{Glass, ground_height, shadow_point};
 use super::*;
 
 const HALF: Blend = Blend {
@@ -419,14 +419,20 @@ impl MapRenderer<'_> {
         });
     }
 
-    /// The shadow of a unit on the floor of a tank (sprite drawing 7.6).
+    /// The shadow of a unit on the floor of a tank (sprite drawing 7.6), or of a flight on the
+    /// ground under its shadow point, whatever the type says (ambients 5.3).
     fn shadow(&mut self, scene: &Scene, meta: &Meta, o: usize, out: &mut Vec<Placed>) {
         let obj = scene.objects[o];
         let ty = meta.ty;
-        if !self.tank_shadows || !casts_shadow(meta) {
+        let flight = obj.kind == Kind::Flight;
+        if !flight && (!self.tank_shadows || !casts_shadow(meta)) {
             return;
         }
-        let Some(t) = scene.tile_at(obj.x, obj.y) else {
+        let (sx, sy) = match flight {
+            true => shadow_point(scene.rotation, obj.x, obj.y),
+            false => (obj.x, obj.y),
+        };
+        let Some(t) = scene.tile_at(sx, sy) else {
             return;
         };
         let Some((anim, view)) = self.current(scene, meta, o) else {
@@ -447,8 +453,8 @@ impl MapRenderer<'_> {
             (anim, true)
         };
         let (tx, ty_) = ((t % scene.width) as i32, (t / scene.width) as i32);
-        let floor = ground_height(&scene.tiles[t], obj.x - 64 * tx, obj.y - 64 * ty_);
-        let (x, y) = project(scene.rotation, obj.x, obj.y, floor);
+        let floor = ground_height(&scene.tiles[t], sx - 64 * tx, sy - 64 * ty_);
+        let (x, y) = project(scene.rotation, sx, sy, floor);
         let blend = Blend {
             strength: 0.25,
             black,

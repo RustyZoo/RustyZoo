@@ -514,6 +514,30 @@ fn a_locale_gives_its_own_marks_and_forms() {
     );
 }
 
+/// `localeconv` fills one buffer shared by every thread: parallel readers must not see each other's locale.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn locales_read_in_parallel_do_not_mix() {
+    let Some(french) = locale::profile("fr_FR.UTF-8") else {
+        return;
+    };
+    std::thread::scope(|s| {
+        for t in 0..8 {
+            let french = &french;
+            s.spawn(move || {
+                for _ in 0..2000 {
+                    let (name, want) = if t % 2 == 0 {
+                        ("fr_FR.UTF-8", french)
+                    } else {
+                        ("C", &Profile::us())
+                    };
+                    assert_eq!(&locale::profile(name).unwrap(), want, "{name}");
+                }
+            });
+        }
+    });
+}
+
 #[test]
 fn a_mark_the_code_page_lacks_gives_the_us_marks() {
     // Arabic: the decimal mark U+066B and the group separator U+066C are not in Windows-1252.

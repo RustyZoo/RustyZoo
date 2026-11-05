@@ -129,6 +129,24 @@ pub(crate) struct Rubble {
     pub name_id: i32,
 }
 
+/// What an ambient creature stores before its entity base (ambients 8): the speed in movement
+/// units per second and the accumulator of the remainder of its move.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Flight {
+    pub speed: u32,
+    pub acc: u32,
+}
+
+impl Flight {
+    /// The two fields as the record holds them.
+    pub(crate) fn bytes(self) -> [u8; 8] {
+        let mut bytes = [0; 8];
+        bytes[..4].copy_from_slice(&self.speed.to_le_bytes());
+        bytes[4..].copy_from_slice(&self.acc.to_le_bytes());
+        bytes
+    }
+}
+
 /// The part every entity body ends with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Common {
@@ -170,6 +188,9 @@ pub struct Common {
     pub(crate) building: Option<BuildingRecord>,
     /// The group and the type name id of a rubble piece; `None` for everything else.
     pub(crate) rubble: Option<Rubble>,
+    /// The speed and the accumulator of an ambient creature (ambients 8); `None` for everything
+    /// else.
+    pub(crate) flight: Option<Flight>,
     /// The body as read, which the writer patches with the fields above.
     pub(crate) raw: Raw,
 }

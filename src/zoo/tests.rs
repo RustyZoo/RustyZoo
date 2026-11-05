@@ -728,6 +728,45 @@ fn reads_the_common_part_of_fixed_entities() {
 }
 
 #[test]
+fn an_ambient_creature_keeps_its_speed_and_accumulator_through_a_write() {
+    for v in [70, 106] {
+        let mut w = W::default();
+        w.u32(100).u32(750);
+        base(&mut w, v, 2, 10, "Bird");
+        let mut zoo = parse(&file(v, 1, 1, &[], &[("ambient", "ambient", "bird", w.0)]));
+        let flight = |z: &Zoo, at: usize| z.entities[at].common.as_ref().unwrap().flight;
+        assert_eq!(
+            flight(&zoo, 0),
+            Some(Flight {
+                speed: 100,
+                acc: 750
+            }),
+            "read at {v}"
+        );
+        // The model is what is written, for a creature read and for one made in play.
+        zoo.entities[0].common.as_mut().unwrap().flight = Some(Flight { speed: 7, acc: 3 });
+        let mut made = zoo.entities[0].clone();
+        made.common = Some(Common {
+            id: 11,
+            flight: Some(Flight { speed: 9, acc: 8 }),
+            ..Default::default()
+        });
+        zoo.entities.push(made);
+        let back = parse(&zoo.write(&Money::default()).unwrap());
+        assert_eq!(
+            flight(&back, 0),
+            Some(Flight { speed: 7, acc: 3 }),
+            "read at {v}"
+        );
+        assert_eq!(
+            flight(&back, 1),
+            Some(Flight { speed: 9, acc: 8 }),
+            "made at {v}"
+        );
+    }
+}
+
+#[test]
 fn keeps_the_food_units_of_scenery() {
     // Kept as stored (signed) for the class `food` and the dung subtypes; zeroed for the rest.
     for v in [48, 106] {
