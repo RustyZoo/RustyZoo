@@ -586,5 +586,8 @@ fn full_game_scripts_are_made_of_the_trick_lists() {
         }
     }
     // The scripts are in the maps of the expansions.
-    assert!(seen > 50 || !crate::fixtures::has_expansions(&dir), "{seen} items");
+    assert!(
+        seen > 50 || !crate::fixtures::has_expansions(&dir),
+        "{seen} items"
+    );
 }

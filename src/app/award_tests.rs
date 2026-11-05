@@ -179,7 +179,11 @@ fn full_game_award_goals_are_followed_by_their_popup() {
         );
     }
     // The base game has the awards 1 to 12, the expansions the others.
-    let last = if crate::fixtures::has_expansions(&dir) { 18 } else { 12 };
+    let last = if crate::fixtures::has_expansions(&dir) {
+        18
+    } else {
+        12
+    };
     assert_eq!(found, (1..=last).collect::<Vec<_>>());
     if last == 12 {
         return;

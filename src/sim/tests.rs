@@ -1511,7 +1511,10 @@ fn the_bench_users_of_a_shipped_old_file_sit_again_by_their_use_set() {
     // An update makes the bench a building of the zoo; without it the guests never sit.
     let bench = vfs.read("scenery/other/bench.ai").unwrap();
     let bench = crate::config::Config::parse(&bench).unwrap();
-    if bench.section("Member").is_none_or(|m| m.keys().all(|k| k != b"zoo")) {
+    if bench
+        .section("Member")
+        .is_none_or(|m| m.keys().all(|k| k != b"zoo"))
+    {
         eprintln!("skipped: the bench is not a building of the zoo in this install");
         return;
     }

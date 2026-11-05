@@ -118,10 +118,12 @@ impl Drop for Install {
 /// The path of the file of `dir` that is named `name` in any letter case (some installs have
 /// upper-case names).
 pub(crate) fn file_ignoring_case(dir: &std::ffi::OsStr, name: &str) -> PathBuf {
-    let found = std::fs::read_dir(dir)
-        .unwrap()
-        .flatten()
-        .find(|entry| entry.file_name().to_string_lossy().eq_ignore_ascii_case(name));
+    let found = std::fs::read_dir(dir).unwrap().flatten().find(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(name)
+    });
     found.map_or_else(|| PathBuf::from(dir).join(name), |entry| entry.path())
 }
 
@@ -151,7 +153,9 @@ pub(crate) fn is_measured(dir: &std::ffi::OsStr) -> bool {
 pub(crate) fn measured_on(test: &str, dir: &std::ffi::OsStr) -> bool {
     let measured = is_measured(dir);
     if !measured {
-        eprintln!("skipped {test}: its counts and texts were measured on the complete English and French installs");
+        eprintln!(
+            "skipped {test}: its counts and texts were measured on the complete English and French installs"
+        );
     }
     measured
 }
@@ -172,7 +176,7 @@ pub(crate) fn has_member(test: &str, vfs: &crate::vfs::Vfs, member: &str) -> boo
 pub(crate) fn base_lacks(vfs: &crate::vfs::Vfs, member: &str) -> bool {
     let lacks = !vfs.contains(member) && !has_expansions(vfs.root().as_os_str());
     if lacks {
-        eprintln!("skipped {member}: the install has no expansions");
+        eprintln!("skipped {member}: not in this install, which has no expansions");
     }
     lacks
 }

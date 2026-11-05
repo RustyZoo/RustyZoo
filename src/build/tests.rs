@@ -727,7 +727,11 @@ fn the_full_game_has_items_in_every_tab() {
     ] {
         let list = items(&cat, &Availability::default(), tag, 3);
         // An install without the updates and the expansions has 7 or 8 paths.
-        let floor = if crate::fixtures::is_measured(std::ffi::OsStr::new(&dir)) { 10 } else { 5 };
+        let floor = if crate::fixtures::is_measured(std::ffi::OsStr::new(&dir)) {
+            10
+        } else {
+            5
+        };
         assert!(list.len() > floor, "{tag}: {}", list.len());
         assert!(
             list.iter().all(|&i| !icons(&cat.types[i]).is_empty()),

@@ -294,7 +294,11 @@ fn full_game_tree() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     // The base game alone has no expansion bits.
-    let mask = if crate::fixtures::has_expansions(&dir) { 3 } else { 0 };
+    let mask = if crate::fixtures::has_expansions(&dir) {
+        3
+    } else {
+        0
+    };
     assert_eq!(installed_expansions(&vfs), mask);
     let tree = Tree::load(&vfs, "ui/gamescrn.lyt", mask);
     assert_eq!(tree.failure, None);
