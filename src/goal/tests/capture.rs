@@ -481,3 +481,39 @@ fn a_zookeeper_darts_and_crates_a_loose_animal_in_a_run() {
         );
     }
 }
+
+#[test]
+fn the_dart_stops_the_chase_of_a_hunter_unless_it_holds_caught_prey() {
+    // Animals 21.3: a hunter without caught prey stops its hunt, forced; one with the prey in its
+    // jaws is only put to sleep and its meal goes on.
+    let cat = types("cWeaponRange=4");
+    let dart = |caught: bool| {
+        let mut w = zoo(&[(BEAST, "zebra", (13, 10)), (OTHER, "kiwi", (14, 10))]);
+        let u = w.units.get_mut(BEAST).unwrap();
+        (u.goal.record.task, u.held, u.hidden) = (0x74, true, true);
+        let a = animal(&mut w, BEAST);
+        (a.prey, a.playing, a.caught_prey) = (OTHER, true, caught);
+        w.units.get_mut(OTHER).unwrap().predator = BEAST;
+        w.units.get_mut(KEEPER).unwrap().goal.record.job_target.id = BEAST;
+        with(&mut w, &cat, KEEPER, |cx| cx.dart_complete());
+        w
+    };
+    let mut w = dart(false);
+    let hunter = w.units.get(BEAST).unwrap();
+    assert_eq!(
+        (hunter.goal.record.task, hunter.held, hunter.hidden),
+        (0, false, false)
+    );
+    assert_eq!(w.units.get(OTHER).unwrap().predator, 0);
+    let a = animal(&mut w, BEAST);
+    assert_eq!((a.tranq, a.prey, a.playing, a.energy), (true, 0, false, 80));
+    let mut w = dart(true);
+    let hunter = w.units.get(BEAST).unwrap();
+    assert_eq!((hunter.goal.record.task, hunter.held), (0x74, true));
+    assert_eq!(w.units.get(OTHER).unwrap().predator, BEAST);
+    let a = animal(&mut w, BEAST);
+    assert_eq!(
+        (a.tranq, a.prey, a.playing, a.energy),
+        (true, OTHER, true, 80)
+    );
+}

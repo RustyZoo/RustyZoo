@@ -53,8 +53,8 @@ pub(crate) fn crate_in_place(world: &mut World, id: u32) {
     swim::put(world, id);
 }
 
-/// A keeper's dart (staff 7.11): the animal is tranquilised, its chase stopped (nothing is caught
-/// before the chase spec) and its energy full with the sleep check due, so that it falls asleep
+/// A keeper's dart (staff 7.11, animals 21.3): the animal is tranquilised, its goal stopped unless
+/// it holds caught prey (the meal goes on) and its energy full with the sleep check due, so that it falls asleep
 /// at the next one, which also clears the flag when it wakes.
 pub(crate) fn tranquilise(unit: &mut Unit, k: &Keys) {
     let Part::Animal(a) = &mut unit.part else {
@@ -63,7 +63,9 @@ pub(crate) fn tranquilise(unit: &mut Unit, k: &Keys) {
     a.tranq = true;
     a.energy = k.max_energy;
     a.counters[ENERGY] = 0;
-    crate::goal::stop_all(unit);
+    if !a.caught_prey {
+        crate::goal::stop_all(unit);
+    }
 }
 
 /// The crate's own check (unit placing 9.2), first of the status checks and only for a crated

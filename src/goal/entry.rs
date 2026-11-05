@@ -25,6 +25,28 @@ pub(crate) fn send(
     .send_to(to);
 }
 
+/// The animal at position `at` runs `fKillPrey` when `kill`, else `fCaughtPrey` (animals 21.5).
+pub(crate) fn meal(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    kill: bool,
+) {
+    let mut cx = Cx {
+        unit,
+        world,
+        ctx,
+        at,
+        data,
+    };
+    match kill {
+        true => cx.kill_prey(),
+        false => cx.caught_prey(),
+    }
+}
+
 /// A use set reaches the building (guest buildings 6.4.1): `fEnterBuilding` when `enter`, else
 /// `fExitBuilding`.
 pub(crate) fn use_call(
