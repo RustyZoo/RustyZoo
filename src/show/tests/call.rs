@@ -1,6 +1,6 @@
 //! The call to a show, the arrival and the release of an animal (shows 18.2, 21.1, 24).
 
-use super::cycle::{info_mut, info_of_show, item, staged, started, tick};
+use super::cycle::{SEAL, info_mut, info_of_show, item, staged, started, tick};
 use super::*;
 use crate::show::performer::{read_events, release};
 use crate::sim::{Event, Events, UNIT_CHANNEL};
@@ -159,4 +159,74 @@ fn the_checks_of_an_animal_read_whether_it_is_in_a_show_as_it_is_now() {
         };
         assert_eq!(a.in_show, back);
     }
+}
+
+#[test]
+fn an_amphibious_species_in_a_tank_cannot_act_here_but_an_only_underwater_one_can() {
+    // Animals-needs 2: not an egg, not in a show, and either `cOnlyUnderwater` 1 (not
+    // `cUnderwater`) or a dry tile, terrain mode 0 and tank mode 0.
+    use crate::animal::life::can_act;
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    let species = |key: &str| {
+        let mut c = Catalogue::default();
+        c.push(EntityType {
+            name_id: SEAL as i32,
+            ..kind(
+                "animals",
+                "seal",
+                &format!("[tricks]\ntrick=a\n[Characteristics/Integers]\n{key}=1\n"),
+            )
+        });
+        c
+    };
+    let (amphibious, only) = (species("cUnderwater"), species("cOnlyUnderwater"));
+    let acts =
+        |w: &World, cat: &Catalogue| can_act(w.units.get(21).unwrap(), w, cat, w.find(21).unwrap());
+    let set = |w: &mut World, f: fn(&mut Unit)| f(w.units.get_mut(21).unwrap());
+    // Under water in the tank (tank mode 4, terrain mode 2): only the only-underwater can.
+    set(&mut w, |u| u.tank = 4);
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        a.terrain = 2;
+    }
+    assert!(!acts(&w, &cat) && !acts(&w, &amphibious) && acts(&w, &only));
+    // On its way home to a show it is in one: none can.
+    w.units.get_mut(21).unwrap().back = true;
+    assert!(!acts(&w, &only));
+    w.units.get_mut(21).unwrap().back = false;
+    // On the dry grounds, land mode, tank mode 0: all can; a tank mode or water mode stops two.
+    let at = w.find(21).unwrap();
+    w.place_unit(at, (10 * 64 + 32, 6 * 64 + 32, 0), 0);
+    set(&mut w, |u| u.tank = 0);
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        a.terrain = 0;
+    }
+    assert!(acts(&w, &cat) && acts(&w, &amphibious) && acts(&w, &only));
+    set(&mut w, |u| u.tank = 3);
+    assert!(!acts(&w, &cat) && !acts(&w, &amphibious) && acts(&w, &only));
+    set(&mut w, |u| u.tank = 0);
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        a.terrain = 1;
+    }
+    assert!(!acts(&w, &cat) && !acts(&w, &amphibious) && acts(&w, &only));
+    // An egg cannot, whatever its type.
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        (a.terrain, a.egg) = (0, true);
+    }
+    assert!(!acts(&w, &cat) && !acts(&w, &only));
+}
+
+#[test]
+fn a_land_species_in_land_mode_on_a_dry_tank_floor_can_act_here() {
+    // Animals-needs 2: "outside a tank" is the tank mode 0, not the tank under the tile.
+    use crate::animal::life::can_act;
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    let acts = |w: &World| can_act(w.units.get(21).unwrap(), w, &cat, w.find(21).unwrap());
+    let c = w.zoo.entities[w.find(21).unwrap()].common.as_ref().unwrap();
+    let tile = w
+        .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+        .unwrap();
+    assert!(w.tank_at(tile).is_some());
+    assert!(acts(&w));
+    w.units.get_mut(21).unwrap().tank = 1;
+    assert!(!acts(&w));
 }

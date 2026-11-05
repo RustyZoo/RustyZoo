@@ -333,8 +333,9 @@ pub(crate) fn checks(
     boxed::check(unit, world, ctx, at);
     let task = unit.goal.record.task;
     let sight = sight(unit, world, ctx, at, data);
-    let meal = food::meal(unit, world, data, at);
+    let meal = food::meal(unit, world, ctx.cat, data, at);
     let sets = life::sets(unit, world, data, at);
+    let cannot_act = !life::can_act(unit, world, ctx.cat, at);
     let busy = busy(unit);
     let Part::Animal(a) = &mut unit.part else {
         return;
@@ -362,6 +363,7 @@ pub(crate) fn checks(
                 && (0..4).all(|q| world.quadrant(t, q).is_none())
         }),
         wet: tile.is_some_and(|t| world.is_water(t)),
+        cannot_act,
         now: world.units.now,
         busy,
         sight,

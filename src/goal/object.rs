@@ -100,7 +100,7 @@ impl Goal {
             (ENTER_BUILDING, Kind::Heli) => Some(Goal::HeliEnter),
             (MAINT, Kind::Worker) => Some(Goal::Maint),
             (ENTER_TANK, Kind::Keeper) => Some(Goal::EnterTank),
-            (EXIT_TANK, Kind::Keeper) => Some(Goal::ExitTank),
+            (EXIT_TANK, Kind::Keeper | Kind::Animal) => Some(Goal::ExitTank),
             (KEEPER_FOOD, Kind::Animal) => Some(Goal::KeeperFood),
             (LEAVE, Kind::Guest) => Some(Goal::Leave),
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),

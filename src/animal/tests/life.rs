@@ -65,7 +65,7 @@ fn a_tired_animal_sleeps_and_a_rested_one_wakes() {
         (sleepy(true, true), 0),
         (
             Env {
-                wet: true,
+                cannot_act: true,
                 ..sleepy(true, false)
             },
             15,
@@ -178,8 +178,14 @@ fn low_health_starts_the_sick_set_and_costs_happiness() {
         },
         ..in_exhibit()
     };
+    let cannot_act = Env {
+        cannot_act: true,
+        ..env(true, false)
+    };
     for (env, set, change) in [
         (env(true, false), vec!["bSick"], -20),
+        // Where it cannot act (animals-needs 2) the set is not started, the unhappiness stays.
+        (cannot_act, vec![], -20),
         (env(true, true), vec![], 0),
         (env(false, false), vec![], 0),
     ] {

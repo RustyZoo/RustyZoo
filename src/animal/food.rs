@@ -55,6 +55,8 @@ pub(crate) struct Meal {
     pub left: i32,
     /// It stands on a water tile; the current set is `bEat`; the type has a set `bEat`.
     pub wet: bool,
+    /// It cannot act here (animals-needs 2): the next `bEat` is not queued.
+    pub cannot_act: bool,
     pub in_set: bool,
     pub has_set: bool,
     /// Asked of the world: the units taken, `bEat` started, `bEat` queued after the current set,
@@ -97,7 +99,7 @@ pub(crate) fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
         a.stop_eating(false, m);
     }
     a.hunger_change = k.food_value.saturating_mul(bite).saturating_neg();
-    m.queue = m.left > 0;
+    m.queue = m.left > 0 && !m.cannot_act;
 }
 
 /// `fEat` among the checks: the bite that empties the pile reads the exhibit's animal list at
@@ -254,7 +256,13 @@ pub(crate) fn choose(
 }
 
 /// What eating reads of the animal at position `at`: the food it aims at and its place.
-pub(crate) fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Meal {
+pub(crate) fn meal(
+    unit: &Unit,
+    world: &World,
+    cat: &Catalogue,
+    data: &dyn Data,
+    at: usize,
+) -> Meal {
     let entity = &world.zoo.entities[at];
     let Part::Animal(a) = &unit.part else {
         return Meal::default();
@@ -268,6 +276,7 @@ pub(crate) fn meal(unit: &Unit, world: &World, data: &dyn Data, at: usize) -> Me
         left: (food.filter(|f| f.class == "food"))
             .map_or(0, |f| f.common.as_ref().map_or(0, |c| c.food)),
         wet: tile.is_some_and(|t| world.is_water(t)),
+        cannot_act: !super::life::can_act(unit, world, cat, at),
         in_set: unit.runner.top() == Some("bEat"),
         has_set: data.set(entity, "bEat").is_some(),
         ..Meal::default()
@@ -387,7 +396,7 @@ pub(crate) fn apply(
 /// `fEat` outside the checks, from the goal that reached the food.
 pub(crate) fn feed(cx: &mut Cx) {
     let k = super::keys(cx.world, cx.ctx.cat, cx.at);
-    let mut m = meal(cx.unit, cx.world, cx.data, cx.at);
+    let mut m = meal(cx.unit, cx.world, cx.ctx.cat, cx.data, cx.at);
     let left = m.left;
     if let Part::Animal(a) = &mut cx.unit.part {
         eat(a, &k, &mut m);

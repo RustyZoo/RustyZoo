@@ -2032,6 +2032,13 @@ fn eating_starts_the_eat_set_and_stops_on_no_food_water_or_a_bite_of_zero() {
     a.mark(0, true);
     food::eat(&mut a, &k, &mut m);
     assert!(a.eating && m.queue && !m.stop && (m.left, a.advice & 1) == (3, 0));
+    // Where it cannot act (animals-needs 2) the next `bEat` is not queued.
+    let (a, m) = case(Meal {
+        left: 8,
+        cannot_act: true,
+        ..meal.clone()
+    });
+    assert!(a.eating && !m.queue && m.left == 3);
     // A type without the set eats nothing and does not stop.
     let (a, m) = case(Meal {
         has_set: false,
