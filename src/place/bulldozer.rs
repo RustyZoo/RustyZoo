@@ -140,12 +140,13 @@ pub(crate) fn refund(cat: &Catalogue, e: &Entity) -> f32 {
     cost(ty) * rate
 }
 
-/// What removing the entity refunds: [`refund`], except that an animal in the world sells at the
-/// price of its own state (unit placing 10.2).
+/// What removing the entity refunds: [`refund`], except that an animal that has had its first turn
+/// sells at the price of its own state (unit placing 10.2); before it, its state is not made yet
+/// and it sells as new.
 pub(crate) fn sale(world: &World, cat: &Catalogue, e: &Entity) -> f32 {
-    let part = e.common.as_ref().and_then(|c| world.units.get(c.id));
-    match (type_of(cat, e), part.map(|u| &u.part)) {
-        (Some(ty), Some(crate::unit::Part::Animal(a))) if unit::is_animal(ty) => {
+    let unit = e.common.as_ref().and_then(|c| world.units.get(c.id));
+    match (type_of(cat, e), unit.map(|u| (u.started, &u.part))) {
+        (Some(ty), Some((true, crate::unit::Part::Animal(a)))) if unit::is_animal(ty) => {
             unit::animal_sell_price(ty, a)
         }
         _ => refund(cat, e),

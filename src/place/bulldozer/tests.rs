@@ -765,7 +765,9 @@ fn an_animal_sells_at_the_price_of_its_own_state() {
             4 * 64 + 5,
             0,
         )]);
-        let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(1).map(|u| &mut u.part) else {
+        let unit = w.units.get_mut(1).unwrap();
+        unit.started = true;
+        let crate::unit::Part::Animal(a) = &mut unit.part else {
             panic!("not an animal");
         };
         (a.happiness, a.health, a.at_minimum_health) = state;
@@ -786,4 +788,23 @@ fn an_animal_sells_at_the_price_of_its_own_state() {
     // Below the range and above it: the formula is not clamped.
     assert!(sold((-1000, 0, false)) < 0.0);
     assert!(sold((0, 5000, false)) > 400.0);
+}
+
+#[test]
+fn an_animal_sold_before_its_first_turn_sells_as_new() {
+    let cat = catalogue();
+    let mut w = world(vec![entity(
+        "animals",
+        "lion",
+        "",
+        4 * 64 + 5,
+        4 * 64 + 5,
+        0,
+    )]);
+    // Not started: the state is still all zero, the animal is as new (cost 500: 360).
+    assert!(!w.units.get(1).unwrap().started);
+    let asked = refunds(&w, &cat, &[0]);
+    let mut money = Money::default();
+    let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert_eq!((asked, removed.refund, money.cash), (360.0, 360.0, 360.0));
 }
