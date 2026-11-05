@@ -90,12 +90,14 @@ impl Sim {
                 if !world.is_water(t) || !world.is_empty(t) {
                     continue;
                 }
-                if self.rng.rand() % self.ripples.wet != 0 {
+                if !self.rng.rand().is_multiple_of(self.ripples.wet) {
                     continue;
                 }
-                let still = [(1, 0), (-1, 0), (0, 1), (0, -1)].into_iter().all(|(dx, dy)| {
-                    (world.tile_index(x + dx, y + dy)).is_none_or(|n| world.is_water(n))
-                });
+                let still = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                    .into_iter()
+                    .all(|(dx, dy)| {
+                        (world.tile_index(x + dx, y + dy)).is_none_or(|n| world.is_water(n))
+                    });
                 let slot = self.ripples.slots.iter().position(|s| s.0 > LIFE);
                 let (true, Some(slot)) = (still, slot) else {
                     continue;
@@ -125,7 +127,12 @@ mod tests {
 
     fn catalogue() -> Catalogue {
         let mut cat = Catalogue::default();
-        let mut wave = ty("objects", "other", "waterwv1", "[Characteristics/Integers]\n");
+        let mut wave = ty(
+            "objects",
+            "other",
+            "waterwv1",
+            "[Characteristics/Integers]\n",
+        );
         wave.footprint = [2, 2, 1];
         cat.push(wave);
         cat
@@ -217,7 +224,7 @@ mod tests {
         sim.ripples.wet = 1;
         sim.scan(&mut world, &cat);
         let id = sim.ripples.slots.iter().find_map(|s| s.1).unwrap();
-        sim.ripples.slots.iter_mut().for_each(|s| s.0 = s.0.min(0));
+        sim.ripples.slots.iter_mut().for_each(|s| s.0 = 0);
         sim.ripples.scan = 0;
         sim.water_effects(&mut world, &cat, 4000);
         assert!(!sim.removals.contains(&id));

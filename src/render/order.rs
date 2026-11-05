@@ -513,7 +513,10 @@ impl Scene {
     /// Whether nothing stands on tile `t`: no object holds a quadrant, an edge slot or the path,
     /// and no unit is on it.
     pub(crate) fn is_empty(&self, t: usize) -> bool {
-        (self.quad[t].iter().chain(&self.edge[t]).all(Option::is_none))
+        (self.quad[t]
+            .iter()
+            .chain(&self.edge[t])
+            .all(Option::is_none))
             && self.path[t].is_none()
             && self.list[t].is_empty()
     }
