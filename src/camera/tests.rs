@@ -288,7 +288,7 @@ fn full_screen_has_a_band_of_two_pixels() {
     let start = (1888, -384);
     let at = |pointer, fullscreen| {
         let mut c = camera(0, 0, start, 1, BEACH);
-        c.set_fullscreen(&beach, fullscreen);
+        c.set_fullscreen(&beach, None, fullscreen);
         c.edge_scroll(&beach, 0, pointer);
         c.scroll
     };
@@ -307,33 +307,44 @@ fn full_screen_has_a_band_of_two_pixels() {
 fn full_screen_at_800_wide_does_not_zoom_in() {
     let beach = map(75, 75, 0);
     let mut c = camera(0, 0, (1216, 16), 1, (800, 600));
-    c.set_fullscreen(&beach, true);
+    c.set_fullscreen(&beach, None, true);
     c.zoom(&beach, None, true);
     assert_eq!(c.zoom, 0, "refused at zoom 0");
     c.zoom(&beach, None, false);
     c.zoom(&beach, None, true);
     assert_eq!(c.zoom, 0);
     // Windowed again, zoom 2 is offered.
-    c.set_fullscreen(&beach, false);
+    c.set_fullscreen(&beach, None, false);
     c.zoom(&beach, None, true);
     assert_eq!(c.zoom, 2);
     // Going to full screen zooms a view at zoom 2 out to 0, with the steps of a zoom change.
     let mut want = camera(2, 0, c.scroll, 1, (800, 600));
     want.zoom(&beach, None, false);
-    c.set_fullscreen(&beach, true);
+    c.set_fullscreen(&beach, None, true);
     assert_eq!((c.zoom, c.scroll), (want.zoom, want.scroll));
     assert_eq!(c.zoom, 0);
     // Other widths are not affected, nor is zoom out.
     let mut c = camera(0, 0, (1216, 16), 1, BEACH);
-    c.set_fullscreen(&beach, true);
+    c.set_fullscreen(&beach, None, true);
     c.zoom(&beach, None, true);
     assert_eq!(c.zoom, 2);
-    c.set_fullscreen(&beach, true);
+    c.set_fullscreen(&beach, None, true);
     assert_eq!(c.zoom, 2, "only at 800");
     let mut c = camera(0, 0, (1216, 16), 1, (800, 600));
-    c.set_fullscreen(&beach, true);
+    c.set_fullscreen(&beach, None, true);
     c.zoom(&beach, None, false);
     assert_eq!(c.zoom, -2);
+}
+
+#[test]
+fn full_screen_zoom_out_keeps_the_selected_entity() {
+    let beach = map(75, 75, 0);
+    let unit = Some((64 * 60 + 5, 64 * 10 + 5));
+    let mut c = camera(2, 0, (1216, 16), 1, (800, 600));
+    let mut want = c.clone();
+    want.zoom(&beach, unit, false);
+    c.set_fullscreen(&beach, unit, true);
+    assert_eq!((c.zoom, c.scroll, c.selection), (0, want.scroll, (60, 10)));
 }
 
 /// A 12 by 12 map with a hill of two plateau tiles (one and two steps) on flat ground.
