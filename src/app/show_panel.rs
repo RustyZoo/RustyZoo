@@ -13,9 +13,9 @@ use crate::show as shows;
 const PANELS: [i32; 7] = [8, 3, 4, 10, 15, 5, 34];
 /// The zoo status panels, which showing the window hides.
 const STATUS: [i32; 2] = [14, 803];
-/// The panels that hide the window when they are shown: the animal, guest and staff panels, and
-/// [`PANELS`].
-const UNITS: [i32; 3] = [animal::LAYOUT, guest::LAYOUT, staff::LAYOUT];
+/// The panels that hide the window when they are shown: the exhibit, animal, guest and staff
+/// panels, and [`PANELS`].
+const UNITS: [i32; 4] = [exhibit::LAYOUT, animal::LAYOUT, guest::LAYOUT, staff::LAYOUT];
 /// The two drop-downs: the layout and the list that holds the keyboard focus while it is open.
 const DROP_DOWNS: [(i32, i32); 2] = [
     (show::SPECIES_LAYOUT, show::SPECIES_LIST),

@@ -830,6 +830,19 @@ show_panel() { # show_panel <map>
 }
 check expansion-trial "open,closed,open,closed," "show_panel maps/scn28.zoo"
 
+# A grandstand that faces the show tank opens the window; the exhibit list button then shows the
+# exhibit panel, which hides it (19.3 point 7). The grandstand is the one at 472 316 once the view
+# is scrolled ten times.
+show_stand_window() { # show_stand_window <map>
+  d=$(mktemp -d)
+  { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
+    printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
+  rz run "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel show window /{printf "%s,", $7} END{print ""}'
+  rm -rf "$d"
+}
+check expansion-trial "open,closed," "show_stand_window maps/scn28.zoo"
+
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
 # is moved off the tabs, so no tooltip shows). The game is paused, so that the units walking in
@@ -1110,7 +1123,8 @@ check expansion-trial 'carry;drop;1' 'scripted "2 mouse 875 230\n3 down\n4 up\n6
 
 # The same click, printing the name and the price of the panel: a loaded building shows the price its
 # record stores (guest buildings 4.1), not the type's default. A grandstand of scn28 stores 3.00 where
-# the type's price is 5.00.
+# the type's price is 5.00. This one faces the empty show tank: the click opens the show panel, and
+# its first admission update has no species, so the price goes to 0.00 (shows 33.2).
 loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
@@ -1119,7 +1133,7 @@ loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
     sed -n 's/.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) .*/\1 \2/p' | head -1 | tr ' ' _
   rm -rf "${d:?}"
 }
-check expansion-trial '"Show_Grandstand_4"_$3.00' "loaded_price maps/scn28.zoo 10 1 0 472 316"
+check expansion-trial '"Show_Grandstand_4"_$0.00' "loaded_price maps/scn28.zoo 10 1 0 472 316"
 
 # The users of a building are back inside after a load (guest buildings 4.1, 6.5): a guest the record
 # lists is on the use of its building (task `dobuilding`), so its first goal is to leave, after the
