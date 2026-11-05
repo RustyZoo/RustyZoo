@@ -115,6 +115,14 @@ fn opening_on_a_show_tank_fills_the_species_the_admission_and_the_frequency() {
 }
 
 #[test]
+fn a_grandstand_that_faces_the_show_tank_names_it_and_one_turned_away_names_none() {
+    let (w, cat, _, _, x) = open("panel-stand");
+    assert_eq!(crate::show::faced_exhibit(&w, &cat, 7), Some(x));
+    assert_eq!(crate::show::faced_exhibit(&w, &cat, 8), None);
+    assert_eq!(crate::show::faced_exhibit(&w, &cat, 99), None);
+}
+
+#[test]
 fn the_buttons_and_the_typed_text_set_the_admission_and_the_grandstand_price() {
     let (mut w, cat, mut ui, p, _) = open("panel-admission");
     p.press(&mut ui, &mut w, &cat, true);
