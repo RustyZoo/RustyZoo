@@ -84,6 +84,7 @@ impl App<'_> {
         playing!(self, game);
         game.panel.current = Some(id);
         game.panel.clock.force = true;
+        self.show_exhibit_set();
     }
 
     /// Notices that the layout was shown or hidden since the last look (4.2): the button follows
@@ -95,7 +96,10 @@ impl App<'_> {
             ui.set_button(BUTTON, shown, true);
             match shown {
                 true => game.panel.opened(),
-                false => game.panel.closed(),
+                false => {
+                    game.panel.closed();
+                    ui.set_hidden(crate::panel::show::LAYOUT, true);
+                }
             }
         }
         if !ui.shown(PLAQUE) {
@@ -123,6 +127,7 @@ impl App<'_> {
             }
             self.close_animal();
         }
+        self.show_exhibit_set();
     }
 
     /// A row of the exhibit panel's animal list was selected (10.5): that animal is selected,
@@ -160,6 +165,9 @@ impl App<'_> {
         }
         if ui.is_down(animal::RECOMMENDATIONS) {
             game.panel.show_plaque(id);
+        }
+        if ui.shown(LAYOUT) {
+            self.show_exhibit_set();
         }
     }
 
@@ -281,6 +289,7 @@ impl App<'_> {
         let Some(id) = game.panel.current else { return };
         let bytes = ui.text(NAME).unwrap_or_default();
         game.panel.clock.force = true;
+        game.show.clock.force = true;
         if exhibits::visible(&bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
             self.lines.exhibit.push(format!("name {id} {text:?}"));
@@ -299,6 +308,7 @@ impl App<'_> {
         self.guest_sync();
         self.building_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
+        self.show_pass(now, ticking);
         playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         if ui.shown(LAYOUT) && game.panel.clock.due(now, ticking, exhibit::PERIOD) {

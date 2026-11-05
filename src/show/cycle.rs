@@ -64,6 +64,30 @@ pub(super) fn abort(world: &mut World, cat: &Catalogue, events: &mut Events, id:
     }
 }
 
+/// The show panel's frequency (shows 33.12) for the show whose show id is `id`.
+pub(super) fn set_frequency(
+    world: &mut World,
+    cat: &Catalogue,
+    events: &mut Events,
+    id: u16,
+    frequency: i32,
+) {
+    let now = world.units.ai_ticks;
+    if let Some(n) = super::habitat_of(world, id) {
+        let (rng, data) = (&mut Rng::default(), &NoData);
+        with(world, cat, (events, rng, data), now, n, |c| {
+            if c.info.frequency == frequency {
+                return;
+            }
+            c.info.frequency = frequency;
+            c.recalc(false);
+            if frequency == -1 && !c.info.is_started() {
+                c.abort();
+            }
+        });
+    }
+}
+
 fn with(
     world: &mut World,
     cat: &Catalogue,

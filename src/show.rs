@@ -41,7 +41,7 @@ pub(crate) use units::{Move, counted, join, leave, settle};
 
 /// The type id of the marine specialist, who conducts a show (shows 3.2), and the job he does
 /// while it lasts (shows 22.1).
-const KEEPER: u32 = 9552;
+pub(crate) const KEEPER: u32 = 9552;
 pub(crate) const CONDUCT: u8 = 19;
 
 /// The event types of a show (shows 6.1).
@@ -92,6 +92,9 @@ pub struct Params {
     pub increment: f32,
     pub max_admission: f32,
     pub min_admission: f32,
+    /// The show panel's frequencies: the AI ticks between two shows for Infrequent, Frequent and
+    /// Continuous (`[timing]` of `shows.cfg`; shows 33.12).
+    pub intervals: [i32; 3],
     /// `[AI] maxDistToGoToShow` of the ini file: how far a guest goes to a show (shows 7.1).
     pub distance: i32,
 }
@@ -107,6 +110,7 @@ impl Default for Params {
             increment: 0.25,
             max_admission: 10.0,
             min_admission: 0.0,
+            intervals: [120, 90, 65],
             distance: 150,
         }
     }
@@ -150,6 +154,14 @@ impl Params {
             increment: cost("showAdmissionIncrement", found.increment),
             max_admission: cost("maxShowAdmission", found.max_admission),
             min_admission: cost("minShowAdmission", found.min_admission),
+            intervals: std::array::from_fn(|i| {
+                let keys = [
+                    "infrequentShowInterval",
+                    "frequentShowInterval",
+                    "continuousShowInterval",
+                ];
+                number("timing", keys[i], found.intervals[i])
+            }),
             distance: found.distance,
         }
     }
@@ -183,6 +195,16 @@ pub(crate) fn info_of(world: &World, id: u32) -> Option<&ShowInfo> {
 /// The position in the shows section of the show info of exhibit `id`, if it has one.
 pub(crate) fn info_slot(world: &World, id: u32) -> Option<usize> {
     world.info_slot_in(world.exhibits(), id)
+}
+
+/// The show tank that grandstand `stand` faces (shows 4.1), if it faces one.
+pub(crate) fn faced_exhibit(world: &World, cat: &Catalogue, stand: u32) -> Option<u32> {
+    let sight = Sight::of(world, cat);
+    let &(_, at) = sight.stands.iter().find(|&&(id, _)| id == stand)?;
+    match sight.seen(world, at) {
+        0 => None,
+        show => exhibit_of(world, show),
+    }
 }
 
 /// The first item with trick id `trick` in the current script of the show info `show` (shows 23.2).
@@ -246,6 +268,15 @@ pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit, at: usize
 pub(crate) fn abort_show(world: &mut World, cat: &Catalogue, id: u16) {
     let mut events = Events::default();
     cycle::abort(world, cat, &mut events, id);
+    world.units.posts.extend(events.take_posted());
+}
+
+/// The frequency of show `id` set from the show panel (shows 33.12): nothing when it is the
+/// info's; else the schedule is recalculated, and for -1 the show is aborted when it is not
+/// started. The events it posts go out with the next step's.
+pub(crate) fn set_frequency(world: &mut World, cat: &Catalogue, id: u16, frequency: i32) {
+    let mut events = Events::default();
+    cycle::set_frequency(world, cat, &mut events, id, frequency);
     world.units.posts.extend(events.take_posted());
 }
 

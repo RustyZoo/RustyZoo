@@ -148,6 +148,7 @@ impl App<'_> {
             guest: Default::default(),
             research: Default::default(),
             building: Default::default(),
+            show: Default::default(),
             selected: None,
             carry: None,
             held: None,

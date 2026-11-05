@@ -35,6 +35,12 @@ impl App<'_> {
                     self.panel_animal(row);
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
+                Action::Row(l @ (show::SPECIES_LIST | show::FREQUENCY_LIST), row)
+                    if self.game.is_some() =>
+                {
+                    self.show_row(l, row);
+                }
+                Action::Edited(show::ADMISSION) if self.game.is_some() => self.show_typed(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
                 Action::Row(crate::build::SELECTOR_LIST, row) if self.game.is_some() => {
                     self.expansion_row(row);
@@ -79,6 +85,11 @@ impl App<'_> {
                     self.ask(kind);
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
+                show::UP | show::DOWN | show::SPECIES_BUTTON | show::FREQUENCY_BUTTON
+                    if self.game.is_some() =>
+                {
+                    self.show_pressed(id);
+                }
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
                 exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
                     self.tank_wall(id == exhibit::WALL_UP);
