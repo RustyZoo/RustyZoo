@@ -1257,7 +1257,8 @@ check expansion-trial yes "any_seed tank_breath maps/scn28b.zoo 22,23"
 # each murky check, every 5 status ticks (75 steps); the other checks add to the first two. A property
 # (reads $seed): the purity goes below 60 at step 10751 (no draw is involved), and the first five losses
 # of exactly 5 health follow, the first within 75 steps and the fifth within 450 (over seeds 1 to 6 the
-# first is 37 to 67 steps after, and a check may be skipped, which costs 75 steps).
+# first is 37 to 67 steps after, and a check may be skipped, which costs 75 steps); the happiness is -5 at the
+# last three (it holds for seeds 1, 2, 4 and 6 of 1 to 6).
 tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <filter>: reads $seed
   d=$(mktemp -d)
   { printf '0 remove %s\n0 remove %s\n0 remove %s\n0 animal mantaray %s\n' "$4" "$5" "$6" "$2"
@@ -1266,9 +1267,9 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
     BEGIN{ n=0 }
     / world water 2 /{ if ($9 < 60 && !low) low=$2 }
     $5 == ray && / animal status /{
-      if (low && h0 != "" && $9 == health - 5 && n < 5) { steps[n]=$2; n++ }
+      if (low && h0 != "" && $9 == health - 5 && n < 5) { steps[n]=$2; hap[n]=$6; n++ }
       health=$9; h0=1 }
-    END{ print (low == 10751 && n == 5 && steps[0] - low <= 75 && steps[4] - low <= 450 ? "yes" : "no:" low ";" steps[0] "," steps[4]) }'
+    END{ print (low == 10751 && n == 5 && steps[0] - low <= 75 && steps[4] - low <= 450 && hap[2] == -5 && hap[3] == -5 && hap[4] == -5 ? "yes" : "no:" low ";" steps[0] "," steps[4]) }'
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47192 31192 31194 37416"
