@@ -17,3 +17,17 @@ pub(super) fn of(id: i32) -> i32 {
         _ => GENERAL,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_kinds_the_specs_give_and_the_default_for_the_rest() {
+        assert_eq!(
+            [10021, 10009, 10032, 15002, 15003, 10017, 400, -1, 0, i32::MAX].map(of),
+            [1, 2, 4, 4, 5, 0, 0, 0, 0, 0]
+        );
+        assert_eq!([10028, 11004, 11491].map(of), [2, 2, 4]);
+    }
+}
