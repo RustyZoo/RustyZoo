@@ -542,6 +542,9 @@ pub(crate) struct Env {
     pub grass: bool,
     /// The tile holds water or the exhibit is a tank: it does not look for a drink here.
     pub wet: bool,
+    /// The animal cannot act here (animals-needs 2): an egg, in a show, or a species that does not live
+    /// only under water in water or a tank.
+    pub cannot_act: bool,
     /// The game milliseconds of the calendar, for the date of its last meal.
     pub now: i64,
     /// Its set, its task or a caught state occupies it (9.3).

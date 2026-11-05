@@ -54,9 +54,9 @@ pub(crate) fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mu
     let sets = &env.sets;
     let mut asleep = sets.sleep_now || out.sets.contains(&"bSleep");
     if !a.sleeping {
-        // An animal in the water or a tank cannot act here: it only tires, like a rested one. A
+        // An animal that cannot act here (animals-needs 2) only tires, like a rested one. A
         // tired one whose set does not start gets nothing.
-        if env.wet || (a.escaped && !a.tranq) || a.energy < k.energy_threshold {
+        if env.cannot_act || (a.escaped && !a.tranq) || a.energy < k.energy_threshold {
             a.energy_change = a.energy_change.saturating_add(k.energy_increment);
         } else if !asleep && sets.has_sleep {
             (a.sleeping, asleep) = (true, true);
@@ -130,7 +130,7 @@ pub(crate) fn health(
     let low =
         !a.escaped && i64::from(a.health) * 100 <= i64::from(k.pct_hits) * i64::from(k.max_hits);
     let mut unwell = low;
-    if low && !env.wet && !a.egg {
+    if low && !env.cannot_act {
         if !env.sets.sick_refused && env.sets.has_sick {
             out.sets.push("bSick");
         } else {
@@ -223,6 +223,29 @@ pub(crate) fn keeper_at_work(world: &World, x: u32) -> bool {
     })
 }
 
+/// Whether the animal can act here (animals-needs 2): not an egg, not in a show, and either a
+/// type that lives only under water (`cOnlyUnderwater`) or on a dry tile, in land mode, in tank
+/// mode 0.
+pub(crate) fn can_act(
+    unit: &Unit,
+    world: &World,
+    cat: &crate::entity::Catalogue,
+    at: usize,
+) -> bool {
+    let Part::Animal(a) = &unit.part else {
+        return false;
+    };
+    if a.egg || crate::show::in_show_now(world, cat, unit, at) {
+        return false;
+    }
+    if super::keys(world, cat, at).only_underwater {
+        return true;
+    }
+    let tile = (world.zoo.entities[at].common.as_ref())
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+    a.terrain == 0 && unit.tank == 0 && !tile.is_some_and(|t| world.is_water(t))
+}
+
 /// The ambient choice of an idle, tired animal that can act here runs the sleep check instead
 /// (behaviours 6.4 point 1): called where a set would be chosen. It returns whether it took the
 /// choice, in which case no row is chosen even if `bSleep` did not start.
@@ -242,19 +265,17 @@ pub(crate) fn ambient_sleep(
     }
     let k = super::keys(world, ctx.cat, at);
     let sets = sets(unit, world, data, at);
-    let tile = (world.zoo.entities[at].common.as_ref())
-        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
-    let wet = tile.is_some_and(|t| world.is_water(t) || world.tank_at(t).is_some());
+    let cannot_act = !can_act(unit, world, ctx.cat, at);
     let Part::Animal(a) = &mut unit.part else {
         return false;
     };
-    if wet || a.energy < k.energy_threshold {
+    if cannot_act || a.energy < k.energy_threshold {
         return false;
     }
     let class = world.units.class.clone();
     let (mut out, now) = (Out::default(), world.units.now);
     let env = Env {
-        wet,
+        cannot_act,
         now,
         sets,
         ..Env::default()
