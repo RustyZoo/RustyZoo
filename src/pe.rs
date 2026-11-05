@@ -56,7 +56,7 @@ pub(crate) const RT_STRING: u32 = 6;
 /// pick their expected values by it: 1033 is English, 1036 French).
 #[cfg(test)]
 pub(crate) fn installed_language(dir: &std::ffi::OsStr) -> u32 {
-    let file = std::fs::read(std::path::Path::new(dir).join("lang0.dll")).unwrap();
+    let file = std::fs::read(crate::fixtures::file_ignoring_case(dir, "lang0.dll")).unwrap();
     let found = resources(&file).unwrap();
     let table = found.iter().find(|r| r.kind == ResKey::Id(RT_STRING));
     table.expect("lang0.dll has no string table").language

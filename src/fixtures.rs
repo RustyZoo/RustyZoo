@@ -114,3 +114,48 @@ impl Drop for Install {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+/// The path of the file of `dir` that is named `name` in any letter case (some installs have
+/// upper-case names).
+pub(crate) fn file_ignoring_case(dir: &std::ffi::OsStr, name: &str) -> PathBuf {
+    let found = std::fs::read_dir(dir)
+        .unwrap()
+        .flatten()
+        .find(|entry| entry.file_name().to_string_lossy().eq_ignore_ascii_case(name));
+    found.map_or_else(|| PathBuf::from(dir).join(name), |entry| entry.path())
+}
+
+/// Whether the install holds both expansions (a folder of each with archives in it).
+pub(crate) fn has_expansions(dir: &std::ffi::OsStr) -> bool {
+    ["xpack1", "xpack2"].iter().all(|name| {
+        let sub = file_ignoring_case(dir, name);
+        std::fs::read_dir(sub).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .ends_with(".ztd")
+            })
+        })
+    })
+}
+
+/// Whether the facts of a full-game test were measured on this install: the English or the French
+/// one (by the language of its `lang0.dll`). Prints why the test goes no further when not.
+pub(crate) fn measured_on(test: &str, dir: &std::ffi::OsStr) -> bool {
+    let measured = matches!(crate::pe::installed_language(dir), 1033 | 1036);
+    if !measured {
+        eprintln!("skipped {test}: its counts and texts were measured on the English and French installs");
+    }
+    measured
+}
+
+/// Whether the install can run a test that reads the maps, scenarios and animals of the
+/// expansions. Prints why the test goes no further when it cannot.
+pub(crate) fn with_expansions(test: &str, dir: &std::ffi::OsStr) -> bool {
+    let found = has_expansions(dir);
+    if !found {
+        eprintln!("skipped {test}: the install has no expansions");
+    }
+    found
+}
