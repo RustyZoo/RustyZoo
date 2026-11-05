@@ -54,7 +54,7 @@ pub(crate) fn sleep(a: &mut Animal, k: &Keys, class: &Class, env: &Env, out: &mu
     let sets = &env.sets;
     let mut asleep = sets.sleep_now || out.sets.contains(&"bSleep");
     if !a.sleeping {
-        // An animal in the water or a tank cannot act here: it only tires, like a rested one. A
+        // An animal that cannot act here (animals-needs 2) only tires, like a rested one. A
         // tired one whose set does not start gets nothing.
         if env.cannot_act || (a.escaped && !a.tranq) || a.energy < k.energy_threshold {
             a.energy_change = a.energy_change.saturating_add(k.energy_increment);
