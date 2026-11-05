@@ -166,6 +166,17 @@ pub(crate) fn has_member(test: &str, vfs: &crate::vfs::Vfs, member: &str) -> boo
     found
 }
 
+/// Whether `member` is missing from an install without the expansions, which is where the maps
+/// and animals of the expansions are: a test goes on to the next one. A member missing from an
+/// install with the expansions is a failure for the test to find.
+pub(crate) fn base_lacks(vfs: &crate::vfs::Vfs, member: &str) -> bool {
+    let lacks = !vfs.contains(member) && !has_expansions(vfs.root().as_os_str());
+    if lacks {
+        eprintln!("skipped {member}: the install has no expansions");
+    }
+    lacks
+}
+
 /// Whether the install can run a test that reads the maps, scenarios and animals of the
 /// expansions. Prints why the test goes no further when it cannot.
 pub(crate) fn with_expansions(test: &str, dir: &std::ffi::OsStr) -> bool {
