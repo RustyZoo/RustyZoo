@@ -17,6 +17,12 @@ impl Strings for NoTexts {
     }
 }
 
+/// A question that says 60 x 40 but whose background is 60 x 60, with its OK button at y 45.
+const TALL: &str = "[LayoutInfo]\nid=300\nlayer=7\nx=0\ny=0\ndx=60\ndy=40\n\
+    [a]\ntype=UIImage\nid=301\ndx=60\ndy=60\nalias=-1\ntransparent=0\n\
+    [b]\ntype=UIButton\nid=312\nx=2\ny=45\ndx=12\ndy=8\ntarget=1\naction=5\n\
+    colorasicon=1\n";
+
 const BUTTON: &str = "type=UIButton\ncolorasicon=1\ndx=12\ndy=8\ny=30\naction=5\n";
 
 /// A window of 100 x 80. The question 100 (60 x 40, hidden, draggable by its background) has
@@ -27,6 +33,7 @@ fn interface(name: &str) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [b]\ntype=UILayout\nlayout=ui/q100.lyt\n[c]\ntype=UILayout\nlayout=ui/q200.lyt\n\
+        [e]\ntype=UILayout\nlayout=ui/q300.lyt\n\
         [d]\ntype=UIButton\nid=20\nx=0\ny=0\ndx=10\ndy=10\ncolorasicon=1\naction=1\ntarget=100\n";
     let question = |id: i32| {
         format!(
@@ -55,6 +62,7 @@ fn interface(name: &str) -> Interface {
             ("ui/root.lyt", root.as_bytes().to_vec()),
             ("ui/q100.lyt", question(100).into_bytes()),
             ("ui/q200.lyt", (question(200) + field).into_bytes()),
+            ("ui/q300.lyt", TALL.as_bytes().to_vec()),
         ],
     );
     let mut tree = Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
@@ -64,7 +72,7 @@ fn interface(name: &str) -> Interface {
     let mut ui = Interface::new(tree, Box::new(NoTexts));
     ui.show(1);
     // The questions are closed.
-    for id in [100, 200] {
+    for id in [100, 200, 300] {
         let layout = ui.tree.find(id).unwrap();
         ui.tree.hide(layout);
     }
@@ -347,4 +355,26 @@ fn a_popup_leaves_the_game_running_closes_on_its_button_and_by_itself() {
     ui.notify(100, b"", Buttons::OK);
     ui.notify(200, b"", Buttons::OK);
     assert!(!shown(&ui, 100) && shown(&ui, 200));
+}
+
+#[test]
+fn a_dialog_takes_the_size_of_its_background_so_that_a_button_below_the_file_size_works() {
+    let mut ui = interface("tall");
+    // Asked as it is, the layout is 60 x 40: the button, 45 under its top, is outside it.
+    assert!(ui.ask(300, b"", Buttons::OK));
+    assert_eq!(rect(&ui, 300), (20, 20, 60, 40));
+    click(&mut ui, 25, 70);
+    assert!(ui.modal_open(), "the click missed");
+    ui.answer(OK);
+    // With the size of the background, centred as such, the same click answers.
+    ui.fit_to_background(300, None);
+    assert!(ui.ask(300, b"", Buttons::OK));
+    assert_eq!(rect(&ui, 300), (20, 10, 60, 60));
+    click(&mut ui, 25, 62);
+    assert!(!ui.modal_open());
+    assert_eq!(ui.take_actions().last(), Some(&Action::Answer(1)));
+    // A layout whose background is its size keeps it.
+    ui.fit_to_background(100, None);
+    let (_, _, dx, dy) = rect(&ui, 100);
+    assert_eq!((dx, dy), (60, 40));
 }

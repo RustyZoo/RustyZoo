@@ -84,6 +84,7 @@ pub(super) fn interface(install: &Install) -> Interface {
          [b]\nid=45011\nx=10\ny=0\ntarget=7\naction=5\n{button}\
          [c]\nid=45012\nx=20\ny=0\ntarget=1\naction=5\n{button}\
          [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
+         [bg]\ntype=UIImage\nid=45001\nx=0\ny=0\ndx=40\ndy=24\nlayer=0\n\
          [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n\
          [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
     );
@@ -877,6 +878,11 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
         let ui = app.interface().unwrap();
         assert!(ui.shown(45004));
         assert_eq!(ui.tree.rect(ui.tree.find(45004).unwrap()).2, 2);
+        // The layout of 40 x 10 took the size of its background, 40 x 24 (ui layout 7.12).
+        let (_, _, dx, dy) = ui.tree.rect(ui.tree.find(45000).unwrap());
+        assert_eq!((dx, dy), (40, 24));
+        // The layout of 40 x 10 took the size of its background, 40 x 24 (ui layout 7.12).
+        assert_eq!(ui.tree.rect(ui.tree.find(45000).unwrap()).2..=3, 40..=24);
         // OK closes it; the hint's button shows it again, and OK closes it once more.
         pass(app, &key(Key::Enter));
         assert!(!app.interface().unwrap().modal_open());

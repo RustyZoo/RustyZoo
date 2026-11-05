@@ -157,6 +157,27 @@ impl Interface {
         true
     }
 
+    /// A dialog configured by a file takes the size of its background before it is shown (ui layout
+    /// 7.12): `picture`, if any, goes on the background element `layout + 1` with its size, then the
+    /// layout's size is the background's, so that a button below the file's size can be clicked.
+    /// The layout's position is not recomputed here. A background with no size changes nothing.
+    pub(crate) fn fit_to_background(&mut self, layout: i32, picture: Option<Picture>) {
+        if picture.is_some() {
+            self.set_picture(layout + 1, picture);
+        }
+        let size = |this: &Self, id| {
+            let i = this.tree.find(id)?;
+            this.tree.elements[i].placed.map(|p| (p.dx, p.dy))
+        };
+        if let (Some((dx, dy)), Some(d)) = (size(self, layout + 1), self.tree.find(layout))
+            && dx > 0
+            && dy > 0
+            && let Some(p) = &mut self.tree.elements[d].placed
+        {
+            (p.dx, p.dy) = (dx, dy);
+        }
+    }
+
     /// Answers the open question with `code` (values above 9 count as 1) and closes it; with no
     /// question open, closes the popup. Nothing if none is open.
     pub(crate) fn answer(&mut self, code: i32) {
