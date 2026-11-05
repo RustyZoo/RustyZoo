@@ -238,7 +238,9 @@ impl Cx<'_, '_> {
             return;
         }
         if !drinking && !wet && !escaped && self.start_set("bEat", false) {
-            self.unit.runner.queue("bEat", false, true);
+            if crate::animal::life::can_act(self.unit, self.world, self.ctx.cat, self.at) {
+                self.unit.runner.queue("bEat", false, true);
+            }
         } else {
             self.reset();
         }
@@ -297,7 +299,7 @@ impl Cx<'_, '_> {
         if a.eating {
             return;
         }
-        let m = food::meal(self.unit, self.world, self.data, self.at);
+        let m = food::meal(self.unit, self.world, self.ctx.cat, self.data, self.at);
         if m.left > 0 {
             food::face(self.unit, self.world, self.at);
             food::feed(self);
