@@ -1670,6 +1670,10 @@ fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
             2
         );
         assert_eq!(ui.text(45006).unwrap(), b"all branch-1");
+        // The line is shown: the two messages of this pass wait, one per 3000 ms.
+        for now in [1_000_000, 1_001_000, 1_004_000] {
+            ui.update(now);
+        }
         assert_eq!(ui.text(7001).unwrap(), b"all branch-1", "the line too");
         // A program the tree does not know opens the one dialog only.
         app.sim.push_research_done(done(99));

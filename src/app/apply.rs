@@ -212,7 +212,8 @@ impl App<'_> {
             return;
         };
         let before = game.camera.clone();
-        game.camera.rotate(&game.world.zoo, None, clockwise);
+        let at = game.selected_point();
+        game.camera.rotate(&game.world.zoo, at, clockwise);
         let extra = Extra {
             marks: game.marks.clone(),
             shown: game.shown(),
