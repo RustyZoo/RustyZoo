@@ -453,7 +453,7 @@ mod tests {
             let (mut rng, mut log) = (seeded(seed), Vec::new());
             let mut s = scape("", &file.replace("value = 21", "value = 0"));
             s.update(1001, 0, &mut rng, &mut log);
-            let hit = after(seed, 8).rand() % 50 == 0;
+            let hit = after(seed, 8).rand().is_multiple_of(50);
             assert_eq!(
                 log.last().unwrap() != "soundscape world roll no",
                 hit,
