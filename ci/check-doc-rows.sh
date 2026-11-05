@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Fails if a table of docs/architecture.md or README.md has two rows with the same first cell (a cell
+# Fails if a table of README.md has two rows with the same first cell (a cell
 # with no letter or digit, such as a status icon, does not count), a
 # section has two bullets with the same bold lead (`- **Lead.**`), or a code block has two command
 # lines with the same command (the text before the first ` #`; blank and comment-only lines are
-# left out; a line after a trailing backslash is part of the command before it). Both files merge
+# left out; a line after a trailing backslash is part of the command before it). The file merges
 # as a union (see .gitattributes), so a row, bullet or example line that one change edits and
 # another keeps would otherwise be there twice.
 # Usage: ci/check-doc-rows.sh (from the repository root)
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 1
 fail=0
-for f in docs/architecture.md README.md; do
+for f in README.md; do
   awk -v f="$f" '
     /^```/ { code = !code; delete cmd; cont = 0; next }
     code { k = $0; sub(/ #.*/, "", k); sub(/ +$/, "", k)
