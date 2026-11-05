@@ -606,9 +606,9 @@ pending_object() { # pending_object <map> <script>
   rm -rf "$d"
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;b96f4eb79b9f987f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;272b61a1cede756f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;061dde0b578c0cf3" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;5650067fa24c597e" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;efa3ad2b1370df6c" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -621,10 +621,10 @@ path_drag() { # path_drag <map> <first move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "8,49800,40076d8b2dbe27f3" "path_drag maps/default.zoo '632 384'"
-check base-trial "8,49800,748d30093a68402c" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,c667089eb6f3e0fb" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,75b10dc40449eff0" "path_drag maps/scn19.zoo '632 416'"
+check base-trial "8,49800,daef63d71b710f9f" "path_drag maps/default.zoo '632 384'"
+check base-trial "8,49800,f47d3badaee28088" "path_drag maps/default.zoo '632 416'"
+check expansion-trial "8,49920,f0f4c5e8f5102bbd" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,5c62e8221696322a" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -637,8 +637,8 @@ paint_text() { # paint_text <map> <script>
   rm -rf "$d"
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
-check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;a5b3e85a3e274ffa" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;8490724c9b548d05" "paint_text maps/scn19.zoo '$paint'"
+check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;202088c2ac763dc7" "paint_text maps/default.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;3a8b2426530dfe92" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -651,8 +651,8 @@ fence_drag() { # fence_drag <map> <last move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "6,48920,ca28e88f552e7b7b" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,92f16bc9fedcf743 "fence_drag maps/scn19.zoo '878 332'"
+check base-trial "6,48920,2b34d0e34467d15f" "fence_drag maps/default.zoo '878 332'"
+check expansion-trial 6,49250,06b9062d07380ef5 "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -709,8 +709,8 @@ bulldozer_area() { # bulldozer_area <map>
     awk '/ world remove .* refund /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "8,49960,b656d74441897b68" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,b0accfeac90c5f28 "bulldozer_area maps/scn19.zoo"
+check base-trial "8,49960,9b688670e4bbd60c" "bulldozer_area maps/default.zoo"
+check expansion-trial 16,50156,a9d71db4b3bb337e "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place

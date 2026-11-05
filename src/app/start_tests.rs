@@ -19,6 +19,7 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
+            400 => "text-400".into(),
             9101 => "text-9101 %d".into(),
             9201 => "told %r".into(),
             9301 => "gift %s".into(),
@@ -59,7 +60,7 @@ impl UiStrings for Texts {
 pub(super) fn interface(install: &Install) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
-        [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\n\
+        [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\ntimed=1\ntimerDuration=3000\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
@@ -84,6 +85,7 @@ pub(super) fn interface(install: &Install) -> Interface {
          [b]\nid=45011\nx=10\ny=0\ntarget=7\naction=5\n{button}\
          [c]\nid=45012\nx=20\ny=0\ntarget=1\naction=5\n{button}\
          [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
+         [bg]\ntype=UIImage\nid=45001\nx=0\ny=0\ndx=40\ndy=24\nlayer=0\n\
          [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n\
          [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
     );
@@ -127,7 +129,13 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [c]\ntype=UIButton\nid=4107\nx=20\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
                   action=3\ntarget=803\n\
                   [r]\ntype=UIButton\nid=1019\nx=30\ny=0\ndx=8\ndy=8\ncolorasicon=1\nstate=2048\n\
-                  action=3\ntarget=15\n"
+                  action=3\ntarget=15\n\
+                  [zi]\ntype=UIButton\nid=1007\nx=40\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [zo]\ntype=UIButton\nid=1023\nx=44\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n\
+                  [rl]\ntype=UIButton\nid=1008\nx=48\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [rr]\ntype=UIButton\nid=1009\nx=52\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [pa]\ntype=UIButton\nid=1071\nx=56\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n"
                     .to_vec(),
             ),
             (
@@ -877,6 +885,9 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
         let ui = app.interface().unwrap();
         assert!(ui.shown(45004));
         assert_eq!(ui.tree.rect(ui.tree.find(45004).unwrap()).2, 2);
+        // The layout of 40 x 10 took the size of its background, 40 x 24 (ui layout 7.12).
+        let (_, _, dx, dy) = ui.tree.rect(ui.tree.find(45000).unwrap());
+        assert_eq!((dx, dy), (40, 24));
         // OK closes it; the hint's button shows it again, and OK closes it once more.
         pass(app, &key(Key::Enter));
         assert!(!app.interface().unwrap().modal_open());

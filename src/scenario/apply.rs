@@ -28,7 +28,6 @@ pub(crate) fn built_line(ui: &Interface, line: Line) -> String {
 }
 
 /// Where the dialog layouts keep their pictures and texts, from the layout's id.
-const BACKGROUND: i32 = 1;
 const ICON: i32 = 2;
 const IMAGE1: i32 = 4;
 const IMAGE2: i32 = 5;
@@ -122,6 +121,10 @@ impl Marks {
             ..Buttons::default()
         };
         let layout = p.layout;
+        // The layout takes the size of its background before it is shown (ui layout 7.12).
+        let background = Some(&p.pictures[0]).filter(|n| !n.is_empty());
+        let background = background.and_then(|name| ui.tree.picture(vfs, name));
+        ui.fit_to_background(layout, background);
         let opened = match p.modal {
             true => ui.ask(layout, &texts[0], buttons),
             false => ui.notify(layout, &texts[0], buttons),
@@ -134,19 +137,10 @@ impl Marks {
             if p.modal { "modal" } else { "open" }
         ));
         ui.set_text(layout + TEXT2, &texts[1]);
-        // The pictures come after the layout is shown, which would show them again. The
-        // background of the layout stays when the popup names none.
-        for (at, name) in [BACKGROUND, ICON, IMAGE1, IMAGE2]
-            .into_iter()
-            .zip(&p.pictures)
-        {
+        // The pictures come after the layout is shown, which would show them again.
+        for (at, name) in [ICON, IMAGE1, IMAGE2].into_iter().zip(&p.pictures[1..]) {
             let picture = (!name.is_empty()).then(|| ui.tree.picture(vfs, name));
-            match (at, picture.flatten()) {
-                (BACKGROUND, None) => {}
-                (at, picture) => {
-                    ui.set_picture(layout + at, picture);
-                }
-            }
+            ui.set_picture(layout + at, picture.flatten());
         }
         let line = match p.hint.short {
             -1 if p.hint.long.is_empty() => p
