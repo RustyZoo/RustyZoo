@@ -24,6 +24,13 @@ struct Group {
     sounds: Vec<(String, i32)>,
 }
 
+impl Group {
+    /// The list of files, which names the sound group the entries belong to.
+    fn files(&self) -> Vec<String> {
+        self.sounds.iter().map(|(f, _)| f.clone()).collect()
+    }
+}
+
 /// An `[ambientlevels]` file: the groups with the range of levels each one serves.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Ambients(Vec<(i32, i32, Group)>);
@@ -46,18 +53,28 @@ impl Ambients {
             let (Some(lo), Some(hi)) = (values.get(2 * i), values.get(2 * i + 1)) else {
                 continue;
             };
+            let (lo, hi) = (number(lo), number(hi));
             let group = file.section(name).map_or_else(Group::default, |s| {
                 let probs = s.get_all("prob");
                 Group {
-                    chance: s.get("chance").map_or(0, number) as u32,
+                    // Without the key the slot keeps the group's upper level (sound 8.1 point 8).
+                    chance: s.get("chance").map_or(hi, number) as u32,
                     sounds: (s.get_all("sound").iter().enumerate())
                         .map(|(i, f)| (name_from_bytes(f), probs.get(i).map_or(0, |p| number(p))))
                         .collect(),
                 }
             });
-            groups.push((number(lo), number(hi), group));
+            groups.push((lo, hi, group));
         }
         Ambients(groups)
+    }
+
+    /// Gives every group the chance and the weights of the first group made for the same list of
+    /// files, `made` holding those first ones (sound 8.1 point 4).
+    fn shared(&mut self, made: &mut BTreeMap<Vec<String>, Group>) {
+        for (_, _, group) in &mut self.0 {
+            *group = made.entry(group.files()).or_insert_with(|| group.clone()).clone();
+        }
     }
 
     /// The first group whose range holds `level`, both ends included.
@@ -75,6 +92,9 @@ impl Ambients {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Shot {
     pub file: String,
+    /// The sound group's list of files and the entry: each entry of a group is its own voice
+    /// (sound 8.1 point 9).
+    pub voice: String,
     pub dx: i32,
     pub dy: i32,
 }
@@ -102,6 +122,19 @@ pub(crate) struct Soundscape {
 }
 
 impl Soundscape {
+    /// The soundscape of two files: the crowd's groups are made first, then the world's, each in
+    /// file order, and a group listing files that an earlier one listed takes its chance and weights.
+    fn new(mut crowd: Ambients, mut world: Ambients) -> Soundscape {
+        let mut made = BTreeMap::new();
+        crowd.shared(&mut made);
+        world.shared(&mut made);
+        Soundscape {
+            crowd,
+            world,
+            ..Soundscape::default()
+        }
+    }
+
     /// The soundscape of a game whose scenario file is `scenario` (a saved game without one, or a
     /// bare map, has none): the files `[start]` names, else the default ones, read through `read`.
     pub(crate) fn from_files(
@@ -114,11 +147,10 @@ impl Soundscape {
             name.map_or_else(|| default.to_string(), name_from_bytes)
         };
         let ambients = |name: String| Ambients::parse(&read(&name).unwrap_or_default());
-        Soundscape {
-            crowd: ambients(named("crowdAmbients", CROWD_FILE)),
-            world: ambients(named("worldAmbients", WORLD_FILE)),
-            ..Soundscape::default()
-        }
+        Soundscape::new(
+            ambients(named("crowdAmbients", CROWD_FILE)),
+            ambients(named("worldAmbients", WORLD_FILE)),
+        )
     }
 
     /// [`Soundscape::from_files`] on the files of `vfs`; a file that cannot be read is a warning
@@ -159,7 +191,7 @@ impl Soundscape {
         ];
         for (name, group, (dx, dy)) in plays {
             let Some(group) = group else { continue };
-            let files = group.sounds.iter().map(|(f, _)| f.clone()).collect();
+            let files = group.files();
             let clock = clocks.entry(files).or_insert(0);
             *clock = clock.wrapping_add(step);
             if *clock <= SECOND {
@@ -172,15 +204,16 @@ impl Soundscape {
             }
             let draw = (rng.rand() % 100) as i32;
             let mut sum = 0i32;
-            let found = group.sounds.iter().find(|(_, prob)| {
+            let found = group.sounds.iter().enumerate().find(|(_, (_, prob))| {
                 sum = sum.wrapping_add(*prob);
                 draw < sum
             });
             match found {
-                Some((file, _)) => {
+                Some((entry, (file, _))) => {
                     log.push(format!("soundscape {name} roll {draw} {file}"));
                     shots.push(Shot {
                         file: file.clone(),
+                        voice: format!("ambient {entry} {}", group.files().join(" ")),
                         dx,
                         dy,
                     });
@@ -207,11 +240,10 @@ mod tests {
         [big]\nchance = 1\nsound = v.wav\nprob = 100\n";
 
     fn scape(crowd: &str, world: &str) -> Soundscape {
-        Soundscape {
-            crowd: Ambients::parse(crowd.as_bytes()),
-            world: Ambients::parse(world.as_bytes()),
-            ..Soundscape::default()
-        }
+        Soundscape::new(
+            Ambients::parse(crowd.as_bytes()),
+            Ambients::parse(world.as_bytes()),
+        )
     }
 
     /// The generator after `n` draws from the seed.

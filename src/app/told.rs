@@ -19,7 +19,7 @@ impl App<'_> {
     }
 
     /// Takes the ambient one-shots the steps asked for (sound 8.1) and places each one at its
-    /// offset from the centre of the map view; the voice of a file is its own.
+    /// offset from the centre of the map view; each entry of a group is its own voice.
     pub(super) fn ambient_placed(&mut self) -> Vec<UnitSound> {
         let shots = self.sim.take_shots();
         let Some(game) = &self.game else {
@@ -32,7 +32,7 @@ impl App<'_> {
                 let (distance, pan) = positional(at, listener);
                 UnitSound {
                     id: 0,
-                    voice: format!("ambient {}", s.file),
+                    voice: s.voice,
                     file: s.file,
                     base: 0,
                     at,
