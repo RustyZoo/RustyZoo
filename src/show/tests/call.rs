@@ -1,6 +1,6 @@
 //! The call to a show, the arrival and the release of an animal (shows 18.2, 21.1, 24).
 
-use super::cycle::{info_mut, info_of_show, item, staged, started, tick};
+use super::cycle::{SEAL, info_mut, info_of_show, item, staged, started, tick};
 use super::*;
 use crate::show::performer::{read_events, release};
 use crate::sim::{Event, Events, UNIT_CHANNEL};
@@ -159,4 +159,41 @@ fn the_checks_of_an_animal_read_whether_it_is_in_a_show_as_it_is_now() {
         };
         assert_eq!(a.in_show, back);
     }
+}
+
+#[test]
+fn an_animal_in_a_show_or_a_land_species_in_a_tank_cannot_act_here() {
+    // Animals-needs 2: not in a show, and an underwater species acts anywhere, else on a dry
+    // tile, in land mode, outside a tank.
+    use crate::animal::life::can_act;
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    let mut under = Catalogue::default();
+    under.push(EntityType {
+        name_id: SEAL as i32,
+        ..kind(
+            "animals",
+            "seal",
+            "[tricks]\ntrick=a\n[Characteristics/Integers]\ncUnderwater=1\n",
+        )
+    });
+    let acts =
+        |w: &World, cat: &Catalogue| can_act(w.units.get(21).unwrap(), w, cat, w.find(21).unwrap());
+    // In the tank: a land species cannot, an underwater one can.
+    assert!(!acts(&w, &cat) && acts(&w, &under));
+    // On its way home to a show it is in one: neither can.
+    w.units.get_mut(21).unwrap().back = true;
+    assert!(!acts(&w, &cat) && !acts(&w, &under));
+    w.units.get_mut(21).unwrap().back = false;
+    // An egg cannot; on the dry grounds a land species can, in land mode only.
+    let at = w.find(21).unwrap();
+    w.place_unit(at, (10 * 64 + 32, 6 * 64 + 32, 0), 0);
+    assert!(acts(&w, &cat));
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        a.terrain = 1;
+    }
+    assert!(!acts(&w, &cat) && acts(&w, &under));
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        (a.terrain, a.egg) = (0, true);
+    }
+    assert!(!acts(&w, &cat) && !acts(&w, &under));
 }

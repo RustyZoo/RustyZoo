@@ -3,10 +3,10 @@
 
 use super::*;
 use crate::entity::Catalogue;
+use crate::goal::EXIT_TANK;
 use crate::sim::{Events, Rng};
 use crate::unit::testing::{Walker, tank_world};
 use crate::unit::{Ctx, Kind, Part, Staff};
-use crate::goal::EXIT_TANK;
 
 /// A ray that keeps off the walls (`cAvoidEdges` 1) at tile (3, 3), and a keeper's mover that does
 /// not. The inside of the tank is the two tiles (3, 3) and (4, 3).
@@ -146,7 +146,10 @@ fn the_animal_s_tank_exit_writes_its_own_target_tile_and_the_goal_reset_clears_i
     assert_eq!(u.own_tile, Some(inside));
     assert_eq!(
         u.own_pos[..2],
-        [(inside % 12) as i32 * 64 + 32, (inside / 12) as i32 * 64 + 32]
+        [
+            (inside % 12) as i32 * 64 + 32,
+            (inside / 12) as i32 * 64 + 32
+        ]
     );
     assert_eq!(u.goal.record.job, 0, "no ladder job for an animal yet");
     as_animal(&mut w, |cx| {
