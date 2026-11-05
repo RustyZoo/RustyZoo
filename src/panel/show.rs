@@ -1,7 +1,7 @@
 //! The show panel (information panels 19, shows 33; Marine Mania): a centred window with the
 //! exhibit's name, the admission of the selected species, the species drop-down and two tabs, the
-//! script tab (the frequency drop-down; the trick editor is not built, 19.9) and the Show
-//! Finances tab.
+//! script tab (the frequency drop-down; the trick editor is not built, 19.9) and the
+//! finances tab.
 //!
 //! [`Panel`] holds the exhibit `X` and the species `s` of shows 33.1 and fills the layouts from the
 //! world; the admission and the frequency write into it. What shows and hides the window is
