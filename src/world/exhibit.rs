@@ -748,7 +748,7 @@ impl World {
     }
 
     /// The same step for the exhibit whose tiles `inside` tells.
-    fn step_in(&self, inside: &dyn Fn(usize) -> bool, (i, o): Pair) -> Option<Pair> {
+    pub(super) fn step_in(&self, inside: &dyn Fn(usize) -> bool, (i, o): Pair) -> Option<Pair> {
         let d = self.side_to(o, i)?;
         let s = (d + 6) % 8;
         let (i2, o2) = (self.neighbour(i, s), self.neighbour(o, s));
