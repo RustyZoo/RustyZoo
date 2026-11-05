@@ -7,6 +7,7 @@ use super::{AVOID, CHASE, Cx, IN_BUILDING};
 use crate::animal::Animal;
 use crate::guest::view::tile_of;
 use crate::place::bulldozer::type_of;
+use crate::show::in_show_now;
 use crate::unit::predator::find_prey;
 use crate::unit::{Kind, Part, movement};
 
@@ -48,7 +49,8 @@ impl Cx<'_, '_> {
         self.unit.caught
             || set
             || tasks
-            || a.in_show
+            // In a show, as it is now (shows 32.3 point 3).
+            || in_show_now(self.world, self.ctx.cat, self.unit, self.at)
             || a.thirsty
             || a.wants_food
             || a.caught_prey
@@ -569,6 +571,7 @@ impl Cx<'_, '_> {
             self.set_job(PREATTACK, 0, None);
             let world = &*self.world;
             self.unit.goal.record.target.set_tile(world, None);
+            self.unit.clear_own();
             return;
         }
         if pre[0] && self.unit.goal.record.job == 0 {

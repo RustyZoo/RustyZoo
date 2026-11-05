@@ -196,10 +196,7 @@ impl Hooks for Standard<'_> {
     }
     fn checks(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
         // The checks that skip an animal in a show read it as it is now (shows 18.2, 25).
-        let shown = crate::show::in_show_now(world, ctx.cat, unit);
-        if let Part::Animal(a) = &mut unit.part {
-            a.in_show = shown;
-        }
+        refresh_in_show(unit, world, ctx.cat, at);
         crate::animal::checks(unit, world, ctx, at, self.data);
         crate::guest::checks(unit, world, ctx, at, self.data);
         crate::staff::checks(unit, world, ctx, at, self.data);
@@ -210,6 +207,7 @@ impl Hooks for Standard<'_> {
             _ => false,
         };
         if asked {
+            refresh_in_show(unit, world, ctx.cat, at);
             crate::animal::escape::ambient_sets(unit, world, self.data, ctx.rng, at);
             if !crate::animal::escape::chose(unit, world, ctx, at, self.data) {
                 let key = ambient_key(unit);
@@ -241,6 +239,17 @@ impl Hooks for Standard<'_> {
 fn lower_walk(unit: &mut Unit) {
     if unit.runner.take_started() {
         unit.walking = false;
+    }
+}
+
+/// The animal's `in_show` as it is now, for the checks that read the field (shows 18.2, 32.3).
+fn refresh_in_show(unit: &mut Unit, world: &World, cat: &crate::entity::Catalogue, at: usize) {
+    if !matches!(unit.part, Part::Animal(_)) {
+        return;
+    }
+    let shown = crate::show::in_show_now(world, cat, unit, at);
+    if let Part::Animal(a) = &mut unit.part {
+        a.in_show = shown;
     }
 }
 

@@ -200,6 +200,8 @@ pub(crate) struct Animal {
     pub egg: bool,
     pub crated: bool,
     pub dying: bool,
+    /// In a show as of the start of the status checks and of the ambient choice, for the checks
+    /// that read it; elsewhere it is computed where it is read (shows 32.3).
     pub in_show: bool,
     pub very_unhappy: bool,
     pub at_minimum_health: bool,

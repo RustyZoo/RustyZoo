@@ -17,7 +17,7 @@ use crate::entity::Catalogue;
 use crate::exhibit::viewing::{self, Ground};
 use crate::place::bulldozer::type_of;
 use crate::sim::{Event, Events, Rng, SHOW_CHANNEL};
-use crate::unit::Unit;
+use crate::unit::{Part, Unit};
 use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{Item, ShowInfo};
@@ -200,26 +200,32 @@ pub(crate) fn exhibit_of(world: &World, id: u16) -> Option<u32> {
 
 /// Whether `unit` is in a show (shows 18.2): it is an animal that performs, and it is on its way
 /// home or was started in a show whose info holds an item state for it (`held` tells that of the
-/// show id it is given).
+/// show id it is given). `at` is the unit's place in the entity list; only an animal looks at its
+/// type (shows 32.5 point 3).
 pub(crate) fn in_show(
     world: &World,
     cat: &Catalogue,
     unit: &Unit,
+    at: usize,
     held: impl FnOnce(u16) -> bool,
 ) -> bool {
-    let at = world.find(unit.id);
-    let ty = at.and_then(|at| type_of(cat, &world.zoo.entities[at]));
-    ty.is_some_and(trick::performs) && (unit.back || (unit.show != 0 && held(unit.show)))
+    // The answer needs all three; the cheap tests come first, the type's trick list last.
+    let animal = matches!(unit.part, Part::Animal(_));
+    let ty = || type_of(cat, world.zoo.entities.get(at)?);
+    animal
+        && (unit.back || (unit.show != 0 && held(unit.show)))
+        && ty().is_some_and(trick::performs)
 }
 
-/// [`in_show`] when no show info is out of the world.
-pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit) -> bool {
+/// [`in_show`] when no show info is out of the world: computed at each reader, nothing keeps a
+/// copy (shows 32.3 point 1).
+pub(crate) fn in_show_now(world: &World, cat: &Catalogue, unit: &Unit, at: usize) -> bool {
     let held = |show: u16| {
         let infos = world.zoo.shows.infos.iter().flatten();
         let mut infos = infos.filter(|i| i.id == show);
         infos.any(|i| i.show.items.iter().any(|s| s.animal == unit.id))
     };
-    in_show(world, cat, unit, held)
+    in_show(world, cat, unit, at, held)
 }
 
 /// `abort_show` (shows 21.6): the show of the show id `id` is aborted when it has an info. The
@@ -267,14 +273,23 @@ pub(crate) fn empty_grandstands_for(world: &mut World, cat: &Catalogue, unit: &m
 }
 
 /// The drain of tank `exhibit` (shows 30.4 point 3) posts the abort event of its show info, which
-/// reads it at the next step. The removal of an exhibit posts one too, but nobody reads it.
+/// reads it at the next step.
 pub(crate) fn drained(world: &mut World, exhibit: u32) {
-    let Some(id) = info_of(world, exhibit)
-        .map(|i| u32::from(i.id))
-        .filter(|&i| i != 0)
-    else {
-        return;
-    };
+    if let Some(id) = info_of(world, exhibit).map(|i| i.id).filter(|&i| i != 0) {
+        post_abort(world, id);
+    }
+}
+
+/// The exhibit of show `show`, whose info is already deleted, is gone and held `tiles` (shows 30.4
+/// point 1): the abort event is posted, but its info is gone when it comes, so nobody reads it
+/// (O22); the grandstands that faced the exhibit lose their users. The show is not aborted.
+pub(crate) fn exhibit_gone(world: &mut World, cat: &Catalogue, show: u16, tiles: &[usize]) {
+    post_abort(world, show);
+    empty_facing(world, cat, &|t| tiles.contains(&t));
+}
+
+fn post_abort(world: &mut World, show: u16) {
+    let id = u32::from(show);
     world.units.posts.push(Event {
         sender: id,
         target: id,
@@ -326,10 +341,21 @@ impl Sight {
     }
 }
 
-/// Whether grandstand `at` faces exhibit `exhibit` (shows 4.1): the tile four tiles in front of it
-/// is in the exhibit and the line of sight from three to five tiles in front is clear. A tile off
-/// the map is a no (the original reads a null tile there).
+/// Whether grandstand `at` faces exhibit `exhibit` (shows 4.1).
 fn faces(world: &World, ground: &Ground, exhibit: u32, at: usize) -> bool {
+    faces_in(
+        world,
+        ground,
+        &|t| world.exhibits().region(t) == Some(exhibit),
+        at,
+    )
+}
+
+/// [`faces`] for an exhibit, `inside` telling the tiles it holds: the
+/// tile four tiles in front of it is in the exhibit and the line of sight from three to five tiles
+/// in front is clear. A tile off
+/// the map is a no (the original reads a null tile there).
+fn faces_in(world: &World, ground: &Ground, inside: &dyn Fn(usize) -> bool, at: usize) -> bool {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return false;
     };
@@ -341,7 +367,7 @@ fn faces(world: &World, ground: &Ground, exhibit: u32, at: usize) -> bool {
     let (Some(t3), Some(t4), Some(t5)) = (ahead(3), ahead(4), ahead(5)) else {
         return false;
     };
-    world.exhibits().region(t4) == Some(exhibit) && ground.sees(t3, t5)
+    inside(t4) && ground.sees(t3, t5)
 }
 
 /// The pass for the building `id` just added to the map (placed, set down, put back): it runs only
@@ -485,13 +511,19 @@ pub(crate) fn empty_show_grandstands(world: &mut World, cat: &Catalogue, id: u16
     let Some(exhibit) = exhibit_of(world, id) else {
         return;
     };
+    let tiles = world.tiles_of(exhibit);
+    empty_facing(world, cat, &|t| tiles.contains(&t));
+}
+
+/// Every grandstand that faces the exhibit whose tiles `inside` tells loses its users.
+fn empty_facing(world: &mut World, cat: &Catalogue, inside: &dyn Fn(usize) -> bool) {
     let stands = grandstands(world, cat);
     if stands.is_empty() {
         return;
     }
     let ground = Ground::of(world, viewing::bodies(cat));
     let facing: Vec<u32> = (stands.iter())
-        .filter(|&&(_, at)| faces(world, &ground, exhibit, at))
+        .filter(|&&(_, at)| faces_in(world, &ground, inside, at))
         .map(|&(id, _)| id)
         .collect();
     for id in facing {

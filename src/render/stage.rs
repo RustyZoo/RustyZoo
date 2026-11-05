@@ -129,7 +129,7 @@ impl<'a> MapRenderer<'a> {
                 continue;
             };
             let kind = Kind::of_class(&entity.class);
-            if no_units && matches!(kind, Kind::Unit | Kind::Overlay) {
+            if no_units && matches!(kind, Kind::Unit | Kind::Overlay | Kind::Flight) {
                 continue;
             }
             if extra.hidden.contains(&c.id) {

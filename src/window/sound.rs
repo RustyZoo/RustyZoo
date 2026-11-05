@@ -6,7 +6,7 @@
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
 use rustyzoo::intro::{Intro, attenuation};
-use rustyzoo::music::{LoopTurn, Music, START_LIMIT, global_term, loop_turn};
+use rustyzoo::music::{LoopTurn, Music, START_LIMIT, global_term, loop_turn, vehicle_turn};
 use rustyzoo::timing::ini_whole;
 use rustyzoo::vfs::Vfs;
 
@@ -30,6 +30,8 @@ pub struct Sound {
     loops: HashMap<String, (String, Voice)>,
     /// The files of loops that could not be played, which are not tried again.
     failed: HashSet<String>,
+    /// The vehicle loops an update looked at (ambients 6.2).
+    tried: HashSet<String>,
     /// The global term `G`, from `userAttenuation`: the attenuation sum of the click, whose `B` and
     /// `F` are 0.
     click_sum: i32,
@@ -93,6 +95,7 @@ impl Sound {
             units: HashMap::new(),
             loops: HashMap::new(),
             failed: HashSet::new(),
+            tried: HashSet::new(),
             click_sum: global_term(ini),
             quiet: Quiet::default(),
             paused: false,
@@ -244,14 +247,17 @@ impl Sound {
         lines
     }
 
-    /// Keeps the loops the tank filters play (sound 4.2, 8.2): a loop that is no longer asked for,
-    /// or that has another file, is stopped; one that is not playing starts when its sum is not over
-    /// 6,000; one that is playing gets its volume and pan, and stops over 9,000. A file that cannot
-    /// be read or decoded is silence and a warning.
+    /// Keeps the loops the tank filters and the vehicles play (sound 4.2, 8.2, ambients 6): a loop
+    /// that is no longer asked for, or that has another file, is stopped; one that is not playing
+    /// starts when its sum is not over 6,000; one that is playing gets its volume and pan, and stops
+    /// over 9,000. A vehicle's loop is tried at its first update only, never started later. A file
+    /// that cannot be read or decoded is silence and a warning.
     pub fn loops(&mut self, vfs: &Vfs, app: &App) {
         let wanted = app.loop_sounds();
         self.loops
             .retain(|key, (file, _)| (wanted.iter()).any(|s| s.voice == *key && s.file == *file));
+        self.tried
+            .retain(|key| wanted.iter().any(|s| s.voice == *key));
         let Some(audio) = &self.audio else { return };
         for s in wanted {
             let sum = (self.click_sum.saturating_add(s.base)).saturating_add(s.distance);
@@ -259,7 +265,11 @@ impl Sound {
             if self.failed.contains(&s.file) {
                 continue;
             }
-            match loop_turn(playing, sum) {
+            let turn = match s.voice.starts_with("vehicle ") {
+                true => vehicle_turn(!self.tried.insert(s.voice.clone()), playing, sum),
+                false => loop_turn(playing, sum),
+            };
+            match turn {
                 LoopTurn::Start => {
                     let played = (audio.load(vfs, &s.file))
                         .and_then(|wave| audio.play_at(wave, s.pan, sum, s.distance, true));

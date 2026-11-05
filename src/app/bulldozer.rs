@@ -342,7 +342,8 @@ impl App<'_> {
                 None => (game.world).tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?,
             };
             let kind = Kind::of_class(&e.class);
-            let ty = bulldozer::type_of(cat, e).filter(|_| kind != Kind::Overlay);
+            let ty = bulldozer::type_of(cat, e)
+                .filter(|_| !matches!(kind, Kind::Overlay | Kind::Flight));
             ty.map(|ty| {
                 let (habitat, name) = rating::object(ty);
                 let change = match kind {

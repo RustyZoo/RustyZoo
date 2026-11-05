@@ -97,7 +97,7 @@ fn catalogue() -> Catalogue {
             "zebra",
             "f",
             1,
-            "cNeededFood=100\ncPurchaseCost=1000",
+            "cNeededFood=100\ncPurchaseCost=1000\n[f/tricks]\ntrick=a\n",
         ),
         unit_ty(
             "food",
@@ -286,6 +286,45 @@ fn a_keeper_feeds_the_hungry_exhibit_pays_for_it_and_notes_the_service() {
         .filter_map(|l| l.split(' ').rev().nth(1))
         .collect();
     assert_eq!(gates[..4], ["open", "close", "open", "close"], "in and out");
+}
+
+/// Runs the game with the first zebra on its way home: the return flag up at every step and no
+/// task, so that no return completes and lowers it.
+fn homeward(g: &mut Game) {
+    for _ in 0..2500 {
+        let u = g.w.units.get_mut(ZEBRA_A).unwrap();
+        (u.back, u.goal.record.task) = (true, 0);
+        g.run(1);
+    }
+}
+
+#[test]
+fn a_keeper_does_not_heal_a_sick_animal_that_is_in_a_show() {
+    // Shows 32.3 point 6: a sickly performer on its way home is no candidate, though it is nearer.
+    let sick = |g: &mut Game, id| zebra(&mut g.w, id).health = 100;
+    let mut g = Game::with(&[PEN_A], &[animal(ZEBRA_B, (7, 2))], b"");
+    calm(&mut g.w);
+    assert!(g.put("herbchow", (6, 4), 1000));
+    sick(&mut g, ZEBRA_A);
+    sick(&mut g, ZEBRA_B);
+    homeward(&mut g);
+    assert_eq!(
+        zebra(&mut g.w, ZEBRA_A).health,
+        100,
+        "the performer is left"
+    );
+    assert_eq!(
+        zebra(&mut g.w, ZEBRA_B).health,
+        500,
+        "the farther one is healed"
+    );
+    // With no other candidate the job ends with no target.
+    let mut g = Game::new(&[PEN_A]);
+    assert!(g.put("herbchow", (6, 4), 1000));
+    sick(&mut g, ZEBRA_A);
+    homeward(&mut g);
+    assert_eq!(zebra(&mut g.w, ZEBRA_A).health, 100);
+    assert!(g.lines(&["animal heal"]).is_empty());
 }
 
 #[test]

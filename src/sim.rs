@@ -6,7 +6,7 @@
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the shows, the water ripples, the ambient creatures, and the research and marketing
+//! so far: the shows, the water ripples, the spawn list of the ambient creatures, and the research and marketing
 //! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
@@ -15,7 +15,7 @@
 //!
 //! The log family `sim`: `sim seed N` at each seeding of the generator in a test run, `sim step MS` for each
 //! step, `sim scenario ...` ([`crate::scenario`]), `sim month M Y` when a step acts on the month
-//! flag of the one before, and the zoo status' `sim fly ID [COUNT]` for a flying object a date hook launches (no flight is drawn yet), `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
+//! flag of the one before, and the zoo status' `sim fly ID [COUNT]` for a flying object a date hook launches ([`crate::flight`]; `sim flight ID missing` when its type is absent), `sim rating N`, `sim message ID` and `sim donation AMOUNT`, `sim rate ID [KEY SHOWN]...`
 //! when exhibit `ID` is rated at its update (habitat rating 4), with the suitability its record of
 //! each species gives, and at a month end the
 //! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
@@ -23,6 +23,7 @@
 pub mod drive;
 mod events;
 pub mod hash;
+mod inspect;
 mod rng;
 #[cfg(test)]
 mod tests;
@@ -738,6 +739,7 @@ impl Sim {
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 unit::gate::advance(world, cat, data, at, step);
+                crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);
                 update(world, at, step);
                 // A grandstand reads the events of its show (shows 6.3).

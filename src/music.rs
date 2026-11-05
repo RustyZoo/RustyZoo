@@ -35,6 +35,15 @@ pub fn loop_turn(playing: bool, sum: i32) -> LoopTurn {
         (true, _) => LoopTurn::Stop,
     }
 }
+/// The turn of the loop of a vehicle (ambients 6.2): its owner refreshes a loop only while it
+/// plays, so one that is not playing after its first update is never started later: `seen` is
+/// whether an update already looked at it.
+pub fn vehicle_turn(seen: bool, playing: bool, sum: i32) -> LoopTurn {
+    match (seen, playing) {
+        (true, false) => LoopTurn::Idle,
+        _ => loop_turn(playing, sum),
+    }
+}
 /// The most the fade term `F` may reach before the music is stopped.
 const FADE_END: i32 = 3000;
 /// A step of this many milliseconds or more does not advance the fade.
@@ -219,6 +228,19 @@ mod tests {
         // Names ignore case and an integer reads like `%d`: no `0x` rule.
         assert_eq!(term("[ui]\nUSERATTENUATION=600\n"), 600);
         assert_eq!(term("[UI]\nuserAttenuation=0x258\n"), 0);
+    }
+
+    #[test]
+    fn a_vehicle_loop_is_tried_once_and_stops_for_good() {
+        use LoopTurn::*;
+        assert_eq!(vehicle_turn(false, false, START_LIMIT), Start);
+        assert_eq!(vehicle_turn(false, false, START_LIMIT + 1), Idle);
+        // Out of earshot at the launch: silent when it comes near later.
+        assert_eq!(vehicle_turn(true, false, 0), Idle);
+        assert_eq!(vehicle_turn(true, true, REFRESH_LIMIT), Refresh);
+        assert_eq!(vehicle_turn(true, true, REFRESH_LIMIT + 1), Stop);
+        // Stopped: the voice is gone, so it is not playing and never starts again.
+        assert_eq!(vehicle_turn(true, false, 0), Idle);
     }
 
     #[test]

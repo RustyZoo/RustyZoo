@@ -696,6 +696,41 @@ fn an_animal_whose_exhibit_lets_it_out_walks_one_tile_past_the_fence_with_no_dra
 }
 
 #[test]
+fn the_escape_walk_asks_whether_the_animal_is_in_a_show_at_its_pick() {
+    // Shows 32.3 point 3: the field of the last status tick is not read.
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "animals",
+        type_name: Vec::new(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(
+            crate::config::Config::parse(b"[tricks]\ntrick=a\n").unwrap(),
+        )),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    for (back, stale, walks) in [
+        (true, false, false),
+        (false, true, true),
+        (false, false, true),
+    ] {
+        let mut w = pen((3, 3), |_| {});
+        let x = w.exhibits().region(tile_of(&w, (3, 3))).unwrap();
+        let target = tile_of(&w, (8, 3));
+        w.exhibits_mut().get_mut(x).unwrap().rating.escapes = vec![("/".into(), target)];
+        let u = w.units.get_mut(1).unwrap();
+        (u.mover.bash, u.back) = (6, back);
+        if let Part::Animal(a) = &mut u.part {
+            a.in_show = stale;
+        }
+        walk_in(&mut w, &cat, 1, 1);
+        assert_eq!(walk_of(&w).is_some(), walks, "{back} {stale}");
+    }
+}
+
+#[test]
 fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk_ends_on_its_last_tile()
  {
     let mut cat = Catalogue::default();

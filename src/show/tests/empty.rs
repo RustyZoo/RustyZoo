@@ -389,3 +389,30 @@ fn an_abort_leaves_a_performer_listed_as_a_user_of_its_building() {
     assert!(w.units.get(21).unwrap().back);
     assert!(w.units.buildings[&8].users.iter().any(|u| u.0 == 21));
 }
+
+#[test]
+fn removing_a_fence_of_a_show_tank_empties_its_grandstands_and_aborts_nothing() {
+    // Shows 30.4 point 1: the 0x2716 is posted and read by nobody; no 0x2717, no 0x2715.
+    let (mut w, cat, mut events) = started(vec![item(0, 3, 5)]);
+    seat(&mut w);
+    assert!(w.remove(502));
+    assert!(w.zoo.shows.infos[0].is_none());
+    crate::show::units::settle(&mut w, &cat);
+    // The guests' own aborts (0x2722) go with it.
+    assert_eq!(posted(&w).iter().filter(|&&k| k == event::ABORT).count(), 1);
+    assert!(show_events(&w).is_empty());
+    let (a, b) = (&w.units.buildings[&7], &w.units.buildings[&8]);
+    assert_eq!((a.users.len(), a.fill), (0, 0));
+    // The stand turned away keeps its guest.
+    assert_eq!(b.users.len(), 1);
+    // The event goes out and nothing reads it.
+    w.units.posts.drain(..).for_each(|e| events.post(e));
+    events.age();
+    tick(&mut w, &cat, &mut events, 100);
+    assert!(show_events(&w).is_empty());
+    assert!(
+        heard(&events)
+            .iter()
+            .all(|e| e.0 != event::ABORTED && e.0 != event::ENDED)
+    );
+}

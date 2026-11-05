@@ -106,6 +106,7 @@ impl Fnv {
             unit: _,
             building: _,
             rubble: _,
+            flight: _,
             filter,
             raw: _,
         }) = &e.common

@@ -57,7 +57,7 @@ impl Cx<'_, '_> {
         let near = self.world.exhibits().get(h);
         let near = near.is_some_and(|e| e.tank.is_some() && !e.show_near.is_empty());
         near && info_of(self.world, h).is_some()
-            && !in_show_now(self.world, self.ctx.cat, self.unit)
+            && !in_show_now(self.world, self.ctx.cat, self.unit, self.at)
     }
 
     /// Check done of both tasks (shows 21.3): done when the animal reached the tile it swims to
@@ -74,10 +74,9 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// The target tile of the task is the tile `t` (the setter of the original, flag 1).
+    /// The animal's own target tile is `t` (the setter of the original, flag 1; shows 32.2).
     fn aim_at(&mut self, t: Option<usize>) {
-        let world = &*self.world;
-        self.unit.goal.record.target.set_tile(world, t);
+        self.unit.aim(self.world, t);
     }
 
     /// Decide of the go-to-show task (shows 21.3).
@@ -106,7 +105,7 @@ impl Cx<'_, '_> {
     }
 
     /// The path to the tile of `h`'s portal towards `s`, at the level of the water less two, and
-    /// the walk; the target tile is the one across the wall. False when any step fails.
+    /// the walk; the own target tile is the one across the wall. False when any step fails.
     fn swim_to_portal(&mut self, h: u32, s: u32) -> bool {
         let Some((t, across)) = portal(self.world, h, s) else {
             return false;
@@ -144,7 +143,7 @@ impl Cx<'_, '_> {
     /// put across the wall, at the edge of the tile it aimed at and the height of the water
     /// there, facing into that tank. The exhibit of the tile it aimed at is given back.
     fn cross(&mut self) -> Option<u32> {
-        let across = self.record().target.tile;
+        let across = self.unit.own_tile;
         let world = &*self.world;
         let there = across.and_then(|t| crate::animal::food::exhibit_of(world, t));
         let (here, h) = (self.tile(), self.exhibit());

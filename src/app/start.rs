@@ -151,6 +151,7 @@ impl App<'_> {
             selected: None,
             carry: None,
             held: None,
+            vehicles: Vec::new(),
         });
         let scenario = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f));
         // The scenario resumes first (its triggers, then the goal states), then the research

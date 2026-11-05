@@ -8,6 +8,8 @@
 //! the extra items they need are [`Item::Pane`], [`Item::Face`], [`Item::Surface`],
 //! [`Item::Quarter`], [`Item::Under`], [`Item::Shadow`] and [`Item::Platform`].
 
+use std::collections::HashMap;
+
 use crate::zoo::Tile;
 
 mod tank;
@@ -32,9 +34,12 @@ pub(crate) enum Kind {
     Wall,
     /// Holds the quadrants of its footprint: buildings, scenery and the rest.
     Fixed,
-    /// Holds no quadrant and is in no tile list: ambient animals, attached each frame to the
-    /// tile under them and painted after that tile's objects.
+    /// Holds no quadrant and is in no tile list: the pending piece of a path, attached each frame
+    /// to the tile under it and painted after that tile's objects.
     Overlay,
+    /// An ambient creature: on no tile, painted after the whole map in list order (ambients 5.2),
+    /// with a shadow that goes with the tile under its shadow point (ambients 5.3).
+    Flight,
 }
 
 impl Kind {
@@ -44,7 +49,7 @@ impl Kind {
             "paths" => Kind::Path,
             "fences" => Kind::Edge,
             "tankwall" => Kind::Wall,
-            "ambient" => Kind::Overlay,
+            "ambient" => Kind::Flight,
             "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
                 Kind::Unit
             }
@@ -139,8 +144,10 @@ pub(crate) struct Scene {
     quad: Vec<[Option<usize>; 4]>,
     /// Per tile, the units standing on it.
     list: Vec<Vec<usize>>,
-    /// Per tile, the overlays (ambient animals) attached to it.
+    /// Per tile, the overlays (the pending path piece) attached to it.
     overlay: Vec<Vec<usize>>,
+    /// The flights, in list order.
+    flights: Vec<usize>,
     /// Per tile, the transient entities of a tank (the ripples), painted after its water.
     transient: Vec<Vec<usize>>,
     /// Per object, the number of quadrants it holds.
@@ -199,6 +206,13 @@ pub(crate) fn project(rotation: u8, wx: i32, wy: i32, wz: i32) -> (i32, i32) {
     )
 }
 
+/// The point a flight's shadow falls on: 300 units from it on both axes, straight down the screen
+/// at every rotation (ambients 5.3).
+pub(crate) fn shadow_point(rotation: u8, x: i32, y: i32) -> (i32, i32) {
+    let (dx, dy) = [(-300, 300), (300, 300), (300, -300), (-300, -300)][usize::from(rotation % 4)];
+    (x.saturating_add(dx), y.saturating_add(dy))
+}
+
 /// The `(row, pos)` pair of a tile for sorting (map drawing 9.2).
 pub(crate) fn sort_key(rotation: u8, tx: i32, ty: i32) -> (i32, i32) {
     match rotation % 4 {
@@ -249,6 +263,7 @@ impl Scene {
             quad: vec![[None; 4]; n],
             list: vec![Vec::new(); n],
             overlay: vec![Vec::new(); n],
+            flights: Vec::new(),
             transient: vec![Vec::new(); n],
             covers: vec![0; objects.len()],
             path: vec![None; n],
@@ -308,6 +323,10 @@ impl Scene {
             }
             Kind::Overlay => {
                 self.overlay[t].push(o);
+                true
+            }
+            Kind::Flight => {
+                self.flights.push(o);
                 true
             }
             Kind::Path | Kind::Edge | Kind::Wall => false,
@@ -658,6 +677,8 @@ struct Painter<'a> {
     counter: Vec<u32>,
     painted: Vec<bool>,
     quads: [usize; 4],
+    /// The flights whose shadow falls on a map tile, by tile.
+    shadows: HashMap<usize, Vec<usize>>,
     out: Vec<Item>,
     calls: usize,
 }
@@ -886,6 +907,8 @@ impl Painter<'_> {
         self.state[i] = State::Objects;
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
+        let shadows = self.shadows.get(&self.order[i]).into_iter().flatten();
+        self.out.extend(shadows.map(|&o| Item::Shadow(o)));
         let list = self.tile_entries(i, &|_| true);
         self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
         self.overlays(i);
@@ -925,9 +948,20 @@ fn paint_order_here(scene: &Scene) -> Vec<Item> {
         counter: vec![0; scene.objects.len()],
         painted: vec![false; scene.objects.len()],
         quads: quadrant_order(rotation),
+        shadows: HashMap::new(),
         out: Vec::with_capacity(n + scene.objects.len()),
         calls: 0,
     };
+    for &o in &scene.flights {
+        let (x, y) = shadow_point(rotation, scene.objects[o].x, scene.objects[o].y);
+        if let Some(t) = scene.tile_at(x, y) {
+            painter.shadows.entry(t).or_default().push(o);
+        }
+    }
     painter.paint_map();
+    // The flights come after the whole map, the oldest first.
+    painter
+        .out
+        .extend(scene.flights.iter().map(|&o| Item::Object(o)));
     painter.out
 }

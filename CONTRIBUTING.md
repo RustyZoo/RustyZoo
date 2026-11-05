@@ -48,7 +48,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 ## Windows CI
 
-- The trials and playable checks also run on Windows. Do not use process substitution (`<(...)`) in a check line: the native Windows program cannot open it. Write a temporary file instead (see `scripted` in `ci/check-trials.sh`).
+- The trials and playable checks also run on Windows (on a pull request only once it has the label `full-ci`, added by the merge queue). Do not use process substitution (`<(...)`) in a check line: the native Windows program cannot open it. Write a temporary file instead (see `scripted` in `ci/check-trials.sh`).
 
 ## Dependencies
 

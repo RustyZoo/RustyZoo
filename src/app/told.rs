@@ -25,11 +25,14 @@ impl App<'_> {
             return Vec::new();
         };
         let loops = game.world.filter_loops(self.renderer.catalogue());
-        game.placed(
-            loops
-                .into_iter()
-                .map(|l| (l.id, l.file, format!("filter {}", l.id), l.base)),
-        )
+        let loops = loops
+            .into_iter()
+            .map(|l| (l.id, l.file, format!("filter {}", l.id), l.base));
+        // A vehicle's loop is tried once, at its first update (the shell keeps to the `vehicle`
+        // voices: ambients 6.2).
+        let vehicles = (game.vehicles.iter())
+            .map(|&(id, file, base)| (id, file.to_string(), format!("vehicle {id}"), base));
+        game.placed(loops.chain(vehicles))
     }
 
     /// Writes the three bars (when they changed), and the date and the money text at each refresh, and

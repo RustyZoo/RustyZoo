@@ -61,6 +61,7 @@ pub mod gate;
 mod hash;
 mod hooks;
 pub mod movement;
+pub(crate) mod own;
 pub mod predator;
 pub mod resume;
 pub mod swim;
@@ -280,6 +281,10 @@ pub struct Unit {
     /// 18.2); both are saved in the unit block.
     pub called: bool,
     pub back: bool,
+    /// An animal's own target tile and its position, apart from the goal record's target (shows
+    /// 32.2): the tile across a show portal while it swims to cross. Only the position is saved.
+    pub own_tile: Option<usize>,
+    pub own_pos: [i32; 3],
 }
 
 impl Unit {
@@ -337,6 +342,8 @@ impl Unit {
             trick: 0,
             called: false,
             back: false,
+            own_tile: None,
+            own_pos: own::NONE_POINT,
         }
     }
 

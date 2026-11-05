@@ -296,10 +296,12 @@ impl Walk<'_> {
     fn escape(&mut self, id: u32) -> Option<usize> {
         let e = &self.world.zoo.entities[self.at];
         let name = format!("{}/{}", e.type_name, e.subtype);
+        // In a show, as it is now (shows 32.3 point 3).
+        let shown = crate::show::in_show_now(self.world, self.cat, self.unit, self.at);
         let Part::Animal(a) = &mut self.unit.part else {
             return None;
         };
-        if a.egg || a.in_show {
+        if a.egg || shown {
             return None;
         }
         let table = &self.world.exhibits().get(id)?.rating.escapes;

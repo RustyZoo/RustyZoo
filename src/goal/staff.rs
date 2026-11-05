@@ -718,9 +718,16 @@ impl<'c> Cx<'_, 'c> {
         let (_, lost) = self.lost();
         let claimed = service::claimed(self.world);
         let mine = service::animals(self.world, self.ctx.cat, x, who);
-        let sick = mine
-            .iter()
-            .filter(|a| a.sick && !lost.contains(&a.id) && !claimed.contains(&a.tile));
+        // An animal in a show is no candidate, tested first (shows 32.3 point 6).
+        let shown = |id: u32| {
+            let at = self.world.find(id);
+            let unit = self.world.units.get(id);
+            at.zip(unit)
+                .is_some_and(|(at, u)| crate::show::in_show_now(self.world, self.ctx.cat, u, at))
+        };
+        let sick = mine.iter().filter(|a| {
+            a.sick && !shown(a.id) && !lost.contains(&a.id) && !claimed.contains(&a.tile)
+        });
         let Some(a) = sick.min_by_key(|a| service::distance(self.world, here, a.tile)) else {
             return self.job_end();
         };

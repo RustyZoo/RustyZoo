@@ -4,7 +4,7 @@
 //! member forgets the targets it could not reach, a keeper in an exhibit starts its duties, an
 //! animal in a tank aborts the show of the unit it fears or hunts there.
 
-use super::{Cx, DUTIES, RECOVER, stop_all};
+use super::{Cx, DUTIES, ENTER_BUILDING, EXIT_BUILDING, RECOVER, USE, stop_all};
 use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
 use crate::show::abort_show_for;
@@ -86,11 +86,15 @@ pub(crate) fn stir_units(world: &mut World, cat: &Catalogue, rng: &mut Rng, tank
 
 impl Cx<'_, '_> {
     /// The AI reset of the unit's kind: a guest's (guest buildings 12.2 point 21); any other unit
-    /// stops everything and waits 1000 to 4999 ms (simulation 8.1), and a keeper then starts its
-    /// duties at once (mode 0, task 0x6e).
+    /// leaves its building when in a building task (a normal leave), stops everything and waits
+    /// 1000 to 4999 ms (simulation 8.1), and a keeper then starts its duties at once (mode 0,
+    /// task 0x6e).
     fn reset_ai(&mut self) {
         if self.unit.kind == Kind::Guest {
             return self.guest_reset_ai();
+        }
+        if [ENTER_BUILDING, EXIT_BUILDING, USE].contains(&self.record().task) {
+            self.remove_user();
         }
         stop_all(self.unit);
         self.unit.wait = 1000 + self.ctx.rng.pick(4000) as i32;

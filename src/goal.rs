@@ -397,6 +397,7 @@ impl Cx<'_, '_> {
                 (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
                 (a.playing, a.caught_prey, a.prey) = (false, false, 0);
                 (self.unit.frightened, self.unit.predator) = (false, 0);
+                self.unit.clear_own();
             }
             _ => {}
         }

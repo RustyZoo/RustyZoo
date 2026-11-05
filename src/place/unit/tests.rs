@@ -860,6 +860,23 @@ fn a_carried_animal_counts_in_no_exhibit() {
 }
 
 #[test]
+fn the_pick_up_of_an_animal_clears_its_own_target_tile_and_position() {
+    // Shows 32.2 point 4: the state clear writes them directly.
+    let cat = catalogue();
+    let mut pieces = square("fences", 2, 2);
+    pieces.push(animal("m", (2, 2)));
+    let mut w = world(pieces);
+    let id = w.zoo.entities.last().unwrap().common.as_ref().unwrap().id;
+    let mut u = w.units.get(id).unwrap().clone();
+    u.aim(&w, w.tile_index(4, 4));
+    assert_ne!(u.own_pos, [-1; 3]);
+    *w.units.get_mut(id).unwrap() = u;
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    let u = w.units.get(id).unwrap();
+    assert_eq!((u.own_tile, u.own_pos), (None, [-1; 3]));
+}
+
+#[test]
 fn a_guest_stands_on_any_empty_flat_tile_even_water_and_never_in_the_way() {
     let mut pieces = square("fences", 2, 2);
     pieces.push(entity_at(

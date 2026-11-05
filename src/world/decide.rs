@@ -95,10 +95,20 @@ impl World {
         }
     }
 
-    /// The show info of an exhibit of `old`, which is gone, is deleted (31.5 point 1).
+    /// The show info of an exhibit of `old`, which is gone, is deleted (31.5 point 1); the show
+    /// lists are told, for the grandstands that faced it (shows 30.4 point 1).
     pub(super) fn unmake_gone(&mut self, old: &Exhibits, id: u32) {
-        if let Some(n) = self.info_slot_in(old, id) {
-            self.zoo.shows.infos[n] = None;
+        let Some(n) = self.info_slot_in(old, id) else {
+            return;
+        };
+        if let Some(info) = self.zoo.shows.infos[n].take() {
+            let tiles = (0..self.zoo.tiles.len())
+                .filter(|&t| old.region(t) == Some(id))
+                .collect();
+            self.show_moves.push(Move::Gone {
+                show: info.id,
+                tiles,
+            });
         }
     }
 

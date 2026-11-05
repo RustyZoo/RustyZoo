@@ -105,7 +105,7 @@ fn releasing_an_animal_sends_it_home_and_forgets_its_call() {
 #[test]
 fn an_animal_is_in_a_show_when_it_performs_and_is_on_its_way_home_or_held_by_the_show() {
     let (mut w, cat) = staged(vec![item(0, 3, 5)]);
-    let is = |w: &World, id| in_show_now(w, &cat, w.units.get(id).unwrap());
+    let is = |w: &World, id| in_show_now(w, &cat, w.units.get(id).unwrap(), w.find(id).unwrap());
     // Started in the show, which holds no state for it yet: no.
     w.units.get_mut(21).unwrap().show = 1001;
     assert!(!is(&w, 21));
@@ -118,6 +118,21 @@ fn an_animal_is_in_a_show_when_it_performs_and_is_on_its_way_home_or_held_by_the
     let keeper = w.units.get_mut(30).unwrap();
     (keeper.show, keeper.back) = (1001, true);
     assert!(!is(&w, 30));
+}
+
+#[test]
+fn in_show_reads_the_type_at_the_place_it_is_given_and_only_for_an_animal() {
+    // Shows 32.5 point 3: no search of the entity list by id.
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    w.units.get_mut(21).unwrap().back = true;
+    let (unit, own) = (w.units.get(21).unwrap(), w.find(21).unwrap());
+    assert!(in_show_now(&w, &cat, unit, own));
+    // The place of the specialist (30): a type with no tricks.
+    assert!(!in_show_now(&w, &cat, unit, w.find(30).unwrap()));
+    // The specialist is no animal: not even its own place makes it a performer.
+    let keeper = w.units.get_mut(30).unwrap();
+    keeper.back = true;
+    assert!(!in_show_now(&w, &cat, w.units.get(30).unwrap(), own));
 }
 
 #[test]

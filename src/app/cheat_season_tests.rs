@@ -486,3 +486,149 @@ fn a_start_on_the_real_31_october_leaves_the_staff_colours() {
         assert_eq!(colours(app)[0][0], 10, "the guests were recoloured");
     });
 }
+
+/// The three ambient types of the hooks, with the integers `ini` for each.
+fn flights(ini: &str) -> Catalogue {
+    let mut cat = items();
+    for (id, name) in [(5082, "biplane"), (5083, "sleigh"), (5084, "witch")] {
+        cat.push(EntityType {
+            class: "ambient",
+            type_name: name.into(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                Config::parse(format!("[Characteristics/Integers]\n{ini}").as_bytes()).unwrap(),
+            )),
+            name_id: id,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
+    cat
+}
+
+/// A game after a scenario start, whose types include the three ambient ones.
+fn fly(ini: &str, body: impl FnOnce(&mut App)) {
+    let cat = (flights(ini), &[][..]);
+    with_world("cheat-flights", (false, false), cat, |app, _| {
+        restart(app);
+        body(app);
+    });
+}
+
+/// The ambient creatures of the game: type name, speed.
+fn creatures(app: &App) -> Vec<(String, u32)> {
+    let zoo = &app.game.as_ref().unwrap().world.zoo;
+    let speed = |e: &crate::zoo::Entity| e.common.as_ref().and_then(|c| c.flight).map(|f| f.speed);
+    zoo.entities
+        .iter()
+        .filter(|e| e.class == "ambient")
+        .map(|e| (e.type_name.clone(), speed(e).unwrap()))
+        .collect()
+}
+
+#[test]
+fn the_date_hooks_make_a_flight_of_the_type_of_the_day() {
+    fly("cSpeed=100\n", |app| {
+        for (month, day, name) in [(12, 25, "sleigh"), (9, 15, "biplane"), (10, 31, "witch")] {
+            today(app, month, day);
+            app.guest_created();
+            assert_eq!(creatures(app).pop(), Some((name.to_string(), 100)));
+        }
+        assert_eq!(creatures(app).len(), 3);
+        // The same day again launches nothing more for the vehicles.
+        today(app, 10, 31);
+        app.guest_created();
+        today(app, 9, 15);
+        app.guest_created();
+        today(app, 9, 15);
+        app.guest_created();
+        assert_eq!(creatures(app).len(), 5, "a second witch, no second biplane");
+    });
+}
+
+#[test]
+fn the_permanent_witch_makes_no_flight() {
+    fly("cSpeed=100\n", |app| {
+        app.sim.real_day = real_halloween;
+        app.game_started();
+        assert!(creatures(app).is_empty());
+    });
+}
+
+#[test]
+fn a_type_that_is_missing_makes_no_flight_and_no_loop_and_a_line_says_so() {
+    run(|app, _| {
+        app.sim.take_lines();
+        today(app, 12, 25);
+        app.guest_created();
+        let log = app.sim.take_lines();
+        assert!(log.contains(&"fly 5083".to_string()), "{log:?}");
+        assert!(log.contains(&"flight 5083 missing".to_string()), "{log:?}");
+        assert!(creatures(app).is_empty());
+        assert!(app.loop_sounds_placed().is_empty());
+        // The permanent witch is no launch of a type, so it has nothing to miss.
+        app.sim.real_day = real_halloween;
+        app.game_started();
+        assert!(!app.sim.take_lines().iter().any(|l| l.contains("missing")));
+    });
+}
+
+#[test]
+fn the_sleigh_and_the_biplane_hold_a_loop_each_and_the_witch_none() {
+    fly("cSpeed=100\n", |app| {
+        let loops = |app: &App| {
+            let mut sounds: Vec<_> = (app.loop_sounds_placed().into_iter())
+                .map(|s| (s.file, s.base))
+                .collect();
+            sounds.sort();
+            sounds
+        };
+        assert!(loops(app).is_empty());
+        today(app, 10, 31);
+        app.guest_created();
+        assert!(loops(app).is_empty(), "the witch has no loop");
+        today(app, 12, 25);
+        app.guest_created();
+        assert_eq!(loops(app), [("sounds/sleigh.wav".to_string(), 0)]);
+        today(app, 9, 15);
+        app.guest_created();
+        assert_eq!(
+            loops(app),
+            [
+                ("sounds/biplane.wav".to_string(), 1000),
+                ("sounds/sleigh.wav".to_string(), 0)
+            ]
+        );
+        // A new game drops the holds: the flights of the old one are gone with it.
+        app.open_game(tile_with(&[]), Money::default()).unwrap();
+        assert!(loops(app).is_empty());
+    });
+}
+
+#[test]
+fn a_flight_leaves_the_map_and_takes_its_loop_with_it() {
+    // 1,000 units a second: the one-tile map is crossed in a few steps.
+    fly("cSpeed=1000\n", |app| {
+        today(app, 12, 25);
+        app.guest_created();
+        let at = |app: &App| {
+            let c = app.game.as_ref().unwrap().world.zoo.entities[0]
+                .common
+                .clone()
+                .unwrap();
+            (c.x, c.y)
+        };
+        let start = at(app);
+        assert_eq!(app.loop_sounds_placed().len(), 1);
+        app.pass(200, &[]);
+        // The first move takes it off the map; it stays, with its loop, until the next removal pass.
+        assert_ne!(at(app), start, "it flew");
+        assert_eq!(creatures(app).len(), 1);
+        for now in [400, 600] {
+            app.pass(now, &[]);
+        }
+        assert!(creatures(app).is_empty(), "and left the map");
+        assert!(app.loop_sounds_placed().is_empty());
+    });
+}

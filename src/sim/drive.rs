@@ -231,6 +231,30 @@ impl Run {
         Run::open(files, types, world, money, seed, None)
     }
 
+    /// The game of the files of `vfs` for a zoo read from a map or a saved game, as the window
+    /// builds it: `fences` is `None` for a saved game (opened as Continue does), else a new
+    /// game's reset of the fence pieces. `economy` is the economy file (empty for the built-in
+    /// settings).
+    pub fn from_vfs(
+        vfs: &Vfs,
+        economy: &[u8],
+        cat: Catalogue,
+        (zoo, money): (crate::zoo::Zoo, Money),
+        seed: u32,
+        fences: Option<bool>,
+    ) -> Run {
+        let renderer = crate::render::MapRenderer::new(vfs, &cat);
+        let language = crate::strings::Language::of(vfs.root());
+        let mut world = World::with_language(zoo, |e| renderer.shape(e), language);
+        world.set_water(crate::place::water(&crate::terrain::types(vfs)));
+        world.set_tank_config(crate::exhibit::TankConfig::load(vfs));
+        world.units.show = crate::show::Params::load(vfs);
+        world.set_decay(crate::world::Decay::load(vfs));
+        let files = (vfs.ini(), economy);
+        let types = (cat, Class::load(vfs));
+        Run::open(files, types, world, money, seed, fences)
+    }
+
     /// `fences` is `None` for a saved game, else the new game's reset of the fence pieces.
     fn open(
         (ini, economy): (&[u8], &[u8]),

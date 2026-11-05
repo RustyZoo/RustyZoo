@@ -521,9 +521,16 @@ fn an_animal_defends_once_per_avoid_goal() {
     let mut w = zoo(&[(ALLO, "allo", (10, 10)), (VELO, "velocira", (12, 10))]);
     let u = w.units.get_mut(VELO).unwrap();
     (u.goal.record.task, u.goal.record.target.id) = (AVOID, ALLO);
+    let across = w.tile_index(3, 3);
+    let mut u = unit_of(&w, VELO).clone();
+    u.aim(&w, across);
+    *w.units.get_mut(VELO).unwrap() = u;
     on(&mut w, VELO, &[], |cx| cx.defence());
     assert_eq!(unit_of(&w, VELO).goal.record.job, 18);
     assert_eq!(animal(&mut w, VELO).pre, [true, false]);
+    // The defence empties the own target tile too (shows 32.2 point 4).
+    assert_eq!(unit_of(&w, VELO).own_tile, None);
+    assert_eq!(unit_of(&w, VELO).own_pos, [-1; 3]);
     // The job is over: the goal marks the defence over and does not start another.
     on(&mut w, VELO, &[], |cx| {
         cx.set_job(0, 0, None);
