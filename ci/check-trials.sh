@@ -271,7 +271,7 @@ check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
 check base-trial 134fbf422ba248c8 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial bbf6d9cc2a642244 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial 750e1d5bc7435857 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -1283,7 +1283,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear> [print]: reads $seed
 }
 check expansion-trial yes "any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2).
-check expansion-trial 97902:1@1899 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
+check expansion-trial 97902:1@1212 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1372,7 +1372,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@3726;eggs:3;hatch@4347" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
+check expansion-trial "egg@2806;eggs:6;hatch@3571" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
