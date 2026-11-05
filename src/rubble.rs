@@ -83,7 +83,11 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
     let flag = |key| number(ty, key) == Some(1.0);
     // A building leaves its own pieces, one to a tile unless it is one quadrant wide.
     let building = entity.class == "building" && !flag("cForcesSceneryRubble");
-    let (fx, fy) = (ty.footprint[0], ty.footprint[1]);
+    // The footprint is turned with the item (placing 5.2 item 4).
+    let (fx, fy) = match c.rotation % 4 {
+        0 => (ty.footprint[0], ty.footprint[1]),
+        _ => (ty.footprint[1], ty.footprint[0]),
+    };
     let by_tile = building && (ty.name_id == RESTROOM || (fx >= 2 && fy >= 2));
     let names: Vec<&str> = match (building, ty.name_id == RESTROOM, by_tile) {
         (false, ..) if flag("cUsesTreeRubble") => vec!["bstump1"],
@@ -101,13 +105,13 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
         for j in (0..fy).step_by(step) {
             let (cx, cy) = (c.x - fx * 16 + 16 + 32 * i, c.y - fy * 16 + 16 + 32 * j);
             let tile = world.tile_index(cx.div_euclid(64), cy.div_euclid(64));
-            let kind = if by_tile {
-                // A draw for every cell whose tile exists.
+            let kind = if building {
+                // A building's cell draws its pick only when its tile exists; no 1 in 100 skip.
                 let Some(_) = tile else { continue };
                 kinds[kit.rng.pick(kinds.len() as u32) as usize]
             } else {
-                // Scenery skips one cell in a hundred; a building's quadrant draws its pick.
-                if kit.rng.pick(if building { 1 } else { 100 }) == 0 && !building {
+                // Scenery draws for every cell, skips one in a hundred and the cells off the map.
+                if kit.rng.pick(100) == 0 {
                     continue;
                 }
                 kinds[0]
