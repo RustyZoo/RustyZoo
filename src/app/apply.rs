@@ -1,12 +1,10 @@
 //! The commands of a pass: what each [`Command`] does to the game.
 
+use super::main_buttons::{ROTATE_CCW, ROTATE_CW, ZOOM_IN, ZOOM_OUT};
 use super::*;
 
 impl App<'_> {
     pub(super) fn apply(&mut self, command: Command) {
-        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) && self.game.is_some() {
-            self.start_busy();
-        }
         if self.intercept(command) {
             return;
         }
@@ -22,9 +20,11 @@ impl App<'_> {
             (Command::Scroll(x, y), Some(game)) if keys && !following => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));
             }
-            (Command::Rotate(clockwise), Some(_)) if keys => self.rotate(clockwise),
-            (Command::Zoom(zoom_in), Some(game)) if keys => {
-                game.camera.zoom(&game.world.zoo, None, zoom_in);
+            (Command::Rotate(cw), Some(_)) if keys => {
+                self.hotkey(if cw { ROTATE_CW } else { ROTATE_CCW })
+            }
+            (Command::Zoom(zoom_in), Some(_)) if keys => {
+                self.hotkey(if zoom_in { ZOOM_IN } else { ZOOM_OUT })
             }
             (Command::Grid, Some(game)) if keys => {
                 game.grid = !game.grid;
@@ -50,12 +50,13 @@ impl App<'_> {
                     .push(format!("speed {}", self.timers.speed.factor()));
             }
             (Command::Fullscreen(on), Some(game)) => {
-                game.camera.set_fullscreen(&game.world.zoo, on)
+                game.camera.set_fullscreen(&game.world.zoo, on);
+                self.zoom_check();
             }
             // The Pause key works through a question too, but the question gives the flag back as
             // it was, so it is left alone there.
-            (Command::Pause, Some(game)) if shown && !modal => game.pause(),
-            (Command::Space, Some(game)) if keys => game.pause(),
+            (Command::Pause, Some(_)) if shown && !modal => self.pause_key(),
+            (Command::Space, Some(_)) if keys => self.space(),
             // The brush keys press the plus and minus buttons of the terrain panel (input 10).
             (Command::Char(b'+' | b'-'), Some(_)) if keys => {
                 if let (Some(ui), Command::Char(key)) = (&mut self.ui, command) {
@@ -110,10 +111,8 @@ impl App<'_> {
             // The map view's keys while it does not have them or there is no game.
             _ => {}
         }
-        // The view turned or zoomed under the pointer: the pending object is another one.
-        if matches!(command, Command::Rotate(_) | Command::Zoom(_)) {
-            self.aim(false);
-        }
+        // A press of the screen's own buttons (a click, a hotkey) runs at once.
+        self.main_pressed();
     }
 
     /// The commands that act on the game as a whole, before the interface and the map see them:
@@ -208,7 +207,7 @@ impl App<'_> {
     }
 
     /// Turns the view and stages the map from the new side; if that fails the view stays as it was.
-    fn rotate(&mut self, clockwise: bool) {
+    pub(super) fn rotate(&mut self, clockwise: bool) {
         let Some(game) = &mut self.game else {
             return;
         };

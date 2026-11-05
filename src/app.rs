@@ -216,10 +216,10 @@ impl Game {
             .collect()
     }
 
-    /// The Pause key and the space bar.
-    fn pause(&mut self) {
-        self.paused = !self.paused;
-        self.world.set_paused(self.paused);
+    /// Sets or clears the pause flag (the buttons are the app's, `main_buttons`).
+    fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        self.world.set_paused(paused);
     }
 
     /// What the cost text at the pointer shows: the drag's, else the pending object's, else, in
@@ -255,6 +255,8 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     timers: Timers,
     quit: bool,
+    /// The paused message (string 400) is on the message line (input 4.5).
+    pause_said: bool,
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
@@ -448,6 +450,7 @@ impl<'a> App<'a> {
             cheats: Default::default(),
             timers,
             quit: false,
+            pause_said: false,
             pointer: None,
             on_map: true,
             on_text: false,
@@ -599,6 +602,7 @@ impl<'a> App<'a> {
             {
                 game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
             }
+            self.pause_message();
             if let Some(ui) = &mut self.ui {
                 ui.update(now);
                 if let Some(menu) = &mut self.menu {
@@ -868,6 +872,7 @@ mod exhibits;
 mod gates;
 mod guest_panel;
 mod log;
+mod main_buttons;
 mod paint;
 pub use paint::{frame_hash, frame_hashes};
 #[cfg(test)]
@@ -910,6 +915,8 @@ mod avail_tests;
 #[cfg(test)]
 mod replay_tests;
 
+#[cfg(test)]
+mod main_buttons_tests;
 #[cfg(test)]
 mod start_tests;
 
