@@ -20,8 +20,12 @@ impl App<'_> {
             (Command::Scroll(x, y), Some(game)) if keys && !following => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));
             }
-            (Command::Rotate(cw), Some(_)) if keys => self.hotkey(if cw { ROTATE_CW } else { ROTATE_CCW }),
-            (Command::Zoom(zoom_in), Some(_)) if keys => self.hotkey(if zoom_in { ZOOM_IN } else { ZOOM_OUT }),
+            (Command::Rotate(cw), Some(_)) if keys => {
+                self.hotkey(if cw { ROTATE_CW } else { ROTATE_CCW })
+            }
+            (Command::Zoom(zoom_in), Some(_)) if keys => {
+                self.hotkey(if zoom_in { ZOOM_IN } else { ZOOM_OUT })
+            }
             (Command::Grid, Some(game)) if keys => {
                 game.grid = !game.grid;
                 game.choice = game.grid;

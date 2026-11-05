@@ -15,7 +15,10 @@ const PLAY: i32 = 1072;
 /// A click on the button `id` of the row.
 fn press(id: i32) -> [Command; 3] {
     let at = [ZOOM_IN, ZOOM_OUT, 1008, 1009, PAUSE, PLAY];
-    click(42 + 4 * at.iter().position(|&b| b == id).unwrap() as i32, 42)
+    click(
+        42 + 4 * at.iter().position(|&b| b == id).unwrap() as i32,
+        42,
+    )
 }
 
 fn disabled(app: &mut App, id: i32) -> bool {
@@ -69,18 +72,22 @@ fn the_zoom_buttons_zoom_by_2_and_grey_at_the_limits() {
 
 #[test]
 fn the_rotate_buttons_turn_a_quarter_and_are_never_greyed() {
-    with_menu("rotate-buttons", "[user]\nlastfile=saved.zoo\n", |app, _| {
-        let mut now = started(app);
-        let mut go = |app: &mut App, id| {
-            now += 66;
-            pressed(app, now, &press(id));
-            game(app).camera.rotation
-        };
-        // The map is stored turned 3 quarters.
-        assert_eq!([go(app, 1009), go(app, 1009), go(app, 1009)], [0, 1, 2]);
-        assert_eq!([go(app, 1009), go(app, 1008), go(app, 1008)], [3, 2, 1]);
-        assert!(!disabled(app, 1008) && !disabled(app, 1009));
-    });
+    with_menu(
+        "rotate-buttons",
+        "[user]\nlastfile=saved.zoo\n",
+        |app, _| {
+            let mut now = started(app);
+            let mut go = |app: &mut App, id| {
+                now += 66;
+                pressed(app, now, &press(id));
+                game(app).camera.rotation
+            };
+            // The map is stored turned 3 quarters.
+            assert_eq!([go(app, 1009), go(app, 1009), go(app, 1009)], [0, 1, 2]);
+            assert_eq!([go(app, 1009), go(app, 1008), go(app, 1008)], [3, 2, 1]);
+            assert!(!disabled(app, 1008) && !disabled(app, 1009));
+        },
+    );
 }
 
 #[test]
@@ -163,7 +170,7 @@ fn a_new_game_starts_running_with_the_pause_button_shown() {
 fn the_zoom_check_follows_the_zoom_of_the_game_and_full_screen_at_800() {
     with_menu("zoom-check", "[user]\nlastfile=saved.zoo\n", |app, _| {
         let now = started(app);
-        let mut check = |app: &mut App, zoom: i32| {
+        let check = |app: &mut App, zoom: i32| {
             game(app).camera.zoom = zoom;
             app.zoom_check();
             (disabled(app, ZOOM_OUT), disabled(app, ZOOM_IN))
@@ -175,6 +182,8 @@ fn the_zoom_check_follows_the_zoom_of_the_game_and_full_screen_at_800() {
         assert_eq!(check(app, 1), (false, false));
         assert_eq!(check(app, 2), (false, true));
         assert_eq!(check(app, 7), (false, true));
+        assert_eq!(check(app, i32::MAX), (false, true));
+        assert_eq!(check(app, i32::MIN), (true, false));
         // Full screen in a view of 800 pixels: zoom in is not offered at 0 either, and a zoom of
         // 2 or more goes to 0.
         game(app).camera.size = (800, 600);
