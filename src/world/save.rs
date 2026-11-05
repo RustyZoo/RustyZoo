@@ -1,7 +1,7 @@
 //! The state a saved game takes from the live world and gives back (save games 7, 9): the
 //! thoughts, and the statistics and last service of each exhibit.
 
-use super::World;
+use super::{Shape, World};
 use crate::building::Kind;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
@@ -58,6 +58,13 @@ impl World {
         }
     }
 
+    /// Adds a water effect of the world manager (simulation 7.2), which a save leaves out.
+    pub(crate) fn add_wave(&mut self, entity: Entity, shape: Shape) -> Option<u32> {
+        let id = self.unrecorded(|w| w.add(entity, Some(shape)))?;
+        self.waves.insert(id);
+        Some(id)
+    }
+
     /// The zoo as a file stores it: without the entities `known` does not find (the original never
     /// makes them, so it never saves them or their thoughts), with the live thoughts and the live
     /// names, statistics and last service of the exhibits. An exhibit is matched with the record that
@@ -66,10 +73,8 @@ impl World {
         let mut zoo = self.zoo.clone();
         zoo.drop_unknown(known);
         // The water effects are never in a saved zoo (tank staff 9).
-        zoo.entities.retain(|e| {
-            (e.class.as_str(), e.type_name.as_str(), e.subtype.as_str())
-                != ("objects", "other", "waterwv1")
-        });
+        zoo.entities
+            .retain(|e| (e.common.as_ref()).is_none_or(|c| !self.waves.contains(&c.id)));
         let ids: HashSet<u32> = (zoo.entities.iter())
             .filter_map(|e| e.common.as_ref().map(|c| c.id))
             .collect();

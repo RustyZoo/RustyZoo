@@ -109,7 +109,7 @@ impl Sim {
                     rotation: self.rng.rand() & 7,
                     ..Default::default()
                 });
-                if let Some(id) = world.unrecorded(|w| w.add(ripple.clone(), Some(shape))) {
+                if let Some(id) = world.add_wave(ripple.clone(), shape) {
                     self.ripples.slots[slot] = (0, Some(id));
                     return;
                 }
