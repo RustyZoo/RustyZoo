@@ -125,7 +125,10 @@ impl App<'_> {
     /// next update.
     pub(super) fn pause_message(&mut self) {
         let paused = self.game.is_some() && self.paused();
-        let Some(ui) = &mut self.ui else { return };
+        // A bare game shows the map view alone: no message line either.
+        let Some(ui) = self.ui.as_mut().filter(|_| !self.bare) else {
+            return;
+        };
         ui.hold_message(paused);
         if paused && !self.pause_said {
             let text = ui.string(400);
