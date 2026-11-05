@@ -162,7 +162,7 @@ fn the_checks_of_an_animal_read_whether_it_is_in_a_show_as_it_is_now() {
 }
 
 #[test]
-fn an_animal_in_a_show_or_in_water_cannot_act_here_unless_it_lives_only_under_water() {
+fn an_amphibious_species_in_a_tank_cannot_act_here_but_an_only_underwater_one_can() {
     // Animals-needs 2: not an egg, not in a show, and either `cOnlyUnderwater` 1 (not
     // `cUnderwater`) or a dry tile, terrain mode 0 and tank mode 0.
     use crate::animal::life::can_act;
@@ -213,4 +213,20 @@ fn an_animal_in_a_show_or_in_water_cannot_act_here_unless_it_lives_only_under_wa
         (a.terrain, a.egg) = (0, true);
     }
     assert!(!acts(&w, &cat) && !acts(&w, &only));
+}
+
+#[test]
+fn a_land_species_in_land_mode_on_a_dry_tank_floor_can_act_here() {
+    // Animals-needs 2: "outside a tank" is the tank mode 0, not the tank under the tile.
+    use crate::animal::life::can_act;
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    let acts = |w: &World| can_act(w.units.get(21).unwrap(), w, &cat, w.find(21).unwrap());
+    let c = w.zoo.entities[w.find(21).unwrap()].common.as_ref().unwrap();
+    let tile = w
+        .tile_index(c.x.div_euclid(64), c.y.div_euclid(64))
+        .unwrap();
+    assert!(w.tank_at(tile).is_some());
+    assert!(acts(&w));
+    w.units.get_mut(21).unwrap().tank = 1;
+    assert!(!acts(&w));
 }
