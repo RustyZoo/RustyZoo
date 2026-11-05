@@ -4,14 +4,58 @@ on:
   push:
     branches: [master]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
 
+# One run per pull request: a new push cancels the one in progress. A label waits for it instead (both
+# run on the same head, which would keep the cancelled jobs as failed checks). Never on master.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+
 jobs:
+  # The legs this run builds: `all` on master and on a pull request with the label `full-ci` (merge-queue
+  # adds it before it waits for CI), else `linux`; `none` when a pull request changes only Markdown files
+  # (but docs/usage.md, which the executable embeds) or the licence.
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      legs: ${{ steps.legs.outputs.legs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # The two documents merge as a union, so a row or bullet can end up twice.
+      - run: ci/check-doc-rows.sh
+
+      # HEAD is the pull request merged into master, HEAD^ is master.
+      - id: legs
+        env:
+          FULL: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: |
+          files=$(git diff --name-only HEAD^ HEAD)
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && ! grep -qvxE '.*\.md|LICENSE' <<<"$files" &&
+            ! grep -qx docs/usage.md <<<"$files"; then
+            legs=none
+          elif [ "$FULL" = true ]; then
+            legs=all
+          else
+            legs=linux
+          fi
+          echo "legs=$legs" | tee -a "$GITHUB_OUTPUT"
+
+  # The Linux leg, then the other systems (only with the legs `all`): the same job.
   build:
     name: build (${{ matrix.os }})
+    needs: scope
+    if: needs.scope.outputs.legs != 'none'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -20,27 +64,12 @@ jobs:
             system: linux
             artifact: rustyzoo-linux-x86_64
             path: target/release/rustyzoo
-          - os: windows-2025
-            system: windows
-            artifact: rustyzoo-windows-x86_64
-            path: target/release/rustyzoo.exe
-          # 32-bit: a pointer-width bug (the many `as usize` / `as u32` casts) would go unseen
-          # otherwise. The runner is 64-bit Windows, which runs the 32-bit executables.
-          - os: windows-2025
-            system: windows32
-            target: i686-pc-windows-msvc
-            artifact: rustyzoo-windows-i686
-            path: target/i686-pc-windows-msvc/release/rustyzoo.exe
-          - os: macos-15
-            system: macos
-            artifact: rustyzoo-macos-universal
-            path: target/universal/rustyzoo
-    defaults:
+    defaults: &bash
       run:
         shell: bash
     # The state hashes of the simulation, one output per system: a leg sets only its own, and the
     # job `hashes` compares them.
-    outputs:
+    outputs: &build-outputs
       linux: ${{ steps.simhash.outputs.linux }}
       windows: ${{ steps.simhash.outputs.windows }}
       macos: ${{ steps.simhash.outputs.macos }}
@@ -49,12 +78,12 @@ jobs:
     # The dummy video driver and the software renderer need no OpenGL, which the offscreen
     # video driver could not initialize on macOS. The dates use the English names whatever the
     # runner's regional settings.
-    env:
+    env: &headless
       SDL_VIDEO_DRIVER: dummy
       SDL_RENDER_DRIVER: software
       SDL_AUDIO_DRIVER: dummy
       RUSTYZOO_ENGLISH_DATES: 1
-    steps:
+    steps: &build-steps
       - &checkout
         uses: actions/checkout@v7
         with:
@@ -107,10 +136,6 @@ jobs:
       # No simulation code walks a hash map (the order differs at every run).
       - if: runner.os == 'Linux'
         run: ci/check-hash-iteration.sh
-
-      # The two documents merge as a union, so a row or bullet can end up twice.
-      - if: runner.os == 'Linux'
-        run: ci/check-doc-rows.sh
 
       # No source file over 1000 lines grows (ci/file-size-allow.txt lists today's).
       - if: runner.os == 'Linux'
@@ -239,6 +264,36 @@ jobs:
           path: ${{ matrix.path }}
           if-no-files-found: error
 
+  build-full:
+    name: build (${{ matrix.os }})
+    needs: scope
+    if: needs.scope.outputs.legs == 'all'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            system: windows
+            artifact: rustyzoo-windows-x86_64
+            path: target/release/rustyzoo.exe
+          # 32-bit: a pointer-width bug (the many `as usize` / `as u32` casts) would go unseen
+          # otherwise. The runner is 64-bit Windows, which runs the 32-bit executables.
+          - os: windows-2025
+            system: windows32
+            target: i686-pc-windows-msvc
+            artifact: rustyzoo-windows-i686
+            path: target/i686-pc-windows-msvc/release/rustyzoo.exe
+          - os: macos-15
+            system: macos
+            artifact: rustyzoo-macos-universal
+            path: target/universal/rustyzoo
+    defaults: *bash
+    outputs: *build-outputs
+    env: *headless
+    steps: *build-steps
+
   # The two games of the exit test of milestone M6, played by script (docs/playing.md) on the real data,
   # beside the build: each twice at the same time, the freeform game of the base trial to the
   # thirteenth month and the tank of the expansion trial for three months (about eight and two
@@ -246,7 +301,10 @@ jobs:
   # uploaded) for the job `hashes`.
   play:
     name: play (${{ matrix.os }})
+    needs: scope
+    if: needs.scope.outputs.legs != 'none'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -254,25 +312,13 @@ jobs:
           - os: ubuntu-22.04
             system: linux
             bin: target/release/rustyzoo
-          - os: windows-2025
-            system: windows
-            bin: target/release/rustyzoo.exe
-          - os: macos-15
-            system: macos
-            bin: target/release/rustyzoo
-    defaults:
-      run:
-        shell: bash
-    outputs:
+    defaults: *bash
+    outputs: &play-outputs
       linux: ${{ steps.play.outputs.linux }}
       windows: ${{ steps.play.outputs.windows }}
       macos: ${{ steps.play.outputs.macos }}
-    env:
-      SDL_VIDEO_DRIVER: dummy
-      SDL_RENDER_DRIVER: software
-      SDL_AUDIO_DRIVER: dummy
-      RUSTYZOO_ENGLISH_DATES: 1
-    steps:
+    env: *headless
+    steps: &play-steps
       - *checkout
       - *user-folder
       - *sdl-dependencies
@@ -313,21 +359,44 @@ jobs:
           fi
           exit "$status"
 
+  play-full:
+    name: play (${{ matrix.os }})
+    needs: scope
+    if: needs.scope.outputs.legs == 'all'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            system: windows
+            bin: target/release/rustyzoo.exe
+          - os: macos-15
+            system: macos
+            bin: target/release/rustyzoo
+    defaults: *bash
+    outputs: *play-outputs
+    env: *headless
+    steps: *play-steps
+
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
   # and long) is the same on the three systems and on 32-bit Windows, and no map fails to run; so are the last frame and
-  # state hashes of each played game. A system without trial data is skipped with a warning.
+  # state hashes of each played game. A system without trial data is skipped with a warning. Only with the
+  # legs `all` (skipped with the legs it needs).
   hashes:
     name: hashes
-    needs: [build, play]
+    needs: [build, build-full, play, play-full]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     env:
       LINUX: ${{ needs.build.outputs.linux }}
-      WINDOWS: ${{ needs.build.outputs.windows }}
-      MACOS: ${{ needs.build.outputs.macos }}
-      WINDOWS32: ${{ needs.build.outputs.windows32 }}
+      WINDOWS: ${{ needs.build-full.outputs.windows }}
+      MACOS: ${{ needs.build-full.outputs.macos }}
+      WINDOWS32: ${{ needs.build-full.outputs.windows32 }}
       PLAY_LINUX: ${{ needs.play.outputs.linux }}
-      PLAY_WINDOWS: ${{ needs.play.outputs.windows }}
-      PLAY_MACOS: ${{ needs.play.outputs.macos }}
+      PLAY_WINDOWS: ${{ needs.play-full.outputs.windows }}
+      PLAY_MACOS: ${{ needs.play-full.outputs.macos }}
     steps:
       - run: |
           failed=0
@@ -354,14 +423,18 @@ jobs:
           same "hashes of the played games" "$PLAY_LINUX" "$PLAY_WINDOWS" "$PLAY_MACOS"
           exit "$failed"
 
-  # The single required status check: fails unless every build and play leg and the hash comparison
-  # succeeded.
+  # The single required status check: fails unless `scope` succeeded and every other job succeeded or was
+  # skipped. A job is skipped only when `scope` left its legs out, or after a job it needs failed (and then
+  # that one fails this check). A pull request is merged only after a run with the legs `all` (merge-queue).
   ci:
     name: ci
-    needs: [build, play, hashes]
+    needs: [scope, build, build-full, play, play-full, hashes]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - run: |
-          test "${{ needs.build.result }}" = success && test "${{ needs.play.result }}" = success &&
-            test "${{ needs.hashes.result }}" = success
+          test "${{ needs.scope.result }}" = success || exit 1
+          for result in ${{ join(needs.*.result, ' ') }}; do
+            case $result in success | skipped) ;; *) exit 1 ;; esac
+          done
