@@ -826,7 +826,7 @@ fn the_walk_along_the_map_edge_ends_when_the_exhibit_holds_the_whole_border() {
     // Every border tile is in the exhibit: the walk along the edge never meets a tile outside it
     // and turns at the corners. It stops after four turns (RustyZoo#246).
     let world = World::new(zoo(8, 8, (1, 4)), shape);
-    let border = |t: usize| t % 8 == 0 || t % 8 == 7 || t < 8 || t >= 56;
+    let border = |t: usize| t.is_multiple_of(8) || t % 8 == 7 || !(8..56).contains(&t);
     let mut ended = 0;
     for i in (0..64).filter(|&t| border(t)) {
         for d in [0, 2, 4, 6] {
