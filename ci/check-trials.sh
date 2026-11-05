@@ -818,6 +818,18 @@ panel_animal() { # panel_animal <map>
 check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
 check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
 
+# The show panel (information panels 19): a click on the show tank's row of the exhibit list opens
+# the window (Marine Mania only), a click on another exhibit's row closes it, and so does the
+# exhibit panel's close button.
+show_panel() { # show_panel <map>
+  d=$(mktemp -d)
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 512\n5 down\n6 up\n8 mouse 900 445\n9 down\n10 up\n12 mouse 900 512\n13 down\n14 up\n16 mouse 1008 411\n17 down\n18 up\n' >"$d/script"
+  rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel show window /{printf "%s,", $7} END{print ""}'
+  rm -rf "$d"
+}
+check expansion-trial "open,closed,open,closed," "show_panel maps/scn28.zoo"
+
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
 # is moved off the tabs, so no tooltip shows). The game is paused, so that the units walking in
