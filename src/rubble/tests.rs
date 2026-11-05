@@ -461,7 +461,10 @@ fn a_turned_footprint_swaps_its_sides_for_scenery_and_for_a_big_building() {
     let mut a = turned(("objects", "jeep"), centre((4, 4)), 4);
     let mut b = turned(("objects", "jeep"), centre((4, 4)), 0);
     let (mut ra, mut rb) = (Rng::default(), Rng::default());
-    assert_eq!(run(&mut a, &cat(&ALL), &mut ra), run(&mut b, &cat(&ALL), &mut rb));
+    assert_eq!(
+        run(&mut a, &cat(&ALL), &mut ra),
+        run(&mut b, &cat(&ALL), &mut rb)
+    );
     // The hall (3 x 2) turned is 2 x 3: one tile across, two along y.
     let mut w = turned(("building", "hall"), centre((4, 4)), 1);
     let mut rng = Rng::default();
