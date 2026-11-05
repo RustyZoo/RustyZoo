@@ -43,9 +43,10 @@ impl Interface {
         true
     }
 
-    /// Shows `text` in the message line (`ZTMessageQueue`) for the `timerDuration` the element
-    /// has: a text already there is replaced and the count starts again. `false` if the tree has
-    /// no message line.
+    /// Posts `text` to the message line (`ZTMessageQueue`; ui layout 4.13 points 5 to 9). A hidden
+    /// line shows it at once with a fresh count. A shown line queues it (at most `queueSize`
+    /// wait, the oldest is dropped) and empties its count, so the text shown gives way at the
+    /// next update. `false` if the tree has no message line.
     pub(crate) fn message(&mut self, text: &[u8]) -> bool {
         let Some(i) = self
             .tree
@@ -55,23 +56,55 @@ impl Interface {
         else {
             return false;
         };
+        if self.visible(i) {
+            let size = usize::try_from(self.tree.elements[i].queue_size).unwrap_or(0);
+            self.message_queue.push_back(text.to_vec());
+            while self.message_queue.len() > size {
+                self.message_queue.pop_front();
+            }
+            self.tree.elements[i].countdown = Some(0);
+            return true;
+        }
+        self.message_queue.clear();
         self.put_text(i, text);
         self.tree.elements[i].countdown = None;
         self.flag(i, HIDDEN, false);
         true
     }
 
-    /// Whether the message line keeps its last message instead of expiring it.
-    pub(crate) fn hold_message(&mut self, held: bool) {
-        self.message_held = held;
+    /// Tells the message line whether the game is paused: then a line with nothing waiting keeps
+    /// its text and restarts its count instead of expiring.
+    pub(crate) fn hold_message(&mut self, paused: bool) {
+        self.message_paused = paused;
     }
 
-    /// Empties the message line's countdown, so that the line goes at its next update.
+    /// Message id 0 (the unpause): empties the message line's count, so that its shown message
+    /// gives way at the next update.
     pub(crate) fn end_message(&mut self) {
         for e in &mut self.tree.elements {
             if matches!(e.kind, Kind::MessageQueue) {
                 e.countdown = Some(0);
             }
+        }
+    }
+
+    /// The count of the message line `i` is up (ui layout 4.13 points 4 and 5): a waiting message
+    /// is shown with a fresh count; otherwise, paused, the count starts again and the text
+    /// stays; otherwise the line empties and hides.
+    pub(super) fn message_due(&mut self, i: usize) {
+        if let Some(text) = self.message_queue.pop_front() {
+            self.put_text(i, &text);
+            self.tree.elements[i].countdown = None;
+        } else if self.message_paused {
+            self.tree.elements[i].countdown = None;
+        } else {
+            let e = &mut self.tree.elements[i];
+            e.countdown = None;
+            e.text = None;
+            e.state |= HIDDEN;
+            let id = e.id;
+            self.dirty = true;
+            self.events.push(format!("hide {id}"));
         }
     }
 

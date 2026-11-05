@@ -123,7 +123,7 @@ fn lit(frame: &Framebuffer) -> usize {
 }
 
 #[test]
-fn the_message_line_shows_a_text_until_its_time_is_up_and_a_new_text_starts_the_count_again() {
+fn the_message_line_shows_a_text_until_its_time_is_up() {
     let mut ui = interface("message", LINE);
     let mut frame = Framebuffer::new(64, 48);
     ui.paint(&mut frame, &mut |_, _| {});
@@ -135,22 +135,103 @@ fn the_message_line_shows_a_text_until_its_time_is_up_and_a_new_text_starts_the_
     ui.update(1000);
     ui.update(1066);
     assert_eq!(ui.tree.elements[2].countdown, Some(33));
-    assert!(ui.message(b"Again"), "another text replaces it");
-    assert_eq!(ui.tree.elements[2].countdown, None);
-    ui.update(1100);
-    ui.update(1166);
-    assert_eq!(
-        ui.tree.elements[2].state & HIDDEN,
-        0,
-        "the count began again"
-    );
-    ui.update(1233);
+    ui.update(1099);
     assert_eq!(ui.tree.elements[2].state & HIDDEN, HIDDEN);
     ui.paint(&mut frame, &mut |_, _| {});
     assert_eq!(lit(&frame), 0);
     // A tree without a message line, and an empty text.
     assert!(!interface("nomessage", ROOT).message(b"x"));
     assert!(ui.message(b""));
+}
+
+/// The text the message line shows, and whether it is shown.
+fn shown(ui: &Interface) -> (Vec<u8>, bool) {
+    (ui.text(7001).unwrap(), ui.tree.elements[2].state & HIDDEN == 0)
+}
+
+#[test]
+fn messages_posted_together_come_in_order_one_per_duration() {
+    let mut ui = interface("queue", LINE);
+    ui.message(b"A");
+    ui.update(1000);
+    ui.message(b"B");
+    ui.message(b"C");
+    assert_eq!(shown(&ui), (b"A".to_vec(), true), "shown until the update");
+    ui.update(1033);
+    assert_eq!(shown(&ui), (b"B".to_vec(), true), "a post ends the shown one");
+    ui.update(1066);
+    ui.update(1132);
+    assert_eq!(shown(&ui).0, b"B", "B has its whole count");
+    ui.update(1166);
+    assert_eq!(shown(&ui), (b"C".to_vec(), true));
+    ui.update(1266);
+    ui.update(1366);
+    assert_eq!(shown(&ui).1, false, "nothing waits: the line hides");
+    assert_eq!(ui.text(7001), Some(Vec::new()));
+}
+
+#[test]
+fn a_paused_line_with_nothing_waiting_keeps_its_text_and_restarts_the_count() {
+    let mut ui = interface("paused", LINE);
+    ui.hold_message(true);
+    ui.message(b"paused");
+    ui.update(1000);
+    ui.update(1200);
+    ui.update(1400);
+    assert_eq!(shown(&ui), (b"paused".to_vec(), true), "stays");
+    assert_eq!(ui.tree.elements[2].countdown, Some(99), "the count restarted");
+    // A message posted during the pause replaces it at once and is the one that stays.
+    ui.message(b"other");
+    ui.update(1433);
+    assert_eq!(shown(&ui).0, b"other");
+    ui.update(1700);
+    assert_eq!(shown(&ui), (b"other".to_vec(), true));
+    // The unpause: what is shown goes at the next update.
+    ui.hold_message(false);
+    ui.end_message();
+    ui.update(1733);
+    assert_eq!(shown(&ui).1, false);
+    // Paused, a waiting message is taken before the pause restarts the count.
+    ui.hold_message(true);
+    ui.message(b"1");
+    ui.update(1766);
+    ui.message(b"2");
+    ui.message(b"3");
+    ui.update(1800);
+    assert_eq!(shown(&ui).0, b"2");
+    ui.update(1900);
+    ui.update(2000);
+    assert_eq!(shown(&ui).0, b"3", "the queue goes on while paused");
+}
+
+#[test]
+fn the_message_queue_holds_queue_size_messages_and_drops_the_oldest() {
+    let with = |size: &str| {
+        let line = match size {
+            "missing" => LINE.to_string(),
+            _ => LINE.replace("timed=1", &format!("queueSize={size}\ntimed=1")),
+        };
+        let mut ui = interface(&format!("size{size}"), &line);
+        ui.message(b"0");
+        ui.update(1000);
+        for t in [b"1", b"2", b"3"] {
+            ui.message(t);
+        }
+        let mut seen = Vec::new();
+        for n in 1..12 {
+            ui.update(1000 + 100 * n);
+            seen.push(shown(&ui));
+        }
+        seen.retain(|s| s.1);
+        seen.dedup();
+        seen.into_iter().map(|s| s.0).collect::<Vec<_>>()
+    };
+    assert_eq!(with("2"), [b"2".to_vec(), b"3".to_vec()]);
+    // 0, a negative size, a missing key (25) and a huge one.
+    assert!(with("0").is_empty());
+    assert!(with("-5").is_empty());
+    assert_eq!(with("missing").len(), 3, "the default is 25");
+    assert_eq!(with("2147483647").len(), 3);
 }
 
 #[test]

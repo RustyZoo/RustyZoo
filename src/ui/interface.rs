@@ -15,7 +15,7 @@ mod tooltip;
 mod widgets;
 
 pub use dialog::Buttons;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 pub use tooltip::Settings;
 
 use super::draw::{Painter, Rect4, Strings};
@@ -97,8 +97,11 @@ pub struct Interface {
     /// The size the file gave each dialog resized to its background, by layout index: the show
     /// centres on it (ui layout 7.12).
     file_size: HashMap<usize, (i32, i32)>,
-    /// The message line keeps its last message instead of expiring it (the game is paused).
-    message_held: bool,
+    /// The game is paused: a message line with nothing waiting restarts its count (ui layout
+    /// 4.13 point 4).
+    message_paused: bool,
+    /// The messages waiting for the message line, the oldest first.
+    message_queue: VecDeque<Vec<u8>>,
 }
 
 impl Interface {
@@ -132,7 +135,8 @@ impl Interface {
             updated: None,
             question_picture: None,
             file_size: HashMap::new(),
-            message_held: false,
+            message_paused: false,
+            message_queue: VecDeque::new(),
         };
         ui.start_tooltip();
         ui.sync_owners();
@@ -360,9 +364,6 @@ impl Interface {
             if self.tree.elements[i].state & TIMED == 0 {
                 continue;
             }
-            if self.message_held && matches!(self.tree.elements[i].kind, Kind::MessageQueue) {
-                continue;
-            }
             if !self.visible(i) {
                 self.tree.elements[i].countdown = None;
                 continue;
@@ -373,7 +374,9 @@ impl Interface {
                 None => i64::from(e.timer_duration) - 1,
                 Some(left) => left.saturating_sub(period),
             };
-            if left <= 0 {
+            if left <= 0 && matches!(e.kind, Kind::MessageQueue) {
+                self.message_due(i);
+            } else if left <= 0 {
                 e.countdown = None;
                 e.state |= HIDDEN;
                 self.dirty = true;
