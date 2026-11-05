@@ -128,7 +128,13 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [c]\ntype=UIButton\nid=4107\nx=20\ny=0\ndx=8\ndy=8\ncolorasicon=1\n\
                   action=3\ntarget=803\n\
                   [r]\ntype=UIButton\nid=1019\nx=30\ny=0\ndx=8\ndy=8\ncolorasicon=1\nstate=2048\n\
-                  action=3\ntarget=15\n"
+                  action=3\ntarget=15\n\
+                  [zi]\ntype=UIButton\nid=1007\nx=40\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [zo]\ntype=UIButton\nid=1023\nx=44\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n\
+                  [rl]\ntype=UIButton\nid=1008\nx=48\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [rr]\ntype=UIButton\nid=1009\nx=52\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [pa]\ntype=UIButton\nid=1071\nx=56\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
+                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n"
                     .to_vec(),
             ),
             (
@@ -881,8 +887,6 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
         // The layout of 40 x 10 took the size of its background, 40 x 24 (ui layout 7.12).
         let (_, _, dx, dy) = ui.tree.rect(ui.tree.find(45000).unwrap());
         assert_eq!((dx, dy), (40, 24));
-        // The layout of 40 x 10 took the size of its background, 40 x 24 (ui layout 7.12).
-        assert_eq!(ui.tree.rect(ui.tree.find(45000).unwrap()).2..=3, 40..=24);
         // OK closes it; the hint's button shows it again, and OK closes it once more.
         pass(app, &key(Key::Enter));
         assert!(!app.interface().unwrap().modal_open());
