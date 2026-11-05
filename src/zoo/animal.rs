@@ -36,6 +36,8 @@ pub(crate) struct AnimalRecord {
     /// The rampage flag and counter (animals 11).
     pub rampaging: bool,
     pub rampage: i32,
+    /// The rampage's building target flag (animals 21.4), from version 78.
+    pub rampage_target: bool,
     /// The counters the record stores that are not drawn (save games 11.3): life, grow-up, birth
     /// interval, mate delay and crate. A version that lacks one reads it as 0, and the life and
     /// the mate delay as `None` (the animal keeps its creation values).
@@ -60,7 +62,7 @@ pub(crate) struct AnimalRecord {
     pub escape: Option<Escape>,
     /// The home exhibit's gate tile, (-1, -1) for none.
     pub home: [i32; 2],
-    /// The fields the engine does not model, in file order and in the form of version 106 (62
+    /// The fields the engine does not model, in file order and in the form of version 106 (61
     /// bytes): a segment the vector is too short for takes the value of a new animal.
     pub spare: Vec<u8>,
 }
@@ -178,10 +180,7 @@ pub(super) fn read(r: &mut Reader) -> R<AnimalRecord> {
         }
         false => spare.extend([0; 4]),
     }
-    match v >= 78 {
-        true => spare.extend(r.take(1)?),
-        false => spare.push(0),
-    }
+    a.rampage_target = v >= 78 && r.u8()? != 0;
     match v >= 79 {
         true => {
             a.egg = r.u8()? != 0;
@@ -283,7 +282,7 @@ pub(super) fn write(o: &mut Out, a: &AnimalRecord) -> Result<(), String> {
     o.u8(flag(a.rampaging));
     s.put(o, &[0; 4]);
     o.i32(a.rampage);
-    s.put(o, &[0]);
+    o.u8(flag(a.rampage_target));
     o.u8(flag(a.egg));
     s.put(o, &[0; 4]);
     o.i32(a.breath.unwrap_or(0));

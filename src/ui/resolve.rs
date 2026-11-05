@@ -94,8 +94,12 @@ impl Tree {
             }
             if !progress {
                 let first = self.elements.iter().find(|e| e.placed.is_none());
+                let file = first
+                    .and_then(|e| e.parent)
+                    .and_then(|p| self.layout_files.get(&p))
+                    .map_or("", String::as_str);
                 self.warnings.push(format!(
-                    "{waiting} elements never resolve (anchors in a cycle), first id {}: treated as unanchored",
+                    "{file}: {waiting} elements never resolve (anchors in a cycle), first id {}: treated as unanchored",
                     first.map_or(0, |e| e.id)
                 ));
                 strict = false;

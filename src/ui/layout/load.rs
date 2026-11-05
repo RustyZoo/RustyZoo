@@ -34,6 +34,7 @@ impl Tree {
             .find(|(name, _)| is_info(name))
             .map_or(&empty, |(_, section)| section);
         let this = self.add(vfs, Kind::Layout, info, parent);
+        self.layout_files.insert(this, file.to_string());
         for (name, section) in config.sections() {
             if is_info(name) {
                 continue;

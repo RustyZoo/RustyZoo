@@ -217,7 +217,8 @@ fn anchors_resolve_in_later_passes_and_a_cycle_is_dropped() {
          [z]\ntype=UIImage\nid=3\nx=100\ny=50\ndx=5\ndy=5\n\
          [p]\ntype=UIImage\nid=4\nanchor=5\nx=2\ny=2\ndx=5\ndy=5\n\
          [q]\ntype=UIImage\nid=5\nanchor=4\nx=7\ny=7\ndx=5\ndy=5\n\
-         [r]\ntype=UIImage\nid=6\nanchor=5\nx=1\ny=1\ndx=5\ndy=5\n"
+         [r]\ntype=UIImage\nid=6\nanchor=5\nx=1\ny=1\ndx=5\ndy=5\n\
+         [s]\ntype=UIImage\nid=7\nanchor=7\nx=3\ny=3\ndx=5\ndy=5\n"
     );
     resolved(
         "cycle",
@@ -231,8 +232,9 @@ fn anchors_resolve_in_later_passes_and_a_cycle_is_dropped() {
             assert_eq!(rect(tree, 4), (2, 2, 5, 5));
             assert_eq!(rect(tree, 5), (7, 7, 5, 5));
             assert_eq!(rect(tree, 6), (1, 1, 5, 5));
+            assert_eq!(rect(tree, 7), (3, 3, 5, 5));
             assert_eq!(tree.warnings.len(), 1, "{:?}", tree.warnings);
-            assert!(tree.warnings[0].starts_with("3 elements never resolve"));
+            assert!(tree.warnings[0].starts_with("ui/root.lyt: 4 elements never resolve"));
         },
     );
 }

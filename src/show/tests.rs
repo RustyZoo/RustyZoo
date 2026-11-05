@@ -1,6 +1,7 @@
 //! The numbers of `shows.cfg`, which show a grandstand belongs to, and the emptying routines.
 
 mod aborts;
+mod admission;
 mod audience;
 mod call;
 mod cycle;
@@ -21,7 +22,7 @@ use std::sync::Arc;
 
 /// A grandstand: 12 places in two columns, a slot of 12, users that sit and use the exit.
 fn stand() -> String {
-    let mut text = "[Characteristics/Floats]\ncUpkeep=15\n[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
+    let mut text = "[Characteristics/Floats]\ncUpkeep=15\ncLowCost=0\ncHighCost=25\n[Characteristics/Integers]\ncCommerce=1\ncCapacity=12\ncUserStaysOutside=0\n\
         cUserUsesExit=1\ncHoldsOntoUser=1\n[Satisfies]\nbuilding\ngrandstand\n[slots]\nname=slot\n\
         [slot]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=144\nexitpos=0\nexitpos=144\ncapacity=12\n\
         cHasDrawSlots=drawslots\n[drawslots]\n"
@@ -55,6 +56,9 @@ fn kind(class: &'static str, name: &str, text: &str) -> EntityType {
 fn types() -> Catalogue {
     let mut cat = Catalogue::default();
     cat.push(kind("building", "stand", &stand()));
+    // A grandstand with a narrow price range.
+    let narrow = stand().replace("cLowCost=0\ncHighCost=25", "cLowCost=2\ncHighCost=5");
+    cat.push(kind("building", "narrow", &narrow));
     cat.push(kind(
         "fences",
         "glass",

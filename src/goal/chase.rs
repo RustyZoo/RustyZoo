@@ -18,7 +18,7 @@ const THOUGHT: i32 = 10246;
 
 impl Cx<'_, '_> {
     /// The animal's own fields; none for any other unit.
-    fn hunter(&mut self) -> Option<&mut Animal> {
+    pub(super) fn hunter(&mut self) -> Option<&mut Animal> {
         match &mut self.unit.part {
             Part::Animal(a) => Some(a),
             _ => None,
@@ -26,13 +26,13 @@ impl Cx<'_, '_> {
     }
 
     /// Runs `f` on the animal's fields.
-    fn mark(&mut self, f: impl FnOnce(&mut Animal)) {
+    pub(super) fn mark(&mut self, f: impl FnOnce(&mut Animal)) {
         if let Some(a) = self.hunter() {
             f(a);
         }
     }
 
-    /// 9.3: the animal is doing something (the rampage sub-state is not kept).
+    /// 9.3: the animal is doing something.
     pub(crate) fn occupied(&self) -> bool {
         let Part::Animal(a) = &self.unit.part else {
             return false;
@@ -54,13 +54,14 @@ impl Cx<'_, '_> {
             || a.thirsty
             || a.wants_food
             || a.caught_prey
+            || a.rampage_target
             || a.dying
             || a.drinking
     }
 
     /// The target unit of the record: its id and place in the entity list, none
     /// when it names no unit or a removed one.
-    fn target_unit(&self) -> Option<(u32, usize)> {
+    pub(super) fn target_unit(&self) -> Option<(u32, usize)> {
         let id = self.unit.goal.record.target.id;
         let at = self
             .world
@@ -70,7 +71,7 @@ impl Cx<'_, '_> {
     }
 
     /// The species key `key` of the entity at `at` is exactly 1.
-    fn flag(&self, at: usize, key: &str) -> bool {
+    pub(super) fn flag(&self, at: usize, key: &str) -> bool {
         type_of(self.ctx.cat, &self.world.zoo.entities[at])
             .and_then(|t| crate::build::number(t, key))
             .is_some_and(|v| v as i32 == 1)
@@ -322,19 +323,23 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 20.2 point 3, decide: the path to the target (the target's tile, no partial path: O15) and
-    /// `bChasePrey`; no path or no set ends the chase, forced.
+    /// 20.2 point 3, decide: the path to the target (21.2) and `bChasePrey`; no path or no set
+    /// ends the chase, forced.
     pub(super) fn hunt_decide(&mut self) {
         let pre = self.hunter().map_or([false; 2], |a| a.pre);
         if (pre[0] && !pre[1]) || self.unit.goal.record.target.tile.is_some() {
             return;
         }
-        let there = self
-            .target_unit()
-            .and_then(|(_, at)| tile_of(self.world, at));
-        let walking = there.is_some_and(|t| self.path_to(t, false))
-            && self.walk_set("bChasePrey", false, true);
-        if !walking {
+        let target = self.target_unit();
+        let egg = target.and_then(|(id, at)| {
+            let unit = self.world.units.get(id)?;
+            matches!(&unit.part, Part::Animal(a) if a.egg).then(|| tile_of(self.world, at))
+        });
+        let found = match egg {
+            Some(tile) => tile.is_some_and(|t| self.next_to(t, true, true)),
+            None => self.lead_path(),
+        };
+        if !(found && self.walk_set("bChasePrey", false, true)) {
             self.stop_chase(true);
         }
     }
