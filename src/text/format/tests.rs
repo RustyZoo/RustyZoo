@@ -360,11 +360,16 @@ fn the_installed_strings_format_as_the_game_does() {
             1036 => text.starts_with(name),
             _ => text.contains(name),
         };
+        // Chinese writes the months and the days as numbers.
+        let chinese = matches!(language, 0x804 | 0x404);
         for id in [22012, 22014] {
             let text = date(tables.string(id), &first);
-            assert!(has(&text, "Jan") && text.ends_with('1'), "{text}");
+            assert!(chinese || has(&text, "Jan"), "{text}");
+            assert!(chinese || text.ends_with('1'), "{text}");
+            assert!(text.contains('1'), "{text}");
         }
-        assert!(has(&date(tables.string(22013), &first), "Mon"));
+        let weekday = date(tables.string(22013), &first);
+        assert!(chinese || has(&weekday, "Mon"), "{weekday}");
         assert!(!graph_month(&tables, 12).is_empty());
         assert!(build(&tables, 1030, &[Text("X")]).contains('X'));
         return;

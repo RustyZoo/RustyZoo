@@ -1017,24 +1017,26 @@ fn full_game_counts() {
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     // Every definition file loads; five scenery types give the name id 0 themselves.
     assert!(c.types.iter().all(|t| t.config.is_some()));
-    let unnamed: Vec<_> = c.types.iter().filter(|t| t.name_id == 0).collect();
-    assert_eq!(unnamed.len(), 5);
-    assert!(unnamed.iter().all(|t| t.class == "objects"));
-    // Every base animation exists except for two animals.
-    let missing: Vec<_> = c
-        .types
-        .iter()
-        .filter(|t| {
-            !t.base_animation()
-                .and_then(|a| a.member)
-                .is_some_and(|member| vfs.contains(&member))
-        })
-        .map(|t| t.class)
-        .collect();
-    assert_eq!(missing, ["animals", "animals"]);
-    // The young apatosaurus has a key without value that sorts first: no member.
-    let base = get(&c, "animals", "apato", "y").base_animation().unwrap();
-    assert_eq!(base.member, None);
+    if crate::fixtures::is_measured(&dir) {
+        let unnamed: Vec<_> = c.types.iter().filter(|t| t.name_id == 0).collect();
+        assert_eq!(unnamed.len(), 5);
+        assert!(unnamed.iter().all(|t| t.class == "objects"));
+        // Every base animation exists except for two animals.
+        let missing: Vec<_> = c
+            .types
+            .iter()
+            .filter(|t| {
+                !t.base_animation()
+                    .and_then(|a| a.member)
+                    .is_some_and(|member| vfs.contains(&member))
+            })
+            .map(|t| t.class)
+            .collect();
+        assert_eq!(missing, ["animals", "animals"]);
+        // The young apatosaurus has a key without value that sorts first: no member.
+        let base = get(&c, "animals", "apato", "y").base_animation().unwrap();
+        assert_eq!(base.member, None);
+    }
     // The loaded definition files are a small part of the budget.
     assert!(
         c.loaded_bytes < MAX_DEFINITION_BYTES / 2,

@@ -446,11 +446,21 @@ mod tests {
     fn full_game_facts() {
         let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
         let tables = StringTables::open(Path::new(&dir)).unwrap();
+        let language = crate::pe::installed_language(&dir);
+        assert_eq!(tables.install_language(), language);
+        // The upper-case names of some installs are matched too.
+        assert!(
+            (tables.libraries().last().unwrap()).eq_ignore_ascii_case("lang0.dll"),
+            "{:?}",
+            tables.libraries().last()
+        );
+        // The count, the order and the texts below are those of the complete installs.
+        if !crate::fixtures::is_measured(&dir) {
+            return;
+        }
         assert_eq!(tables.libraries().count(), 19);
         assert_eq!(tables.libraries().next(), Some("lang300.dll"));
         assert_eq!(tables.libraries().last(), Some("lang0.dll"));
-        let language = crate::pe::installed_language(&dir);
-        assert_eq!(tables.install_language(), language);
         if language == 1036 {
             // The same libraries supply the same ids; the texts are not English.
             for (id, library) in [

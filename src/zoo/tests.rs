@@ -1394,7 +1394,8 @@ fn full_game_facts() {
     assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (767, 2848, 0, 2, 2));
 
     // The saved game exists in the English install only.
-    if crate::pe::installed_language(&dir) != 1033 && !vfs.contains("saved games/test.zoo") {
+    let english = crate::pe::installed_language(&dir) == 1033 && crate::fixtures::is_measured(&dir);
+    if !english && !vfs.contains("saved games/test.zoo") {
         eprintln!("skipped: saved games/test.zoo is only in the English install");
     } else {
         let save = load("saved games/test.zoo").unwrap();
