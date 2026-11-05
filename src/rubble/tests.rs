@@ -25,7 +25,7 @@ fn ty(
 }
 
 /// The rubble types, then a car (2 x 2), a tree (1 x 1, tree rubble), a restroom (1 x 1), a hall
-/// (3 x 2), a hut (1 x 2) and a hut that cannot be rubbled.
+/// (3 x 2), a hut (1 x 2), a jeep (2 x 4) and a hut that cannot be rubbled.
 fn cat(rubble: &[&str]) -> Catalogue {
     let mut cat = Catalogue::default();
     for sub in rubble {
@@ -36,6 +36,7 @@ fn cat(rubble: &[&str]) -> Catalogue {
     cat.push(ty("building", "wc", "", RESTROOM, [1, 1], ""));
     cat.push(ty("building", "hall", "", 77, [3, 2], ""));
     cat.push(ty("building", "hut", "", 78, [1, 2], ""));
+    cat.push(ty("objects", "jeep", "", 6139, [2, 4], ""));
     cat.push(ty("building", "bunker", "", 79, [2, 2], "cRubbleable=0"));
     cat
 }
@@ -429,4 +430,58 @@ fn a_trampled_building_puts_its_users_out_and_spills_its_litter() {
             .iter()
             .any(|p| p.kind == 0x2722 && p.target == 6)
     );
+}
+
+/// Like [`world`], with the entity turned `rotation` quarter turns.
+fn turned(item: (&str, &str), at: (i32, i32), rotation: u32) -> World {
+    let mut w = world(item, at);
+    w.zoo.entities[0].common.as_mut().unwrap().rotation = rotation;
+    w
+}
+
+#[test]
+fn a_turned_footprint_swaps_its_sides_for_scenery_and_for_a_big_building() {
+    // A jeep (2 x 4) turned by 1 is 4 x 2: cells x 240..336, y 272 and 304, a skip draw per cell.
+    let mut w = turned(("objects", "jeep"), centre((4, 4)), 1);
+    let mut rng = Rng::default();
+    let mut mirror = rng.clone();
+    let pieces = run(&mut w, &cat(&ALL), &mut rng);
+    let mut want = Vec::new();
+    for x in [240, 272, 304, 336] {
+        for y in [272, 304] {
+            if mirror.pick(100) != 0 {
+                want.push((x, y, mirror.rand() & 7));
+            }
+        }
+    }
+    let got: Vec<_> = pieces.iter().map(|p| (p.1, p.2, p.4)).collect();
+    assert_eq!(got, want);
+    assert_eq!(rng, mirror);
+    // A turn of 4 is no turn: the pieces are those of rotation 0.
+    let mut a = turned(("objects", "jeep"), centre((4, 4)), 4);
+    let mut b = turned(("objects", "jeep"), centre((4, 4)), 0);
+    let (mut ra, mut rb) = (Rng::default(), Rng::default());
+    assert_eq!(
+        run(&mut a, &cat(&ALL), &mut ra),
+        run(&mut b, &cat(&ALL), &mut rb)
+    );
+    // The hall (3 x 2) turned is 2 x 3: one tile across, two along y.
+    let mut w = turned(("building", "hall"), centre((4, 4)), 1);
+    let mut rng = Rng::default();
+    let pieces = run(&mut w, &cat(&ALL), &mut rng);
+    let at: Vec<_> = pieces.iter().map(|p| (p.1, p.2)).collect();
+    assert_eq!(at, [(288, 288), (288, 352)]);
+}
+
+#[test]
+fn a_narrow_building_draws_its_pick_only_for_a_cell_inside_the_map() {
+    // The hut (1 x 2) turned is 2 x 1: cells x -16 (off the map) and 16 at y 64.
+    let mut w = turned(("building", "hut"), (0, 64), 1);
+    let mut rng = Rng::default();
+    let mut mirror = rng.clone();
+    let pieces = run(&mut w, &cat(&ALL), &mut rng);
+    mirror.pick(1);
+    let want = [("brubls1".to_string(), 16, 64, 0, mirror.rand() & 7)];
+    assert_eq!(pieces, want);
+    assert_eq!(rng, mirror);
 }
