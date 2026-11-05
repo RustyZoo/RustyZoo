@@ -140,6 +140,19 @@ pub(crate) fn refund(cat: &Catalogue, e: &Entity) -> f32 {
     cost(ty) * rate
 }
 
+/// What removing the entity refunds: [`refund`], except that an animal that has had its first turn
+/// sells at the price of its own state (unit placing 10.2); before it, its state is not made yet
+/// and it sells as new.
+pub(crate) fn sale(world: &World, cat: &Catalogue, e: &Entity) -> f32 {
+    let unit = e.common.as_ref().and_then(|c| world.units.get(c.id));
+    match (type_of(cat, e), unit.map(|u| (u.started, &u.part))) {
+        (Some(ty), Some((true, crate::unit::Part::Animal(a)))) if unit::is_animal(ty) => {
+            unit::animal_sell_price(ty, a)
+        }
+        _ => refund(cat, e),
+    }
+}
+
 /// The sell price of a rubble piece (cheats 4.6): half the purchase cost of the type that turned
 /// to rubble, 0.1 when that is 0, 1 when the catalogue no longer has the type.
 fn rubble_price(cat: &Catalogue, e: &Entity) -> f32 {
@@ -202,7 +215,7 @@ pub(crate) fn refunds(world: &World, cat: &Catalogue, at: &[usize]) -> f32 {
             }
             paid.push(c.id);
         }
-        sum += refund(cat, entity);
+        sum += sale(world, cat, entity);
     }
     sum
 }
@@ -339,7 +352,7 @@ pub(crate) fn remove(
         name: format!("{}/{}/{}", entity.class, entity.type_name, entity.subtype),
         tile: (c.x.div_euclid(64), c.y.div_euclid(64)),
         side: fence.then_some(c.rotation % 8),
-        refund: refund(cat, entity),
+        refund: sale(world, cat, entity),
         members: Vec::new(),
     };
     let slot = world.slot(at);

@@ -81,12 +81,28 @@ pub(crate) fn sell_price(
     if minimum { price * 0.5 } else { price }
 }
 
-/// The sell price of an animal of the type that is as new: its initial happiness and full health
-/// (the status variables come with the animal's own state).
+/// The sell price of an animal of the type that is as new: its initial happiness and full health,
+/// for an animal whose live state is not at hand.
 pub(crate) fn new_sell_price(ty: &EntityType) -> f32 {
-    let max_hits = number(ty, "cMaxHits").filter(|&m| m > 0.0).unwrap_or(500.0);
+    let max_hits = max_hits(ty);
     let happiness = number(ty, "cInitialHappiness").unwrap_or(60.0);
     sell_price(cost(ty), happiness, max_hits, max_hits, false)
+}
+
+/// `cMaxHits`, 500 when the type has none or a value below 1.
+fn max_hits(ty: &EntityType) -> f32 {
+    number(ty, "cMaxHits").filter(|&m| m > 0.0).unwrap_or(500.0)
+}
+
+/// The sell price of this animal from its own happiness, health and minimum-health flag.
+pub(crate) fn animal_sell_price(ty: &EntityType, a: &crate::animal::Animal) -> f32 {
+    sell_price(
+        cost(ty),
+        a.happiness as f32,
+        a.health as f32,
+        max_hits(ty),
+        a.at_minimum_health,
+    )
 }
 
 /// Where the pointer is: the ground point under it, its own screen row and the zoom, which the

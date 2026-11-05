@@ -446,7 +446,7 @@ pub(super) fn question_text(
             // shows it cut to whole units, the cash gets the exact amount.
             let (id, amount) = match question {
                 Question::Fire => (FIRE, ty.map_or(0.0, staff::monthly)),
-                _ => (SELL, entity.map_or(0.0, |e| bulldozer::refund(cat, e))),
+                _ => (SELL, entity.map_or(0.0, |e| bulldozer::sale(world, cat, e))),
             };
             let text = expand(&Plain, &template(id), &[Arg::Text(&name)]);
             format!(

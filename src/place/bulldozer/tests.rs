@@ -752,3 +752,59 @@ fn a_building_removed_hides_its_members_from_the_end_and_a_missing_one_is_skippe
     let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
     assert!(removed.members.is_empty());
 }
+
+#[test]
+fn an_animal_sells_at_the_price_of_its_own_state() {
+    let cat = catalogue();
+    let sold = |state: (i32, i32, bool)| {
+        let mut w = world(vec![entity(
+            "animals",
+            "lion",
+            "",
+            4 * 64 + 5,
+            4 * 64 + 5,
+            0,
+        )]);
+        let unit = w.units.get_mut(1).unwrap();
+        unit.started = true;
+        let crate::unit::Part::Animal(a) = &mut unit.part else {
+            panic!("not an animal");
+        };
+        (a.happiness, a.health, a.at_minimum_health) = state;
+        let asked = refunds(&w, &cat, &[0]);
+        let mut money = Money::default();
+        let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+        assert_eq!(asked, removed.refund);
+        assert_eq!(money.cash, removed.refund, "the cash gets the same amount");
+        removed.refund
+    };
+    // Cost 500, 500 hit points: 500 * 0.8 * (happiness term + health / 500) * 0.5.
+    assert_eq!(sold((0, 250, false)), 200.0);
+    assert_eq!(sold((100, 500, false)), 400.0);
+    assert_eq!(sold((-100, 0, false)), 0.0);
+    // At minimum health the price is halved again; 1 hit point is not minimum.
+    assert_eq!(sold((0, 250, true)), 100.0);
+    assert_eq!(sold((0, 1, false)), 100.399994);
+    // Below the range and above it: the formula is not clamped.
+    assert!(sold((-1000, 0, false)) < 0.0);
+    assert!(sold((0, 5000, false)) > 400.0);
+}
+
+#[test]
+fn an_animal_sold_before_its_first_turn_sells_as_new() {
+    let cat = catalogue();
+    let mut w = world(vec![entity(
+        "animals",
+        "lion",
+        "",
+        4 * 64 + 5,
+        4 * 64 + 5,
+        0,
+    )]);
+    // Not started: the state is still all zero, the animal is as new (cost 500: 360).
+    assert!(!w.units.get(1).unwrap().started);
+    let asked = refunds(&w, &cat, &[0]);
+    let mut money = Money::default();
+    let removed = remove(&mut w, &mut money, &cat, 1, &mut Rng::default()).unwrap();
+    assert_eq!((asked, removed.refund, money.cash), (360.0, 360.0, 360.0));
+}
