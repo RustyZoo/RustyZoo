@@ -65,6 +65,11 @@ impl World {
     pub(crate) fn saved(&self, known: impl Fn(&Entity) -> bool) -> Zoo {
         let mut zoo = self.zoo.clone();
         zoo.drop_unknown(known);
+        // The water effects are never in a saved zoo (tank staff 9).
+        zoo.entities.retain(|e| {
+            (e.class.as_str(), e.type_name.as_str(), e.subtype.as_str())
+                != ("objects", "other", "waterwv1")
+        });
         let ids: HashSet<u32> = (zoo.entities.iter())
             .filter_map(|e| e.common.as_ref().map(|c| c.id))
             .collect();

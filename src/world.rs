@@ -323,6 +323,11 @@ impl World {
         self.scene.index(tx, ty)
     }
 
+    /// Whether nothing stands on tile `t` (see [`Scene::is_empty`]).
+    pub(crate) fn is_empty(&self, t: usize) -> bool {
+        self.scene.is_empty(t)
+    }
+
     /// Whether tile `t` is inside the zoo wall.
     pub(crate) fn in_zoo(&self, t: usize) -> bool {
         self.in_zoo.get(t).copied().unwrap_or(false)
