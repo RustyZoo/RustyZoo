@@ -277,7 +277,7 @@ mod tests {
         let mut s = scape("", WORLD);
         s.update(1001, 0, &mut rng, &mut log);
         let line = log.last().unwrap();
-        if first % 100 == 0 {
+        if first.is_multiple_of(100) {
             let want = match second {
                 0..40 => "a.wav",
                 40..80 => "b.wav",
