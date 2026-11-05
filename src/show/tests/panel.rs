@@ -15,7 +15,10 @@ impl Strings for Words {
     fn string(&self, id: i32) -> String {
         let text = match id {
             22100 => "$",
+            0 => "Zero",
             5400 => "Seal",
+            5401 | 5402 => "Orca",
+            9552 => "Specialist",
             11192 => "Never",
             11193 => "Infrequent",
             11194 => "Frequent",
@@ -91,10 +94,12 @@ fn the_species_rows_skip_type_0_the_specialist_and_records_without_units() {
     let ui = window("panel-species");
     let info = info_mut(&mut w);
     info.lookup(0, 0).units = vec![1];
-    info.lookup(5401, 0).units = vec![2];
+    info.lookup(KEEPER, 0).units = vec![2];
+    info.lookup(5401, 0).units = vec![3];
+    info.lookup(5402, 0).units = Vec::new();
     // A record with units whose name string is missing gets no row either.
-    info.lookup(5300, 0).units = vec![3];
-    assert_eq!(show::species_of(&ui, &w, x), [SEAL]);
+    info.lookup(5300, 0).units = vec![4];
+    assert_eq!(show::species_of(&ui, &w, x), [SEAL, 5401]);
 }
 
 #[test]
