@@ -3,8 +3,8 @@
 # tank walls, two manta rays, a marine specialist and a tour guide assigned to the tank, a
 # maintenance worker, a food stand and a trash can. ci/check-playable.sh runs it twice and
 # reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
-# on each of the seeds 40 to 80 that hire the three staff members (10 of 41) the can has them (the
-# guests use it about once per 700 passes after the first 5000).
+# with the water ripples drawing from the stream, seed 46 had 12 uses at 12000 passes and has 15 at 12700
+# (the guests use it about once per 700 passes after the first 5000).
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
@@ -14,7 +14,7 @@
 # shared stream.
 # The ray 25039 never eats (issue 1013, which the original has too): it gets the food task on the
 # tile next to the food while still swimming, and is carried past the food.
-#run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12000 --clock 200
+#run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12700 --clock 200
 #exhibit 16,35,21,40
 #months 6
 #unfed 25039 1013

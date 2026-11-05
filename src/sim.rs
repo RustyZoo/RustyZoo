@@ -6,7 +6,7 @@
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the shows, the water ripples, the spawn list of the ambient creatures, and the research and marketing
+//! so far: the shows, the spawn list of the ambient creatures, and the research and marketing
 //! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
@@ -24,6 +24,7 @@ pub mod drive;
 mod events;
 pub mod hash;
 mod inspect;
+mod ripple;
 mod rng;
 #[cfg(test)]
 mod tests;
@@ -174,6 +175,8 @@ pub(crate) struct Sim {
     /// The world clock: whole seconds and the milliseconds left over.
     world_secs: u32,
     world_rem: u32,
+    /// The slots of the animated water (7.2).
+    ripples: ripple::Ripples,
     /// The entities that asked to be removed, by id.
     removals: Vec<u32>,
     /// The entities the step removes as the bulldozer does, with an undo record (a flooded or
@@ -216,6 +219,7 @@ impl Sim {
             next_clear: 0,
             world_secs: 0,
             world_rem: 0,
+            ripples: ripple::Ripples::default(),
             removals: Vec::new(),
             bulldozed: Vec::new(),
             lines: Vec::new(),
@@ -290,6 +294,7 @@ impl Sim {
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
+        self.ripples.clear();
         self.bulldozed.clear();
         self.scenario = None;
         self.research = None;
@@ -808,6 +813,7 @@ impl Sim {
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
         crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
+        self.water_effects(world, cat, step);
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
         self.world_secs = self.world_secs.wrapping_add(total / 1000);

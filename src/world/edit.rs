@@ -105,6 +105,12 @@ impl World {
             self.note_opening(slot, false);
         }
         let rated = self.rated_tiles(at);
+        // A water effect marks no exhibit (simulation 7.2).
+        let rated = if self.waves.remove(&id) {
+            Vec::new()
+        } else {
+            rated
+        };
         if !self.is_carried(id) {
             self.show_moved(at, false);
         }

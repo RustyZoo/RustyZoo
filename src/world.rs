@@ -163,6 +163,8 @@ pub struct World {
     pub edits: u64,
     /// The game is paused: a fill or drain of a tank is instant.
     paused: bool,
+    /// The ids of the water effects the world manager made (simulation 7.2), which no save keeps.
+    waves: std::collections::HashSet<u32>,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
@@ -222,6 +224,7 @@ impl World {
             dirty: false,
             edits: 0,
             paused: false,
+            waves: Default::default(),
             told_water: BTreeMap::new(),
             wet: Vec::new(),
             stirred: Vec::new(),
@@ -321,6 +324,11 @@ impl World {
     /// The index of tile (`tx`, `ty`), if it is on the map.
     pub fn tile_index(&self, tx: i32, ty: i32) -> Option<usize> {
         self.scene.index(tx, ty)
+    }
+
+    /// Whether the four quadrant slots of tile `t` are empty (see [`Scene::is_empty`]).
+    pub(crate) fn is_empty(&self, t: usize) -> bool {
+        self.scene.is_empty(t)
     }
 
     /// Whether tile `t` is inside the zoo wall.
