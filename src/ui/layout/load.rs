@@ -333,6 +333,7 @@ impl Tree {
             dynamic_width: flag("dynamicwidth", false),
             dynamic_height: flag("dynamicheight", false),
             timer_duration: int("timerDuration", 3000),
+            queue_size: int("queueSize", 25),
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
             text: None,

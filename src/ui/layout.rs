@@ -404,6 +404,8 @@ pub struct Element {
     pub dynamic_width: bool,
     pub dynamic_height: bool,
     pub timer_duration: i32,
+    /// The size of the message line's list: the shown message and the waiting ones (`queueSize`).
+    pub queue_size: i32,
     pub string_data: Vec<u8>,
     pub(crate) look: Look,
     /// The text the program gave the element, which shows instead of its `textid` or `textname`.

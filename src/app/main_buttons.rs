@@ -68,13 +68,14 @@ impl App<'_> {
     }
 
     /// Zoom in or out, then the buttons as the press leaves them (camera 8.4 point 4).
-    fn zoom_pressed(&mut self, zoom_in: bool) {
+    pub(super) fn zoom_pressed(&mut self, zoom_in: bool) {
         self.start_busy();
         let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) else {
             return self.zoom_blind(zoom_in);
         };
+        let at = game.selected_point();
         let camera = &mut game.camera;
-        camera.zoom(&game.world.zoo, None, zoom_in);
+        camera.zoom(&game.world.zoo, at, zoom_in);
         let (zoom, narrow) = (camera.zoom, camera.narrow());
         if zoom_in {
             ui.disable(ZOOM_OUT, false);
@@ -89,7 +90,8 @@ impl App<'_> {
     /// The zoom of a game with no interface.
     fn zoom_blind(&mut self, zoom_in: bool) {
         if let Some(game) = &mut self.game {
-            game.camera.zoom(&game.world.zoo, None, zoom_in);
+            let at = game.selected_point();
+            game.camera.zoom(&game.world.zoo, at, zoom_in);
         }
         self.aim(false);
     }
