@@ -22,6 +22,7 @@ use crate::vfs::Vfs;
 use crate::world::World;
 use crate::zoo::{Item, ShowInfo};
 
+pub mod admission;
 mod audience;
 mod cycle;
 mod keeper;
@@ -86,6 +87,11 @@ pub struct Params {
     pub threshold: i32,
     /// The admission a type record takes when a script gives it its first (`defaultShowAdmission`).
     pub admission: f32,
+    /// The show panel's step and bounds of the admission (`showAdmissionIncrement`,
+    /// `maxShowAdmission`, `minShowAdmission`; shows 33.4).
+    pub increment: f32,
+    pub max_admission: f32,
+    pub min_admission: f32,
     /// `[AI] maxDistToGoToShow` of the ini file: how far a guest goes to a show (shows 7.1).
     pub distance: i32,
 }
@@ -98,6 +104,9 @@ impl Default for Params {
             show: [25, 50, 75],
             threshold: 5,
             admission: 0.0,
+            increment: 0.25,
+            max_admission: 10.0,
+            min_admission: 0.0,
             distance: 150,
         }
     }
@@ -124,6 +133,10 @@ impl Params {
             ["minIdealLength", "maxIdealLength"],
             ["badShow", "goodShow", "greatShow"],
         );
+        let cost = |key: &str, fallback: f32| {
+            let value = config.section("cost").and_then(|s| s.get(key));
+            value.map_or(fallback, to_float)
+        };
         Params {
             trick: std::array::from_fn(|i| {
                 number("trickSatisfactionThresholds", trick[i], found.trick[i])
@@ -133,10 +146,10 @@ impl Params {
                 number("showSatisfactionThresholds", show[i], found.show[i])
             }),
             threshold: number("behavior", "returnToKeeperThreshold", found.threshold),
-            admission: config
-                .section("cost")
-                .and_then(|s| s.get("defaultShowAdmission"))
-                .map_or(found.admission, to_float),
+            admission: cost("defaultShowAdmission", found.admission),
+            increment: cost("showAdmissionIncrement", found.increment),
+            max_admission: cost("maxShowAdmission", found.max_admission),
+            min_admission: cost("minShowAdmission", found.min_admission),
             distance: found.distance,
         }
     }

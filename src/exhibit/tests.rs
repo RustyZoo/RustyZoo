@@ -1329,3 +1329,40 @@ fn the_gate_choice_searches_with_the_switch_the_last_request_left() {
         message: 11000,
     }));
 }
+
+#[test]
+fn a_corner_pinch_on_a_pair_outside_the_zoo_ends_the_walk_with_no_gate() {
+    // A zoo wall round the ring of tiles below, which is an exhibit loaded without a gate: the
+    // zoo is the ring. Tile (5, 3) is outside it, on the far side of the wall, and touches the two
+    // ends of the ring at a corner, so the gate walk, which starts on the line between (4, 3)
+    // and it, meets a pinch on a pair whose outside tile is not in the zoo. The original never
+    // leaves that step (RustyZoo#246).
+    let ring = [(4, 3), (3, 3), (3, 4), (3, 5), (4, 5), (5, 5), (5, 4)];
+    let mut z = zoo(&[]);
+    z.entities = vec![entity("gate", 1, 7, 6)];
+    z.entrance = (1, 7);
+    let start = (5, 3, 6);
+    for &(x, y) in &ring {
+        for (d, (dx, dy)) in [(0, (0, -1)), (2, (1, 0)), (4, (0, 1)), (6, (-1, 0))] {
+            let n = (x + dx, y + dy);
+            match n {
+                _ if ring.contains(&n) || (n.0, n.1, (d + 4) % 8) == start => {}
+                // The hole in the ring is closed by an exhibit fence, the rest by the zoo wall on
+                // the slot of the tile beyond.
+                (4, 4) => z.entities.push(piece(x, y, d)),
+                _ => z.entities.push(entity("fences", n.0, n.1, (d + 4) % 8)),
+            }
+        }
+    }
+    // The line the file closes last is the one the walk starts on.
+    z.entities.push(entity("fences", start.0, start.1, start.2));
+    z.habitat_tiles = vec![(3, 3)];
+    z.habitat_gates = vec![((-1, -1), -1)];
+    unique(&mut z);
+    let mut world = World::new(z, shape);
+    assert!(!world.in_zoo(3 * SIZE as usize + 5), "beyond the wall");
+    assert!(world.in_zoo(3 * SIZE as usize + 4), "the ring");
+    assert_eq!(names(&world)[0].2, ring.len());
+    assert_eq!(world.take_events(), []);
+    assert_eq!(world.exhibits().get(1).unwrap().gate, None);
+}

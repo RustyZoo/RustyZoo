@@ -820,3 +820,25 @@ fn a_removal_keeps_the_held_state_of_the_other_units() {
     assert!(world.remove(b));
     assert_eq!(held(&world), rest);
 }
+
+#[test]
+fn the_walk_along_the_map_edge_ends_when_the_exhibit_holds_the_whole_border() {
+    // Every border tile is in the exhibit: the walk along the edge never meets a tile outside it
+    // and turns at the corners. It stops after four turns (RustyZoo#246).
+    let world = World::new(zoo(8, 8, (1, 4)), shape);
+    let border = |t: usize| t.is_multiple_of(8) || t % 8 == 7 || !(8..56).contains(&t);
+    let mut ended = 0;
+    for i in (0..64).filter(|&t| border(t)) {
+        for d in [0, 2, 4, 6] {
+            let Some(o) = world.neighbour(i, d).filter(|&o| border(o)) else {
+                continue;
+            };
+            let s = (world.side_to(o, i).unwrap() + 6) % 8;
+            if world.neighbour(o, s).is_none() {
+                assert_eq!(world.step_in(&border, (i, o)), None);
+                ended += 1;
+            }
+        }
+    }
+    assert!(ended > 0);
+}

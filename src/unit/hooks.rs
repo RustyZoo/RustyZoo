@@ -169,6 +169,11 @@ impl Hooks for Standard<'_> {
         if unit.runner.take_hatch() {
             crate::animal::breed::hatch(unit, world, at, self.data);
         }
+        for kill in [false, true] {
+            if unit.runner.take_meal(kill) {
+                crate::goal::meal(unit, world, ctx, at, self.data, kill);
+            }
+        }
         if unit.runner.take_end_trick() {
             crate::building::leave::post_own(world, unit.id, crate::show::event::FINISHED);
         }

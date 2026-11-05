@@ -43,6 +43,8 @@ pub struct Catalogue {
     pub prey_radius: Option<i32>,
     /// `cChaseTimeOut` of the same file (animals 20.2), in AI ticks; `None` when missing.
     pub chase_time_out: Option<i32>,
+    /// `cChaseLookAhead` of the same file (animals 21.2), in path nodes; `None` when missing.
+    pub chase_look_ahead: Option<i32>,
     /// The award definitions (`award*.cfg`), read with the types.
     pub(crate) awards: crate::award::Definitions,
     /// The behaviour sets and ambient tables of the definition files that have some.
@@ -361,6 +363,7 @@ impl Catalogue {
         catalogue.predator_radius = key("cPredatorRadius");
         catalogue.prey_radius = key("cPreyRadius");
         catalogue.chase_time_out = key("cChaseTimeOut");
+        catalogue.chase_look_ahead = key("cChaseLookAhead");
         catalogue.awards = crate::award::Definitions::load(vfs);
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {

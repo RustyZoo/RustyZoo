@@ -291,6 +291,15 @@ fn a_rampage_set_goes_on_past_its_target_building_call() {
 }
 
 #[test]
+fn the_meal_calls_raise_their_flags_once_and_are_done_at_once() {
+    let mut rig = Rig::new(&[("bAmbient", &["fCaughtPrey()", "fKillPrey()", "fPlay(d)"])]);
+    rig.tick(100);
+    assert_eq!(rig.tick(100).0, "d");
+    assert!(rig.runner.take_meal(false) && !rig.runner.take_meal(false));
+    assert!(rig.runner.take_meal(true) && !rig.runner.take_meal(true));
+}
+
+#[test]
 fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
     // (class, call, done, still running): the other classes' calls do nothing and stay.
     for (class, call, done, running) in [

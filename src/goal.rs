@@ -26,6 +26,7 @@ mod drown;
 mod entry;
 mod guest;
 mod object;
+mod prey;
 mod reach;
 mod recover;
 mod show;
@@ -37,7 +38,7 @@ mod trick;
 
 pub(crate) use animal::{DRINK, KEEPER_FOOD, SURFACE};
 pub(crate) use dropped::{dropped, picked_up, reset_unit, stir_units};
-pub(crate) use entry::{crowd, send, use_call};
+pub(crate) use entry::{crowd, meal, send, use_call};
 use guest::Ride;
 pub(crate) use guest::{IN_BUILDING, LEAVE, rides_loaded};
 pub(crate) use object::{Goal, Sub};
@@ -394,8 +395,7 @@ impl Cx<'_, '_> {
             // An animal's reset lowers its need flags too and ends its escape walk, and it lets go of
             // its kept predator and its kept prey (12.1, animals 9.2, 11.3).
             Part::Animal(a) => {
-                (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);
-                (a.playing, a.caught_prey, a.prey) = (false, false, 0);
+                a.reset_needs();
                 (self.unit.frightened, self.unit.predator) = (false, 0);
                 self.unit.clear_own();
             }

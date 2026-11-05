@@ -150,7 +150,7 @@ impl Cx<'_, '_> {
                 fresh.min_by_key(|&t| distance(t))
             })
         };
-        let walking = water.is_some_and(|w| self.next_to(w, false))
+        let walking = water.is_some_and(|w| self.next_to(w, false, false))
             && self.walk_set("bFindOtherFood", false, false);
         if let Part::Animal(a) = &mut self.unit.part {
             a.thirsty = false;
@@ -161,17 +161,17 @@ impl Cx<'_, '_> {
     }
 
     /// Animals needs 7.1, the "go next to a tile" helper: one draw `rand() % 100` on every call.
-    /// With `direct` set, a draw below 50 and the unit not in a tank, the path goes to `to`
-    /// itself. Otherwise to the first of its four straight neighbours (nearest to the unit first,
+    /// With `direct` set, a draw below 50 and the unit not in a tank (unless `tank` says it counts
+    /// there too: the chase), the path goes to `to` itself. Otherwise to the first of its four straight neighbours (nearest to the unit first,
     /// the later direction first on a tie) that the unit may step onto from `to` and that has a
     /// path. A successful request leaves the unit's destination on the tile it was asked for, which
     /// the walk then takes as the goal's target. A species with `cKeepMoving` 1 on the random walk
     /// or keeper food task gets `to` and the tile one step past it (when the unit may step there)
     /// appended to that path; the destination stays the neighbour.
-    fn next_to(&mut self, to: usize, direct: bool) -> bool {
+    pub(super) fn next_to(&mut self, to: usize, direct: bool, tank: bool) -> bool {
         let draw = self.ctx.rng.rand() % 100;
         let mover = crate::unit::movement::mover(self.unit, self.world, self.at, to);
-        if direct && draw < 50 && !mover.deep {
+        if direct && draw < 50 && (tank || !mover.deep) {
             return self.path_to(to, false);
         }
         let keeps_moving = matches!(self.unit.goal.record.task, RANDOM | KEEPER_FOOD)
@@ -278,7 +278,7 @@ impl Cx<'_, '_> {
         let (hx, hy) = here.map_or((0, 0), at);
         let distance = |tile: usize| (at(tile).0 - hx).pow(2) + (at(tile).1 - hy).pow(2);
         let chosen = food::choose(&groups, distance, self.ctx.rng);
-        let walking = chosen.is_some_and(|p| self.next_to(p.tile, true))
+        let walking = chosen.is_some_and(|p| self.next_to(p.tile, true, false))
             && self.walk_set("bFindKeeperFood", false, false);
         match chosen {
             Some(p) if walking => {

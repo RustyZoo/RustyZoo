@@ -3,6 +3,7 @@
 
 use super::class::Keys;
 use super::*;
+use crate::goal::Cx;
 
 pub(super) fn find<'c>(cat: &'c Catalogue, e: &Entity) -> Option<&'c EntityType> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
@@ -271,6 +272,56 @@ pub(crate) fn needs(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize
     world.units.tell(line);
 }
 
+/// A caught state, a set or a task occupies the animal (animals 9.3).
+fn busy(unit: &Unit) -> bool {
+    let sets = matches!(
+        unit.runner.top(),
+        Some("bSick" | "bSleep" | "bEat" | "bTestFence")
+    );
+    let tasks = matches!(
+        unit.goal.record.task,
+        102..=106 | 114 | 115 | 122 | 124 | 128 | 129 | 133 | 134
+    );
+    unit.caught || sets || tasks
+}
+
+/// What the bored check sees round the animal when its counter is due (animals 21.1).
+fn sight(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) -> Sight {
+    match &unit.part {
+        Part::Animal(a) if a.counters[BORED] == 0 => Cx {
+            unit,
+            world,
+            ctx,
+            at,
+            data,
+        }
+        .sight(),
+        _ => Sight::default(),
+    }
+}
+
+/// What the bored check asked of the unit: the afraid flag, or the reset that ends a lonely chase.
+fn bored_after(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    out: &Out,
+) {
+    unit.frightened |= out.afraid;
+    if out.lonely {
+        Cx {
+            unit,
+            world,
+            ctx,
+            at,
+            data,
+        }
+        .reset();
+    }
+}
+
 /// The conditional checks of a status tick (animals 4.2).
 pub(crate) fn checks(
     unit: &mut Unit,
@@ -281,16 +332,11 @@ pub(crate) fn checks(
 ) {
     boxed::check(unit, world, ctx, at);
     let task = unit.goal.record.task;
+    let sight = sight(unit, world, ctx, at, data);
     let meal = food::meal(unit, world, ctx.cat, data, at);
     let sets = life::sets(unit, world, data, at);
     let cannot_act = !life::can_act(unit, world, ctx.cat, at);
-    let busy = matches!(
-        unit.runner.top(),
-        Some("bSick" | "bSleep" | "bEat" | "bTestFence")
-    ) || matches!(
-        task,
-        102..=106 | 114 | 115 | 122 | 124 | 128 | 129 | 133 | 134
-    );
+    let busy = busy(unit);
     let Part::Animal(a) = &mut unit.part else {
         return;
     };
@@ -320,6 +366,7 @@ pub(crate) fn checks(
         cannot_act,
         now: world.units.now,
         busy,
+        sight,
         tank_mode: unit.tank,
         food_task: matches!(task, 114 | 115),
         meal,
@@ -409,6 +456,7 @@ pub(crate) fn checks(
         }
         world.units.tell(format!("{word} {id}"));
     }
+    bored_after(unit, world, ctx, at, data, &out);
     escape::after(unit, world, ctx, at, data, (&out, &k));
     if let Some(change) = out.terrain {
         tank::switch(unit, world, ctx, at, data, change);

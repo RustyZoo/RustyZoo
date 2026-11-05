@@ -8,9 +8,9 @@ use crate::fixtures::unit_ty;
 use crate::guest::Guest;
 use crate::unit::testing::world_with;
 
-const ALLO: u32 = 1;
-const VELO: u32 = 2;
-const GUEST: u32 = 3;
+pub(super) const ALLO: u32 = 1;
+pub(super) const VELO: u32 = 2;
+pub(super) const GUEST: u32 = 3;
 const NAMES: [(&str, i32); 5] = [
     ("allo", 5094),
     ("velocira", 5093),
@@ -19,12 +19,12 @@ const NAMES: [(&str, i32); 5] = [
     ("man", 9503),
 ];
 
-fn cat() -> Catalogue {
+pub(super) fn cat() -> Catalogue {
     let mut cat = Catalogue::default();
     let keys = [
         "cPrey=5093\ncPrey=9503\ncPreattack=1\ncResetPreyPosition=1\ncEatsEggs=1",
         "cPreattack=1",
-        "cPrey=5418",
+        "cPrey=5418\ncIsManEater=1",
         "",
     ];
     for ((name, id), keys) in NAMES.iter().zip(keys) {
@@ -32,11 +32,12 @@ fn cat() -> Catalogue {
     }
     cat.push(unit_ty("guests", "man", "", 9503, ""));
     cat.chase_time_out = Some(10);
+    cat.chase_look_ahead = Some(3);
     cat
 }
 
 /// The animals `(id, type, tile)` on the ground, adults, and a man at (19, 19).
-fn zoo(beasts: &[(u32, &str, (i32, i32))]) -> World {
+pub(super) fn zoo(beasts: &[(u32, &str, (i32, i32))]) -> World {
     let mut w = world_with((20, 20), |zoo| {
         for &(id, kind, tile) in beasts {
             let mut a = entity("animals", kind, id, centre(tile), 0);
@@ -55,7 +56,7 @@ fn zoo(beasts: &[(u32, &str, (i32, i32))]) -> World {
     w
 }
 
-fn animal(w: &mut World, id: u32) -> &mut Animal {
+pub(super) fn animal(w: &mut World, id: u32) -> &mut Animal {
     match &mut w.units.get_mut(id).unwrap().part {
         Part::Animal(a) => a,
         _ => unreachable!(),
@@ -63,12 +64,12 @@ fn animal(w: &mut World, id: u32) -> &mut Animal {
 }
 
 /// The animal is loose on the grounds, where it counts as a threat.
-fn loose(w: &mut World, id: u32) {
+pub(super) fn loose(w: &mut World, id: u32) {
     animal(w, id).escaped = true;
     w.units.escapes.push(id);
 }
 
-fn sets() -> Sets {
+pub(super) fn sets() -> Sets {
     let hold: &[&str] = &["fKeepControl()", "fKeepControl()"];
     let walk: &[&str] = &["fWalk(0,0)"];
     Sets::new(&[
@@ -86,7 +87,7 @@ fn sets() -> Sets {
 }
 
 /// Runs `f` on the goal context of unit `id`, whose state is put back; `removed` asked to go.
-fn on<R>(w: &mut World, id: u32, removed: &[u32], f: impl FnOnce(&mut Cx) -> R) -> R {
+pub(super) fn on<R>(w: &mut World, id: u32, removed: &[u32], f: impl FnOnce(&mut Cx) -> R) -> R {
     let (cat, data, mut rng) = (cat(), sets(), Rng::default());
     let mut u = w.units.get(id).unwrap().clone();
     let at = w.find(id).unwrap();
@@ -111,7 +112,7 @@ fn on<R>(w: &mut World, id: u32, removed: &[u32], f: impl FnOnce(&mut Cx) -> R) 
 }
 
 /// One whole goal update of unit `id`; the generator after it.
-fn step(w: &mut World, id: u32) -> Rng {
+pub(super) fn step(w: &mut World, id: u32) -> Rng {
     let (cat, data, mut rng) = (cat(), sets(), Rng::default());
     let mut u = w.units.get(id).unwrap().clone();
     let at = w.find(id).unwrap();
@@ -128,11 +129,11 @@ fn step(w: &mut World, id: u32) -> Rng {
     rng
 }
 
-fn unit_of(w: &World, id: u32) -> &Unit {
+pub(super) fn unit_of(w: &World, id: u32) -> &Unit {
     w.units.get(id).unwrap()
 }
 
-fn record(w: &World, id: u32) -> (u8, u8, u32) {
+pub(super) fn record(w: &World, id: u32) -> (u8, u8, u32) {
     let r = &unit_of(w, id).goal.record;
     (r.task, r.mode, r.target.id)
 }
