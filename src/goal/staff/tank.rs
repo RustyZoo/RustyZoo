@@ -11,7 +11,7 @@ use crate::build::number;
 use crate::goal::{DUTIES, EXIT_TANK};
 use crate::path::{self, MAX};
 use crate::staff::ladder::{Ladder, Point};
-use crate::unit::{movement, swim};
+use crate::unit::{Kind, movement, swim};
 use crate::world::World;
 
 /// The jobs of the tank (goals 5.2).
@@ -57,12 +57,17 @@ impl Cx<'_, '_> {
         ok
     }
 
-    /// 4.2 init: the tank under him, its inside gate tile his target tile; then job 23.
+    /// 4.2 init: the tank under him, its inside gate tile his target tile; then job 23. An animal
+    /// writes its own target tile and position (shows 32.2 point 4) and has no ladder job yet.
     pub(in crate::goal) fn exit_init(&mut self) -> bool {
         let inside = self.here_tank().and_then(|x| Ladder::of(self.world, x));
         let Some(inside) = inside.map(|l| l.inside) else {
             return false;
         };
+        if self.unit.kind == Kind::Animal {
+            self.unit.aim(self.world, Some(inside));
+            return true;
+        }
         self.keeper_target(Some(inside));
         self.set_job(TO_INSIDE_LADDER, 0, None);
         true
@@ -74,6 +79,9 @@ impl Cx<'_, '_> {
     }
 
     pub(in crate::goal) fn ladder_task_complete(&mut self) {
+        if self.unit.kind == Kind::Animal {
+            return self.reset();
+        }
         self.set_task(DUTIES, 0, 0, None);
     }
 
