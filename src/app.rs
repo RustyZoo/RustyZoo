@@ -954,4 +954,6 @@ mod money_tests;
 mod undo_tests;
 
 #[cfg(test)]
+mod ambient_tests;
+#[cfg(test)]
 mod developer_tests;

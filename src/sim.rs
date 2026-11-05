@@ -318,7 +318,9 @@ impl Sim {
 
     /// The ambient one-shots the steps since the last call asked for.
     pub(crate) fn take_shots(&mut self) -> Vec<Shot> {
-        self.soundscape.as_mut().map_or_else(Vec::new, Soundscape::take_shots)
+        self.soundscape
+            .as_mut()
+            .map_or_else(Vec::new, Soundscape::take_shots)
     }
 
     /// The research tree of the game just opened is built (research 7.4): the zoo status counts
