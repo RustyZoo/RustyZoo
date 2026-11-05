@@ -290,7 +290,7 @@ fn reference(name: &str, class: &str, selected: bool) {
             body_size: None,
             common: Some(common),
         });
-        g.guest.selected = Some(77);
+        g.guest.selected = (!selected).then_some(77);
         g.selected = selected.then_some(77);
         let want = if selected { at } else { None };
         for rotate in [true, false] {
