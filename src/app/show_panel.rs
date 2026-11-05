@@ -4,6 +4,7 @@
 //! The window itself is [`crate::panel::show`].
 
 use super::*;
+use crate::entity::Catalogue;
 use crate::panel::show::{self, FINANCES_TAB, LAYOUT, SCRIPT_TAB};
 use crate::show as shows;
 

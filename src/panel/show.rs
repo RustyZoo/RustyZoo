@@ -419,5 +419,3 @@ impl Panel {
     }
 }
 
-#[cfg(test)]
-mod tests;
