@@ -239,30 +239,13 @@ fn the_zoom_check_follows_the_zoom_of_the_game_and_full_screen_at_800() {
     });
 }
 
-/// Puts a guest at world point `(x, y)` and selects it, with no pass in between.
-fn select_at(app: &mut App, x: i32, y: i32) {
-    let g = game(app);
-    let common = Common {
-        id: 77,
-        x,
-        y,
-        ..Default::default()
-    };
-    g.world.zoo.entities.push(Entity {
-        class: "guests".into(),
-        type_name: "man".into(),
-        subtype: String::new(),
-        body_size: None,
-        common: Some(common),
-    });
-    g.guest.selected = Some(77);
-}
-
-#[test]
-fn a_zoom_or_a_rotation_keeps_the_selected_unit_and_without_one_the_view_centre() {
-    with_menu("zoom-selected", "[user]\nlastfile=saved.zoo\n", |app, _| {
+/// A rotation and a zoom of a 75 by 75 map, with an entity of `class` at a tile away from the view
+/// centre, no pass in between: when `selected` the entity is the selected one (`Game::selected`),
+/// else it is only on the panel's stale selection, as right after a pick-up. The view keeps the
+/// entity's tile when selected (and when it left the world, the view centre), else the centre.
+fn reference(name: &str, class: &str, selected: bool) {
+    with_menu(name, "[user]\nlastfile=saved.zoo\n", |app, _| {
         started(app);
-        // A map big enough for the range check to leave the scroll alone.
         let zoo = &mut game(app).world.zoo;
         (zoo.width, zoo.height) = (75, 75);
         let tile = crate::zoo::Tile {
@@ -280,7 +263,6 @@ fn a_zoom_or_a_rotation_keeps_the_selected_unit_and_without_one_the_view_centre(
             brush: 1,
         };
         let before = Camera::open(&view, (1024, 768), game(app).camera.settings);
-        game(app).camera = before.clone();
         let by = |c: &Camera, at, rotate: bool| {
             let mut c = c.clone();
             if rotate {
@@ -294,25 +276,51 @@ fn a_zoom_or_a_rotation_keeps_the_selected_unit_and_without_one_the_view_centre(
         for rotate in [true, false] {
             assert_ne!(by(&before, at, rotate), by(&before, None, rotate));
         }
-        // Nobody selected: the view centre.
-        game(app).camera = before.clone();
-        app.rotate(true);
-        assert_eq!(game(app).camera.scroll, by(&before, None, true));
-        game(app).camera = before.clone();
-        app.zoom_pressed(false);
-        assert_eq!(game(app).camera.scroll, by(&before, None, false));
-        // A selected unit, followed or not: its position.
-        select_at(app, 64 * 37 + 5, 64 * 37 + 9);
-        game(app).camera = before.clone();
-        app.rotate(true);
-        assert_eq!(game(app).camera.scroll, by(&before, at, true));
-        game(app).camera = before.clone();
-        app.zoom_pressed(false);
-        assert_eq!(game(app).camera.scroll, by(&before, at, false));
-        // A selected unit that left the world counts for nothing.
+        let g = game(app);
+        let common = Common {
+            id: 77,
+            x: 64 * 37 + 5,
+            y: 64 * 37 + 9,
+            ..Default::default()
+        };
+        g.world.zoo.entities.push(Entity {
+            class: class.into(),
+            type_name: "x".into(),
+            subtype: String::new(),
+            body_size: None,
+            common: Some(common),
+        });
+        g.guest.selected = Some(77);
+        g.selected = selected.then_some(77);
+        let want = if selected { at } else { None };
+        for rotate in [true, false] {
+            game(app).camera = before.clone();
+            if rotate {
+                app.rotate(true);
+            } else {
+                app.zoom_pressed(false);
+            }
+            assert_eq!(game(app).camera.scroll, by(&before, want, rotate));
+        }
+        // A selected entity that left the world counts for nothing.
         game(app).world.zoo.entities.pop();
         game(app).camera = before.clone();
         app.zoom_pressed(false);
         assert_eq!(game(app).camera.scroll, by(&before, None, false));
     });
+}
+
+#[test]
+fn a_zoom_or_a_rotation_keeps_the_selected_unit_and_without_one_the_view_centre() {
+    reference("zoom-selected", "guests", true);
+}
+
+#[test]
+fn a_selected_building_is_the_reference_of_a_zoom_or_a_rotation() {
+    reference("zoom-building", "building", true);
+}
+
+#[test]
+fn a_carried_unit_is_not_the_reference_of_a_zoom_or_a_rotation() {
+    reference("zoom-carried", "guests", false);
 }

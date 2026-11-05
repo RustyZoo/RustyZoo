@@ -164,12 +164,11 @@ struct Game {
 }
 
 impl Game {
-    /// The world position `(x, y)` of the selected animal, staff member or guest, if any: the
-    /// reference of a rotation or a zoom (camera 8.1 step 1), followed or not.
+    /// The world position `(x, y)` of the selected entity, whatever its class (an animal, a guest,
+    /// a staff member, a building, a gate or a filter), if any: the reference of a rotation or a
+    /// zoom (camera 8.1 step 1), followed or not. A unit being carried is not selected.
     fn selected_point(&self) -> Option<(i32, i32)> {
-        let id = (self.animal.selected)
-            .or(self.staff.selected)
-            .or(self.guest.selected)?;
+        let id = self.selected?;
         let c = self.world.zoo.entities[self.world.find(id)?]
             .common
             .as_ref()?;
