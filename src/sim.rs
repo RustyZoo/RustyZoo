@@ -23,6 +23,7 @@
 pub mod drive;
 mod events;
 pub mod hash;
+mod inspect;
 mod rng;
 #[cfg(test)]
 mod tests;

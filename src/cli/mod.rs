@@ -116,6 +116,14 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
             findcmd::find_path(&open_game(data_dir)?, member, flags)
         }
         ["sim", member, flags @ ..] => simcmd::sim(&open_game(data_dir)?, member, flags),
+        ["mcp"] => {
+            let stdin = io::stdin().lock();
+            Ok(rustyzoo::mcp::serve(
+                &open_game(data_dir)?,
+                stdin,
+                io::stdout().lock(),
+            )?)
+        }
         ["check-render"] => render::check_render(&open_game(data_dir)?, 0),
         ["check-render", "--rotation", n] => render::check_render(
             &open_game(data_dir)?,
