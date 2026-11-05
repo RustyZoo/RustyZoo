@@ -224,7 +224,8 @@ pub(crate) fn keeper_at_work(world: &World, x: u32) -> bool {
 }
 
 /// Whether the animal can act here (animals-needs 2): not an egg, not in a show, and either a
-/// species that lives under water or on a dry tile, in land mode, outside a tank.
+/// type that lives only under water (`cOnlyUnderwater`) or on a dry tile, in land mode, in tank
+/// mode 0.
 pub(crate) fn can_act(
     unit: &Unit,
     world: &World,
@@ -237,12 +238,12 @@ pub(crate) fn can_act(
     if a.egg || crate::show::in_show_now(world, cat, unit, at) {
         return false;
     }
-    if super::keys(world, cat, at).underwater {
+    if super::keys(world, cat, at).only_underwater {
         return true;
     }
     let tile = (world.zoo.entities[at].common.as_ref())
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
-    a.terrain == 0 && !tile.is_some_and(|t| world.is_water(t) || world.tank_at(t).is_some())
+    a.terrain == 0 && unit.tank == 0 && !tile.is_some_and(|t| world.is_water(t))
 }
 
 /// The ambient choice of an idle, tired animal that can act here runs the sleep check instead
