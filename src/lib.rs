@@ -24,6 +24,7 @@ pub mod ground;
 pub mod guest;
 pub mod intro;
 pub mod lists;
+pub mod mcp;
 pub mod menu;
 pub mod money;
 pub mod month;
