@@ -67,8 +67,9 @@ pub fn serve(vfs: &Vfs, input: impl BufRead, mut out: impl Write) -> io::Result<
         run: None,
         log: VecDeque::new(),
     };
-    for line in input.lines() {
-        let line = line?;
+    // Bytes, decoded lossily: a line that is not UTF-8 is bad text (-32700), not the end.
+    for line in input.split(b'\n') {
+        let line = String::from_utf8_lossy(&line?).into_owned();
         if line.trim().is_empty() {
             continue;
         }
@@ -354,6 +355,24 @@ mod tests {
             .and_then(Json::as_str)
             .unwrap_or("")
             .into()
+    }
+
+    #[test]
+    fn a_line_that_is_not_utf8_is_bad_text_and_the_server_goes_on() {
+        let install = Install::new("mcp", &[]);
+        let vfs = Vfs::open(&install.0).unwrap();
+        let ping = |id| format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"ping"}}"#);
+        let mut input = format!("{}\n", ping(1)).into_bytes();
+        input.extend(b"\xff\xfe bad\n");
+        input.extend(format!("{}\n", ping(2)).bytes());
+        let mut out = Vec::new();
+        serve(&vfs, &input[..], &mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let answers: Vec<Json> = text.lines().map(|l| json::parse(l).unwrap()).collect();
+        assert_eq!(answers.len(), 3);
+        let code = answers[1].get("error").and_then(|e| e.get("code"));
+        assert_eq!(code.and_then(Json::as_f64), Some(-32700.0));
+        assert_eq!(answers[2].get("id").and_then(Json::as_f64), Some(2.0));
     }
 
     #[test]
