@@ -91,16 +91,7 @@ impl App<'_> {
                     self.show_pressed(id);
                 }
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
-                exhibit::WALL_DOWN | exhibit::WALL_UP if self.game.is_some() => {
-                    self.tank_wall(id == exhibit::WALL_UP);
-                }
-                exhibit::GROUND_DOWN | exhibit::GROUND_UP if self.game.is_some() => {
-                    self.tank_ground(id == exhibit::GROUND_UP);
-                }
-                exhibit::SALT | exhibit::FRESH if self.game.is_some() => {
-                    self.tank_fill(id == exhibit::SALT);
-                }
-                exhibit::DRAIN if self.game.is_some() => self.tank_drain(),
+                _ if self.game.is_some() && self.tank_button(id) => {}
                 exhibit::TANK_TAB | exhibit::ANIMALS_TAB if self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.panel.clock.force = true;

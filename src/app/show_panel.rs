@@ -45,7 +45,11 @@ fn open(game: &mut Game, ui: &mut Interface, cat: &Catalogue, x: u32, tab: i32) 
     for (layout, _) in DROP_DOWNS {
         ui.set_hidden(layout, true);
     }
-    game.show.seen = PANELS.into_iter().chain(UNITS).map(|id| ui.shown(id)).collect();
+    game.show.seen = PANELS
+        .into_iter()
+        .chain(UNITS)
+        .map(|id| ui.shown(id))
+        .collect();
     game.building.clock.force = true;
 }
 
@@ -83,17 +87,28 @@ impl App<'_> {
     pub(super) fn show_pass(&mut self, now: u64, ticking: bool) {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
-        let shown: Vec<bool> = PANELS.into_iter().chain(UNITS).map(|id| ui.shown(id)).collect();
+        let shown: Vec<bool> = PANELS
+            .into_iter()
+            .chain(UNITS)
+            .map(|id| ui.shown(id))
+            .collect();
         let opened = (shown.iter().zip(&game.show.seen)).any(|(now, was)| *now && !*was);
         if opened {
             ui.set_hidden(LAYOUT, true);
         }
         game.show.seen = shown;
-        if game.show.stand.is_some_and(|s| game.building.selected != Some(s)) {
+        if game
+            .show
+            .stand
+            .is_some_and(|s| game.building.selected != Some(s))
+        {
             game.show.stand = None;
             ui.set_hidden(LAYOUT, true);
         }
-        let gone = game.show.exhibit.is_some_and(|x| shows::info_of(&game.world, x).is_none());
+        let gone = game
+            .show
+            .exhibit
+            .is_some_and(|x| shows::info_of(&game.world, x).is_none());
         if gone {
             game.show.set_exhibit(ui, &mut game.world, cat, None);
         }
@@ -102,10 +117,18 @@ impl App<'_> {
                 ui.set_hidden(layout, true);
             }
         }
+        if ui.shown(LAYOUT) != game.show.shown {
+            game.show.shown = !game.show.shown;
+            let word = if game.show.shown { "open" } else { "closed" };
+            self.lines.panel.push(format!("show window {word}"));
+        }
         if !ui.shown(LAYOUT) {
             return;
         }
-        let rows = game.show.exhibit.map(|x| show::species_of(ui, &game.world, x));
+        let rows = game
+            .show
+            .exhibit
+            .map(|x| show::species_of(ui, &game.world, x));
         game.show.clock.force |= rows.is_some_and(|r| r != game.show.rows);
         if game.show.clock.due(now, ticking, show::PERIOD) {
             let lines = game.show.refresh(ui, &mut game.world, cat);

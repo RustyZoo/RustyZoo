@@ -107,6 +107,8 @@ pub(crate) struct Panel {
     /// The grandstand that opened the panel on the Show Finances tab: deselecting it closes it.
     pub stand: Option<u32>,
     pub clock: Clock,
+    /// The window was shown at the last look.
+    pub shown: bool,
     /// Which of the panels that hide the window were shown at the last look.
     pub seen: Vec<bool>,
     /// What the last refresh told.
@@ -146,6 +148,10 @@ impl Panel {
         ui.set_image(FACE, 1);
         let Some(x) = self.exhibit else { return };
         // The four rows; the last, Continuous, is selected until an exhibit says otherwise.
+        // The first time, the button says Never (19.7 point 1).
+        if ui.selected_row(FREQUENCY_LIST).is_none() {
+            ui.set_text(FREQUENCY_BUTTON, &to_cp1252(&ui.string(FREQUENCY_NAMES)));
+        }
         let kept = ui.selected_row(FREQUENCY_LIST).unwrap_or(3);
         let names = (0..4).map(|n| Row {
             text: to_cp1252(&ui.string(FREQUENCY_NAMES + n)),
@@ -356,16 +362,26 @@ impl Panel {
         let Some(x) = self.exhibit else {
             return vec!["show none".into()];
         };
-        let text = |id| String::from_utf8_lossy(&ui.text(id).unwrap_or_default()).into_owned();
+        let text = |id| {
+            let bytes = ui.text(id).unwrap_or_default();
+            bytes
+                .into_iter()
+                .map(crate::text::from_cp1252)
+                .collect::<String>()
+        };
         let species = self.species.map_or("none".into(), |t| t.to_string());
         let frequency = show::info_of(world, x).map_or(0, |i| i.frequency);
         let mut told = vec![format!(
-            "show {x} species {species} admission {:?} frequency {frequency}",
+            "show {x} species {species} admission \"{}\" frequency {frequency}",
             text(ADMISSION)
         )];
         if self.species.is_some() {
             let cells: Vec<String> = (CELLS..CELLS + 16).map(text).collect();
-            told.push(format!("finances {cells:?} months {}", text(MONTHS)));
+            told.push(format!(
+                "finances {} months {}",
+                cells.join(" | "),
+                text(MONTHS)
+            ));
         }
         told
     }
@@ -399,7 +415,8 @@ impl Panel {
         let upkeep = [upkeep[0], upkeep[1], upkeep[2] / m, upkeep[2]];
         let symbol = Symbol::new(ui.string(SYMBOL));
         let money = |v: f32| to_cp1252(&format::money_cents(&symbol, f64::from(v), true));
-        let green = (ui.tree.find(INCOME)).map_or([83, 190, 83], |i| ui.tree.elements[i].look.fore_color);
+        let green =
+            (ui.tree.find(INCOME)).map_or([83, 190, 83], |i| ui.tree.elements[i].look.fore_color);
         for i in 0..4 {
             let at = CELLS + i as i32;
             let profit = income[i] - upkeep[i];
@@ -409,7 +426,7 @@ impl Panel {
             ui.set_text(at + 12, &money(profit));
             let colour = match profit {
                 p if p < 0.0 => LOSS,
-                p if p == 0.0 => BREAK_EVEN,
+                0.0 => BREAK_EVEN,
                 _ => green,
             };
             ui.set_fore_color(at + 12, colour);
@@ -418,4 +435,3 @@ impl Panel {
         ui.set_text(MONTHS, &to_cp1252(&format::integer(since, true)));
     }
 }
-
