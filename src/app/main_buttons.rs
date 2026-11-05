@@ -119,4 +119,20 @@ impl App<'_> {
             ui.reveal(PLAY, paused);
         }
     }
+
+    /// The map view's own update (input 4.5): while the game is paused, a modal's forced pause
+    /// too, string 400 is on the message line and stays; after the unpause the line goes at its
+    /// next update.
+    pub(super) fn pause_message(&mut self) {
+        let paused = self.game.is_some() && self.paused();
+        let Some(ui) = &mut self.ui else { return };
+        ui.hold_message(paused);
+        if paused && !self.pause_said {
+            let text = ui.string(400);
+            ui.message(&to_cp1252(&text));
+        } else if !paused && self.pause_said {
+            ui.end_message();
+        }
+        self.pause_said = paused;
+    }
 }

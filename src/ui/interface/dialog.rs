@@ -141,10 +141,12 @@ impl Interface {
         let window = self.tree.elements[0]
             .placed
             .map_or((0, 0), |p| (p.dx, p.dy));
+        // The resolved position: centred on the size the file gave, not on a resized one.
         if let Some(p) = self.tree.elements[d].placed {
+            let size = self.file_size.get(&d).copied().unwrap_or((p.dx, p.dy));
             let centre = |window: i32, size: i32| (window.saturating_sub(size)) / 2;
             self.tree
-                .set_screen_position(d, (centre(window.0, p.dx), centre(window.1, p.dy)));
+                .set_screen_position(d, (centre(window.0, size.0), centre(window.1, size.1)));
         }
         self.tree.bring_to_front(d);
         match modal {
@@ -160,7 +162,8 @@ impl Interface {
     /// A dialog configured by a file takes the size of its background before it is shown (ui layout
     /// 7.12): `picture`, if any, goes on the background element `layout + 1` with its size, then the
     /// layout's size is the background's, so that a button below the file's size can be clicked.
-    /// The layout's position is not recomputed here. A background with no size changes nothing.
+    /// The layout's position is not recomputed: the show keeps the one resolved on the file's size.
+    /// A background with no size changes nothing.
     pub(crate) fn fit_to_background(&mut self, layout: i32, picture: Option<Picture>) {
         if picture.is_some() {
             self.set_picture(layout + 1, picture);
@@ -174,6 +177,7 @@ impl Interface {
             && dy > 0
             && let Some(p) = &mut self.tree.elements[d].placed
         {
+            self.file_size.entry(d).or_insert((p.dx, p.dy));
             (p.dx, p.dy) = (dx, dy);
         }
     }

@@ -61,6 +61,20 @@ impl Interface {
         true
     }
 
+    /// Whether the message line keeps its last message instead of expiring it.
+    pub(crate) fn hold_message(&mut self, held: bool) {
+        self.message_held = held;
+    }
+
+    /// Empties the message line's countdown, so that the line goes at its next update.
+    pub(crate) fn end_message(&mut self) {
+        for e in &mut self.tree.elements {
+            if matches!(e.kind, Kind::MessageQueue) {
+                e.countdown = Some(0);
+            }
+        }
+    }
+
     pub(super) fn put_text(&mut self, i: usize, text: &[u8]) {
         let e = &mut self.tree.elements[i];
         e.text = Some(text.to_vec());

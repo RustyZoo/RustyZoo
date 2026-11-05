@@ -94,6 +94,11 @@ pub struct Interface {
     updated: Option<u64>,
     /// The picture a question shows on its icon.
     question_picture: Option<Picture>,
+    /// The size the file gave each dialog resized to its background, by layout index: the show
+    /// centres on it (ui layout 7.12).
+    file_size: HashMap<usize, (i32, i32)>,
+    /// The message line keeps its last message instead of expiring it (the game is paused).
+    message_held: bool,
 }
 
 impl Interface {
@@ -126,6 +131,8 @@ impl Interface {
             popup: None,
             updated: None,
             question_picture: None,
+            file_size: HashMap::new(),
+            message_held: false,
         };
         ui.start_tooltip();
         ui.sync_owners();
@@ -351,6 +358,9 @@ impl Interface {
         let period = i64::try_from(elapsed).unwrap_or(i64::MAX);
         for i in 0..self.tree.elements.len() {
             if self.tree.elements[i].state & TIMED == 0 {
+                continue;
+            }
+            if self.message_held && matches!(self.tree.elements[i].kind, Kind::MessageQueue) {
                 continue;
             }
             if !self.visible(i) {

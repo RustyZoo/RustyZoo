@@ -19,6 +19,7 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
+            400 => "The game is paused.".into(),
             9101 => "text-9101 %d".into(),
             9201 => "told %r".into(),
             9301 => "gift %s".into(),
@@ -59,7 +60,7 @@ impl UiStrings for Texts {
 pub(super) fn interface(install: &Install) -> Interface {
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
-        [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\n\
+        [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\ntimed=1\ntimerDuration=3000\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\

@@ -153,6 +153,35 @@ fn the_pause_and_play_buttons_swap_and_the_keys_do_the_same() {
 }
 
 #[test]
+fn the_paused_message_shows_while_paused_and_goes_with_the_unpause() {
+    with_menu("pause-message", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        // The line after the commands and one more pass (a press acts at the end of its pass).
+        let mut go = |app: &mut App, commands: &[Command]| {
+            for commands in [commands, &[]] {
+                now += 66;
+                app.pass(now, commands);
+            }
+            let ui = app.interface().unwrap();
+            ui.text(7001).filter(|_| ui.shown(7001))
+        };
+        assert_eq!(go(app, &[]), None);
+        let said = Some(b"The game is paused.".to_vec());
+        assert_eq!(go(app, &press(PAUSE)), said);
+        // It stays for as long as the pause does.
+        for _ in 0..200 {
+            assert_eq!(go(app, &[]), said);
+        }
+        // The play button, the Pause key and Space do the same.
+        assert_eq!(go(app, &press(PLAY)), None);
+        assert_eq!(go(app, &[Command::Pause]), said);
+        assert_eq!(go(app, &[Command::Pause]), None);
+        assert_eq!(go(app, &[Command::Space]), said);
+        assert_eq!(go(app, &[Command::Space]), None);
+    });
+}
+
+#[test]
 fn a_new_game_starts_running_with_the_pause_button_shown() {
     with_menu("pause-new", "[user]\nlastfile=saved.zoo\n", |app, _| {
         let now = started(app);

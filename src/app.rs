@@ -255,6 +255,8 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     timers: Timers,
     quit: bool,
+    /// The message "The game is paused." is on the message line (input 4.5).
+    pause_said: bool,
     pointer: Option<(i32, i32)>,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
@@ -448,6 +450,7 @@ impl<'a> App<'a> {
             cheats: Default::default(),
             timers,
             quit: false,
+            pause_said: false,
             pointer: None,
             on_map: true,
             on_text: false,
@@ -599,6 +602,7 @@ impl<'a> App<'a> {
             {
                 game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
             }
+            self.pause_message();
             if let Some(ui) = &mut self.ui {
                 ui.update(now);
                 if let Some(menu) = &mut self.menu {
