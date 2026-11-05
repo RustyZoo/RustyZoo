@@ -178,7 +178,12 @@ fn full_game_award_goals_are_followed_by_their_popup() {
             "{id}"
         );
     }
-    assert_eq!(found, (1..=18).collect::<Vec<_>>());
+    // The base game has the awards 1 to 12, the expansions the others.
+    let last = if crate::fixtures::has_expansions(&dir) { 18 } else { 12 };
+    assert_eq!(found, (1..=last).collect::<Vec<_>>());
+    if last == 12 {
+        return;
+    }
     // Award 17: "below" a value the file leaves out.
     let seventeen = goals
         .iter()
@@ -281,6 +286,9 @@ type Trigger = (i32, i32, i32);
 fn full_game_award_chains_have_the_condition_the_award_and_the_companions_of_the_spec() {
     use crate::config::{Config, to_int};
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    if !crate::fixtures::with_expansions("full_game_award_chains", &dir) {
+        return;
+    }
     let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
     let cfg = Config::parse(&vfs.read("freeform/unlock02.scn").unwrap()).unwrap();
     let int = |name: &[u8], key: &str| {

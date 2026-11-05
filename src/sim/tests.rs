@@ -1725,8 +1725,13 @@ fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
             assert_eq!(a.building, b.building, "{member}: building {}", a.id);
         }
     }
+    // The base game alone has one of these maps and three of these buildings.
+    let (least_maps, least_buildings) = match crate::fixtures::has_expansions(&dir) {
+        true => (4, 40),
+        false => (1, 3),
+    };
     assert!(
-        maps >= 4 && buildings >= 40,
+        maps >= least_maps && buildings >= least_buildings,
         "{maps} maps, {buildings} buildings"
     );
 }

@@ -1006,11 +1006,14 @@ fn full_game_counts() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let c = Catalogue::load(&vfs).unwrap();
-    assert_eq!(c.types.len(), 980);
-    assert_eq!(
-        c.counts().iter().map(|c| c.1).collect::<Vec<_>>(),
-        [14, 17, 73, 173, 360, 4, 295, 11, 9, 7, 16, 1]
-    );
+    // The other installs have other updates and expansions, so other counts.
+    if crate::fixtures::measured_on("full_game_counts (totals)", &dir) {
+        assert_eq!(c.types.len(), 980);
+        assert_eq!(
+            c.counts().iter().map(|c| c.1).collect::<Vec<_>>(),
+            [14, 17, 73, 173, 360, 4, 295, 11, 9, 7, 16, 1]
+        );
+    }
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     // Every definition file loads; five scenery types give the name id 0 themselves.
     assert!(c.types.iter().all(|t| t.config.is_some()));

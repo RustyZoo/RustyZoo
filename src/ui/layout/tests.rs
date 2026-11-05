@@ -293,12 +293,17 @@ fn position_and_size_values() {
 fn full_game_tree() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
-    assert_eq!(installed_expansions(&vfs), 3);
-    let tree = Tree::load(&vfs, "ui/gamescrn.lyt", 3);
+    // The base game alone has no expansion bits.
+    let mask = if crate::fixtures::has_expansions(&dir) { 3 } else { 0 };
+    assert_eq!(installed_expansions(&vfs), mask);
+    let tree = Tree::load(&vfs, "ui/gamescrn.lyt", mask);
     assert_eq!(tree.failure, None);
-    assert_eq!(tree.elements.len(), 1138);
-    assert_eq!(tree.counts()["UILayout"], 102);
     assert_eq!(tree.duplicates, [] as [usize; 0]);
+    // The element counts depend on the updates and the expansions of the install.
+    if crate::fixtures::measured_on("full_game_tree (counts)", &dir) {
+        assert_eq!(tree.elements.len(), 1138);
+        assert_eq!(tree.counts()["UILayout"], 102);
+    }
 }
 
 #[test]

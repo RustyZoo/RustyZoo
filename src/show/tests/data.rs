@@ -136,6 +136,9 @@ fn saved_need(bytes: &[u8], id: u32) -> u8 {
 fn an_orca_in_an_orcaball_keeps_its_trick_need_through_a_save_a_reset_and_a_load() {
     // Shows 32.1 points 2, 3 and 5.
     let vfs = open_install();
+    if !crate::fixtures::has_member("an_orca_in_an_orcaball", &vfs, "maps/scn28.zoo") {
+        return;
+    }
     let (mut run, orca, _) = orca_at_its_ball(&vfs);
     let toy = crate::guest::TOY_NEED;
     assert_eq!(saved_need(&run.save().unwrap(), orca), toy);
@@ -178,6 +181,9 @@ fn frame(world: &World, id: u32, n: u32) -> u32 {
 fn the_portal_of_scn28_opens_for_an_orca_on_its_way_to_the_show_and_closes_after() {
     // Shows 32.6 points 3 to 5, 8 and 9.
     let vfs = open_install();
+    if !crate::fixtures::has_member("the_portal_of_scn28", &vfs, "maps/scn28.zoo") {
+        return;
+    }
     let cat = Catalogue::load(&vfs).unwrap();
     let ids = std::cell::Cell::new(0);
     let mut run = run_of(&vfs, cat, |w, r| {

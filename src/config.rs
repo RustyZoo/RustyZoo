@@ -673,9 +673,11 @@ mod tests {
         let read = |path: &str| Config::parse(&vfs.read(path).unwrap()).unwrap();
 
         // `[2100]` stands twice; the two parts read as one section with all three ids.
-        let scenario = read("scenario/scn28b/scn28b.scn");
-        let ids = scenario.section("2100").unwrap().get_all("id");
-        assert_eq!(ids, [b"1002", b"3251", b"9300"]);
+        if crate::fixtures::with_expansions("full_game_facts (scn28b)", &dir) {
+            let scenario = read("scenario/scn28b/scn28b.scn");
+            let ids = scenario.section("2100").unwrap().get_all("id");
+            assert_eq!(ids, [b"1002", b"3251", b"9300"]);
+        }
 
         // `Subtype =` is a key without value.
         let lion = read("animals/lion.ai");
@@ -709,6 +711,9 @@ mod tests {
 
         // `scenario/scn01/economy.cfg` holds one comment: no section.
         assert!(read("scenario/scn01/economy.cfg").is_empty());
+        if !crate::fixtures::measured_on("full_game_facts (totals)", &dir) {
+            return;
+        }
         let (mut sections, mut keys, mut values, mut empty) = (0, 0, 0, 0);
         for path in vfs.list(None) {
             let is_config = [

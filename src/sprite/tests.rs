@@ -830,6 +830,11 @@ fn full_game_facts() {
     let extra = aviary.extra.as_ref().unwrap();
     assert_eq!((extra.width, extra.height), (407, 320));
 
+    // A swimming elephant is an expansion animal.
+    if !crate::fixtures::has_member("full_game_facts (swim)", &vfs, "animals/asianele/m/ssurfswi/e")
+    {
+        return;
+    }
     let (swim, _) = load("animals/asianele/m/ssurfswi/e");
     assert_eq!(swim.frames.len(), 34);
     assert!(swim.frames.iter().all(|frame| frame.shadow));

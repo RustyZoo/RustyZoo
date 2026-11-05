@@ -765,22 +765,23 @@ pub(crate) mod tests {
     fn full_game_facts() {
         let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+        // The logos of the other installs have their own lengths: they only have to decode.
+        let pinned = crate::fixtures::is_measured(&dir);
         for (member, size, frames, audio) in [
             ("mslogo.avi", (640, 480), 302, 1934728),
             ("bflogo.avi", (640, 480), 450, 1655072),
         ] {
             let movie = Movie::parse(vfs.read(member).unwrap()).unwrap();
-            assert_eq!(
-                (movie.size(), movie.frame_count()),
-                (size, frames),
-                "{member}"
-            );
-            assert_eq!(movie.audio().len(), audio, "{member}");
+            let count = movie.frame_count();
+            assert_eq!(movie.size(), size, "{member}");
             assert_eq!(
                 movie.frames().filter(Result::is_ok).count(),
-                frames,
+                count,
                 "{member}"
             );
+            if pinned {
+                assert_eq!((count, movie.audio().len()), (frames, audio), "{member}");
+            }
         }
     }
 }

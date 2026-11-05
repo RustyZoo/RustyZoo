@@ -140,14 +140,30 @@ pub(crate) fn has_expansions(dir: &std::ffi::OsStr) -> bool {
     })
 }
 
-/// Whether the facts of a full-game test were measured on this install: the English or the French
-/// one (by the language of its `lang0.dll`). Prints why the test goes no further when not.
+/// Whether the install is the complete English or French one: both expansions, and the language
+/// of its `lang0.dll` (the Dutch install has an English one).
+pub(crate) fn is_measured(dir: &std::ffi::OsStr) -> bool {
+    matches!(crate::pe::installed_language(dir), 1033 | 1036) && has_expansions(dir)
+}
+
+/// Whether the facts of a full-game test were measured on this install (`is_measured`). Prints
+/// why the test goes no further when not.
 pub(crate) fn measured_on(test: &str, dir: &std::ffi::OsStr) -> bool {
-    let measured = matches!(crate::pe::installed_language(dir), 1033 | 1036);
+    let measured = is_measured(dir);
     if !measured {
-        eprintln!("skipped {test}: its counts and texts were measured on the English and French installs");
+        eprintln!("skipped {test}: its counts and texts were measured on the complete English and French installs");
     }
     measured
+}
+
+/// Whether the game files hold `member`. Prints why the test goes no further when they do not
+/// (the base game has no expansion maps and animals).
+pub(crate) fn has_member(test: &str, vfs: &crate::vfs::Vfs, member: &str) -> bool {
+    let found = vfs.contains(member);
+    if !found {
+        eprintln!("skipped {test}: the install has no {member}");
+    }
+    found
 }
 
 /// Whether the install can run a test that reads the maps, scenarios and animals of the

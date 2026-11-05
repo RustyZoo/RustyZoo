@@ -359,8 +359,10 @@ mod tests {
             let w = world_with((6, 6), |z| z.entities.push(e));
             sounds += usize::from(heard(&w, &cat, 0, true).is_some());
         }
+        // Only the gates of the expansions make a sound.
+        let expansions = crate::fixtures::has_expansions(vfs.root().as_os_str());
         assert!(
-            timed > 0 && sounds > 0,
+            timed > 0 && (sounds > 0 || !expansions),
             "{timed} timed, {sounds} with sound"
         );
     }

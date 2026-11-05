@@ -877,6 +877,10 @@ fn copies(vfs: &Vfs, name: &str) -> Vec<(String, u64)> {
 fn full_game_facts() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(Path::new(&dir)).unwrap();
+    // The archives, updates and damaged files (a Spanish disc) differ between the installs.
+    if !crate::fixtures::measured_on("full_game_facts", &dir) {
+        return;
+    }
     assert!(vfs.warnings().is_empty(), "{:#?}", vfs.warnings());
     assert_eq!(
         (
