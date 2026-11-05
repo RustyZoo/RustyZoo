@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      # The two documents merge as a union, so a row or bullet can end up twice.
+      # README.md merges as a union, so a row or bullet can end up twice.
       - run: ci/check-doc-rows.sh
 
       # HEAD is the pull request merged into master, HEAD^ is master.
