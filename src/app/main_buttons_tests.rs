@@ -182,6 +182,19 @@ fn the_paused_message_shows_while_paused_and_goes_with_the_unpause() {
 }
 
 #[test]
+fn a_bare_game_paused_has_no_message_line() {
+    with_menu("pause-bare", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let now = started(app);
+        app.bare();
+        app.pass(now + 66, &[Command::Pause]);
+        app.pass(now + 132, &[]);
+        let paused = app.paused();
+        let ui = app.interface().unwrap();
+        assert!(paused && ui.text(7001).filter(|_| ui.shown(7001)).is_none());
+    });
+}
+
+#[test]
 fn a_new_game_starts_running_with_the_pause_button_shown() {
     with_menu("pause-new", "[user]\nlastfile=saved.zoo\n", |app, _| {
         let now = started(app);
