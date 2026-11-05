@@ -63,9 +63,12 @@ pub(super) fn names(name: &str) -> Option<Names> {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(super) fn profile(name: &str) -> Option<Profile> {
     use std::ffi::CStr;
+    // localeconv fills one buffer shared by every thread: one reader at a time.
+    static LOCALECONV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = LOCALECONV.lock().unwrap_or_else(|e| e.into_inner());
     with_locale(libc::LC_NUMERIC_MASK | libc::LC_MONETARY_MASK, name, || {
-        // SAFETY: localeconv gives the thread's locale, valid until the next call; every string
-        // is copied here.
+        // SAFETY: localeconv gives the thread's locale, valid until the next call (any thread's,
+        // hence the lock); every string is copied here.
         let c = unsafe { &*libc::localeconv() };
         let text = |s: *mut libc::c_char| {
             // SAFETY: the strings of the structure are valid and closed by a zero.
