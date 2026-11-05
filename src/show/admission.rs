@@ -76,13 +76,11 @@ pub fn press_admission(
     species: Option<u32>,
     up: bool,
 ) -> f32 {
-    store(world, cat, exhibit, species, |inc, max, min, a| {
-        match up {
-            true if a + inc >= max => max,
-            true => a + inc,
-            false if a - inc <= min => min,
-            false => a - inc,
-        }
+    store(world, cat, exhibit, species, |inc, max, min, a| match up {
+        true if a + inc >= max => max,
+        true => a + inc,
+        false if a - inc <= min => min,
+        false => a - inc,
     })
 }
 
