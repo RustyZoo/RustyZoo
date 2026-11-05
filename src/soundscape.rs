@@ -73,7 +73,10 @@ impl Ambients {
     /// files, `made` holding those first ones (sound 8.1 point 4).
     fn shared(&mut self, made: &mut BTreeMap<Vec<String>, Group>) {
         for (_, _, group) in &mut self.0 {
-            *group = made.entry(group.files()).or_insert_with(|| group.clone()).clone();
+            *group = made
+                .entry(group.files())
+                .or_insert_with(|| group.clone())
+                .clone();
         }
     }
 
@@ -381,6 +384,82 @@ mod tests {
         s.update(600, 20, &mut rng, &mut log);
         s.update(600, 60, &mut rng, &mut log);
         assert_eq!(s.clocks[&vec!["v.wav".to_string()]], 200);
+    }
+
+    #[test]
+    fn groups_that_list_the_same_files_share_the_chance_and_weights_of_the_first() {
+        let crowd = "[ambientlevels]\ngroup = small\nvalue = 1\nvalue = 20\ngroup = medium\nvalue = 21\nvalue = 60\n\
+            group = big\nvalue = 61\nvalue = 100\n[small]\nchance = 100\nsound = a.wav\nprob = 10\nsound = b.wav\nprob = 90\n\
+            [medium]\nchance = 30\nsound = a.wav\nprob = 90\nsound = b.wav\nprob = 10\n\
+            [big]\nchance = 15\nsound = a.wav\nprob = 50\nsound = b.wav\nprob = 50\n";
+        let s = scape(crowd, "");
+        for level in [10, 40, 90] {
+            let g = s.crowd.group(level).unwrap();
+            assert_eq!(g.chance, 100, "{level}");
+            assert_eq!(
+                g.sounds,
+                [("a.wav".to_string(), 10), ("b.wav".to_string(), 90)]
+            );
+        }
+        // 60 guests is level 40, the medium group: it rolls with small's chance and weights, on one clock.
+        for seed in 1..30 {
+            let (mut rng, mut log) = (seeded(seed), Vec::new());
+            let mut s = scape(crowd, "");
+            s.update(1001, 60, &mut rng, &mut log);
+            let mut p = after(seed, 8);
+            let hit = p.rand().is_multiple_of(100);
+            let draw = p.rand() % 100;
+            let want = match (hit, draw) {
+                (false, _) => "soundscape crowd roll no".to_string(),
+                (_, 0..10) => format!("soundscape crowd roll {draw} a.wav"),
+                _ => format!("soundscape crowd roll {draw} b.wav"),
+            };
+            assert_eq!(log.last().unwrap(), &want, "seed {seed}");
+        }
+        // The first group made keeps its own when the world file lists the same files after the crowd's.
+        let world = "[ambientlevels]\ngroup = w\nvalue = 0\nvalue = 100\n[w]\nchance = 7\nsound = a.wav\nprob = 1\n\
+            sound = b.wav\nprob = 1\n";
+        let s = scape(crowd, world);
+        let w = s.world.group(50).unwrap();
+        assert_eq!((w.chance, w.sounds[1].1), (100, 90));
+        // A world file first listed in no crowd group keeps its own.
+        let s = scape("", world);
+        assert_eq!(s.world.group(50).unwrap().chance, 7);
+    }
+
+    #[test]
+    fn a_group_without_a_chance_key_takes_its_upper_level_as_chance() {
+        let file =
+            "[ambientlevels]\ngroup = g\nvalue = 21\nvalue = 50\n[g]\nsound = a.wav\nprob = 100\n";
+        assert_eq!(
+            Ambients::parse(file.as_bytes()).group(30).unwrap().chance,
+            50
+        );
+        // The key there wins, even 0; a negative upper level is the unsigned number it makes.
+        let keyed = file.replace("[g]\n", "[g]\nchance = 0\n");
+        assert_eq!(
+            Ambients::parse(keyed.as_bytes()).group(30).unwrap().chance,
+            0
+        );
+        let neg = file
+            .replace("value = 50", "value = -1")
+            .replace("value = 21", "value = -5");
+        assert_eq!(
+            Ambients::parse(neg.as_bytes()).group(-3).unwrap().chance,
+            u32::MAX
+        );
+        // It rolls one in 50: the draw mod 50 decides.
+        for seed in 1..40 {
+            let (mut rng, mut log) = (seeded(seed), Vec::new());
+            let mut s = scape("", &file.replace("value = 21", "value = 0"));
+            s.update(1001, 0, &mut rng, &mut log);
+            let hit = after(seed, 8).rand() % 50 == 0;
+            assert_eq!(
+                log.last().unwrap() != "soundscape world roll no",
+                hit,
+                "seed {seed}"
+            );
+        }
     }
 
     #[test]
