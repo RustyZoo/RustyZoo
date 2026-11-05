@@ -708,9 +708,12 @@ mod tests {
         );
 
         // `help.cfg` writes `topic=Animation settings` but names the section with a capital S.
-        let help = read("help.cfg");
-        assert!(help.section("Animation Settings").is_some());
-        assert!(help.section("Animation settings").is_none());
+        // (The help file of the expansions; the base game has an older one.)
+        if crate::fixtures::has_expansions(&dir) {
+            let help = read("help.cfg");
+            assert!(help.section("Animation Settings").is_some());
+            assert!(help.section("Animation settings").is_none());
+        }
 
         // `scenario/scn01/economy.cfg` holds one comment: no section.
         assert!(read("scenario/scn01/economy.cfg").is_empty());

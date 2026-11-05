@@ -298,9 +298,10 @@ fn full_game_tree() {
     assert_eq!(installed_expansions(&vfs), mask);
     let tree = Tree::load(&vfs, "ui/gamescrn.lyt", mask);
     assert_eq!(tree.failure, None);
-    assert_eq!(tree.duplicates, [] as [usize; 0]);
-    // The element counts depend on the updates and the expansions of the install.
+    // The element counts depend on the updates and the expansions of the install, and some
+    // installs have a layout with an id twice (or a damaged archive of them).
     if crate::fixtures::measured_on("full_game_tree (counts)", &dir) {
+        assert_eq!(tree.duplicates, [] as [usize; 0]);
         assert_eq!(tree.elements.len(), 1138);
         assert_eq!(tree.counts()["UILayout"], 102);
     }
