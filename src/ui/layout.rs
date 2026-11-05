@@ -404,7 +404,7 @@ pub struct Element {
     pub dynamic_width: bool,
     pub dynamic_height: bool,
     pub timer_duration: i32,
-    /// How many messages a message line keeps waiting (`queueSize`).
+    /// The size of the message line's list: the shown message and the waiting ones (`queueSize`).
     pub queue_size: i32,
     pub string_data: Vec<u8>,
     pub(crate) look: Look,

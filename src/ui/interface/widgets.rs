@@ -44,7 +44,7 @@ impl Interface {
     }
 
     /// Posts `text` to the message line (`ZTMessageQueue`; ui layout 4.13 points 5 to 9). A hidden
-    /// line shows it at once with a fresh count. A shown line queues it (at most `queueSize`
+    /// line shows it at once with a fresh count. A shown line queues it (at most `queueSize - 1`
     /// wait, the oldest is dropped) and empties its count, so the text shown gives way at the
     /// next update. `false` if the tree has no message line.
     pub(crate) fn message(&mut self, text: &[u8]) -> bool {
@@ -57,7 +57,12 @@ impl Interface {
             return false;
         };
         if self.visible(i) {
-            let size = usize::try_from(self.tree.elements[i].queue_size).unwrap_or(0);
+            // The list of `queueSize` entries also holds the shown message: one place less wait;
+            // a negative size never drops (4.13 point 9).
+            let size = match self.tree.elements[i].queue_size {
+                n if n < 0 => usize::MAX,
+                n => usize::try_from(n).unwrap_or(0).saturating_sub(1),
+            };
             self.message_queue.push_back(text.to_vec());
             while self.message_queue.len() > size {
                 self.message_queue.pop_front();

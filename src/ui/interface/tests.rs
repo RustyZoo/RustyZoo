@@ -216,7 +216,7 @@ fn a_paused_line_with_nothing_waiting_keeps_its_text_and_restarts_the_count() {
 }
 
 #[test]
-fn the_message_queue_holds_queue_size_messages_and_drops_the_oldest() {
+fn the_message_queue_holds_queue_size_minus_one_messages_and_drops_the_oldest() {
     let with = |size: &str| {
         let line = match size {
             "missing" => LINE.to_string(),
@@ -237,10 +237,12 @@ fn the_message_queue_holds_queue_size_messages_and_drops_the_oldest() {
         seen.dedup();
         seen.into_iter().map(|s| s.0).collect::<Vec<_>>()
     };
-    assert_eq!(with("2"), [b"2".to_vec(), b"3".to_vec()]);
-    // 0, a negative size, a missing key (25) and a huge one.
+    assert_eq!(with("2"), [b"3".to_vec()]);
+    assert_eq!(with("3"), [b"2".to_vec(), b"3".to_vec()]);
+    // 1 and 0: none waits; a negative size never drops; a missing key is 25.
+    assert!(with("1").is_empty());
     assert!(with("0").is_empty());
-    assert!(with("-5").is_empty());
+    assert_eq!(with("-5").len(), 3);
     assert_eq!(with("missing").len(), 3, "the default is 25");
     assert_eq!(with("2147483647").len(), 3);
 }
