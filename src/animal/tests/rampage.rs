@@ -545,3 +545,47 @@ fn a_loose_swimmer_in_the_zoo_exterior_is_sent_to_the_grounds_list() {
     );
     assert_eq!(unit.goal.record.task, crate::goal::RANDOM);
 }
+
+#[test]
+fn the_end_of_a_rampage_clears_the_target_flag_in_the_escape_check() {
+    let mut a = Animal {
+        rampaging: true,
+        rampage_target: true,
+        happiness: 0,
+        ..animal()
+    };
+    run(&mut a, &keys(), &Class::default(), &in_exhibit());
+    assert!(!a.rampaging && !a.rampage_target);
+}
+
+#[test]
+fn a_failed_rampage_start_clears_the_target_flag_in_the_escape_check() {
+    // Chance 100, but the time max is below the min: no rampage, the sub-state down.
+    let k = Keys {
+        rampage_threshold: 0,
+        rampage_chance: 100,
+        rampage_min: 5,
+        rampage_max: 1,
+        ..keys()
+    };
+    let mut a = Animal {
+        rampage_target: true,
+        happiness: 0,
+        ..animal()
+    };
+    run(&mut a, &k, &Class::default(), &in_exhibit());
+    assert!(!a.rampaging && !a.rampage_target);
+}
+
+#[test]
+fn the_ambient_choice_that_drops_a_rampage_clears_the_target_flag() {
+    let (world, mut unit, at) = unit_in(true, |a, _| {
+        (a.rampaging, a.rampage_target) = (true, true);
+    });
+    unit.runner.queue("bSleep", true, true);
+    ambient_sets(&mut unit, &world, &data(), &mut Rng::default(), at);
+    let Part::Animal(a) = &unit.part else {
+        panic!()
+    };
+    assert!(!a.rampaging && !a.rampage_target);
+}

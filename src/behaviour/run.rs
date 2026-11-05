@@ -400,6 +400,8 @@ pub(crate) struct Runner {
     exit: bool,
     /// An `fEndTrick` call ran, for the unit to report its trick done (shows 23.3).
     end_trick: bool,
+    /// An `fCaughtPrey` and an `fKillPrey` call ran, for the hunter's meal (animals 21.5).
+    meal: [bool; 2],
 }
 
 /// The state hash of a run reads this text: `started` is not in it (the walk it feeds is hashed
@@ -459,6 +461,7 @@ impl Default for Runner {
             die: false,
             hatch: false,
             end_trick: false,
+            meal: [false; 2],
             enter: false,
             exit: false,
         }
@@ -499,31 +502,6 @@ impl Runner {
     /// Whether a halt call ran since the last time, once.
     pub(crate) fn take_halt(&mut self) -> bool {
         std::mem::take(&mut self.halt)
-    }
-
-    /// Whether an `fDie` call ran since the last time, once.
-    pub(crate) fn take_die(&mut self) -> bool {
-        std::mem::take(&mut self.die)
-    }
-
-    /// Whether an `fHatch` call ran since the last time, once.
-    pub(crate) fn take_hatch(&mut self) -> bool {
-        std::mem::take(&mut self.hatch)
-    }
-
-    /// Whether an `fEndTrick` call ran since the last time, once.
-    pub(crate) fn take_end_trick(&mut self) -> bool {
-        std::mem::take(&mut self.end_trick)
-    }
-
-    /// Whether an `fEnterBuilding` call ran since the last time, once.
-    pub(crate) fn take_enter(&mut self) -> bool {
-        std::mem::take(&mut self.enter)
-    }
-
-    /// Whether an `fExitBuilding` call ran since the last time, once.
-    pub(crate) fn take_exit(&mut self) -> bool {
-        std::mem::take(&mut self.exit)
     }
 
     /// The set asked to follow the current one, if any.
@@ -895,6 +873,11 @@ impl Runner {
                 self.chain[k].done = true;
                 return true;
             }
+            Op::CaughtPrey | Op::KillPrey => {
+                self.meal[usize::from(matches!(call.op, Op::KillPrey))] = true;
+                self.chain[k].done = true;
+                return true;
+            }
             Op::EnterBuilding => {
                 self.enter = true;
                 self.chain[k].done = true;
@@ -991,5 +974,6 @@ impl Runner {
     }
 }
 
+mod takes;
 #[cfg(test)]
 mod tests;

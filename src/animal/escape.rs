@@ -239,7 +239,7 @@ pub(crate) fn ambient_sets(
         return;
     };
     if ending {
-        (a.rampaging, a.rampage) = (false, 0);
+        (a.rampaging, a.rampage, a.rampage_target) = (false, 0, false);
         return;
     }
     let (tile, in_exhibit) = place(world, at);
@@ -364,7 +364,7 @@ pub(super) fn check(
     if a.rampaging {
         a.rampage = a.rampage.wrapping_add(1);
         if a.happiness > k.rampage_threshold || a.rampage > k.rampage_max {
-            (a.rampaging, a.rampage) = (false, 0);
+            (a.rampaging, a.rampage, a.rampage_target) = (false, 0, false);
             out.calm = true;
         }
     } else {
@@ -378,6 +378,8 @@ pub(super) fn check(
             if len >= 0 {
                 a.rampaging = true;
                 a.rampage = len - rng.rand() as i32 % len.wrapping_add(1);
+            } else {
+                a.rampage_target = false;
             }
         }
     }
