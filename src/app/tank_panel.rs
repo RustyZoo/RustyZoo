@@ -28,7 +28,7 @@ impl App<'_> {
         self.lines.tool.push(format!("tool message {id}"));
         if let Some(ui) = &mut self.ui {
             let text = ui.string(id).replacen("%s", name, 1);
-            ui.message(&to_cp1252(&text));
+            ui.message(&to_cp1252(&text), kinds::GENERAL);
         }
     }
 

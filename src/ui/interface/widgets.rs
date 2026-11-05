@@ -43,11 +43,13 @@ impl Interface {
         true
     }
 
-    /// Posts `text` to the message line (`ZTMessageQueue`; ui layout 4.13 points 5 to 9). A hidden
-    /// line shows it at once with a fresh count. A shown line queues it (at most `queueSize - 1`
-    /// wait, the oldest is dropped) and empties its count, so the text shown gives way at the
-    /// next update. `false` if the tree has no message line.
-    pub(crate) fn message(&mut self, text: &[u8]) -> bool {
+    /// Posts `text` of kind `kind` to the message line (`ZTMessageQueue`; ui layout 4.13 points 5
+    /// to 10). A text of a kind below 3 that the list already holds from less than
+    /// `minimumMessageInterval` seconds ago is dropped. A hidden line shows it at once with a fresh
+    /// count. A shown line queues it (at most `queueSize - 1` wait, the oldest is dropped) and
+    /// empties its count, so the text shown gives way at the next update. The text takes the
+    /// colour of its kind modulo 3. `false` if the tree has no message line.
+    pub(crate) fn message(&mut self, text: &[u8], kind: i32) -> bool {
         let Some(i) = self
             .tree
             .elements
@@ -56,25 +58,44 @@ impl Interface {
         else {
             return false;
         };
+        let now = self.input.clock;
+        let within = u64::try_from(i64::from(self.settings.message_interval) * 1000).unwrap_or(0);
+        let repeated = |(t, at): &(Vec<u8>, u64)| t == text && now.saturating_sub(*at) < within;
+        if kind < 3 && self.message_list.iter().any(repeated) {
+            return true;
+        }
+        // The list holds `queueSize` entries and drops its oldest when full; a negative size never
+        // drops (4.13 point 9).
+        let size = match self.tree.elements[i].queue_size {
+            n if n < 0 => usize::MAX,
+            n => usize::try_from(n).unwrap_or(0),
+        };
+        if self.message_list.len() >= size {
+            self.message_list.pop_front();
+        }
+        self.message_list.push_back((text.to_vec(), now));
         if self.visible(i) {
-            // The list of `queueSize` entries also holds the shown message: one place less wait;
-            // a negative size never drops (4.13 point 9).
-            let size = match self.tree.elements[i].queue_size {
-                n if n < 0 => usize::MAX,
-                n => usize::try_from(n).unwrap_or(0).saturating_sub(1),
-            };
-            self.message_queue.push_back(text.to_vec());
-            while self.message_queue.len() > size {
+            // The list also holds the shown message: one place less wait.
+            let waiting = size.saturating_sub(1);
+            self.message_queue.push_back((text.to_vec(), kind));
+            while self.message_queue.len() > waiting {
                 self.message_queue.pop_front();
             }
             self.tree.elements[i].countdown = Some(0);
             return true;
         }
         self.message_queue.clear();
-        self.put_text(i, text);
+        self.put_message(i, text, kind);
         self.tree.elements[i].countdown = None;
         self.flag(i, HIDDEN, false);
         true
+    }
+
+    /// Puts `text` on the message line `i` in the colour of its kind modulo 3.
+    fn put_message(&mut self, i: usize, text: &[u8], kind: i32) {
+        let e = &mut self.tree.elements[i];
+        e.look.fore_color = e.message_colors[kind.rem_euclid(3) as usize];
+        self.put_text(i, text);
     }
 
     /// Tells the message line whether the game is paused: then a line with nothing waiting keeps
@@ -97,8 +118,8 @@ impl Interface {
     /// is shown with a fresh count; otherwise, paused, the count starts again and the text
     /// stays; otherwise the line empties and hides.
     pub(super) fn message_due(&mut self, i: usize) {
-        if let Some(text) = self.message_queue.pop_front() {
-            self.put_text(i, &text);
+        if let Some((text, kind)) = self.message_queue.pop_front() {
+            self.put_message(i, &text, kind);
             self.tree.elements[i].countdown = None;
         } else if self.message_paused {
             self.tree.elements[i].countdown = None;

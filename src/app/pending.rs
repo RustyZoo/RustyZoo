@@ -366,7 +366,7 @@ impl App<'_> {
         }
         match refused {
             Some(id) => {
-                ui.message(&to_cp1252(&ui.string(id)));
+                ui.message(&to_cp1252(&ui.string(id)), kinds::GENERAL);
                 self.lines.tool.push(format!("tool message {id}"));
             }
             // A refusal without a message (ground that is not flat, a quadrant off the zoo).

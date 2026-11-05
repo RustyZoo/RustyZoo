@@ -881,6 +881,7 @@ mod cheat_staff;
 mod command;
 mod exhibits;
 mod gates;
+mod kinds;
 mod guest_panel;
 mod log;
 mod main_buttons;

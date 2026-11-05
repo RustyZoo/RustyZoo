@@ -331,6 +331,7 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
             max_short_width: 120,
             max_long_width: 300,
             popup_delay: d.popup_delay,
+            message_interval: d.message_interval,
         }
     );
     // The popup delay: up to an hour; 0 and below are kept as read; a wrong kind of number is not set.

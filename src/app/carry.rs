@@ -14,7 +14,7 @@ use crate::unit::Part as UnitPart;
 pub(super) fn refusal(ui: &mut Interface, lines: &mut Vec<String>, message: Option<i32>) {
     match message {
         Some(id) => {
-            ui.message(&to_cp1252(&ui.string(id)));
+            ui.message(&to_cp1252(&ui.string(id)), kinds::GENERAL);
             lines.push(format!("tool message {id}"));
         }
         None => lines.push("tool refused".into()),

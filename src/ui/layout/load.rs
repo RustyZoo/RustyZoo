@@ -334,6 +334,8 @@ impl Tree {
             dynamic_height: flag("dynamicheight", false),
             timer_duration: int("timerDuration", 3000),
             queue_size: int("queueSize", 25),
+            message_colors: ["generalcolor", "goodcolor", "urgentcolor"]
+                .map(|key| color(s, key).unwrap_or(look.fore_color)),
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
             text: None,

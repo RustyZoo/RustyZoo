@@ -47,7 +47,7 @@ impl App<'_> {
             }
             Outcome::Refused(Some(id)) => {
                 self.ui_sounds.push("noplace");
-                ui.message(&to_cp1252(&ui.string(id)));
+                ui.message(&to_cp1252(&ui.string(id)), kinds::GENERAL);
                 self.lines.tool.push(format!("tool message {id}"));
             }
             Outcome::Refused(None) => {}

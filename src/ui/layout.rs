@@ -406,6 +406,9 @@ pub struct Element {
     pub timer_duration: i32,
     /// The size of the message line's list: the shown message and the waiting ones (`queueSize`).
     pub queue_size: i32,
+    /// The colours of the message line's texts by kind modulo 3: general, good, urgent
+    /// (`generalcolor`, `goodcolor`, `urgentcolor`); a missing one is the text colour.
+    pub message_colors: [Rgb; 3],
     pub string_data: Vec<u8>,
     pub(crate) look: Look,
     /// The text the program gave the element, which shows instead of its `textid` or `textname`.

@@ -1,7 +1,7 @@
 //! The scenario's meeting with the interface (scenarios 6, 7.1, 8): what is shown and pressed goes
 //! to the scenario, and what its triggers asked of the interface is done here.
 
-use super::{Action, App};
+use super::{Action, App, kinds};
 use crate::money::{SYMBOL, Symbol};
 use crate::scenario::{self, Act, Avail, Deed, Line, Tell, Which};
 use crate::text::{format, to_cp1252};
@@ -98,7 +98,7 @@ impl App<'_> {
                             values: [value, 0, 0],
                             state: 0,
                         };
-                        ui.message(&to_cp1252(&scenario::built_line(ui, line)));
+                        ui.message(&to_cp1252(&scenario::built_line(ui, line)), kind);
                         log.push(format!("scenario message {text} kind {kind}"));
                     }
                     None
@@ -109,7 +109,8 @@ impl App<'_> {
                     if let Some(ui) = ui.as_mut().filter(|_| text > 0) {
                         let symbol = Symbol::new(ui.string(SYMBOL));
                         let money = format::money_cents(&symbol, f64::from(amount), true);
-                        ui.message(&to_cp1252(&ui.string(text).replacen("%s", &money, 1)));
+                        let text = ui.string(text).replacen("%s", &money, 1);
+                        ui.message(&to_cp1252(&text), 4);
                     }
                     None
                 }
@@ -136,7 +137,7 @@ impl App<'_> {
                             values: [def.name, 0, 0],
                             state: 0,
                         };
-                        ui.message(&to_cp1252(&scenario::built_line(ui, line)));
+                        ui.message(&to_cp1252(&scenario::built_line(ui, line)), 4);
                     }
                     None
                 }
@@ -243,7 +244,7 @@ impl App<'_> {
                         Some(name) => ui.string(template).replacen("%r", &ui.string(name), 1),
                         None => ui.string(template),
                     };
-                    ui.message(&to_cp1252(&text));
+                    ui.message(&to_cp1252(&text), kinds::GENERAL);
                 }
                 Tell::Popup(popup) => {
                     if let Some(s) = self.sim.scenario() {
