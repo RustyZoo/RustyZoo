@@ -6,6 +6,7 @@
 use super::start_tests::*;
 use super::*;
 use crate::ui::layout::DISABLED;
+use crate::zoo::{Common, Zoo};
 
 const ZOOM_IN: i32 = 1007;
 const ZOOM_OUT: i32 = 1023;
@@ -235,5 +236,83 @@ fn the_zoom_check_follows_the_zoom_of_the_game_and_full_screen_at_800() {
         assert!(disabled(app, ZOOM_IN) && !disabled(app, ZOOM_OUT));
         app.pass(now + 132, &[Command::Fullscreen(false)]);
         assert!(!disabled(app, ZOOM_IN));
+    });
+}
+
+/// Puts a guest at world point `(x, y)` and selects it, with no pass in between.
+fn select_at(app: &mut App, x: i32, y: i32) {
+    let g = game(app);
+    let common = Common {
+        id: 77,
+        x,
+        y,
+        ..Default::default()
+    };
+    g.world.zoo.entities.push(Entity {
+        class: "guests".into(),
+        type_name: "man".into(),
+        subtype: String::new(),
+        body_size: None,
+        common: Some(common),
+    });
+    g.guest.selected = Some(77);
+}
+
+#[test]
+fn a_zoom_or_a_rotation_keeps_the_selected_unit_and_without_one_the_view_centre() {
+    with_menu("zoom-selected", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        started(app);
+        // A map big enough for the range check to leave the scroll alone.
+        let zoo = &mut game(app).world.zoo;
+        (zoo.width, zoo.height) = (75, 75);
+        let tile = crate::zoo::Tile {
+            elevation: 0,
+            shape: 0,
+            terrain: 0,
+            edges: 0,
+        };
+        zoo.tiles = vec![tile; 75 * 75];
+        let zoo = game(app).world.zoo.clone();
+        let view = crate::zoo::View {
+            zoom: 0,
+            rotation: 0,
+            scroll: (1216, 16),
+            brush: 1,
+        };
+        let before = Camera::open(&view, (1024, 768), game(app).camera.settings);
+        game(app).camera = before.clone();
+        let by = |c: &Camera, at, rotate: bool| {
+            let mut c = c.clone();
+            if rotate {
+                c.rotate(&zoo, at, true);
+            } else {
+                c.zoom(&zoo, at, false);
+            }
+            c.scroll
+        };
+        let at = Some((64 * 37 + 5, 64 * 37 + 9));
+        for rotate in [true, false] {
+            assert_ne!(by(&before, at, rotate), by(&before, None, rotate));
+        }
+        // Nobody selected: the view centre.
+        game(app).camera = before.clone();
+        app.rotate(true);
+        assert_eq!(game(app).camera.scroll, by(&before, None, true));
+        game(app).camera = before.clone();
+        app.zoom_pressed(false);
+        assert_eq!(game(app).camera.scroll, by(&before, None, false));
+        // A selected unit, followed or not: its position.
+        select_at(app, 64 * 37 + 5, 64 * 37 + 9);
+        game(app).camera = before.clone();
+        app.rotate(true);
+        assert_eq!(game(app).camera.scroll, by(&before, at, true));
+        game(app).camera = before.clone();
+        app.zoom_pressed(false);
+        assert_eq!(game(app).camera.scroll, by(&before, at, false));
+        // A selected unit that left the world counts for nothing.
+        game(app).world.zoo.entities.pop();
+        game(app).camera = before.clone();
+        app.zoom_pressed(false);
+        assert_eq!(game(app).camera.scroll, by(&before, None, false));
     });
 }

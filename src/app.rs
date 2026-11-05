@@ -164,6 +164,18 @@ struct Game {
 }
 
 impl Game {
+    /// The world position `(x, y)` of the selected animal, staff member or guest, if any: the
+    /// reference of a rotation or a zoom (camera 8.1 step 1), followed or not.
+    fn selected_point(&self) -> Option<(i32, i32)> {
+        let id = (self.animal.selected)
+            .or(self.staff.selected)
+            .or(self.guest.selected)?;
+        let c = self.world.zoo.entities[self.world.find(id)?]
+            .common
+            .as_ref()?;
+        Some((c.x, c.y))
+    }
+
     /// Places sounds (entity, file, voice, base term) at their entity's position in the view
     /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
     /// is gone is dropped.
