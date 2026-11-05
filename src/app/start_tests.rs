@@ -19,7 +19,7 @@ struct Texts;
 impl UiStrings for Texts {
     fn string(&self, id: i32) -> String {
         match id {
-            400 => "The game is paused.".into(),
+            400 => "text-400".into(),
             9101 => "text-9101 %d".into(),
             9201 => "told %r".into(),
             9301 => "gift %s".into(),

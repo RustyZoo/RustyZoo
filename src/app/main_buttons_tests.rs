@@ -166,7 +166,7 @@ fn the_paused_message_shows_while_paused_and_goes_with_the_unpause() {
             ui.text(7001).filter(|_| ui.shown(7001))
         };
         assert_eq!(go(app, &[]), None);
-        let said = Some(b"The game is paused.".to_vec());
+        let said = Some(b"text-400".to_vec());
         assert_eq!(go(app, &press(PAUSE)), said);
         // It stays for as long as the pause does.
         for _ in 0..200 {
