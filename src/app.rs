@@ -963,6 +963,8 @@ mod bulldozer_tests;
 
 #[cfg(test)]
 mod filter_tests;
+#[cfg(test)]
+mod show_panel_tests;
 
 #[cfg(test)]
 mod money_tests;
