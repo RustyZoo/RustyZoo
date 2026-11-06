@@ -872,6 +872,72 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
 }
 
 #[test]
+fn a_ripple_plays_its_frames_from_its_age_and_loops() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let install = Install::new(
+        "render-ripple",
+        &[
+            (
+                "scenery.cfg",
+                b"[objects]\nother\n[other]\nwaterwv1 = wave.ai\n".to_vec(),
+            ),
+            ("wave.ai", b"[Animations]\nidle = idle\n".to_vec()),
+            ("objects/waterwv1/idle/idle.ani", ani("idle")),
+            (
+                "a/idle/N",
+                sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[("objects", "other", "waterwv1")]);
+    let drawn = |ripples: Vec<(u32, u32)>| {
+        let extra = Extra {
+            ripples,
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        let frames: Vec<_> = (staged.pictures())
+            .filter_map(|(p, _)| match &p.pic {
+                Pic::Anim(_, _, _, frame) => Some(*frame),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(frames.len(), 1);
+        frames[0]
+    };
+    // 3 frames of 125 ms; another entity's age and a missing age leave frame 0.
+    assert_eq!(drawn(vec![]), 0);
+    assert_eq!(drawn(vec![(2, 300)]), 0);
+    for (age, frame) in [
+        (0, 0),
+        (124, 0),
+        (125, 1),
+        (250, 2),
+        (374, 2),
+        (375, 0),
+        (u32::MAX, 0),
+    ] {
+        let want = if age == u32::MAX {
+            (age / 125 % 3) as usize
+        } else {
+            frame
+        };
+        assert_eq!(drawn(vec![(1, age)]), want, "{age}");
+    }
+}
+
+#[test]
 fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
     use crate::sprite::tests::{sized, sprite_file};
     let mut frame = Vec::new();
@@ -2361,7 +2427,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         colors: &[],
         life: None,
         off: false,
-        bubbles: None,
+        age: None,
         mode,
         portal: false,
         food: 0,
