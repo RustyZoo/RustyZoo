@@ -764,3 +764,29 @@ fn a_set_of_bubbles_made_anew_restarts_the_clock_and_no_timing_means_no_clock() 
     idles.register(&world, &cat, &data);
     assert_eq!(idles.frames().get(&key), Some(&0));
 }
+
+#[test]
+fn a_set_of_bubbles_that_ends_in_the_step_of_the_next_cycle_is_a_new_set() {
+    use crate::behaviour::Timing;
+    use crate::render::bubble_key;
+    use crate::sim::idle::{Idles, tests::Fixed};
+    // A cycle each 3 s: the set of one cycle ends in the step of the next.
+    let (mut world, cat, at) = filtered(10, [200_000, 0], "cFilterDelay=3\ncFilterUpkeep=50");
+    let key = bubble_key(world.zoo.entities[at].common.as_ref().unwrap().id);
+    let data = Fixed(
+        Some(Timing {
+            count: 17,
+            delay: 83,
+        }),
+        Vec::new(),
+    );
+    let mut idles = Idles::default();
+    world.filter_step(&cat, at, 67);
+    idles.register(&world, &cat, &data);
+    idles.advance(500);
+    assert_eq!(idles.frames()[&key], 6);
+    world.filter_step(&cat, at, 3_000);
+    assert_eq!(world.filter_bubbles().count(), 1);
+    idles.register(&world, &cat, &data);
+    assert_eq!(idles.frames()[&key], 0, "made anew: the clock starts again");
+}
