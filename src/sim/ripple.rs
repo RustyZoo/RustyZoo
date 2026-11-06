@@ -23,6 +23,9 @@ const LIFE: u32 = 4000;
 #[derive(Debug)]
 pub(super) struct Ripples {
     slots: Vec<(u32, Option<u32>)>,
+    /// The ripples (id, age) whose slot ran out at the last step: they are on the map until the
+    /// next removal pass and keep their age for that picture.
+    ending: Vec<(u32, u32)>,
     /// Milliseconds since the last count of the water tiles, and that count (N).
     count: u32,
     wet: u32,
@@ -34,6 +37,7 @@ impl Default for Ripples {
     fn default() -> Ripples {
         Ripples {
             slots: vec![(0, None); SLOTS],
+            ending: Vec::new(),
             count: 0,
             wet: 0,
             scan: 0,
@@ -45,6 +49,7 @@ impl Ripples {
     /// A new game empties the slots; the counters and N are the program's and stay.
     pub(super) fn clear(&mut self) {
         self.slots = Ripples::default().slots;
+        self.ending.clear();
     }
 }
 
@@ -52,11 +57,14 @@ impl Sim {
     /// The ripples on the map (ids) with their age in ms, for the picture.
     pub(crate) fn ripple_ages(&self) -> Vec<(u32, u32)> {
         let live = self.ripples.slots.iter();
-        live.filter_map(|&(age, id)| Some((id?, age))).collect()
+        let live = live.filter_map(|&(age, id)| Some((id?, age)));
+        live.chain(self.ripples.ending.iter().copied()).collect()
     }
 
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.
     pub(super) fn water_effects(&mut self, world: &mut World, cat: &Catalogue, step: u32) {
+        // The removal pass has taken the ripples that ended at the last step.
+        self.ripples.ending.clear();
         if !self.ai.animated_water {
             return;
         }
@@ -66,6 +74,7 @@ impl Sim {
             if *age > LIFE
                 && let Some(id) = effect.take()
             {
+                r.ending.push((id, *age));
                 // The slot rests 4 s more before it is free again.
                 *age = 0;
                 self.removals.push(id);
@@ -276,8 +285,22 @@ mod tests {
         sim.ripples.scan = 0;
         sim.water_effects(&mut world, &cat, 300);
         assert_eq!(sim.ripple_ages(), [(id, 300)]);
-        // A removed ripple is not listed.
-        sim.water_effects(&mut world, &cat, LIFE);
+    }
+
+    #[test]
+    fn a_ripple_flagged_for_removal_stays_listed_with_its_age_until_the_removal_pass() {
+        let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
+        let mut sim = sim("");
+        sim.ripples.wet = 1;
+        sim.scan(&mut world, &cat);
+        let id = sim.ripples.slots.iter().find_map(|s| s.1).unwrap();
+        sim.ripples.scan = 0;
+        sim.water_effects(&mut world, &cat, LIFE + 7);
+        // Flagged, still on the map for this picture: its age is the one it ended at.
+        assert!(sim.removals.contains(&id));
+        assert!(sim.ripple_ages().contains(&(id, LIFE + 7)));
+        // The next step comes after the removal pass: it is gone from the list.
+        sim.water_effects(&mut world, &cat, 10);
         assert!(sim.ripple_ages().iter().all(|r| r.0 != id));
     }
 
