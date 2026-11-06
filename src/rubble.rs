@@ -119,12 +119,12 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
                 kinds[0]
             };
             let Some(tile) = tile else { continue };
-            // The piece stands on the ground at its point.
+            // The piece stands on the ground at its point, whose offset is the signed C remainder.
             let (x, y) = match by_tile {
                 true => (tx * 64 + 32, ty * 64 + 32),
                 false => (cx, cy),
             };
-            let z = ground_height(&world.zoo.tiles[tile], x.rem_euclid(64), y.rem_euclid(64));
+            let z = ground_height(&world.zoo.tiles[tile], x % 64, y % 64);
             let name = kit.template.replacen("%s", &c.name, 1);
             let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
             let piece = Entity {
