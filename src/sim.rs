@@ -514,7 +514,8 @@ impl Sim {
 
     /// The wear step of the fence piece at `at` (placing 7.4), run at its place in the entity
     /// loop: its events are posted; a step that wears chooses the picture again, which draws a
-    /// start time for its animation, and a break draws twice.
+    /// start time for its animation, and a break draws three times (the break sets the picture, its
+    /// validation sets it again and the step sets it a last time).
     fn wear_fence(
         &mut self,
         world: &mut World,
@@ -528,7 +529,7 @@ impl Sim {
             self.events.post(event);
         }
         if let Some(now) = world.fence_life(at).filter(|&l| Some(l) != life) {
-            let draws = 1 + u32::from(now < 1);
+            let draws = if now < 1 { 3 } else { 1 };
             let rng = &mut self.rng;
             self.idles.rewind_fence(world, cat, data, rng, (at, draws));
         }
@@ -806,6 +807,9 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
+                for mended in std::mem::take(&mut world.units.mended) {
+                    self.idles.start_fence(world, cat, data, mended);
+                }
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);

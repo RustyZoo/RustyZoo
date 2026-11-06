@@ -385,6 +385,37 @@ fn a_task_with_nothing_left_to_do_is_dropped() {
     assert!(g.lines(&["world fence"]).is_empty());
 }
 
+/// A mended piece draws its start time right after its interval, in the worker's update, the
+/// picture changed or not (sprite drawing 3.6 item 5): an interval and a start a piece, none of them left for the
+/// next register.
+#[test]
+fn a_mended_piece_draws_its_start_after_its_interval() {
+    let mut piece = entity("fences", "iron", 15, centre((13, 9)), 2);
+    piece.subtype = "f".into();
+    let mut g = Game::with("", &[(WORKER, (1, 9))], &[piece]);
+    g.w.heal(&g.cat, 15, &mut || 0);
+    (g.piece(15).strength, g.piece(15).life) = (100, 2);
+    for id in [FENCE, 15] {
+        g.piece(id).timers = [600_000; 2];
+    }
+    let tile = Game::tile(FENCE_TILE) as u32;
+    g.sim.events.post(piece_event(FENCE, 10033, tile));
+    for _ in 0..1000 {
+        let before = g.sim.rng.clone();
+        g.run(1);
+        let mended = g.lines(&["world fence"]).len();
+        if mended > 0 {
+            // The step drew an interval and a start time for each piece it mended, and one draw of
+            // its own for the job.
+            let mut copy = before;
+            (0..1 + 2 * mended).for_each(|_| _ = copy.pick(2000));
+            assert!(copy == g.sim.rng, "{mended} mended");
+            return;
+        }
+    }
+    panic!("no piece was mended");
+}
+
 #[test]
 fn a_worn_fence_is_mended_from_the_worker_side_of_its_lowest_piece() {
     // The lowest piece (15) is on the east edge of the tile west of the task's tile (14, 9); that

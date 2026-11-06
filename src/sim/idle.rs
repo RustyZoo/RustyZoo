@@ -139,21 +139,13 @@ fn fence_state(world: &World, cat: &Catalogue, e: &Entity) -> Option<(String, i3
     Some((fence_name(ty, life, tile, c.rotation % 8), 0))
 }
 
-/// The clock of a fence piece that starts its animation: it draws `rand() % 2000` `draws` times
-/// and starts at the last (sprite drawing 3.6). A gate draws nothing.
-fn fence_clock(
-    world: &World,
-    cat: &Catalogue,
-    data: &dyn Data,
-    e: &Entity,
-    rng: &mut Rng,
-    draws: u32,
-) -> Clock {
+/// The clock of a fence piece whose animation starts at `start` ms (sprite drawing 3.6).
+fn fence_clock(world: &World, cat: &Catalogue, data: &dyn Data, e: &Entity, start: u32) -> Clock {
     let state = fence_state(world, cat, e);
     let timing =
         (state.as_ref().and_then(|s| data.timing(e, &s.0))).or_else(|| data.timing(e, "idle"));
     let mut clock = Clock::new(timing, state);
-    clock.t = (0..draws).map(|_| rng.pick(2000)).last().unwrap_or(0);
+    clock.t = start;
     clock
 }
 
@@ -241,7 +233,7 @@ impl Idles {
                 let state = fence_state(world, cat, e);
                 if self.fixed.get(&c.id).is_none_or(|k| k.state != state) {
                     self.fixed
-                        .insert(c.id, fence_clock(world, cat, data, e, rng, 1));
+                        .insert(c.id, fence_clock(world, cat, data, e, rng.pick(2000)));
                 }
                 continue;
             }
@@ -284,7 +276,7 @@ impl Idles {
 
     /// A fence piece's wear step ran at `at` in the entity loop (placing 7.4): its picture is
     /// chosen again, which restarts its animation at a random time of 0 to 1999 ms, `draws` times
-    /// (a break draws twice, once for the broken picture and once for the one after it).
+    /// (a break draws three times: the break's picture, its validation's and the wear step's).
     pub(crate) fn rewind_fence(
         &mut self,
         world: &World,
@@ -295,8 +287,24 @@ impl Idles {
     ) {
         let e = &world.zoo.entities[at];
         if let Some(c) = &e.common {
-            let clock = fence_clock(world, cat, data, e, rng, draws);
-            self.fixed.insert(c.id, clock);
+            let start = (0..draws).map(|_| rng.pick(2000)).last().unwrap_or(0);
+            self.fixed
+                .insert(c.id, fence_clock(world, cat, data, e, start));
+        }
+    }
+
+    /// A worker mended the fence piece `id` and its start time `start` was drawn in the step
+    /// (sprite drawing 3.6 item 5): its animation starts there, so the next register draws nothing.
+    pub(crate) fn start_fence(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        (id, start): (u32, u32),
+    ) {
+        if let Some(e) = world.find(id).map(|at| &world.zoo.entities[at]) {
+            self.fixed
+                .insert(id, fence_clock(world, cat, data, e, start));
         }
     }
 
@@ -608,14 +616,14 @@ pub(crate) mod tests {
         assert!(none.frames().is_empty());
     }
 
-    /// A wear step rewinds the clock in place: one draw, two for a break, the last one is the
+    /// A wear step rewinds the clock in place: one draw, three for a break, the last one is the
     /// start time.
     #[test]
     fn the_wear_step_of_a_fence_draws_again() {
         let (cat, data) = (iron(), rows());
         let (mut rng, mut idles) = (Rng::default(), Idles::default());
         idles.register(&worn(5), &cat, &data, &mut rng);
-        for (life, draws, count) in [(2, 1, 10), (0, 2, 4)] {
+        for (life, draws, count) in [(2, 1, 10), (0, 3, 4)] {
             let before = rng.clone();
             idles.rewind_fence(&worn(life), &cat, &data, &mut rng, (0, draws));
             let mut expect = before;
