@@ -2,6 +2,7 @@
 //! act on, and what the menu asked of the game.
 
 use super::*;
+use crate::ui::interface::HISTORY_LIST;
 
 impl App<'_> {
     /// The menu and the game act on what the player did since the last look: the answers to the
@@ -30,20 +31,14 @@ impl App<'_> {
                     }
                     self.requested();
                 }
-                Action::Row(crate::ui::interface::HISTORY_LIST, row) | Action::Message(row)
-                    if self.game.is_some() =>
-                {
-                    self.message_clicked(row);
-                }
+                Action::Row(HISTORY_LIST, row) | Action::Message(row) => self.message_clicked(row),
                 Action::Row(exhibit::LIST, row) if self.game.is_some() => self.panel_row(row),
                 Action::Row(exhibit::ANIMALS, row) if self.game.is_some() => {
                     self.panel_animal(row);
                 }
                 Action::Edited(exhibit::NAME) if self.game.is_some() => self.panel_rename(),
-                Action::Row(l @ (show::SPECIES_LIST | show::FREQUENCY_LIST), row)
-                    if self.game.is_some() =>
-                {
-                    self.show_row(l, row);
+                Action::Row(l @ (show::SPECIES_LIST | show::FREQUENCY_LIST), r) => {
+                    self.show_row(l, r)
                 }
                 Action::Edited(show::ADMISSION) if self.game.is_some() => self.show_typed(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),

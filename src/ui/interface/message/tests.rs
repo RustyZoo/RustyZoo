@@ -166,7 +166,7 @@ fn the_pause_string_leaves_the_list_with_the_line() {
     ui.hold_message(false);
     ui.end_message();
     ui.update(1233);
-    assert!((line(&ui).1 == false) && ui.history().is_empty() && rows(&ui).is_empty());
+    assert!(!line(&ui).1 && ui.history().is_empty() && rows(&ui).is_empty());
 }
 
 #[test]
