@@ -219,6 +219,7 @@ impl App<'_> {
             marks: game.marks.clone(),
             shown: game.shown(),
             filters: game.world.filter_looks(),
+            ripples: self.sim.ripple_ages(),
             ..Extra::default()
         };
         match self

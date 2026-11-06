@@ -220,8 +220,8 @@ impl<'a> MapRenderer<'a> {
             .get(view.file)
             .map_or(0, |s| s.0.frames.len().saturating_sub(1));
         let mut frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
-        // The bubbles go round their frames from the start of the cycle.
-        if let (Some(age), Some(sprite)) = (meta.bubbles, anim.sprites.get(view.file)) {
+        // The bubbles and the ripples go round their frames from the start of the cycle.
+        if let (Some(age), Some(sprite)) = (meta.age, anim.sprites.get(view.file)) {
             frame = bubble_frame(age, sprite.0.delay_ms, sprite.0.frames.len());
         }
         let palette = anim.sprites.get(view.file).and_then(|sprite| {

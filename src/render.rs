@@ -170,6 +170,9 @@ pub(crate) struct Extra {
     /// The tank filters that are switched off or show bubbles (tank staff 7.3, 7.5); a filter that
     /// is not here shows its health and no bubbles.
     pub filters: Vec<FilterLook>,
+    /// The water ripples (ids) and their age in milliseconds: each plays its animation from the
+    /// start (simulation 7.2, sprite drawing 3.6).
+    pub ripples: Vec<(u32, u32)>,
 }
 
 /// What a tank filter shows besides its health.
@@ -627,8 +630,9 @@ struct Meta<'a> {
     food: i32,
     /// A tank filter that is switched off.
     off: bool,
-    /// The object is the bubbles of a tank filter, not the filter: their age in milliseconds.
-    bubbles: Option<u32>,
+    /// The object loops its frames from the start, this many milliseconds old: the bubbles of a
+    /// tank filter, a water ripple.
+    age: Option<u32>,
     /// The colour the object is drawn tinted with (sprite drawing 9.1).
     tint: Option<[u8; 3]>,
     /// The wall height of a pending tank gate, 0 for anything else.

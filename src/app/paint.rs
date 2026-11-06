@@ -95,6 +95,7 @@ impl App<'_> {
         };
         want.faces.clone_from(&game.world.units.reactions);
         want.filters = game.world.filter_looks();
+        want.ripples = self.sim.ripple_ages();
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());

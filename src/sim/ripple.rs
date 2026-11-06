@@ -49,6 +49,12 @@ impl Ripples {
 }
 
 impl Sim {
+    /// The ripples on the map (ids) with their age in ms, for the picture.
+    pub(crate) fn ripple_ages(&self) -> Vec<(u32, u32)> {
+        let live = self.ripples.slots.iter();
+        live.filter_map(|&(age, id)| Some((id?, age))).collect()
+    }
+
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.
     pub(super) fn water_effects(&mut self, world: &mut World, cat: &Catalogue, step: u32) {
         if !self.ai.animated_water {

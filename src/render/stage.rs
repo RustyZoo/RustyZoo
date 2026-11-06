@@ -167,7 +167,7 @@ impl<'a> MapRenderer<'a> {
                         .map(|f| i32::try_from(f.health).unwrap_or(i32::MAX))
                 }),
                 off: extra.filters.iter().any(|l| l.id == c.id && l.off),
-                bubbles: None,
+                age: extra.ripples.iter().find(|r| r.0 == c.id).map(|r| r.1),
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
                 food: c.food,
@@ -211,7 +211,7 @@ impl<'a> MapRenderer<'a> {
                 colors: &[],
                 life: None,
                 off: false,
-                bubbles: None,
+                age: None,
                 mode: 0,
                 portal: false,
                 food: 0,
@@ -237,12 +237,12 @@ impl<'a> MapRenderer<'a> {
     {
         let catalogue = self.catalogue;
         objects.transient = objects.metas.len();
-        let transient = |ty, bubbles| Meta {
+        let transient = |ty, age| Meta {
             ty,
             colors: &[],
             life: None,
             off: false,
-            bubbles,
+            age,
             mode: 0,
             portal: false,
             food: 0,
