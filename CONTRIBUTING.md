@@ -35,7 +35,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 ## Pins
 
-- `ci/check-trials.sh` and `ci/playable-full.txt` pin seeds, step counts and expected values. Never change a seed or loosen an expected value to make a check pass.
+- `ci/check-trials.sh` and `ci/playable-full.txt` pin seeds, step counts and expected values. Never change a seed or loosen an expected value to make a check pass (the playable scripts try the seeds of their `#seeds` line by themselves, `docs/playing.md`).
 - A pin moves only with a verified cause shown in the pull request, for example the check passing again with the new behaviour switched off. Try a longer run first, then a seed search starting at 1, and list the seeds tried in the pull request.
 - In `ci/check-trials.sh`, what the random stream decides (a birth step, which guest is inside a building) is a property that fails when the behaviour is lost (`any_seed`), not a pin; a new check does the same. Only the lines marked "Sentinel" are exact stream values: when one moves, say in the pull request why the stream changed.
 - Why: a pin that is edited until it passes hides the regression it exists to catch.
