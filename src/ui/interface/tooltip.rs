@@ -40,6 +40,8 @@ pub struct Settings {
     /// Seconds within which the message line drops a text it already posted
     /// (`minimumMessageInterval`; 0 or less never drops).
     pub message_interval: i32,
+    /// `MessageDisplay`: 0 drops every message (ui layout 4.14 point 9).
+    pub message_display: bool,
 }
 
 impl Default for Settings {
@@ -51,6 +53,7 @@ impl Default for Settings {
             max_long_width: 400,
             popup_delay: 10_000,
             message_interval: 60,
+            message_display: true,
         }
     }
 }
@@ -59,7 +62,8 @@ impl Settings {
     /// Reads `[UI]` of the ini file: `TooltipDelay` (below 0 is 0), `helpType` (not 0: the long
     /// help), `maxShortTooltipWidth` and `maxLongTooltipWidth` (from 1 to 4096) and
     /// `NonmodalDialogDelay` (up to an hour; 0 or less never closes a popup) and
-    /// `minimumMessageInterval` (0 or less never drops a message). A missing key keeps the
+    /// `minimumMessageInterval` (0 or less never drops a message) and `MessageDisplay` (0: no
+    /// message at all). A missing key keeps the
     /// built-in value.
     pub fn from_config(ini: &Config) -> Settings {
         let d = Settings::default();
@@ -75,6 +79,7 @@ impl Settings {
             popup_delay: get("NonmodalDialogDelay")
                 .map_or(d.popup_delay, |n| n.min(MAX_POPUP_DELAY)),
             message_interval: get("minimumMessageInterval").unwrap_or(d.message_interval),
+            message_display: get("MessageDisplay").map_or(d.message_display, |n| n != 0),
         }
     }
 }

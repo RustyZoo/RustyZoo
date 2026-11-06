@@ -673,6 +673,10 @@ pub struct MessageLine {
     /// `goodcolor`, `urgentcolor`); one that is missing or has fewer than 3 values is white, green
     /// and red.
     pub colors: [Rgb; 3],
+    /// `listbox`: the id of the history list (0 for none).
+    pub list: i32,
+    /// `iconXOffset` and `iconYOffset`: where the icon of a message stands in the line.
+    pub icon_offset: (i32, i32),
 }
 
 impl MessageLine {
@@ -685,6 +689,11 @@ impl MessageLine {
         MessageLine {
             size: s.get("queueSize").and_then(to_int).unwrap_or(25),
             colors: colors.map(|(key, built_in)| color(s, key).unwrap_or(built_in)),
+            list: s.get("listbox").and_then(to_int).unwrap_or(0),
+            icon_offset: (
+                s.get("iconXOffset").and_then(to_int).unwrap_or(0),
+                s.get("iconYOffset").and_then(to_int).unwrap_or(0),
+            ),
         }
     }
 }

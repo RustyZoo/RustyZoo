@@ -169,12 +169,15 @@ fn the_paused_message_shows_while_paused_and_goes_with_the_unpause() {
         assert_eq!(go(app, &[]), None);
         let said = Some(b"text-400".to_vec());
         assert_eq!(go(app, &press(PAUSE)), said);
+        // The string is in the history while it is on the line, and leaves it with the line.
+        assert_eq!(app.interface().unwrap().history(), [b"text-400".to_vec()]);
         // It stays for as long as the pause does.
         for _ in 0..200 {
             assert_eq!(go(app, &[]), said);
         }
         // The play button, the Pause key and Space do the same.
         assert_eq!(go(app, &press(PLAY)), None);
+        assert!(app.interface().unwrap().history().is_empty());
         assert_eq!(go(app, &[Command::Pause]), said);
         assert_eq!(go(app, &[Command::Pause]), None);
         assert_eq!(go(app, &[Command::Space]), said);

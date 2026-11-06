@@ -53,6 +53,7 @@ impl UiStrings for Texts {
 pub(super) const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
     [c]\ntype=UIButton\nid=1028\nx=300\ny=220\ndx=8\ndy=8\nstate=2048\ntransparent=0\n\
+    [m]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=2\ndy=2\ntimed=1\nstate=1025\n\
     [e]\ntype=UIButton\nid=1075\nx=280\ny=220\ndx=8\ndy=8\nstate=2\ntransparent=0\n\
     [d]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n\
     [f]\ntype=UILayout\nlayout=ui/animal.lyt\nstate=1\n\

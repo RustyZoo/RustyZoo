@@ -607,7 +607,7 @@ pending_object() { # pending_object <map> <script>
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;272b61a1cede756f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;c153815a6d5b365b" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;2db6bcf8b62085de" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
 check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;efa3ad2b1370df6c" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
@@ -723,8 +723,8 @@ building_place() { # building_place <map>
     awk '/ world add /{p=p ";" $6 "," $7 "," $11} / tool message /{p=p ";message" $6} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" c ";" h}'
   rm -rf "$d"
 }
-check base-trial "building/building/vendfood,16,45,2;message10555;49950;54c1c4d355b2e07d" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;4565c11c425af47d" "building_place maps/scn19.zoo"
+check base-trial "building/building/vendfood,16,45,2;message10555;49950;2928c60237fda309" "building_place maps/default.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;e638fda09543a9d2" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)

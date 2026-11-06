@@ -10,11 +10,13 @@
 mod dialog;
 mod element;
 mod input;
+mod message;
 mod region;
 mod tooltip;
 mod widgets;
 
 pub use dialog::Buttons;
+pub(crate) use message::{LIST as HISTORY_LIST, Message};
 use std::collections::{HashMap, VecDeque};
 pub use tooltip::Settings;
 
@@ -42,6 +44,9 @@ pub(crate) enum Action {
     Double(i32, i32),
     /// A text field lost the keyboard focus (its edit ended): its id.
     Edited(i32),
+    /// The message line was clicked: the index of the message on it in the history (ui layout
+    /// 4.14 point 8).
+    Message(i32),
 }
 
 /// The game's strings, with the texts the game code has put in place of some of them (a version
@@ -100,11 +105,11 @@ pub struct Interface {
     /// The game is paused: a message line with nothing waiting restarts its count (ui layout
     /// 4.13 point 4).
     message_paused: bool,
-    /// The messages waiting for the message line with their kinds, the oldest first.
-    message_queue: VecDeque<(Vec<u8>, i32)>,
-    /// The texts of the message line's list (the shown, the waiting and the older ones) and the
-    /// clock (ms) they were posted at, the oldest first.
-    message_list: VecDeque<(Vec<u8>, u32)>,
+    /// The message line's queue and the history list mirroring it (ui layout 4.13 point 9): the
+    /// waiting messages, the shown one and the older ones, the newest first.
+    messages: VecDeque<message::Entry>,
+    /// How many of the newest messages wait for the line.
+    waiting: usize,
 }
 
 impl Interface {
@@ -139,9 +144,10 @@ impl Interface {
             question_picture: None,
             file_size: HashMap::new(),
             message_paused: false,
-            message_queue: VecDeque::new(),
-            message_list: VecDeque::new(),
+            messages: VecDeque::new(),
+            waiting: 0,
         };
+        ui.bind_history();
         ui.start_tooltip();
         ui.sync_owners();
         ui

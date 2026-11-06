@@ -2,6 +2,7 @@
 //! animals' messages.
 
 use super::*;
+use crate::ui::interface::Message;
 
 impl App<'_> {
     /// Takes the sounds the units' animations began and places each one: at the unit's position
@@ -122,6 +123,7 @@ impl App<'_> {
         self.lines.world.extend(game.world.units.take_world_lines());
         self.lines.building = game.world.units.take_building_lines();
         for (message, id, names) in game.world.units.take_messages() {
+            let found = game.world.find(id).is_some();
             let own = (game.world.find(id))
                 .and_then(|at| game.world.zoo.entities[at].common.as_ref())
                 .map_or("", |c| &c.name);
@@ -132,8 +134,18 @@ impl App<'_> {
                     names
                 };
                 let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
-                ui.message(&to_cp1252(&text), kinds::of(message));
-                research::alert(ui, self.renderer.vfs(), message, &text);
+                let text = to_cp1252(&text);
+                let vfs = self.renderer.vfs();
+                let mut post = Message::new(&text, kinds::of(message));
+                if found {
+                    post = history::about(post, ui, vfs, id);
+                }
+                // An escape opens the alert, which lists its text and does not put it on the line.
+                if message == crate::animal::ESCAPED {
+                    research::dialog(ui, vfs, post);
+                } else {
+                    ui.post(post);
+                }
             }
         }
     }
