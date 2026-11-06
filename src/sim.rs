@@ -597,6 +597,14 @@ impl Sim {
         crate::building::dead::decide_all(world, cat);
     }
 
+    /// A building of random use plays `used` when its time is up (guest buildings 10.1).
+    fn random_use(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data, at: usize) {
+        let now = self.ai_ticks;
+        if let Some(times) = crate::building::random_use::due(world, cat, at, now, &mut self.rng) {
+            self.idles.queue_used(world, at, times, data);
+        }
+    }
+
     /// The random use time of building `id`, just placed, is drawn (guest buildings 10.1).
     pub(crate) fn draw_use(&mut self, world: &mut World, cat: &Catalogue, id: u32) {
         if let Some(at) = world.find(id) {
@@ -800,11 +808,7 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
-                // A building of random use plays `used` when its time is up (guest buildings 10.1).
-                let due = crate::building::random_use::due(world, cat, at, self.ai_ticks, ctx.rng);
-                if let Some(times) = due {
-                    self.idles.queue_used(world, at, times, data);
-                }
+                self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);

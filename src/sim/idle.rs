@@ -4,7 +4,8 @@
 //! own (tank staff 7.7). A loop that ends drops the time left over, so it takes a little more than
 //! `count x delay`. When a guest comes into an empty building its base loop becomes `used` once the
 //! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
-//! at once, and alive again `idle`, both from frame 0. A fence that is not a gate starts at a
+//! at once, and alive again `idle`, both from frame 0; a building of random use queues `used` once
+//! behind the base when its time is up (`building::random_use`). A fence that is not a gate starts at a
 //! random time; a gate does not loop: its player runs only while it opens or closes.
 //!
 //! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
@@ -515,9 +516,13 @@ pub(crate) mod tests {
                 zoo.entities
                     .push(entity("building", "hut", 1, centre((0, 0)), 0));
             });
-            w.units
-                .buildings
-                .insert(1, crate::building::Live { extra: users, ..Default::default() });
+            w.units.buildings.insert(
+                1,
+                crate::building::Live {
+                    extra: users,
+                    ..Default::default()
+                },
+            );
             w
         };
         let run = |users: u32, times: u32, data: &dyn Data| {
@@ -538,13 +543,21 @@ pub(crate) mod tests {
         // The pass of idle ends after 400 ms, then 2 passes of 200 ms, then idle again.
         assert_eq!(
             run(0, 2, &Building),
-            [None, None, None, used, used, used, used, None, None, None, None, None]
+            [
+                None, None, None, used, used, used, used, None, None, None, None, None
+            ]
         );
         assert_eq!(run(0, 0, &Building), [None; 12], "a count of 0");
         // After an entry the base is `used`: it loops, with the queue ahead.
         assert!(run(1, 1, &Building)[11] == used);
         // No `used` animation: nothing.
-        let none = Fixed(Some(Timing { count: 4, delay: 100 }), vec![]);
+        let none = Fixed(
+            Some(Timing {
+                count: 4,
+                delay: 100,
+            }),
+            vec![],
+        );
         assert_eq!(run(0, 3, &none), [None; 12]);
     }
 

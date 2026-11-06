@@ -20,9 +20,7 @@ struct Use {
 }
 
 fn read(ty: &EntityType) -> Option<Use> {
-    let n = |key: &str, default: i32| {
-        crate::build::number(ty, key).map_or(default, |v| v as i32)
-    };
+    let n = |key: &str, default: i32| crate::build::number(ty, key).map_or(default, |v| v as i32);
     (ty.class == "building" && n("cRandomUse", 0) == 1).then(|| Use {
         min: n("cMinUsePeriod", 0),
         max: n("cMaxUsePeriod", 0),
@@ -127,12 +125,32 @@ mod tests {
         let mut first = rng();
         let r = first.pick(40);
         for (keys, want, draws) in [
-            ("cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60", Some(100 + 20 + r), 1),
-            ("cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=20", Some(120), 0),
-            ("cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=5", Some(120), 0),
+            (
+                "cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60",
+                Some(100 + 20 + r),
+                1,
+            ),
+            (
+                "cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=20",
+                Some(120),
+                0,
+            ),
+            (
+                "cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=5",
+                Some(120),
+                0,
+            ),
             ("cRandomUse=1", Some(100), 0),
-            ("cRandomUse=1\ncMinUsePeriod=-30", Some(70 + rng().pick(30)), 1),
-            ("cRandomUse=1\ncMaxUsePeriod=99999999999", Some(100 + rng().pick(i32::MAX as u32)), 1),
+            (
+                "cRandomUse=1\ncMinUsePeriod=-30",
+                Some(70 + rng().pick(30)),
+                1,
+            ),
+            (
+                "cRandomUse=1\ncMaxUsePeriod=99999999999",
+                Some(100 + rng().pick(i32::MAX as u32)),
+                1,
+            ),
             ("cRandomUse=0\ncMaxUsePeriod=60", None, 0),
             ("cRandomUse=2\ncMaxUsePeriod=60", None, 0),
             ("cRandomUse=-1\ncMaxUsePeriod=60", None, 0),
@@ -206,8 +224,17 @@ mod tests {
         let c = cat("cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60");
         let mut w = world(Some(0), 70);
         let data = Fixed(
-            Some(Timing { count: 2, delay: 100 }),
-            vec![("used", Timing { count: 2, delay: 100 })],
+            Some(Timing {
+                count: 2,
+                delay: 100,
+            }),
+            vec![(
+                "used",
+                Timing {
+                    count: 2,
+                    delay: 100,
+                },
+            )],
         );
         let mut sim = Sim::new(b"");
         sim.set_seed(1);
@@ -234,7 +261,13 @@ mod tests {
         let at = |ticks| {
             let mut sim = Sim::new(b"");
             sim.set_seed(1);
-            sim.start_game(16, Clocks { ai_ticks: ticks, ..Clocks::default() });
+            sim.start_game(
+                16,
+                Clocks {
+                    ai_ticks: ticks,
+                    ..Clocks::default()
+                },
+            );
             sim
         };
         let drawn = |sim: &Sim, ticks: u32| ticks + 20 + sim.rng.clone().pick(40);
