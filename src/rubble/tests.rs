@@ -509,3 +509,21 @@ fn a_centre_from_minus_63_to_minus_1_is_on_tile_0_and_minus_64_is_off_the_map() 
         assert!(pieces.iter().all(|p| p.1 == x), "x = {x}");
     }
 }
+
+/// Every piece turn-to-rubble makes is noted for its one-shot `explode`; a piece nobody made with
+/// it (a loaded one) is not (sprite drawing 3.6).
+#[test]
+fn each_piece_made_is_noted_to_explode_once_and_nothing_else() {
+    let cat = cat(&ALL);
+    let mut w = world(("objects", "car"), (64, 64));
+    run(&mut w, &cat, &mut Rng::default());
+    let mut made: Vec<u32> = (w.zoo.entities.iter())
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    let mut noted = w.units.take_exploded();
+    made.sort_unstable();
+    noted.sort_unstable();
+    assert!(!noted.is_empty());
+    assert_eq!(noted, made);
+    assert!(w.units.take_exploded().is_empty());
+}

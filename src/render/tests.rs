@@ -2981,3 +2981,79 @@ fn a_new_frame_is_applied_without_staging_again() {
             .all(|(p, q)| staged.own[p.2].0.same(&fresh.own[q.2].0))
     );
 }
+
+/// A dung pile shows `small` for size 1, `giant` for 2 and `idle` for any other size, negative and
+/// huge included (sprite drawing 3.6).
+#[test]
+fn a_dung_pile_shows_small_giant_or_idle_by_its_size() {
+    let poo = crate::fixtures::ty("objects", "other", "poo", "");
+    let name = |size| rest_name(&poo, None, false, size).unwrap();
+    for (size, want) in [
+        (0, "idle"),
+        (1, "small"),
+        (2, "giant"),
+        (3, "idle"),
+        (i32::MAX, "idle"),
+        (-1, "idle"),
+        (i32::MIN, "idle"),
+    ] {
+        assert_eq!(name(size), want, "size {size}");
+    }
+}
+
+/// A rubble piece shows `idle`, and `explode` while the clock says it plays (sprite drawing 3.6).
+#[test]
+fn a_rubble_piece_draws_explode_only_while_it_is_shown_playing_it() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n");
+    let install = Install::new(
+        "render-rubble",
+        &[
+            (
+                "rubble.cfg",
+                b"[rubble]\nrubl\n[rubl]\nr = r.ai\n".to_vec(),
+            ),
+            (
+                "r.ai",
+                b"[Animations]\nidle = objects/r/idle/idle.ani\nexplode = objects/r/boom/boom.ani\n"
+                    .to_vec(),
+            ),
+            ("objects/r/idle/idle.ani", ani("idle").into_bytes()),
+            ("objects/r/boom/boom.ani", ani("boom").into_bytes()),
+            ("a/idle/N", sprite_file(None, 1, &[sized(&frame)])),
+            (
+                "a/boom/N",
+                sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = tile_with(&[("rubble", "rubl", "r")]);
+    let drawn = |playing: bool| {
+        let shown = (playing.then(|| Shown {
+            id: 1,
+            animation: "explode".into(),
+            frame: 0,
+        }))
+        .into_iter()
+        .collect();
+        let extra = Extra {
+            shown,
+            idle: Frames(HashMap::from([(1, 2)])),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        shown_frames_of(&staged)
+    };
+    // `idle` has one frame, whatever the clock says; `explode` takes the clock's frame.
+    assert_eq!(drawn(false), [0]);
+    assert_eq!(drawn(true), [2]);
+}

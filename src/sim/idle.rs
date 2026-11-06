@@ -402,4 +402,85 @@ pub(crate) mod tests {
         // The same amount goes on.
         assert_eq!(step(&world, 70), 1);
     }
+
+    /// A rubble piece made by turn-to-rubble plays `explode` once, from the end of its `idle`
+    /// loop (one delay), then `idle` again for good; a piece not queued, or whose type has no
+    /// `explode`, never does (sprite drawing 3.6).
+    #[test]
+    fn a_rubble_piece_plays_explode_once_after_its_idle_loop() {
+        let world = world_with((4, 4), |zoo| {
+            for id in 1..=3 {
+                zoo.entities
+                    .push(entity("rubble", "other", id, centre((0, 0)), 0));
+            }
+        });
+        let idle = Timing {
+            count: 1,
+            delay: 125,
+        };
+        let explode = Timing {
+            count: 3,
+            delay: 100,
+        };
+        let data = Fixed(Some(idle), vec![("explode", explode)]);
+        let mut idles = Idles::default();
+        idles.register(&world, &Catalogue::default(), &data);
+        // Piece 3 is not queued; piece 2 is queued with no clock (an unknown id is ignored).
+        idles.queue_explode(&world, &[1, 2, 99], &data);
+        let step = |idles: &mut Idles, ms: u32| {
+            idles.advance(ms);
+            (idles.exploding(), idles.frames())
+        };
+        let (on, _) = step(&mut idles, 124);
+        assert!(on.is_empty(), "the idle delay has not ended");
+        let (on, frames) = step(&mut idles, 1);
+        assert_eq!(on, [1, 2]);
+        assert_eq!((frames[&1], frames[&2]), (0, 0));
+        assert!(!frames.contains_key(&3));
+        let (_, frames) = step(&mut idles, 250);
+        assert_eq!(frames[&1], 2);
+        // The last frame ends: idle again, still, and no second explosion.
+        let (on, frames) = step(&mut idles, 50);
+        assert!(on.is_empty() && frames.is_empty());
+        let (on, frames) = step(&mut idles, u32::MAX);
+        assert!(on.is_empty() && frames.is_empty());
+    }
+
+    /// A type with no `explode`, a delay of 0 or a huge step never end a run or play twice.
+    #[test]
+    fn a_missing_explode_or_odd_timings_play_nothing_or_stay_on_a_frame() {
+        let world = world_with((4, 4), |zoo| {
+            zoo.entities
+                .push(entity("rubble", "other", 1, centre((0, 0)), 0));
+        });
+        let idle = Timing {
+            count: 1,
+            delay: 125,
+        };
+        let none = Fixed(Some(idle), vec![]);
+        let mut idles = Idles::default();
+        idles.register(&world, &Catalogue::default(), &none);
+        idles.queue_explode(&world, &[1], &none);
+        idles.advance(1000);
+        assert!(idles.exploding().is_empty());
+        for explode in [
+            Timing { count: 4, delay: 0 },
+            Timing {
+                count: 0,
+                delay: 83,
+            },
+            Timing { count: 1, delay: 1 },
+        ] {
+            let data = Fixed(Some(idle), vec![("explode", explode)]);
+            let mut idles = Idles::default();
+            idles.register(&world, &Catalogue::default(), &data);
+            idles.queue_explode(&world, &[1], &data);
+            idles.advance(125);
+            idles.advance(u32::MAX);
+            let frames = idles.frames();
+            assert!(frames.values().all(|&f| f < 4));
+            // A delay of 0 never ends; the others are back on `idle`.
+            assert_eq!(idles.exploding().len(), usize::from(explode.delay == 0));
+        }
+    }
 }
