@@ -505,6 +505,49 @@ pub(crate) mod tests {
         }
     }
 
+    /// `used` queued behind a building's loop plays `times` times, one pass each, then the base
+    /// comes back: `idle` for a building never entered, `used` after an entry; a type with no
+    /// `used` plays nothing.
+    #[test]
+    fn a_queued_use_plays_its_passes_and_the_base_returns() {
+        let world = |users: u32| {
+            let mut w = world_with((4, 4), |zoo| {
+                zoo.entities
+                    .push(entity("building", "hut", 1, centre((0, 0)), 0));
+            });
+            w.units
+                .buildings
+                .insert(1, crate::building::Live { extra: users, ..Default::default() });
+            w
+        };
+        let run = |users: u32, times: u32, data: &dyn Data| {
+            let (mut rng, mut idles) = (Rng::default(), Idles::default());
+            idles.register(&world(0), &Catalogue::default(), data, &mut rng);
+            let w = world(users);
+            idles.queue_used(&w, 0, times, data);
+            let mut seen = Vec::new();
+            for _ in 0..12 {
+                // The pass of `idle` (4 frames) runs to its end first.
+                idles.register(&w, &Catalogue::default(), data, &mut rng);
+                idles.advance(100);
+                seen.push(idles.looks().get(&1).copied());
+            }
+            seen
+        };
+        let used = Some("used");
+        // The pass of idle ends after 400 ms, then 2 passes of 200 ms, then idle again.
+        assert_eq!(
+            run(0, 2, &Building),
+            [None, None, None, used, used, used, used, None, None, None, None, None]
+        );
+        assert_eq!(run(0, 0, &Building), [None; 12], "a count of 0");
+        // After an entry the base is `used`: it loops, with the queue ahead.
+        assert!(run(1, 1, &Building)[11] == used);
+        // No `used` animation: nothing.
+        let none = Fixed(Some(Timing { count: 4, delay: 100 }), vec![]);
+        assert_eq!(run(0, 3, &none), [None; 12]);
+    }
+
     /// A gate does not loop by itself: with an animated idle it stays on frame 0 after any number
     /// of steps (its player runs only while it opens or closes).
     #[test]
