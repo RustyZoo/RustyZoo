@@ -44,7 +44,8 @@ pub fn which(vfs: Vfs, member: &str) -> Result<(), CliError> {
 }
 
 /// Prints the string table and the `TEXT` entries of `dll`, a file of the install folder
-/// whose name is matched ignoring letter case, or only the bytes of the `TEXT` entry `text`.
+/// whose name is matched ignoring letter case, or only the text of the `TEXT` entry `text`
+/// (decoded by the language of the entry, written as UTF-8).
 pub fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), CliError> {
     let path = std::fs::read_dir(&dir)
         .map_err(|e| format!("cannot read folder {}: {e}", dir.display()))?
@@ -69,11 +70,12 @@ pub fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), C
     let texts = pe::texts(&resources);
 
     if let Some(name) = text {
-        let (_, data) = texts
+        let (_, language, data) = texts
             .iter()
-            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .find(|(n, ..)| n.eq_ignore_ascii_case(name))
             .ok_or_else(|| format!("{dll} has no TEXT entry named {name}"))?;
-        return ignore_closed_pipe(io::stdout().lock().write_all(data));
+        let text = rustyzoo::strings::decode_text(*language, data);
+        return ignore_closed_pipe(io::stdout().lock().write_all(text.as_bytes()));
     }
     let strings = pe::strings(&resources).map_err(|e| format!("{dll}: {e}"))?;
     let mut out = io::BufWriter::new(io::stdout().lock());
@@ -81,7 +83,7 @@ pub fn dump_strings(dir: PathBuf, dll: &str, text: Option<&str>) -> Result<(), C
         .iter()
         .try_for_each(|(id, text)| writeln!(out, "{id}\t{}", escape(text)))
         .and_then(|()| {
-            texts.iter().try_for_each(|(name, data)| {
+            texts.iter().try_for_each(|(name, _, data)| {
                 writeln!(out, "TEXT\t{}\t{}", escape(name), data.len())
             })
         })
@@ -109,8 +111,13 @@ pub fn merged_strings(dir: &Path) -> Result<(), CliError> {
                 .try_for_each(|(id, (lib, text))| writeln!(out, "{id}\t{lib}\t{}", escape(text)))
         })
         .and_then(|()| {
-            tables.texts().iter().try_for_each(|(name, (lib, data))| {
-                writeln!(out, "TEXT\t{}\t{lib}\t{}", escape(name), data.len())
+            tables.texts().iter().try_for_each(|(name, (lib, text))| {
+                writeln!(
+                    out,
+                    "TEXT\t{}\t{lib}\t{}",
+                    escape(name),
+                    text.chars().count()
+                )
             })
         })
         .and_then(|()| out.flush());

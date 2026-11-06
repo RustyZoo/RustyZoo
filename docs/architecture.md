@@ -146,7 +146,7 @@ The game folder is the install folder, the one that holds `zoo.ini`, found with 
 
 ## Dependencies
 
-A dependency is added by the milestone that first uses it: `sdl3`, `zip`, `png`, `flate2`, `fontdue`, and a trimmed copy of NihAV's Indeo 5 decoder in `vendor/nihav` (see `vendor/README.md`).
+A dependency is added by the milestone that first uses it: `sdl3`, `zip`, `png`, `flate2`, `fontdue`, `encoding_rs` (the code pages of the double-byte `TEXT` entries), and a trimmed copy of NihAV's Indeo 5 decoder in `vendor/nihav` (see `vendor/README.md`).
 
 ## Tests
 

@@ -263,14 +263,14 @@ pub fn strings(resources: &[Resource]) -> Result<BTreeMap<u32, String>, PeError>
     Ok(table)
 }
 
-/// The resources of the custom type `TEXT`, by name, in the order of the file. Entries that
-/// have a number instead of a name are left out.
-pub fn texts<'r, 'a>(resources: &'r [Resource<'a>]) -> Vec<(&'r str, &'a [u8])> {
+/// The resources of the custom type `TEXT`, by name, in the order of the file: the name, the
+/// language and the bytes. Entries that have a number instead of a name are left out.
+pub fn texts<'r, 'a>(resources: &'r [Resource<'a>]) -> Vec<(&'r str, u32, &'a [u8])> {
     resources
         .iter()
         .filter(|r| r.kind.is_name("TEXT"))
         .filter_map(|r| match &r.name {
-            ResKey::Name(name) => Some((name.as_str(), r.data)),
+            ResKey::Name(name) => Some((name.as_str(), r.language, r.data)),
             ResKey::Id(_) => None,
         })
         .collect()
@@ -349,6 +349,15 @@ pub(crate) mod tests {
     /// A PE image whose resources are the given strings (ID and text) and `TEXT` entries
     /// (name and bytes), in one language each.
     pub(crate) fn library(strings: &[(u32, &str)], texts: &[(&str, &[u8])]) -> Vec<u8> {
+        library_in(1033, strings, texts)
+    }
+
+    /// Like [`library`], with every resource in `language`.
+    pub(crate) fn library_in(
+        language: u32,
+        strings: &[(u32, &str)],
+        texts: &[(&str, &[u8])],
+    ) -> Vec<u8> {
         let mut blocks: BTreeMap<u32, [&str; 16]> = BTreeMap::new();
         for (id, text) in strings {
             blocks.entry(id / 16 + 1).or_default()[(id % 16) as usize] = text;
@@ -418,7 +427,7 @@ pub(crate) mod tests {
             leaf += t.1.len();
         }
         for i in 0..leaf_count {
-            directory(&mut tree, 0, 1, &[(1033, (entries + 16 * i) as u32)]);
+            directory(&mut tree, 0, 1, &[(language, (entries + 16 * i) as u32)]);
         }
         let mut blobs: Vec<u8> = Vec::new();
         for (_, data) in types.iter().flat_map(|t| &t.1) {
@@ -466,7 +475,7 @@ pub(crate) mod tests {
         let file = sample();
         let found = resources(&file).unwrap();
         assert_eq!(found.len(), 2);
-        assert_eq!(texts(&found), [("LION", &b"hello"[..])]);
+        assert_eq!(texts(&found), [("LION", 1033, &b"hello"[..])]);
         assert_eq!(found[1].language, 1033);
         let table = strings(&found).unwrap();
         // Block 1 holds the IDs 0 to 15; empty strings are absent.
@@ -656,8 +665,8 @@ pub(crate) mod tests {
         assert_eq!(texts(&found).len(), 220);
         let lion = texts(&found)
             .into_iter()
-            .find(|(n, _)| *n == "LION_GENERAL");
-        let lion = lion.unwrap().1.len();
+            .find(|(n, ..)| *n == "LION_GENERAL");
+        let lion = lion.unwrap().2.len();
         let language = installed_language(&dir);
         if language == 1036 {
             assert_eq!(lion, 1905);

@@ -13,6 +13,7 @@ use std::fmt;
 use std::path::Path;
 
 use crate::pe;
+use crate::text::from_cp1252;
 use crate::vfs::MAX_MEMBER_SIZE;
 
 /// The install language that the text of string 22015 gives: a decimal number, else (missing,
@@ -70,11 +71,27 @@ impl fmt::Display for StringsError {
 
 impl Error for StringsError {}
 
+/// The text of a `TEXT` entry in `language` (a Windows language identifier), cut at the first
+/// zero byte. The code page comes from the language: the data entries say 1252 whatever the
+/// language. Japanese is 932, Simplified Chinese 936, Korean 949, Traditional Chinese 950; any
+/// other language is Windows-1252. Bytes that the code page lacks become U+FFFD.
+pub fn decode_text(language: u32, data: &[u8]) -> String {
+    let data = &data[..data.iter().position(|&b| b == 0).unwrap_or(data.len())];
+    let encoding = match language {
+        1041 => encoding_rs::SHIFT_JIS,
+        2052 | 4100 => encoding_rs::GBK,
+        1042 => encoding_rs::EUC_KR,
+        1028 | 3076 | 5124 => encoding_rs::BIG5,
+        _ => return data.iter().map(|&b| from_cp1252(b)).collect(),
+    };
+    encoding.decode_without_bom_handling(data).0.into_owned()
+}
+
 /// One library: its file name, its non-empty strings and its `TEXT` entries by upper-case name.
 struct Library {
     name: String,
     strings: BTreeMap<u32, String>,
-    texts: HashMap<String, Vec<u8>>,
+    texts: HashMap<String, String>,
 }
 
 impl Library {
@@ -83,10 +100,10 @@ impl Library {
         let resources = pe::resources(file).ok()?;
         let strings = pe::strings(&resources).ok()?;
         let mut texts = HashMap::new();
-        for (text, data) in pe::texts(&resources) {
+        for (text, language, data) in pe::texts(&resources) {
             texts
                 .entry(text.to_ascii_uppercase())
-                .or_insert_with(|| data.to_vec());
+                .or_insert_with(|| decode_text(language, data));
         }
         Some(Library {
             name: name.to_string(),
@@ -185,25 +202,22 @@ impl StringTables {
         self.string_source(id).map_or("", |(_, text)| text)
     }
 
-    /// The bytes of the `TEXT` entry `name` (matched ignoring letter case) and the library that
+    /// The text of the `TEXT` entry `name` (matched ignoring letter case) and the library that
     /// supplies it; `None` if no library has it.
-    pub(crate) fn text_source(&self, name: &str) -> Option<(&str, &[u8])> {
-        // ponytail: an empty name is an empty text; the bytes end at the first zero byte, and
-        // are returned undecoded (Windows-1252 in the English version).
+    pub(crate) fn text_source(&self, name: &str) -> Option<(&str, &str)> {
+        // ponytail: an empty name is an empty text.
         let name = name.to_ascii_uppercase();
         if name.is_empty() {
             return None;
         }
-        self.libraries.iter().find_map(|l| {
-            let data = l.texts.get(&name)?;
-            let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-            Some((l.name.as_str(), &data[..end]))
-        })
+        self.libraries
+            .iter()
+            .find_map(|l| Some((l.name.as_str(), l.texts.get(&name)?.as_str())))
     }
 
-    /// The bytes of the `TEXT` entry `name`, or an empty text if no library has it.
-    pub(crate) fn text(&self, name: &str) -> &[u8] {
-        self.text_source(name).map_or(&[], |(_, data)| data)
+    /// The text of the `TEXT` entry `name`, or an empty text if no library has it.
+    pub(crate) fn text(&self, name: &str) -> &str {
+        self.text_source(name).map_or("", |(_, text)| text)
     }
 
     /// The install language: the number of string 22015 (1033 English, 1036 French). A missing,
@@ -234,8 +248,8 @@ impl StringTables {
     }
 
     /// The merged view of the `TEXT` entries: upper-case name to the supplying library and the
-    /// bytes.
-    pub fn texts(&self) -> BTreeMap<String, (&str, &[u8])> {
+    /// text.
+    pub fn texts(&self) -> BTreeMap<String, (&str, &str)> {
         let names: BTreeSet<&String> = self.libraries.iter().flat_map(|l| l.texts.keys()).collect();
         names
             .into_iter()
@@ -248,7 +262,7 @@ impl StringTables {
 mod tests {
     use super::*;
     use crate::fixtures::TempDir;
-    use crate::pe::tests::library;
+    use crate::pe::tests::{library, library_in};
 
     /// Four libraries that overlap, in the layout of an install with one expansion.
     fn install(name: &str) -> TempDir {
@@ -379,12 +393,12 @@ mod tests {
         let tables = StringTables::open(&dir.0).unwrap();
         assert_eq!(
             tables.text_source("LION_GENERAL"),
-            Some(("lang100.dll", &b"expansion text"[..]))
+            Some(("lang100.dll", "expansion text"))
         );
-        assert_eq!(tables.text("lion_general"), b"expansion text");
-        assert_eq!(tables.text("ZEBRA"), b"zebra");
-        assert_eq!(tables.text("NOPE"), b"");
-        assert_eq!(tables.text(""), b"");
+        assert_eq!(tables.text("lion_general"), "expansion text");
+        assert_eq!(tables.text("ZEBRA"), "zebra");
+        assert_eq!(tables.text("NOPE"), "");
+        assert_eq!(tables.text(""), "");
         // Without the override of lang100.dll the bytes end at the first zero byte.
         let dir = TempDir::new("nul");
         dir.write(
@@ -392,8 +406,46 @@ mod tests {
             &library(&[], &[("B", b""), ("A", b"base text\0junk")]),
         );
         let tables = StringTables::open(&dir.0).unwrap();
-        assert_eq!(tables.text("a"), b"base text");
-        assert_eq!(tables.text_source("B"), Some(("lang0.dll", &b""[..])));
+        assert_eq!(tables.text("a"), "base text");
+        assert_eq!(tables.text_source("B"), Some(("lang0.dll", "")));
+    }
+
+    #[test]
+    fn a_text_is_decoded_by_the_language_of_its_entry() {
+        // Each pair is the same two bytes: they are two Latin letters in Windows-1252, one
+        // character in a double-byte code page. The data entry says 1252 in every case.
+        for (language, bytes, text) in [
+            (1041, [0x82, 0xA0], "\u{3042}"),
+            (2052, [0xD6, 0xD0], "\u{4E2D}"),
+            (1028, [0xA4, 0xA4], "\u{4E2D}"),
+            (1042, [0xB0, 0xA1], "\u{AC00}"),
+            (1033, [0xE9, 0x80], "\u{E9}\u{20AC}"),
+            (1036, [0xE9, 0x80], "\u{E9}\u{20AC}"),
+            (0, [0xE9, 0x80], "\u{E9}\u{20AC}"),
+            (u32::MAX, [0xE9, 0x80], "\u{E9}\u{20AC}"),
+        ] {
+            assert_eq!(decode_text(language, &bytes), text, "{language}");
+        }
+        // A cut lead byte, a zero byte and no bytes at all never end the run.
+        assert_eq!(decode_text(1041, &[b'a', 0x82]), "a\u{FFFD}");
+        assert_eq!(decode_text(1041, b"ab\0\x82\xA0"), "ab");
+        assert_eq!(decode_text(1041, b""), "");
+        assert_eq!(decode_text(1033, b"\0"), "");
+        // The bytes of a Japanese library are read as Japanese, those of the base as 1252.
+        let dir = TempDir::new("japanese");
+        dir.write(
+            "lang0.dll",
+            &library(&[], &[("A", &[0xE9]), ("B", b"base")]),
+        );
+        dir.write(
+            "lang001.dll",
+            &library_in(1041, &[], &[("A", &[0x82, 0xA0])]),
+        );
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.text_source("A"), Some(("lang001.dll", "\u{3042}")));
+        assert_eq!(tables.text("B"), "base");
+        // The interface still draws Windows-1252: a Japanese character is a `?` until #1279.
+        assert_eq!(crate::ui::draw::Strings::text_entry(&tables, b"A"), b"?");
     }
 
     #[test]
@@ -406,11 +458,8 @@ mod tests {
         assert_eq!(merged[&314], ("lang300.dll", "top"));
         let texts = tables.texts();
         assert_eq!(texts.len(), 2);
-        assert_eq!(
-            texts["LION_GENERAL"],
-            ("lang100.dll", &b"expansion text"[..])
-        );
-        assert_eq!(texts["ZEBRA"], ("lang0.dll", &b"zebra"[..]));
+        assert_eq!(texts["LION_GENERAL"], ("lang100.dll", "expansion text"));
+        assert_eq!(texts["ZEBRA"], ("lang0.dll", "zebra"));
     }
 
     #[test]
@@ -471,7 +520,7 @@ mod tests {
                 let (found, text) = tables.string_source(id).unwrap();
                 assert_eq!((found, text.is_empty()), (library, false), "{id}");
             }
-            assert_eq!(tables.text("lion_general").len(), 1905);
+            assert_eq!(tables.text("lion_general").chars().count(), 1905);
             return;
         }
         assert_eq!(tables.string_source(314).map(|s| s.0), Some("lang300.dll"));
@@ -484,6 +533,6 @@ mod tests {
             Some(("lang019.dll", "Komodo Dragon"))
         );
         assert_eq!(tables.string_source(5006), Some(("lang0.dll", "Lion")));
-        assert_eq!(tables.text("lion_general").len(), 1595);
+        assert_eq!(tables.text("lion_general").chars().count(), 1595);
     }
 }

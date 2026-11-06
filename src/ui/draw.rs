@@ -68,7 +68,7 @@ impl Strings for StringTables {
     }
 
     fn text_entry(&self, name: &[u8]) -> Vec<u8> {
-        self.text(&String::from_utf8_lossy(name)).to_vec()
+        to_cp1252(self.text(&String::from_utf8_lossy(name)))
     }
 }
 
