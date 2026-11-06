@@ -1769,3 +1769,41 @@ fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
         "{maps} maps, {buildings} buildings"
     );
 }
+
+/// The step takes the pieces turn-to-rubble made and queues their `explode` behind `idle`: after
+/// the idle delay the piece shows it, then it is over for good (sprite drawing 3.6).
+#[test]
+fn a_step_queues_the_explode_of_the_pieces_just_made() {
+    use crate::behaviour::Timing;
+    use idle::tests::Fixed;
+    let mut w = world(0);
+    let mut piece = crate::unit::testing::entity("rubble", "other", 7, (32, 32), 0);
+    piece.common.as_mut().unwrap().id = 7;
+    w.zoo.entities.push(piece);
+    w.units.push_exploded(7);
+    let idle = Timing {
+        count: 1,
+        delay: 100,
+    };
+    let explode = Timing {
+        count: 2,
+        delay: 100,
+    };
+    let data = Fixed(Some(idle), vec![("explode", explode)]);
+    let cat = Catalogue::default();
+    let mut sim = Sim::new(b"");
+    let at = |sim: &mut Sim, w: &mut World| {
+        sim.step_with(&data, &cat, w, 100, |_, _, _| {});
+        let mut on: Vec<u32> = (sim.idle_looks().into_iter())
+            .filter(|(_, n)| *n == "explode")
+            .map(|(id, _)| id)
+            .collect();
+        on.sort_unstable();
+        on
+    };
+    // The clock starts at this step and its idle delay ends in it.
+    assert_eq!(at(&mut sim, &mut w), [7]);
+    at(&mut sim, &mut w);
+    assert_eq!(at(&mut sim, &mut w), Vec::<u32>::new());
+    assert!(w.units.take_exploded().is_empty());
+}

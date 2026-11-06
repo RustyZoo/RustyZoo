@@ -41,6 +41,9 @@ struct Clock {
     /// A building's users now and its dead state (guest buildings 10.1, 11.1.1).
     users: u32,
     dead: bool,
+    /// A one-shot queued behind the base loop (`explode` of a rubble piece): it starts when the
+    /// sequence playing ends, then the base loop takes over for good.
+    queued: Option<(&'static str, Timing)>,
 }
 
 impl Clock {
@@ -56,14 +59,20 @@ impl Clock {
             next: None,
             users: 0,
             dead: false,
+            queued: None,
         }
     }
 
     /// One advance of the loop by `dt` ms (sprite drawing 6.2, the base sequence alone).
     fn advance(&mut self, dt: u32) {
         let Timing { count, delay } = self.timing;
-        // A still picture never advances.
-        if count <= 1 {
+        // A still base picture with nothing queued never advances.
+        if count <= 1 && self.queued.is_none() && self.name == self.base.0 {
+            return;
+        }
+        // A sequence with no frame ends at once.
+        if count == 0 {
+            self.restart();
             return;
         }
         self.t = self.t.saturating_add(dt);
@@ -80,11 +89,15 @@ impl Clock {
         }
     }
 
-    /// The base animation starts again at frame 0, the one a guest asked for if there is one;
-    /// the time left over is dropped.
+    /// The sequence playing ends: the queued one starts, else the base animation again, the one a
+    /// guest asked for if there is one, at frame 0; the time left over is dropped.
     fn restart(&mut self) {
-        self.base = self.next.take().unwrap_or(self.base);
-        (self.name, self.timing) = self.base;
+        if let Some(queued) = self.queued.take() {
+            (self.name, self.timing) = queued;
+        } else {
+            self.base = self.next.take().unwrap_or(self.base);
+            (self.name, self.timing) = self.base;
+        }
         (self.frame, self.t) = (0, 0);
     }
 
@@ -138,10 +151,24 @@ impl Idles {
         all.map(|(key, c)| (key, c.frame)).collect()
     }
 
-    /// The animation of each entity that does not show `idle` (a building in use or dead).
+    /// The animation of each entity that does not show `idle` (a building in use or dead, a rubble
+    /// piece exploding).
     pub(super) fn looks(&self) -> HashMap<u32, &'static str> {
         let other = self.fixed.iter().filter(|(_, c)| c.name != "idle");
         other.map(|(&id, c)| (id, c.name)).collect()
+    }
+
+    /// Queues `explode` once behind the `idle` base of each piece `ids` that turn-to-rubble made
+    /// (sprite drawing 3.6): it starts when the sequence playing ends. A piece with no clock or
+    /// no such animation plays nothing.
+    pub(crate) fn queue_explode(&mut self, world: &World, ids: &[u32], data: &dyn Data) {
+        for id in ids {
+            let timing =
+                (world.find(*id)).and_then(|at| data.timing(&world.zoo.entities[at], "explode"));
+            if let (Some(c), Some(t)) = (self.fixed.get_mut(id), timing) {
+                c.queued = Some(("explode", t));
+            }
+        }
     }
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
@@ -644,5 +671,96 @@ pub(crate) mod tests {
         assert_eq!(step(&world, 70), 0);
         // The same amount goes on.
         assert_eq!(step(&world, 70), 1);
+    }
+
+    /// The pieces whose `explode` is playing, in id order.
+    fn exploding(idles: &Idles) -> Vec<u32> {
+        let mut ids: Vec<u32> = (idles.looks().into_iter())
+            .filter(|(_, n)| *n == "explode")
+            .map(|(id, _)| id)
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// A rubble piece made by turn-to-rubble plays `explode` once, from the end of its `idle`
+    /// loop (one delay), then `idle` again for good; a piece not queued, or whose type has no
+    /// `explode`, never does (sprite drawing 3.6).
+    #[test]
+    fn a_rubble_piece_plays_explode_once_after_its_idle_loop() {
+        let world = world_with((4, 4), |zoo| {
+            for id in 1..=3 {
+                zoo.entities
+                    .push(entity("rubble", "other", id, centre((0, 0)), 0));
+            }
+        });
+        let idle = Timing {
+            count: 1,
+            delay: 125,
+        };
+        let explode = Timing {
+            count: 3,
+            delay: 100,
+        };
+        let data = Fixed(Some(idle), vec![("explode", explode)]);
+        let mut idles = Idles::default();
+        idles.register(&world, &Catalogue::default(), &data, &mut Rng::default());
+        // Piece 3 is not queued; an unknown id is ignored.
+        idles.queue_explode(&world, &[1, 2, 99], &data);
+        let step = |idles: &mut Idles, ms: u32| {
+            idles.advance(ms);
+            (exploding(idles), idles.frames())
+        };
+        let (on, _) = step(&mut idles, 124);
+        assert!(on.is_empty(), "the idle delay has not ended");
+        let (on, frames) = step(&mut idles, 1);
+        assert_eq!(on, [1, 2]);
+        assert_eq!((frames[&1], frames[&2]), (0, 0));
+        assert!(!frames.contains_key(&3));
+        let (_, frames) = step(&mut idles, 250);
+        assert_eq!(frames[&1], 2);
+        // The last frame ends: idle again, still, and no second explosion.
+        let (on, frames) = step(&mut idles, 50);
+        assert!(on.is_empty() && frames.is_empty());
+        let (on, frames) = step(&mut idles, u32::MAX);
+        assert!(on.is_empty() && frames.is_empty());
+    }
+
+    /// A type with no `explode`, a delay of 0 or a huge step never end a run or play twice.
+    #[test]
+    fn a_missing_explode_or_odd_timings_play_nothing_or_stay_on_a_frame() {
+        let world = world_with((4, 4), |zoo| {
+            zoo.entities
+                .push(entity("rubble", "other", 1, centre((0, 0)), 0));
+        });
+        let idle = Timing {
+            count: 1,
+            delay: 125,
+        };
+        let none = Fixed(Some(idle), vec![]);
+        let mut idles = Idles::default();
+        idles.register(&world, &Catalogue::default(), &none, &mut Rng::default());
+        idles.queue_explode(&world, &[1], &none);
+        idles.advance(1000);
+        assert!(exploding(&idles).is_empty());
+        for explode in [
+            Timing { count: 4, delay: 0 },
+            Timing {
+                count: 0,
+                delay: 83,
+            },
+            Timing { count: 1, delay: 1 },
+        ] {
+            let data = Fixed(Some(idle), vec![("explode", explode)]);
+            let mut idles = Idles::default();
+            idles.register(&world, &Catalogue::default(), &data, &mut Rng::default());
+            idles.queue_explode(&world, &[1], &data);
+            idles.advance(125);
+            idles.advance(u32::MAX);
+            let frames = idles.frames();
+            assert!(frames.values().all(|&f| f < 4));
+            // A delay of 0 never ends; the others are back on `idle`.
+            assert_eq!(exploding(&idles).len(), usize::from(explode.delay == 0));
+        }
     }
 }

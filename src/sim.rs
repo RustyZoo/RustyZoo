@@ -693,7 +693,7 @@ impl Sim {
         self.idles.frames()
     }
 
-    /// The animation of each building that shows another than `idle`: `used` or `idledead`.
+    /// The animation of each building that shows another than `idle`: `used`, `idledead` or a rubble piece's `explode`.
     pub(crate) fn idle_looks(&self) -> std::collections::HashMap<u32, &'static str> {
         self.idles.looks()
     }
@@ -720,6 +720,8 @@ impl Sim {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
         self.idles.register(world, cat, data, &mut self.rng);
+        let made = world.units.take_exploded();
+        self.idles.queue_explode(world, &made, data);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);

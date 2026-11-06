@@ -26,10 +26,14 @@ pub(crate) fn rest_name(
             }
             .to_string()
         }
-        // A dung pile shows `idle`, `small` or `giant` by its size (animals-needs 8.2).
-        "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => {
-            ["idle", "small", "giant"][food.clamp(0, 2) as usize].into()
+        // A dung pile shows `small` for size 1, `giant` for 2 and `idle` for any other size
+        // (sprite drawing 3.6).
+        "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => match food {
+            1 => "small",
+            2 => "giant",
+            _ => "idle",
         }
+        .into(),
         // A trash can shows `empty` up to 12 pieces and `half` from 13; `full` is never shown
         // (guest buildings 8). Its counter holds the pieces.
         "building" if ty.subtype == b"trshcan" => ["empty", "half"][usize::from(food >= 13)].into(),

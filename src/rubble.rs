@@ -144,6 +144,9 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
             let shape = (kit.shape)(&piece);
             let id = world.unrecorded(|w| w.add(piece, shape));
             made.extend(id);
+            if let Some(id) = id {
+                world.units.push_exploded(id);
+            }
             // The first piece of each column explodes with the sound of its own type.
             if let (0, Some(id)) = (j, id) {
                 let voice = format!("{id}/cExplosionSound");

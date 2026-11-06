@@ -405,6 +405,8 @@ pub struct Units {
     staff_lines: Vec<String>,
     /// The sounds the units' animations began, with the unit's id, for the app.
     sounds: Vec<(u32, Heard)>,
+    /// The rubble pieces (ids) turn-to-rubble made, whose `explode` the clocks queue.
+    exploded: Vec<u32>,
     /// The gates that are open or playing their animation (movement 6.2).
     gates: gate::Gates,
     /// The game milliseconds the calendar has run (negative before 2001): the date a new animal is
@@ -492,6 +494,7 @@ impl Default for Units {
             messages: Vec::new(),
             staff_lines: Vec::new(),
             sounds: Vec::new(),
+            exploded: Vec::new(),
             gates: gate::Gates::new(),
             now: 0,
             guest_name: "Guest".into(),
@@ -604,6 +607,16 @@ impl Units {
     /// Asks for a sound at the place of entity `id` (nothing when there is none).
     pub(crate) fn push_sound(&mut self, id: u32, heard: Option<Heard>) {
         self.sounds.extend(heard.map(|h| (id, h)));
+    }
+
+    /// Notes that rubble piece `id` is to play `explode` once.
+    pub(crate) fn push_exploded(&mut self, id: u32) {
+        self.exploded.push(id);
+    }
+
+    /// The pieces noted since the last call.
+    pub(crate) fn take_exploded(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.exploded)
     }
 
     /// The sounds asked for since the last call: the unit and the sound its `[Sounds]` names.
