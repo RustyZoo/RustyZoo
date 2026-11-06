@@ -707,8 +707,6 @@ mod tests {
             [b"animals"]
         );
 
-        // `scenario/scn01/economy.cfg` holds one comment: no section.
-        assert!(read("scenario/scn01/economy.cfg").is_empty());
         // The totals are those of the complete installs (and a Spanish disc has damaged files).
         if crate::fixtures::measured_on("full_game_facts (totals)", &dir) {
             let (mut sections, mut keys, mut values, mut empty) = (0, 0, 0, 0);
@@ -747,12 +745,17 @@ mod tests {
 
         // The help file of the expansions; the base game has an older one.
         if !crate::fixtures::has_expansions(&dir) {
+            assert!(read("scenario/scn01/economy.cfg").is_empty());
             return;
         }
+
         // `help.cfg` writes `topic=Animation settings` but names the section with a capital S.
         let help = read("help.cfg");
         assert!(help.section("Animation Settings").is_some());
         assert!(help.section("Animation settings").is_none());
+
+        // `scenario/scn01/economy.cfg` holds one comment: no section.
+        assert!(read("scenario/scn01/economy.cfg").is_empty());
     }
 
     #[test]
