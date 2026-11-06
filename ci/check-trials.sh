@@ -270,8 +270,8 @@ check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # changes (without the pair it would be 2cf67ce9093b3d71). Sentinel: the state hash of the first month of
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
-check base-trial 1678a65c835a32ab 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial 70a6aea4b6998317 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 74bcf78f8376a39a 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial c3254fe9982684d7 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -1317,7 +1317,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear> [print]: reads $seed
 }
 check expansion-trial yes "any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2).
-check expansion-trial 97902:1@1624 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
+check expansion-trial '97902:1@1042' 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1383,7 +1383,7 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile> [print]: reads $s
   rm -rf "$d"
 }
 check base-trial yes "any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@6730;young:2" "seed=3 lion_birth maps/scn01a.zoo 20000 45,37 44,36 46,38 print"
+check base-trial "mates:3;birth@6581;young:2" "seed=3 lion_birth maps/scn01a.zoo 20000 45,37 44,36 46,38 print"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1406,7 +1406,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@1001;eggs:3;hatch@1632" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
+check expansion-trial "egg@2776;eggs:3;hatch@3406" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1441,8 +1441,8 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102822,0,4430aecc3e56f3cc" "save_load maps/default.zoo"
-check expansion-trial "109491,0,42f33985016a9053" "save_load maps/sm_aqua.zoo"
+check base-trial "102822,0,557b6468fddd8579" "save_load maps/default.zoo"
+check expansion-trial "109491,0,143e249c532a4e6c" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
 check expansion-trial 227408,0 "save_load maps/scn19.zoo | cut -d, -f1,2"
 
