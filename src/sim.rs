@@ -25,8 +25,10 @@ mod events;
 pub mod hash;
 pub(crate) mod idle;
 mod inspect;
+mod random_use;
 mod ripple;
 mod rng;
+mod status;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -597,44 +599,6 @@ impl Sim {
         crate::building::dead::decide_all(world, cat);
     }
 
-    /// A building of random use plays `used` when its time is up (guest buildings 10.1).
-    fn random_use(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data, at: usize) {
-        let now = self.ai_ticks;
-        if let Some(times) = crate::building::random_use::due(world, cat, at, now, &mut self.rng) {
-            self.idles.queue_used(world, at, times, data);
-        }
-    }
-
-    /// The random use time of a pending building of type `ty`, drawn when it is made (guest
-    /// buildings 10.1 point 2.5): none for a type that is not of random use.
-    pub(crate) fn use_time(&mut self, ty: &crate::entity::EntityType) -> Option<u32> {
-        crate::building::random_use::time(ty, self.ai_ticks, &mut self.rng)
-    }
-
-    /// The building `id` just placed keeps the time `kept` of its pending object; without one
-    /// (a tool not chosen in the list) it draws now (guest buildings 10.1 point 2.5).
-    pub(crate) fn keep_use(
-        &mut self,
-        world: &mut World,
-        cat: &Catalogue,
-        id: u32,
-        kept: Option<u32>,
-    ) {
-        let Some(at) = world.find(id) else { return };
-        match (kept, world.zoo.entities[at].common.as_mut()) {
-            (Some(time), Some(c)) => c.stamp = Some(time),
-            _ => crate::building::random_use::draw(world, cat, at, self.ai_ticks, &mut self.rng),
-        }
-    }
-
-    /// A start with `reset` draws the random use time of every building again, in list order,
-    /// from the restored clock (guest buildings 10.1 point 2.5).
-    pub(crate) fn draw_use_all(&mut self, world: &mut World, cat: &Catalogue) {
-        for at in 0..world.zoo.entities.len() {
-            crate::building::random_use::draw(world, cat, at, self.ai_ticks, &mut self.rng);
-        }
-    }
-
     /// The clocks, the status and the event queue a file stores (the inverse of
     /// [`Sim::start_game`]).
     pub(crate) fn clocks(&self) -> Clocks {
@@ -927,67 +891,6 @@ impl Sim {
             water_moved,
             bars,
         }
-    }
-
-    /// The zoo status of a step: the due checks in the original's order, the donation and the
-    /// bars. The generator is seeded again inside the finance check, after the other checks.
-    fn zoo_status(
-        &mut self,
-        world: &mut World,
-        cat: &Catalogue,
-        money: &mut Money,
-        step: u32,
-        month_end: bool,
-    ) -> Option<[i32; 3]> {
-        let due = self.status.due(step, month_end);
-        if due.rating {
-            let sums = Sums::of(world, cat, money.cash, self.research_share());
-            self.status
-                .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
-        }
-        if due.message {
-            let (say, log) = (&mut self.messages, &mut self.lines);
-            self.status.message_check(money.cash, say, log);
-        }
-        if due.new_guest {
-            let occupied = guest::occupied(world, cat);
-            // The effective rating: a cheat adds to it (zoo status 8).
-            let bonus = world.units.cheat.rating_points();
-            if let Some(advice) = self.status.new_guest_check(occupied, bonus, &mut self.rng) {
-                let s = &self.status;
-                let arrival = guest::Arrival {
-                    price: s.price,
-                    multiple: s.settings.admission_multiple,
-                    guests: s.sums.guests,
-                    max_guests: self.ai.max_guests,
-                    date: self.calendar.date(),
-                    reset: self.ai.guest_reset_interval,
-                    real_halloween: (self.real_day)() == (10, 31),
-                };
-                if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
-                    self.arrived = true;
-                    if advice {
-                        self.status.advise(&mut self.messages, &mut self.lines);
-                    }
-                }
-            }
-        }
-        if month_end {
-            self.reseed();
-            let date = self.calendar.date();
-            self.lines
-                .push(format!("month {} {}", date.month, date.year));
-            // The endowment goes before the accounts move on, the wages and the upkeep after, in
-            // the new month's column.
-            self.status.endowment(&mut self.rng, money, &mut self.lines);
-            money.month_change();
-            world.exhibits_mut().enter_new_month();
-            crate::show::new_month(world, cat);
-            crate::month::charge(world, cat, money, &mut self.lines);
-        }
-        let (say, log) = (&mut self.messages, &mut self.lines);
-        self.status.donation(&mut self.rng, money, say, log);
-        self.status.bars(step)
     }
 }
 
