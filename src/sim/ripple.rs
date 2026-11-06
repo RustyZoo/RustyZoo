@@ -265,6 +265,23 @@ mod tests {
     }
 
     #[test]
+    fn the_picture_gets_the_age_of_each_live_ripple_only() {
+        let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
+        let mut sim = sim("");
+        sim.ripples.wet = 1;
+        assert!(sim.ripple_ages().is_empty());
+        sim.scan(&mut world, &cat);
+        let id = sim.ripples.slots.iter().find_map(|s| s.1).unwrap();
+        assert_eq!(sim.ripple_ages(), [(id, 0)]);
+        sim.ripples.scan = 0;
+        sim.water_effects(&mut world, &cat, 300);
+        assert_eq!(sim.ripple_ages(), [(id, 300)]);
+        // A removed ripple is not listed.
+        sim.water_effects(&mut world, &cat, LIFE);
+        assert!(sim.ripple_ages().iter().all(|r| r.0 != id));
+    }
+
+    #[test]
     fn a_save_keeps_none_of_them() {
         let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
         let mut sim = sim("");
