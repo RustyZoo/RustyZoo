@@ -444,6 +444,11 @@ pub(crate) struct Seat {
 }
 
 impl Live {
+    /// The users now (guest buildings 4.2).
+    pub(crate) fn users_now(&self) -> u32 {
+        (self.users.len() as u32).saturating_add(self.extra)
+    }
+
     pub(crate) fn new(kind: &Kind) -> Live {
         Live {
             price: kind.price,

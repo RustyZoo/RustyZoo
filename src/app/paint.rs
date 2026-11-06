@@ -96,6 +96,7 @@ impl App<'_> {
         want.faces.clone_from(&game.world.units.reactions);
         want.filters = game.world.filter_looks();
         want.idle = Frames(self.sim.idle_frames());
+        want.looks = self.sim.idle_looks();
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());

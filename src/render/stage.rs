@@ -195,6 +195,7 @@ impl<'a> MapRenderer<'a> {
                     .get(&c.id)
                     .map(|s| (s.animation.as_str(), s.frame as usize)),
                 idle: extra.idle.0.get(&c.id).copied(),
+                look: extra.looks.get(&c.id).copied(),
             });
         }
         objects
@@ -234,6 +235,7 @@ impl<'a> MapRenderer<'a> {
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
                 shown: None,
                 idle: None,
+                look: None,
             });
         }
     }
@@ -266,6 +268,7 @@ impl<'a> MapRenderer<'a> {
             wall: 0,
             shown: None,
             idle: None,
+            look: None,
         };
         // The game puts a ripple on the clean water against every active wall of a tank.
         let ripple = catalogue.find("objects", b"other", b"tankripl");
@@ -384,7 +387,7 @@ impl<'a> MapRenderer<'a> {
                     animated = self.object(scene, o, &metas[o], summary, &mut fresh);
                 }
                 Item::Edge(o) if scene.wall_tank(o).is_none() => {
-                    self.object(scene, o, &metas[o], summary, &mut fresh);
+                    animated = self.object(scene, o, &metas[o], summary, &mut fresh);
                 }
                 item => self.tank_item(scene, metas, looks, item, summary, &mut fresh),
             }

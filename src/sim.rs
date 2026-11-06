@@ -693,6 +693,11 @@ impl Sim {
         self.idles.frames()
     }
 
+    /// The animation of each building that shows another than `idle`: `used` or `idledead`.
+    pub(crate) fn idle_looks(&self) -> std::collections::HashMap<u32, &'static str> {
+        self.idles.looks()
+    }
+
     /// The date of an escape (animals 11.1), then the money the units collected.
     fn book_units(&mut self, world: &mut World, money: &mut Money) {
         if std::mem::take(&mut world.units.loose) {
@@ -714,7 +719,7 @@ impl Sim {
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
-        self.idles.register(world, cat, data);
+        self.idles.register(world, cat, data, &mut self.rng);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
