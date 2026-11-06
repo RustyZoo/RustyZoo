@@ -582,6 +582,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
+            crate::building::random_use::loaded(world, cat, at, self.ai_ticks, &mut self.rng);
             crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,
@@ -594,6 +595,21 @@ impl Sim {
         crate::building::users::seat_loaded(world, cat, &mut self.rng);
         // The dead state is decided with no user put out: a zoo file is being loaded.
         crate::building::dead::decide_all(world, cat);
+    }
+
+    /// The random use time of building `id`, just placed, is drawn (guest buildings 10.1).
+    pub(crate) fn draw_use(&mut self, world: &mut World, cat: &Catalogue, id: u32) {
+        if let Some(at) = world.find(id) {
+            crate::building::random_use::draw(world, cat, at, self.ai_ticks, &mut self.rng);
+        }
+    }
+
+    /// A start with `reset` draws the random use time of every building again, in list order,
+    /// from the restored clock (guest buildings 10.1 point 2.5).
+    pub(crate) fn draw_use_all(&mut self, world: &mut World, cat: &Catalogue) {
+        for at in 0..world.zoo.entities.len() {
+            crate::building::random_use::draw(world, cat, at, self.ai_ticks, &mut self.rng);
+        }
     }
 
     /// The clocks, the status and the event queue a file stores (the inverse of
@@ -784,6 +800,11 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
+                // A building of random use plays `used` when its time is up (guest buildings 10.1).
+                let due = crate::building::random_use::due(world, cat, at, self.ai_ticks, ctx.rng);
+                if let Some(times) = due {
+                    self.idles.queue_used(world, at, times, data);
+                }
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);

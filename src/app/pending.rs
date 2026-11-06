@@ -274,6 +274,7 @@ impl App<'_> {
             );
             if let Outcome::Placed(id) = outcome {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().elapsed_ms());
+                self.sim.draw_use(&mut game.world, cat, id);
                 crate::show::added(&mut game.world, cat, id);
                 let (habitat, name) = rating::object(ty);
                 let change = (!fence).then_some(rating::Change::Object {

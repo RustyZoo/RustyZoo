@@ -43,7 +43,7 @@ struct Clock {
     dead: bool,
     /// A one-shot queued behind the base loop (`explode` of a rubble piece): it starts when the
     /// sequence playing ends, then the base loop takes over for good.
-    queued: Option<(&'static str, Timing)>,
+    queued: Option<(&'static str, Timing, u32)>,
 }
 
 impl Clock {
@@ -92,8 +92,9 @@ impl Clock {
     /// The sequence playing ends: the queued one starts, else the base animation again, the one a
     /// guest asked for if there is one, at frame 0; the time left over is dropped.
     fn restart(&mut self) {
-        if let Some(queued) = self.queued.take() {
-            (self.name, self.timing) = queued;
+        if let Some((name, timing, times)) = self.queued.take() {
+            (self.name, self.timing) = (name, timing);
+            self.queued = (times > 1).then_some((name, timing, times - 1));
         } else {
             self.base = self.next.take().unwrap_or(self.base);
             (self.name, self.timing) = self.base;
@@ -166,8 +167,22 @@ impl Idles {
             let timing =
                 (world.find(*id)).and_then(|at| data.timing(&world.zoo.entities[at], "explode"));
             if let (Some(c), Some(t)) = (self.fixed.get_mut(id), timing) {
-                c.queued = Some(("explode", t));
+                c.queued = Some(("explode", t, 1));
             }
+        }
+    }
+
+    /// Queues `used` `times` times behind the base loop of the building at `at`, as the rubble's
+    /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). A building with no
+    /// clock or no `used` plays nothing.
+    pub(crate) fn queue_used(&mut self, world: &World, at: usize, times: u32, data: &dyn Data) {
+        let e = &world.zoo.entities[at];
+        let id = e.common.as_ref().map_or(0, |c| c.id);
+        if let (Some(c), Some(t)) = (self.fixed.get_mut(&id), data.timing(e, "used")) {
+            // A play that comes while another is queued adds to it.
+            let waiting = c.queued.filter(|q| q.0 == "used").map_or(0, |q| q.2);
+            let times = times.saturating_add(waiting);
+            c.queued = (times > 0).then_some(("used", t, times));
         }
     }
 
