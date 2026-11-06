@@ -28,7 +28,7 @@ const DROP_DOWNS: [(i32, i32); 2] = [
 ];
 
 /// Opens the window on show tank `x` and tab `tab` (19.3): the exhibit is set, the tab selected,
-/// and the layout shown when it is hidden, which hides the other panels and the drop-downs.
+/// and the layout shown when it is hidden, which hides the other panels.
 fn open(game: &mut Game, ui: &mut Interface, cat: &Catalogue, x: u32, tab: i32) {
     game.show.stand = None;
     game.show.set_exhibit(ui, &mut game.world, cat, Some(x));
@@ -46,9 +46,6 @@ fn open(game: &mut Game, ui: &mut Interface, cat: &Catalogue, x: u32, tab: i32) 
         for id in PANELS.into_iter().chain(STATUS) {
             ui.set_hidden(id, true);
         }
-    }
-    for (layout, _) in DROP_DOWNS {
-        ui.set_hidden(layout, true);
     }
     game.show.seen = PANELS
         .into_iter()
@@ -78,8 +75,7 @@ impl App<'_> {
     pub(super) fn show_stand(&mut self, stand: u32) {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
-        let x = shows::faced_exhibit(&game.world, cat, stand);
-        if let Some(x) = x.filter(|_| shows::is_grandstand(&game.world, cat, stand)) {
+        if let Some(x) = shows::faced_exhibit(&game.world, cat, stand) {
             open(game, ui, cat, x, FINANCES_TAB);
             game.show.stand = Some(stand);
         }
