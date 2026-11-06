@@ -72,19 +72,14 @@ impl Idles {
                 continue;
             }
             fixed += 1;
-            if !self.0.contains_key(&c.id) {
-                let timing = data
-                    .timing(e, "idle")
-                    .unwrap_or(Timing { count: 0, delay: 0 });
-                self.0.insert(
-                    c.id,
-                    Clock {
-                        frame: 0,
-                        t: 0,
-                        timing,
-                    },
-                );
-            }
+            self.0.entry(c.id).or_insert_with(|| {
+                let timing = (data.timing(e, "idle")).unwrap_or(Timing { count: 0, delay: 0 });
+                Clock {
+                    frame: 0,
+                    t: 0,
+                    timing,
+                }
+            });
         }
         if self.0.len() > fixed {
             let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
@@ -185,7 +180,7 @@ mod tests {
             delay: 100,
         }));
         let mut idles = Idles::default();
-        let mut step = |idles: &mut Idles, world: &World, ms: u32| {
+        let step = |idles: &mut Idles, world: &World, ms: u32| {
             idles.register(world, &data);
             idles.advance(ms);
         };
