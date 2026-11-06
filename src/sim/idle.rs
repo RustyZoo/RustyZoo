@@ -5,7 +5,8 @@
 //! `count x delay`. When a guest comes into an empty building its base loop becomes `used` once the
 //! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
 //! at once, and alive again `idle`, both from frame 0. A fence that is not a gate starts at a
-//! random time; a gate does not loop: its player runs only while it opens or closes.
+//! random time, again when its picture changes or it wears, and plays the row its life and the slope
+//! choose; a gate does not loop: its player runs only while it opens or closes.
 //!
 //! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
 //! food object, a trash can and a dung pile the one their state chooses: a change of state starts
