@@ -265,7 +265,7 @@ fn a_rubble_piece_stands_on_the_ground_at_its_point() {
 
 #[test]
 fn a_piece_at_a_negative_centre_on_a_sloped_tile_0_is_as_high_as_the_signed_offset() {
-    // The car's second column is at x = -32 on tile 0, which rises along x: the offset is -32.
+    // The car's second column is at x = -32 on tile 0, which rises along x: the offset is -32, so z = -8.
     let mut w = world(("objects", "car"), (-48, 64));
     for t in [0, 10] {
         w.zoo.tiles[t].elevation = 0;
