@@ -401,10 +401,9 @@ impl World {
         // A filter with no water to serve is off and shows no bubbles (7.3 points 2 and 3).
         let mut view = self.filter_view.get(&id).copied().unwrap_or_default();
         view.off = tank.is_none();
-        view.bubbles = match view.off {
-            true => 0,
-            false => ms(i64::from(view.bubbles) - step).max(0),
-        };
+        if view.off {
+            view.bubbles = 0;
+        }
         // The cycle: only a tank holding water is cleaned.
         if let Some(tank) = tank {
             timer = ms(i64::from(timer) - step);
@@ -431,6 +430,10 @@ impl World {
                 view.bubbles = BUBBLES_MS;
             }
         }
+        // The bubbles count down after the cycle, in the same update (7.3 point 7): the set a cycle
+        // makes has this step less than its 3000 ms left, and one whose time ends in the update
+        // of a cycle goes on.
+        view.bubbles = ms(i64::from(view.bubbles) - step).max(0);
         // The wear, on or off.
         let mut events = Vec::new();
         decay = ms(i64::from(decay) - step);

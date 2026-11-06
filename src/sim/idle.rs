@@ -19,17 +19,18 @@ use crate::world::World;
 use crate::zoo::Entity;
 
 /// The frame an entity shows and the milliseconds it has been shown, with the animation's timing
-/// (a count of 0: no animation to play), and the state that chose the animation, if one does.
+/// (a count of 0: no animation to play), and the state that chose the animation with the amount
+/// it was chosen at, if a state does.
 #[derive(Debug, Clone)]
 struct Clock {
     frame: u32,
     t: u32,
     timing: Timing,
-    state: Option<String>,
+    state: Option<(String, i32)>,
 }
 
 impl Clock {
-    fn new(timing: Option<Timing>, state: Option<String>) -> Clock {
+    fn new(timing: Option<Timing>, state: Option<(String, i32)>) -> Clock {
         let timing = timing.unwrap_or(Timing { count: 0, delay: 0 });
         Clock {
             frame: 0,
@@ -107,14 +108,17 @@ impl Idles {
             let ty = type_of(cat, e);
             let life = (c.filter).map(|f| i32::try_from(f.health).unwrap_or(i32::MAX));
             let off = looks.iter().any(|l| l.id == c.id && l.off);
-            let state = ty.and_then(|t| rest_name(t, life, off, c.food));
+            // A change of the amount restarts the animation, even in the same state (3.6).
+            let state = ty
+                .and_then(|t| rest_name(t, life, off, c.food))
+                .map(|n| (n, c.food));
             if known.is_some_and(|k| k.state == state) {
                 continue;
             }
             // The animation the state names, else the first key of the type.
             let base = ty.and_then(|t| t.base_animation()).map(|a| a.name);
             let named = |name: &str| data.timing(e, name);
-            let timing = (state.as_deref().and_then(named))
+            let timing = (state.as_ref().and_then(|s| named(&s.0)))
                 .or_else(|| named(base.as_deref().unwrap_or("idle")));
             self.fixed.insert(c.id, Clock::new(timing, state));
         }
@@ -322,5 +326,37 @@ pub(crate) mod tests {
             step(&mut idles, &world, u32::MAX);
             assert!(idles.frames().values().all(|&f| f < 4), "{food}");
         }
+    }
+
+    /// A food object restarts its loop at frame 0 at every change of its amount, a bite that leaves
+    /// it `full` included (sprite drawing 3.6).
+    #[test]
+    fn a_food_object_restarts_its_loop_at_every_change_of_its_amount() {
+        let mut cat = Catalogue::default();
+        let ini = "[Characteristics/Integers]\ncMaxFoodUnits=12\n";
+        cat.push(crate::fixtures::ty("food", "food", "chum", ini));
+        let mut world = world_with((4, 4), |zoo| {
+            let mut e = entity("food", "food", 1, centre((0, 0)), 0);
+            e.subtype = "chum".into();
+            e.common.as_mut().unwrap().food = 12;
+            zoo.entities.push(e);
+        });
+        let full = Timing {
+            count: 4,
+            delay: 100,
+        };
+        let data = Fixed(None, vec![("full", full)]);
+        let mut idles = Idles::default();
+        let mut step = |world: &World, ms: u32| {
+            idles.register(world, &cat, &data);
+            idles.advance(ms);
+            idles.frames()[&1]
+        };
+        assert_eq!(step(&world, 200), 2);
+        // Still `full` after the bite: frame 0 again, then 70 ms.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 11;
+        assert_eq!(step(&world, 70), 0);
+        // The same amount goes on.
+        assert_eq!(step(&world, 70), 1);
     }
 }
