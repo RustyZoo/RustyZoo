@@ -90,7 +90,7 @@ impl App<'_> {
                 game.staff.clock.force = true;
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
-            ui.message(&to_cp1252(&text), kinds::GENERAL);
+            ui.message(&to_cp1252(&text), kinds::PLAIN);
             exclaim(ui, vfs);
             ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             // A branch with no program left says so in a second dialog (5.4).
@@ -99,7 +99,7 @@ impl App<'_> {
                 let text = ui
                     .string(ALL_DONE)
                     .replacen("%s", &ui.string(branch.name), 1);
-                ui.message(&to_cp1252(&text), kinds::GENERAL);
+                ui.message(&to_cp1252(&text), kinds::PLAIN);
                 exclaim(ui, vfs);
                 ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             }

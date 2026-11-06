@@ -11,10 +11,15 @@ use crate::unit::Part as UnitPart;
 
 /// Tells the player why a place was refused: the stored message in the message line
 /// (`tool message N`), or `tool refused` without one.
-pub(super) fn refusal(ui: &mut Interface, lines: &mut Vec<String>, message: Option<i32>) {
+pub(super) fn refusal(
+    ui: &mut Interface,
+    lines: &mut Vec<String>,
+    message: Option<i32>,
+    kind: i32,
+) {
     match message {
         Some(id) => {
-            ui.message(&to_cp1252(&ui.string(id)), kinds::GENERAL);
+            ui.message(&to_cp1252(&ui.string(id)), kind);
             lines.push(format!("tool message {id}"));
         }
         None => lines.push("tool refused".into()),
@@ -177,7 +182,7 @@ impl App<'_> {
         };
         if p.verdict == place::Verdict::Invalid {
             self.ui_sounds.push("noplace");
-            refusal(ui, &mut self.lines.tool, p.message);
+            refusal(ui, &mut self.lines.tool, p.message, kinds::REFUSAL);
             return;
         }
         let cat = self.renderer.catalogue();

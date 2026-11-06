@@ -196,7 +196,7 @@ impl App<'_> {
         game.build.end_sweep();
         if game.dozer.mixed {
             if let Some(ui) = &mut self.ui {
-                ui.message(&to_cp1252(&ui.string(NOT_MERGED)), kinds::GENERAL);
+                ui.message(&to_cp1252(&ui.string(NOT_MERGED)), kinds::REFUSAL);
             }
             self.lines.tool.push(format!("tool message {NOT_MERGED}"));
         }

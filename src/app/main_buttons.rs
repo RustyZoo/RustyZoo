@@ -134,7 +134,7 @@ impl App<'_> {
         ui.hold_message(paused);
         if paused && !self.pause_said {
             let text = ui.string(400);
-            ui.message(&to_cp1252(&text), kinds::PAUSE);
+            ui.message(&to_cp1252(&text), kinds::PLAIN);
         } else if !paused && self.pause_said {
             ui.end_message();
         }

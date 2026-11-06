@@ -333,7 +333,7 @@ impl Tree {
             dynamic_width: flag("dynamicwidth", false),
             dynamic_height: flag("dynamicheight", false),
             timer_duration: int("timerDuration", 3000),
-            queue: MessageLine::read(s, look.fore_color),
+            queue: MessageLine::read(s),
             string_data: s.get("stringData").unwrap_or_default().to_vec(),
             look,
             text: None,

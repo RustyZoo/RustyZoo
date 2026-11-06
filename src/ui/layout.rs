@@ -670,16 +670,21 @@ pub struct MessageLine {
     /// `queueSize`: the size of the list, the shown message and the waiting ones.
     pub size: i32,
     /// The colours of the texts by kind modulo 3: general, good, urgent (`generalcolor`,
-    /// `goodcolor`, `urgentcolor`); a missing one is `fallback`, the text colour.
+    /// `goodcolor`, `urgentcolor`); one that is missing or has fewer than 3 values is white, green
+    /// and red.
     pub colors: [Rgb; 3],
 }
 
 impl MessageLine {
-    fn read(s: &Section, fallback: Rgb) -> MessageLine {
-        let colors = ["generalcolor", "goodcolor", "urgentcolor"];
+    fn read(s: &Section) -> MessageLine {
+        let colors = [
+            ("generalcolor", [255, 255, 255]),
+            ("goodcolor", [0, 255, 0]),
+            ("urgentcolor", [255, 0, 0]),
+        ];
         MessageLine {
             size: s.get("queueSize").and_then(to_int).unwrap_or(25),
-            colors: colors.map(|key| color(s, key).unwrap_or(fallback)),
+            colors: colors.map(|(key, built_in)| color(s, key).unwrap_or(built_in)),
         }
     }
 }

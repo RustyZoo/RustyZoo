@@ -1,29 +1,25 @@
 //! The kind each message carries to the message line (ui layout 4.13; the kinds the specs give).
 
-/// The kind of a message whose caller the specs give no kind for.
+/// The kind of a message whose caller the binary posts with kind 0 (and of a string no table lists).
 pub(super) const GENERAL: i32 = 0;
-/// The kind of the pause string (input 4.5).
-pub(super) const PAUSE: i32 = 3;
+/// Kind 3: the pause string, a refusal of the staff assign mode, a dialog text. Never dropped.
+pub(super) const PLAIN: i32 = 3;
+/// Kind 5: every refusal of the player (a place, a move, the gate tool, the tank panel, the
+/// bulldozer). Never dropped, so a refused click repeated at once shows again.
+pub(super) const REFUSAL: i32 = 5;
 
-/// The kind of message string `id` (zoo status 7, 10; animals needs 13; shows; staff; tank
-/// fauna): 1 good news, 2 a warning, 4 a donation or an event, 5 no foundation.
+/// The kind of message string `id` as the simulation posts it (ui layout 4.13 point 13): 1 good
+/// news, 2 a warning, 3 a dialog text, 4 an event or a donation, 5 no foundation. The callers
+/// that show a refusal of the player or a dialog pass their kind themselves.
 pub(super) fn of(id: i32) -> i32 {
     match id {
         10021 | 11490 => 1,
-        10008
-        | 10009
-        | 10011..=10016
-        | 10018..=10020
-        | 10022
-        | 10028
-        | 10029
-        | 10251
-        | 10528
-        | 11001
-        | 11004
-        | 11005 => 2,
+        10008 | 10009 | 10010 | 10011..=10016 | 10018..=10020 | 10022 | 10028..=10031 | 10242
+        | 10251 | 10310 | 10314 | 10315 | 10528 | 11001 | 11002 | 11004 | 11005 | 15000
+        | 15001 => 2,
+        10007 | 10323 | 10507 | 10508 | 11493 | 23020 | 23021 => PLAIN,
         10032 | 10322 | 11491 | 11492 | 15002 => 4,
-        15003 => 5,
+        15003 => REFUSAL,
         _ => GENERAL,
     }
 }

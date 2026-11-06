@@ -44,11 +44,11 @@ impl Interface {
     }
 
     /// Posts `text` of kind `kind` to the message line (`ZTMessageQueue`; ui layout 4.13 points 5
-    /// to 10). A text of a kind below 3 that the list already holds from less than
+    /// to 12). A text of a kind below 3 that the list already holds from less than
     /// `minimumMessageInterval` seconds ago is dropped. A hidden line shows it at once with a fresh
     /// count. A shown line queues it (at most `queueSize - 1` wait, the oldest is dropped) and
     /// empties its count, so the text shown gives way at the next update. The text takes the
-    /// colour of its kind modulo 3. `false` if the tree has no message line.
+    /// colour of its kind modulo 3. `false` if the tree has no message line, or the text is dropped.
     pub(crate) fn message(&mut self, text: &[u8], kind: i32) -> bool {
         let Some(i) = self
             .tree
@@ -58,11 +58,14 @@ impl Interface {
         else {
             return false;
         };
-        let now = self.input.clock;
-        let within = u64::try_from(i64::from(self.settings.message_interval) * 1000).unwrap_or(0);
-        let repeated = |(t, at): &(Vec<u8>, u64)| t == text && now.saturating_sub(*at) < within;
+        // The clock is 32 bits, the age an unsigned difference and the interval a 32-bit product
+        // read as unsigned (4.13 point 12): 0 never drops, a negative interval drops every equal
+        // text still listed.
+        let now = self.input.clock as u32;
+        let within = self.settings.message_interval.wrapping_mul(1000) as u32;
+        let repeated = |(t, at): &(Vec<u8>, u32)| t == text && now.wrapping_sub(*at) < within;
         if kind < 3 && self.message_list.iter().any(repeated) {
-            return true;
+            return false;
         }
         // The list holds `queueSize` entries and drops its oldest when full; a negative size never
         // drops (4.13 point 9).
@@ -94,7 +97,8 @@ impl Interface {
     /// Puts `text` on the message line `i` in the colour of its kind modulo 3.
     fn put_message(&mut self, i: usize, text: &[u8], kind: i32) {
         let e = &mut self.tree.elements[i];
-        e.look.fore_color = e.queue.colors[kind.rem_euclid(3) as usize];
+        // The C remainder: a negative kind is the general colour (4.13 point 11).
+        e.look.fore_color = e.queue.colors[(kind % 3).max(0) as usize];
         self.put_text(i, text);
     }
 

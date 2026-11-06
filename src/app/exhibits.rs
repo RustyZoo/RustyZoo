@@ -266,7 +266,7 @@ impl App<'_> {
         };
         let name = game.world.exhibits().get(id).map_or("", |e| &e.name);
         let text = ui.string(message).replacen("%s", name, 1);
-        ui.message(&to_cp1252(&text), kinds::of(message));
+        ui.message(&to_cp1252(&text), kinds::REFUSAL);
         self.lines.tool.push(format!("tool message {message}"));
     }
 

@@ -104,7 +104,7 @@ pub struct Interface {
     message_queue: VecDeque<(Vec<u8>, i32)>,
     /// The texts of the message line's list (the shown, the waiting and the older ones) and the
     /// clock (ms) they were posted at, the oldest first.
-    message_list: VecDeque<(Vec<u8>, u64)>,
+    message_list: VecDeque<(Vec<u8>, u32)>,
 }
 
 impl Interface {
