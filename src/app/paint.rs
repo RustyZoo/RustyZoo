@@ -107,7 +107,9 @@ impl App<'_> {
             let drawn = self.painted.is_some()
                 && self.painted == Some((at.0, at.1, game.camera.rotation, game.grid));
             match (drawn, rects) {
-                (true, Some(rects)) => self.stale.get_or_insert_default().extend(rects),
+                (true, Some(rects)) if !rects.is_empty() => {
+                    self.stale.get_or_insert_default().extend(rects)
+                }
                 (true, None) => (self.painted, self.stale) = (None, None),
                 _ => {}
             }

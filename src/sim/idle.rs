@@ -73,8 +73,17 @@ impl Idles {
             match self.0.get_mut(&c.id) {
                 Some(clock) => clock.advance(step),
                 None => {
-                    let timing = data.timing(e, "idle").unwrap_or(Timing { count: 0, delay: 0 });
-                    self.0.insert(c.id, Clock { frame: 0, t: 0, timing });
+                    let timing = data
+                        .timing(e, "idle")
+                        .unwrap_or(Timing { count: 0, delay: 0 });
+                    self.0.insert(
+                        c.id,
+                        Clock {
+                            frame: 0,
+                            t: 0,
+                            timing,
+                        },
+                    );
                 }
             }
         }

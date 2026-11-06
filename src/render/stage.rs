@@ -15,6 +15,15 @@ struct Objects<'a> {
     transient: usize,
 }
 
+/// What placing the items gives: the paint order, the pictures that are not tiles', the entity of
+/// each and the pictures that play an idle animation with theirs.
+struct Placing {
+    items: Vec<Entry>,
+    own: Vec<Boxed>,
+    hits: Vec<Option<pick::Hit>>,
+    idle: Vec<(usize, u32)>,
+}
+
 /// The tiles with their elevation kept in the range the scene handles.
 fn clamped(zoo: &Zoo) -> Vec<Tile> {
     zoo.tiles
@@ -79,8 +88,12 @@ impl<'a> MapRenderer<'a> {
             .collect();
         self.transients(&mut scene, zoo, extra, &looks, tiles.len(), &mut objects);
         let grounds = self.grounds_for(&scene, marks, width, rotation);
-        let (items, own, hits, idle) =
-            self.place_items(&scene, &objects, &grounds, &looks, extra, &mut summary);
+        let Placing {
+            items,
+            own,
+            hits,
+            idle,
+        } = self.place_items(&scene, &objects, &grounds, &looks, extra, &mut summary);
         summary.objects_skipped += (0..objects.metas.len())
             .filter(|&o| !scene.is_placed(o))
             .count();
@@ -322,7 +335,7 @@ impl<'a> MapRenderer<'a> {
         looks: &[tank::Look],
         extra: &Extra,
         summary: &mut Summary,
-    ) -> (Vec<Entry>, Vec<Boxed>, Vec<Option<pick::Hit>>, Vec<(usize, u32)>) {
+    ) -> Placing {
         let Objects {
             metas,
             owners,
@@ -394,7 +407,12 @@ impl<'a> MapRenderer<'a> {
                 }
             }
         }
-        (items, own, hits, idle)
+        Placing {
+            items,
+            own,
+            hits,
+            idle,
+        }
     }
 }
 
