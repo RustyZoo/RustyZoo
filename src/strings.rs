@@ -210,9 +210,9 @@ impl StringTables {
         if name.is_empty() {
             return None;
         }
-        self.libraries.iter().find_map(|l| {
-            Some((l.name.as_str(), l.texts.get(&name)?.as_str()))
-        })
+        self.libraries
+            .iter()
+            .find_map(|l| Some((l.name.as_str(), l.texts.get(&name)?.as_str())))
     }
 
     /// The text of the `TEXT` entry `name`, or an empty text if no library has it.
@@ -433,8 +433,14 @@ mod tests {
         assert_eq!(decode_text(1033, b"\0"), "");
         // The bytes of a Japanese library are read as Japanese, those of the base as 1252.
         let dir = TempDir::new("japanese");
-        dir.write("lang0.dll", &library(&[], &[("A", &[0xE9]), ("B", b"base")]));
-        dir.write("lang001.dll", &library_in(1041, &[], &[("A", &[0x82, 0xA0])]));
+        dir.write(
+            "lang0.dll",
+            &library(&[], &[("A", &[0xE9]), ("B", b"base")]),
+        );
+        dir.write(
+            "lang001.dll",
+            &library_in(1041, &[], &[("A", &[0x82, 0xA0])]),
+        );
         let tables = StringTables::open(&dir.0).unwrap();
         assert_eq!(tables.text_source("A"), Some(("lang001.dll", "\u{3042}")));
         assert_eq!(tables.text("B"), "base");
@@ -452,10 +458,7 @@ mod tests {
         assert_eq!(merged[&314], ("lang300.dll", "top"));
         let texts = tables.texts();
         assert_eq!(texts.len(), 2);
-        assert_eq!(
-            texts["LION_GENERAL"],
-            ("lang100.dll", "expansion text")
-        );
+        assert_eq!(texts["LION_GENERAL"], ("lang100.dll", "expansion text"));
         assert_eq!(texts["ZEBRA"], ("lang0.dll", "zebra"));
     }
 

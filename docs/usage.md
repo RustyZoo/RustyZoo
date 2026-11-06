@@ -8,7 +8,7 @@ Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`)
 rustyzoo --data "/path/to/Zoo Tycoon" ls 'animals/lion*'   # list files, sorted; * matches any text
 ZT_DATA_DIR="/path/to/Zoo Tycoon" rustyzoo cat animals/lion.ai > lion.ai   # write one file to stdout
 rustyzoo --data "/path/to/Zoo Tycoon" dump-strings lang0.dll   # string table of a resource DLL, as ID<TAB>text lines
-rustyzoo --data "/path/to/Zoo Tycoon" dump-strings lang0.dll --text LION_GENERAL   # one long text, as stored (Windows-1252)
+rustyzoo --data "/path/to/Zoo Tycoon" dump-strings lang0.dll --text LION_GENERAL   # one long text, decoded by the language of the entry (UTF-8)
 rustyzoo --data "/path/to/Zoo Tycoon" strings   # the texts as the game resolves them, with the library that supplies each
 rustyzoo --data "/path/to/Zoo Tycoon" check-config   # read all configuration files (.ai, .cfg, .lyt, ...), report what is empty or ignored
 rustyzoo --data "/path/to/Zoo Tycoon" types   # the entity types (class, type, subtype, name id, footprint, base animation), then counts per class
@@ -67,7 +67,7 @@ rustyzoo window-smoke                            # open a window and the default
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
 
-The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size of its `TEXT` entries; `--text` writes the bytes of one of them.
+The names, descriptions and labels the game shows are not in the `.ztd` archives but in the resource DLLs of the install folder (`lang0.dll` and its siblings). `dump-strings` prints the string table of one DLL, newline, tab, backslash and other control characters escaped (`\n`, `\t`, `\\`, `\u{0000}`), followed by the name and size (in bytes; in characters for `strings`) of its `TEXT` entries; `--text` writes the text of one of them. A `TEXT` entry is decoded by the language of the entry, not by the code page its data entry gives (1252 whatever the language): 932 for Japanese, 936 for Simplified and 950 for Traditional Chinese, 949 for Korean, Windows-1252 for every other language. The game draws Windows-1252 only for now, so a character outside it shows as `?`.
 
 Text is drawn in Liberation Sans (Regular and Bold, SIL Open Font License 1.1, embedded unmodified; see `fonts/README.md`), which has the metrics of the Arial the original asks for: the pixel size is `round(points * 96 / 72)`, a line is ascent plus descent of Arial's vertical metrics tall, every character advances by a whole number of pixels and there is no kerning. `text-width` prints the width of a text that way; `--font` is the face string of a layout file (`Arial` or `Arial Bold`, a bold face for any name with ` Bold`, ` Gras`, ` Fett`, ` Negrita` or ` Negrito`, or a `,weight` of 600 or more) and `--size` its size string (the leading digits are the points, 8 without any, at most 200).
 

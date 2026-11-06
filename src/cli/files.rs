@@ -112,7 +112,12 @@ pub fn merged_strings(dir: &Path) -> Result<(), CliError> {
         })
         .and_then(|()| {
             tables.texts().iter().try_for_each(|(name, (lib, text))| {
-                writeln!(out, "TEXT\t{}\t{lib}\t{}", escape(name), text.chars().count())
+                writeln!(
+                    out,
+                    "TEXT\t{}\t{lib}\t{}",
+                    escape(name),
+                    text.chars().count()
+                )
             })
         })
         .and_then(|()| out.flush());
