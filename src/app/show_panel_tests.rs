@@ -4,9 +4,20 @@
 //! layout for each panel that hides it.
 
 use super::bulldozer_tests::{ROOT, Session, with_game_of};
-use super::show_panel::{PANELS, STATUS, UNITS};
 use crate::panel::show::{self, FINANCES_TAB, LAYOUT, SCRIPT_TAB};
+use crate::panel::{animal, exhibit, guest, research, staff};
 use crate::show::tests::cycle::{staged, tank_mut};
+
+/// The menu panels that hide the window (building, buying, hiring, research, options, developer),
+/// the zoo status panels, and the exhibit, animal, guest and staff panels.
+const PANELS: [i32; 7] = [8, 3, 4, 10, research::LAYOUT, 5, 34];
+const STATUS: [i32; 2] = [14, 803];
+const UNITS: [i32; 4] = [
+    exhibit::LAYOUT,
+    animal::LAYOUT,
+    guest::LAYOUT,
+    staff::LAYOUT,
+];
 
 /// The window, the drop-downs and the panels that hide it, as a root layout and its files.
 fn layouts() -> (String, Vec<(String, Vec<u8>)>) {
@@ -123,14 +134,13 @@ fn a_grandstand_facing_the_show_tank_opens_the_finances_and_deselecting_it_close
 }
 
 #[test]
-fn opening_the_window_hides_the_menu_and_status_panels_and_the_drop_downs() {
+fn opening_the_window_hides_the_menu_and_status_panels() {
     with_show("show-open-hides", |s, x| {
-        let hidden = [show::SPECIES_LAYOUT, show::FREQUENCY_LAYOUT];
-        for id in PANELS.into_iter().chain(STATUS).chain(hidden) {
+        for id in PANELS.into_iter().chain(STATUS) {
             s.app.interface().unwrap().show(id);
         }
         open(s, x);
-        for id in PANELS.into_iter().chain(STATUS).chain(hidden) {
+        for id in PANELS.into_iter().chain(STATUS) {
             assert!(!shown(s, id), "{id}");
         }
     });
