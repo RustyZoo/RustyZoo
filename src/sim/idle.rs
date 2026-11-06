@@ -425,7 +425,7 @@ pub(crate) mod tests {
         let data = Fixed(Some(idle), vec![("explode", explode)]);
         let mut idles = Idles::default();
         idles.register(&world, &Catalogue::default(), &data);
-        // Piece 3 is not queued; piece 2 is queued with no clock (an unknown id is ignored).
+        // Piece 3 is not queued; an unknown id is ignored.
         idles.queue_explode(&world, &[1, 2, 99], &data);
         let step = |idles: &mut Idles, ms: u32| {
             idles.advance(ms);
