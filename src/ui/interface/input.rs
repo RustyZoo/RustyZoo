@@ -254,8 +254,8 @@ impl Interface {
         if let Some(h) = held {
             let id = self.id(h);
             let usable = self.tree.elements[h].state & (DISABLED | READ_ONLY) == 0;
-            let on_line = matches!(self.tree.elements[h].kind, Kind::MessageQueue)
-                && self.hit(at) == Some(h);
+            let on_line =
+                matches!(self.tree.elements[h].kind, Kind::MessageQueue) && self.hit(at) == Some(h);
             match self.tree.elements[h].kind {
                 Kind::Button(_) => self.release(h, at),
                 Kind::Layout => self.event(format!("release {id}")),

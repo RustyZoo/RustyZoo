@@ -156,7 +156,10 @@ fn the_pause_string_leaves_the_list_with_the_line() {
     let (mut ui, _) = history("pause", "");
     ui.hold_message(true);
     ui.post(Message::new(b"P", 3).replacing());
-    assert_eq!((line(&ui), ui.history()), ((b"P".to_vec(), true), vec![b"P".to_vec()]));
+    assert_eq!(
+        (line(&ui), ui.history()),
+        ((b"P".to_vec(), true), vec![b"P".to_vec()])
+    );
     ui.update(1000);
     ui.update(1200);
     assert_eq!(ui.history().len(), 1, "stays for the whole pause");
@@ -253,7 +256,10 @@ fn message_display_0_drops_every_post_and_the_unpause_too() {
         ..crate::ui::interface::Settings::default()
     });
     assert!(!ui.message(b"A", 3) && !ui.post(Message::new(b"B", 3).listed_only()));
-    assert_eq!((line(&ui), ui.history().len(), rows(&ui).len()), ((vec![], false), 0, 0));
+    assert_eq!(
+        (line(&ui), ui.history().len(), rows(&ui).len()),
+        ((vec![], false), 0, 0)
+    );
     ui.end_message();
     assert_eq!(ui.tree.elements[2].countdown, None);
     // On: the same posts go in.
@@ -300,7 +306,10 @@ fn clearing_empties_the_queue_the_list_and_the_line() {
     assert!(ui.waiting > 0 && ui.shown(29) && ui.is_down(1006));
     ui.clear_messages();
     assert_eq!((ui.waiting, ui.history().len(), rows(&ui).len()), (0, 0, 0));
-    assert_eq!((line(&ui), ui.tree.elements[2].look.icon), ((vec![], false), None));
+    assert_eq!(
+        (line(&ui), ui.tree.elements[2].look.icon),
+        ((vec![], false), None)
+    );
     assert!(!ui.shown(29) && !ui.is_down(1006));
     // Again, and on a tree with no line.
     ui.clear_messages();
@@ -308,7 +317,10 @@ fn clearing_empties_the_queue_the_list_and_the_line() {
 }
 
 fn interface_without_line() -> Interface {
-    let install = Install::new("history-none", &[("ui/root.lyt", b"[LayoutInfo]\nid=1\n".to_vec())]);
+    let install = Install::new(
+        "history-none",
+        &[("ui/root.lyt", b"[LayoutInfo]\nid=1\n".to_vec())],
+    );
     let tree = Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
     Interface::new(tree, Box::new(NoTexts))
 }
