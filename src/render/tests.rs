@@ -2881,6 +2881,71 @@ fn an_object_shows_the_frame_its_clock_gives() {
     assert_eq!(drawn(&[(1, u32::MAX)]), [2]);
 }
 
+/// A decayed filter animates, and a food object too: the picture takes the frame of the clock
+/// whichever animation the state chose, not only `idle`.
+#[test]
+fn the_animation_a_state_chooses_shows_the_frame_its_clock_gives() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n");
+    let three = || sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]);
+    let install = Install::new(
+        "render-state-frames",
+        &[
+            (
+                "filter.cfg",
+                b"[filter]\nfilter1\n[filter1]\nf = f.ai\n".to_vec(),
+            ),
+            (
+                "f.ai",
+                b"[Characteristics/Integers]\ncDecayedHealth = 3\n[Animations]\n\
+                  idle = objects/filter/idle/idle.ani\ndecayed = objects/filter/used/used.ani\n\
+                  broken = objects/filter/off/off.ani\noff = objects/filter/off/off.ani\n"
+                    .to_vec(),
+            ),
+            ("objects/filter/idle/idle.ani", ani("idle").into_bytes()),
+            ("objects/filter/used/used.ani", ani("used").into_bytes()),
+            ("objects/filter/off/off.ani", ani("off").into_bytes()),
+            ("a/idle/N", three()),
+            ("a/used/N", three()),
+            ("a/off/N", sprite_file(None, 1, &[sized(&frame)])),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let drawn = |health: u32, off: bool| {
+        let mut zoo = tile_with(&[("filter", "filter1", "f")]);
+        let c = zoo.entities[0].common.as_mut().unwrap();
+        c.filter = Some(crate::zoo::Filter {
+            health,
+            timers: None,
+            ..Default::default()
+        });
+        let extra = Extra {
+            filters: vec![FilterLook {
+                id: 1,
+                off,
+                bubbles: false,
+            }],
+            idle: Frames(HashMap::from([(1, 2)])),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        shown_frames_of(&staged)
+    };
+    assert_eq!(drawn(10, false), [2], "idle");
+    assert_eq!(drawn(3, false), [2], "decayed");
+    // A one-frame picture shows its frame, whatever the clock says.
+    assert_eq!(drawn(10, true), [0], "off");
+    assert_eq!(drawn(0, false), [0], "broken");
+}
+
 #[test]
 fn a_new_frame_is_applied_without_staging_again() {
     let (install, zoo) = idle_install();
