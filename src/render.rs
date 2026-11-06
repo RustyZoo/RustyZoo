@@ -174,6 +174,9 @@ pub(crate) struct Extra {
     /// The frame each animated fixed object shows (sprite drawing 6.2). It is not compared: a new
     /// frame is applied to the staged map by [`Staged::reframe`], without staging it again.
     pub idle: Frames,
+    /// The animation of the buildings that show `used` or `idledead` (entity id); the others show
+    /// `idle`.
+    pub looks: HashMap<u32, &'static str>,
 }
 
 /// The key of the clock of the bubbles of the filter `id` in [`Extra::idle`]: the filter's own
@@ -659,6 +662,8 @@ struct Meta<'a> {
     shown: Option<(&'a str, usize)>,
     /// The frame of the idle animation of a fixed object, if it has a clock.
     idle: Option<u32>,
+    /// The animation of a building in use or dead.
+    look: Option<&'static str>,
 }
 
 /// Whether the `[Member]` list of the type holds this name.

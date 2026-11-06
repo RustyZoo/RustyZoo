@@ -2369,6 +2369,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         wall: 0,
         shown: None,
         idle: None,
+        look: None,
     };
     let (animal, guest) = (ty("animals"), ty("guests"));
     assert!(tank::casts_shadow(&meta(&animal, 3)));
@@ -2982,6 +2983,95 @@ fn a_new_frame_is_applied_without_staging_again() {
     );
 }
 
+/// A fence and a building whose `idle` has 3 frames and `used` 2, in files of their own.
+fn variant_install() -> Install {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = |dir: &str, set: &str| {
+        format!("[animation]\ndir0 = {set}\ndir1 = {dir}\nanimation = N\n").into_bytes()
+    };
+    let frames = |n: usize| sprite_file(None, n as u32, &vec![sized(&frame); n]);
+    Install::new(
+        "render-variants",
+        &[
+            ("bldg.cfg", b"[building]\nhut = hut.ai\n".to_vec()),
+            (
+                "hut.ai",
+                b"[Animations]\nidle = idle\nused = used\n".to_vec(),
+            ),
+            ("objects/hut/idle/idle.ani", ani("idle", "i")),
+            ("objects/hut/used/used.ani", ani("used", "u")),
+            ("i/idle/N", frames(3)),
+            ("u/used/N", frames(2)),
+            (
+                "fences.cfg",
+                b"[fences]\nrail = rail.ai\n[rail/subtypes]\nf\n".to_vec(),
+            ),
+            ("rail.ai", b"[Animations]\nidle = idle\n".to_vec()),
+            ("fences/rail/f/idle/idle.ani", ani("idle", "r")),
+            ("r/idle/N", frames(3)),
+        ],
+    )
+}
+
+/// The file and frame of the one animated picture of a staging.
+fn shown_of(staged: &Staged) -> Vec<(String, usize)> {
+    (staged.pictures())
+        .filter_map(|(p, _)| match &p.pic {
+            Pic::Anim(anim, _, _, frame) => Some((anim.set.files[0].clone(), *frame)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_building_in_use_shows_used_and_a_fence_plays_its_idle_frames() {
+    let install = variant_install();
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let drawn = |zoo: &Zoo, look: Option<&'static str>, frame: u32| {
+        let extra = Extra {
+            idle: Frames(HashMap::from([(1, frame)])),
+            looks: look.map(|l| (1, l)).into_iter().collect(),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(zoo, 0, false, &extra)
+            .unwrap();
+        shown_of(&staged)
+    };
+    let hut = tile_with(&[("building", "building", "hut")]);
+    assert_eq!(drawn(&hut, None, 2), [("i/idle/N".to_string(), 2)]);
+    // `used` has 2 frames: a frame past its end shows its last.
+    assert_eq!(drawn(&hut, Some("used"), 1), [("u/used/N".to_string(), 1)]);
+    assert_eq!(drawn(&hut, Some("used"), 2), [("u/used/N".to_string(), 1)]);
+    // A name the type does not have shows the base animation.
+    assert_eq!(
+        drawn(&hut, Some("idledead"), 0),
+        [("i/idle/N".to_string(), 0)]
+    );
+    let mut fence = tile_with(&[("fences", "rail", "f")]);
+    fence.entities[0].common.as_mut().unwrap().rotation = 2;
+    assert_eq!(drawn(&fence, None, 0), [("r/idle/N".to_string(), 0)]);
+    assert_eq!(drawn(&fence, None, 2), [("r/idle/N".to_string(), 2)]);
+    // The picture of a fence is one the clock moves, without staging again.
+    let extra = |frame| Extra {
+        idle: Frames(HashMap::from([(1, frame)])),
+        ..Extra::default()
+    };
+    let mut staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&fence, 0, false, &extra(0))
+        .unwrap();
+    let (x, y) = staged.origin();
+    let rects = staged.reframe(&extra(1).idle, (64, 64), (x, y), 0).unwrap();
+    assert!(!rects.is_empty());
+    assert_eq!(shown_of(&staged), [("r/idle/N".to_string(), 1)]);
+}
+
 /// A dung pile shows `small` for size 1, `giant` for 2 and `idle` for any other size, negative and
 /// huge included (sprite drawing 3.6).
 #[test]
@@ -3001,9 +3091,9 @@ fn a_dung_pile_shows_small_giant_or_idle_by_its_size() {
     }
 }
 
-/// A rubble piece shows `idle`, and `explode` while the clock says it plays (sprite drawing 3.6).
+/// A rubble piece shows `idle`, and `explode` while its look says it plays (sprite drawing 3.6).
 #[test]
-fn a_rubble_piece_draws_explode_only_while_it_is_shown_playing_it() {
+fn a_rubble_piece_draws_explode_only_while_its_look_says_so() {
     use crate::sprite::tests::{sized, sprite_file};
     let mut frame = Vec::new();
     for field in [1u16, 1, 0, 0, 0] {
@@ -3036,22 +3126,15 @@ fn a_rubble_piece_draws_explode_only_while_it_is_shown_playing_it() {
     let catalogue = Catalogue::load(&vfs).unwrap();
     let zoo = tile_with(&[("rubble", "rubl", "r")]);
     let drawn = |playing: bool| {
-        let shown = (playing.then(|| Shown {
-            id: 1,
-            animation: "explode".into(),
-            frame: 0,
-        }))
-        .into_iter()
-        .collect();
         let extra = Extra {
-            shown,
+            looks: playing.then_some((1, "explode")).into_iter().collect(),
             idle: Frames(HashMap::from([(1, 2)])),
             ..Extra::default()
         };
         let staged = MapRenderer::new(&vfs, &catalogue)
             .stage_with(&zoo, 0, false, &extra)
             .unwrap();
-        shown_frames_of(&staged)
+        shown_of(&staged).iter().map(|s| s.1).collect::<Vec<_>>()
     };
     // `idle` has one frame, whatever the clock says; `explode` takes the clock's frame.
     assert_eq!(drawn(false), [0]);

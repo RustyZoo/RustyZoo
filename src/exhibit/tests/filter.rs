@@ -711,7 +711,7 @@ fn the_bubbles_run_their_own_clock_from_the_cycle_that_made_them() {
     let key = bubble_key(id);
     let mut idles = Idles::default();
     let mut step = |world: &mut World, ms: u32| {
-        idles.register(world, &cat, &data);
+        idles.register(world, &cat, &data, &mut crate::sim::Rng::default());
         world.filter_step(&cat, at, ms);
         idles.advance(ms);
         idles.frames().get(&key).copied()
@@ -743,7 +743,12 @@ fn a_set_of_bubbles_made_anew_restarts_the_clock_and_no_timing_means_no_clock() 
     // The type has no timing: the bubbles show their first frame, and are not listed.
     let mut idles = Idles::default();
     world.filter_step(&cat, at, 67);
-    idles.register(&world, &cat, &Fixed(None, Vec::new()));
+    idles.register(
+        &world,
+        &cat,
+        &Fixed(None, Vec::new()),
+        &mut crate::sim::Rng::default(),
+    );
     idles.advance(10_000);
     assert_eq!(idles.frames().get(&key), None);
     // A count of 0 or a delay of 0 never advances; a huge step ends on a frame of the loop.
@@ -755,18 +760,18 @@ fn a_set_of_bubbles_made_anew_restarts_the_clock_and_no_timing_means_no_clock() 
         Vec::new(),
     );
     let mut idles = Idles::default();
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     idles.advance(u32::MAX);
     assert!(idles.frames()[&key] < 17);
     // The set ends after 3 s; the cycle 50 s after the first makes another, from frame 0.
     world.filter_step(&cat, at, 3_000);
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     assert_eq!(idles.frames().get(&key), None);
     world.filter_step(&cat, at, 46_990);
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     assert_eq!(idles.frames().get(&key), None);
     world.filter_step(&cat, at, 10);
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     assert_eq!(idles.frames().get(&key), Some(&0));
 }
 
@@ -790,7 +795,7 @@ fn a_cycle_in_the_update_where_the_bubble_timer_ends_continues_the_set() {
     );
     let mut idles = Idles::default();
     world.filter_step(&cat, at, 67);
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     idles.advance(500);
     assert_eq!(idles.frames()[&key], 6);
     // 2000 ms later 933 are left of the set, and the next cycle is in 1000: its update would end
@@ -798,7 +803,7 @@ fn a_cycle_in_the_update_where_the_bubble_timer_ends_continues_the_set() {
     world.filter_step(&cat, at, 2_000);
     world.filter_step(&cat, at, 1_000);
     assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
-    idles.register(&world, &cat, &data);
+    idles.register(&world, &cat, &data, &mut crate::sim::Rng::default());
     assert_eq!(idles.frames()[&key], 6, "the same set: its clock goes on");
 }
 

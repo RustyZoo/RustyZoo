@@ -165,11 +165,20 @@ impl Game {
         Game::with(keys, &[(WORKER, (1, 9))], &[])
     }
 
+    /// [`Game::new`] with the generator seeded with `seed`.
+    fn seeded(seed: u32, keys: &str) -> Game {
+        Game::with_seed(seed, keys, &[(WORKER, (1, 9))], &[])
+    }
+
     /// The same with the workers `(id, tile)`, in this order of the entity list, and the extra
     /// entities (a pen, a second piece).
     fn with(keys: &str, workers: &[(u32, (i32, i32))], extra: &[Entity]) -> Game {
+        Game::with_seed(1, keys, workers, extra)
+    }
+
+    fn with_seed(seed: u32, keys: &str, workers: &[(u32, (i32, i32))], extra: &[Entity]) -> Game {
         let mut sim = Sim::new(b"");
-        sim.set_seed(1);
+        sim.set_seed(seed);
         sim.start_game(22 * 12, Clocks::default());
         let mut w = world_with((22, 12), |z| {
             for &(id, tile) in workers {
@@ -543,7 +552,8 @@ fn a_piece_made_healthy_by_a_worker_sets_the_escape_flag_decayed_or_not() {
     // of the land exhibit is mended by a worker on the grounds beside it (his side, staff 8.7) and,
     // with the modifier, the wall it shares with the tank, which borders the tank only: sound or
     // decayed, it sets the tank's flag.
-    let mut g = Game::new("cFixFenceModifier=1");
+    // Seed 18: the fences' start times draw from the generator first.
+    let mut g = Game::seeded(18, "cFixFenceModifier=1");
     g.w = amphibious_world(2, &[(5, "bear", (3, 3))]);
     crate::unit::testing::still_water(&mut g.w);
     let bear = "[Characteristics/Integers]\ncBashStrength=1\n";
@@ -927,7 +937,8 @@ fn food_beyond_the_zoo_wall_does_not_keep_the_dung_check_going() {
 
 #[test]
 fn dung_beyond_the_zoo_wall_is_bagged_like_dung_on_the_grounds() {
-    let mut g = Game::with("", &[(WORKER, (0, 5))], &wall_beyond_column_one());
+    // Seed 13: the fences' start times draw from the generator first.
+    let mut g = Game::with_seed(13, "", &[(WORKER, (0, 5))], &wall_beyond_column_one());
     g.calm();
     g.dung((0, 5), "poo", true);
     g.run(400);

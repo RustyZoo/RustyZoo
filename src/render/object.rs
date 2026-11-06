@@ -83,11 +83,12 @@ impl<'a> MapRenderer<'a> {
                     None => "idle".to_string(),
                 }
             }
-            // A rubble piece plays `explode` once after turn-to-rubble (the clock says when).
-            "animals" | "guests" | "keeper" | "maint" | "tour" | "rubble" => {
+            "animals" | "guests" | "keeper" | "maint" | "tour" => {
                 meta.shown.map_or("idle", |(name, _)| name).to_string()
             }
-            _ => rest_name(ty, meta.life, meta.off, meta.food).unwrap_or_default(),
+            _ => rest_name(ty, meta.life, meta.off, meta.food)
+                // A building in use or dead shows that animation.
+                .unwrap_or_else(|| meta.look.unwrap_or("").into()),
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
         let tank = ty.class == "animals" && meta.mode == 3;

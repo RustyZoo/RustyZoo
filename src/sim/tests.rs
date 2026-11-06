@@ -1794,7 +1794,12 @@ fn a_step_queues_the_explode_of_the_pieces_just_made() {
     let mut sim = Sim::new(b"");
     let at = |sim: &mut Sim, w: &mut World| {
         sim.step_with(&data, &cat, w, 100, |_, _, _| {});
-        sim.exploding()
+        let mut on: Vec<u32> = (sim.idle_looks().into_iter())
+            .filter(|(_, n)| *n == "explode")
+            .map(|(id, _)| id)
+            .collect();
+        on.sort_unstable();
+        on
     };
     // The clock starts at this step and its idle delay ends in it.
     assert_eq!(at(&mut sim, &mut w), [7]);

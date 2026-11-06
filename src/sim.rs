@@ -693,9 +693,9 @@ impl Sim {
         self.idles.frames()
     }
 
-    /// The rubble pieces whose one-shot `explode` is playing, for the picture.
-    pub(crate) fn exploding(&self) -> Vec<u32> {
-        self.idles.exploding()
+    /// The animation of each building that shows another than `idle`: `used`, `idledead` or a rubble piece's `explode`.
+    pub(crate) fn idle_looks(&self) -> std::collections::HashMap<u32, &'static str> {
+        self.idles.looks()
     }
 
     /// The date of an escape (animals 11.1), then the money the units collected.
@@ -719,7 +719,7 @@ impl Sim {
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
-        self.idles.register(world, cat, data);
+        self.idles.register(world, cat, data, &mut self.rng);
         let made = world.units.take_exploded();
         self.idles.queue_explode(world, &made, data);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
