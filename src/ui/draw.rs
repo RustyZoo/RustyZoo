@@ -291,6 +291,7 @@ impl Painter {
                 };
                 if !text.is_empty() {
                     self.text(e, strings, &text, frame, rect, e.look.fore_color, false);
+                    self.line_icon(pictures, e, (sx, sy), frame);
                 }
             }
             _ => {}
@@ -370,6 +371,31 @@ impl Painter {
         for k in 0..length as i32 {
             blit(frame, &cut.pixels, (sx + k * step, sy), None);
         }
+    }
+
+    /// The icon of the message on the line, at the line's icon offsets: an animation is anchored
+    /// half its width from the left and half its height from the top, an image at the corner.
+    fn line_icon(
+        &mut self,
+        pictures: &Pictures,
+        e: &Element,
+        (sx, sy): (i32, i32),
+        frame: &mut Framebuffer,
+    ) {
+        let Some(icon) = e.look.icon else { return };
+        let Some(cut) = self.cut(pictures, icon, 0, 0) else {
+            return;
+        };
+        let (ox, oy) = e.queue.icon_offset;
+        let (x, y) = (sx.saturating_add(ox), sy.saturating_add(oy));
+        let at = match cut.animation {
+            true => (
+                x + cut.pixels.width as i32 / 2 + cut.origin.0,
+                y + cut.pixels.height as i32 / 2 + cut.origin.1,
+            ),
+            false => (x, y),
+        };
+        blit(frame, &cut.pixels, at, None);
     }
 
     /// The icon of a button, placed like the button's picture, at the frame of its own clock. An

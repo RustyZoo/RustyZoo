@@ -181,7 +181,7 @@ impl<'a> MapRenderer<'a> {
                         .map(|f| i32::try_from(f.health).unwrap_or(i32::MAX))
                 }),
                 off: extra.filters.iter().any(|l| l.id == c.id && l.off),
-                bubbles: None,
+                clock: None,
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
                 food: c.food,
@@ -227,7 +227,7 @@ impl<'a> MapRenderer<'a> {
                 colors: &[],
                 life: None,
                 off: false,
-                bubbles: None,
+                clock: None,
                 mode: 0,
                 portal: false,
                 food: 0,
@@ -255,12 +255,12 @@ impl<'a> MapRenderer<'a> {
     {
         let catalogue = self.catalogue;
         objects.transient = objects.metas.len();
-        let transient = |ty, bubbles| Meta {
+        let transient = |ty, clock| Meta {
             ty,
             colors: &[],
             life: None,
             off: false,
-            bubbles,
+            clock,
             mode: 0,
             portal: false,
             food: 0,
@@ -279,9 +279,12 @@ impl<'a> MapRenderer<'a> {
             objects.metas.push(transient(ty, None));
         }
         // So is the column of bubbles a filter's cycle leaves on the tank side of its wall.
-        for (ty, tile, age, obj) in bubbles(scene, zoo, catalogue, extra) {
+        for (ty, tile, id, obj) in bubbles(scene, zoo, catalogue, extra) {
             scene.add_transient(tile, obj);
-            objects.metas.push(transient(ty, Some(age)));
+            let key = bubble_key(id);
+            let mut meta = transient(ty, Some(key));
+            meta.idle = Some(extra.idle.0.get(&key).copied().unwrap_or(0));
+            objects.metas.push(meta);
         }
     }
 
@@ -360,6 +363,7 @@ impl<'a> MapRenderer<'a> {
                 _ => None,
             };
             let mut animated = false;
+            let mut clock = None;
             match item {
                 Item::Terrain(t) => {
                     let counts = &grounds.placed[t].1;
@@ -372,7 +376,9 @@ impl<'a> MapRenderer<'a> {
                     continue;
                 }
                 Item::Object(o) if o >= *transient => {
-                    self.object(scene, o, &metas[o], &mut Summary::default(), &mut fresh);
+                    let mut ignored = Summary::default();
+                    animated = self.object(scene, o, &metas[o], &mut ignored, &mut fresh);
+                    clock = metas[o].clock;
                 }
                 Item::Object(o) if metas[o].wall > 0 && owners[o].is_none() => {
                     self.pending_wall(scene, metas, o, summary, &mut fresh)
@@ -402,8 +408,8 @@ impl<'a> MapRenderer<'a> {
             for (k, p) in fresh.drain(..).enumerate() {
                 if let Some(b) = p.bounds() {
                     items.push(Entry::Own(own.len()));
-                    if let (true, 0, Some(hit)) = (animated, k, owner) {
-                        idle.push((own.len(), hit.id));
+                    if let (true, 0, Some(id)) = (animated, k, owner.map(|h| h.id).or(clock)) {
+                        idle.push((own.len(), id));
                     }
                     own.push((p, b));
                     hits.push(owner.filter(|_| k < owned));
@@ -441,7 +447,7 @@ fn set_tanks(scene: &mut Scene, zoo: &Zoo, metas: &[Meta]) {
 
 /// The bubbles of the filters of `extra` that show some (tank staff 7.7), as transient objects of
 /// the tank tile their filter faces, with their type `tankbub1` (none without it), that tile and
-/// their age. They face away from the filter and stand at the middle of the edge of the tank tile
+/// their filter's id. They face away from the filter and stand at the middle of the edge of the tank tile
 /// that faces it, or at the centre of the tile when the edge has no tank wall. Their height is the
 /// floor, or three elevation steps below the water surface and no higher than the filter once that
 /// differs from the filter's. A filter that is off, that has no record or that faces no tank has
@@ -457,9 +463,9 @@ pub(super) fn bubbles<'a>(
         return found;
     };
     for look in &extra.filters {
-        let Some(age) = look.bubbles.filter(|_| !look.off) else {
+        if !look.bubbles || look.off {
             continue;
-        };
+        }
         let Some(e) =
             (zoo.entities.iter()).find(|e| e.common.as_ref().is_some_and(|c| c.id == look.id))
         else {
@@ -498,7 +504,7 @@ pub(super) fn bubbles<'a>(
         found.push((
             ty,
             tile,
-            age,
+            look.id,
             Object {
                 kind: Kind::Unit,
                 x: origin(tile % scene.width) + dx,

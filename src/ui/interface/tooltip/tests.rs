@@ -332,6 +332,7 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
             max_long_width: 300,
             popup_delay: d.popup_delay,
             message_interval: d.message_interval,
+            message_display: true,
         }
     );
     // The popup delay: up to an hour; 0 and below are kept as read; a wrong kind of number is not set.
@@ -368,6 +369,10 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
     assert_eq!(interval("2147483647"), i32::MAX);
     assert_eq!(read("").message_interval, 60);
     assert_eq!(interval("x"), 60);
+    // MessageDisplay: only 0 switches the messages off.
+    let display = |v: &str| read(&format!("[UI]\nMessageDisplay={v}\n")).message_display;
+    assert!(display("1") && display("-1") && display("2147483647") && read("").message_display);
+    assert!(!display("0") && display("x"));
     // Another section does not count.
     assert_eq!(read("[user]\ntooltipDelay=9\n"), d);
 }

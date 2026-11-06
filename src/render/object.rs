@@ -4,23 +4,49 @@
 use super::placed::{Pic, Placed};
 use super::*;
 
+/// The animation a filter, a dung pile, a trash can or a food object shows by its state (sprite
+/// drawing 3.6): `life` is the filter's health, `off` that it is switched off, `food` the
+/// units left (or the size of a dung pile). `None` for any other type.
+pub(crate) fn rest_name(
+    ty: &EntityType,
+    life: Option<i32>,
+    off: bool,
+    food: i32,
+) -> Option<String> {
+    Some(match ty.class {
+        // A tank filter shows `off` without water, else `broken`, `decayed` or `idle` by its
+        // health.
+        "filter" => {
+            let decayed = crate::build::number(ty, "cDecayedHealth").unwrap_or(5.0) as i64;
+            match life.map(i64::from) {
+                _ if off => "off",
+                Some(h) if h < 1 => "broken",
+                Some(h) if h <= decayed => "decayed",
+                _ => "idle",
+            }
+            .to_string()
+        }
+        // A dung pile shows `idle`, `small` or `giant` by its size (animals-needs 8.2).
+        "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => {
+            ["idle", "small", "giant"][food.clamp(0, 2) as usize].into()
+        }
+        // A trash can shows `empty` up to 12 pieces and `half` from 13; `full` is never shown
+        // (guest buildings 8). Its counter holds the pieces.
+        "building" if ty.subtype == b"trshcan" => ["empty", "half"][usize::from(food >= 13)].into(),
+        // Food shows `empty`, `half` or `full` by its units left (animals-needs 5.1).
+        "food" => {
+            let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
+            crate::animal::food::STATES[crate::animal::food::fullness(food, max)].into()
+        }
+        _ => return None,
+    })
+}
+
 impl<'a> MapRenderer<'a> {
     /// The `.ani` member an object shows at rest.
     pub(super) fn member(&self, scene: &Scene, o: usize, meta: &Meta) -> Option<String> {
         let (obj, ty) = (&scene.objects[o], meta.ty);
         let wanted = match ty.class {
-            // A tank filter shows `off` without water, else `broken`, `decayed` or `idle` by its
-            // health (sprite drawing 3).
-            "filter" => {
-                let decayed = crate::build::number(ty, "cDecayedHealth").unwrap_or(5.0) as i64;
-                match meta.life.map(i64::from) {
-                    _ if meta.off => "off",
-                    Some(h) if h < 1 => "broken",
-                    Some(h) if h <= decayed => "decayed",
-                    _ => "idle",
-                }
-                .to_string()
-            }
             "fences" | "tankwall" => {
                 let gate = ty.subtype.first() == Some(&b'g');
                 // A gate shows the intact row whatever its life; the others by life.
@@ -56,23 +82,9 @@ impl<'a> MapRenderer<'a> {
             "animals" | "guests" | "keeper" | "maint" | "tour" => {
                 meta.shown.map_or("idle", |(name, _)| name).to_string()
             }
-            // A dung pile shows `idle`, `small` or `giant` by its size (animals-needs 8.2).
-            "objects" if ty.type_name == b"other" && ty.subtype.ends_with(b"poo") => {
-                ["idle", "small", "giant"][meta.food.clamp(0, 2) as usize].into()
-            }
-            // A trash can shows `empty` up to 12 pieces and `half` from 13; `full` is never shown
-            // (guest buildings 8). Its counter holds the pieces.
-            "building" if ty.subtype == b"trshcan" => {
-                ["empty", "half"][usize::from(meta.food >= 13)].into()
-            }
-            // Food shows `empty`, `half` or `full` by its units left (animals-needs 5.1).
-            "food" => {
-                let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
-                crate::animal::food::STATES[crate::animal::food::fullness(meta.food, max)].into()
-            }
-            // A building in use or dead shows that animation.
-            "building" => meta.look.unwrap_or("").into(),
-            _ => String::new(),
+            _ => rest_name(ty, meta.life, meta.off, meta.food)
+                // A building in use or dead shows that animation.
+                .unwrap_or_else(|| meta.look.unwrap_or("").into()),
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
         let tank = ty.class == "animals" && meta.mode == 3;
@@ -185,8 +197,8 @@ impl<'a> MapRenderer<'a> {
         });
     }
 
-    /// Places the picture of one object. True when it plays its idle animation, whose frame the
-    /// clock of its entity gives (sprite drawing 3.6).
+    /// Places the picture of one object. True when it loops its animation, whose frame a clock
+    /// gives (sprite drawing 3.6, 6.2).
     pub(super) fn object(
         &mut self,
         scene: &Scene,
@@ -201,14 +213,7 @@ impl<'a> MapRenderer<'a> {
         }
         let ty = meta.ty;
         let member = self.member(scene, o, meta);
-        // A fence plays its idle animation on a slope too.
-        let names = match ty.class {
-            "fences" => ["idle", "idle30p", "idle30n"],
-            _ => [meta.look.unwrap_or("idle"); 3],
-        };
-        let idle = meta.idle.is_some()
-            && member.is_some()
-            && (names.iter()).any(|n| member == ty.animation_named(n).and_then(|a| a.member));
+        let idle = meta.idle.is_some() && member.is_some();
         let anim = member.and_then(|member| self.animation(&member));
         let Some(anim) = anim else {
             summary.objects_missing += 1;
@@ -232,10 +237,6 @@ impl<'a> MapRenderer<'a> {
         let mut frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
         if let (true, Some(at)) = (idle, meta.idle) {
             frame = (at as usize).min(last);
-        }
-        // The bubbles go round their frames from the start of the cycle.
-        if let (Some(age), Some(sprite)) = (meta.bubbles, anim.sprites.get(view.file)) {
-            frame = bubble_frame(age, sprite.0.delay_ms, sprite.0.frames.len());
         }
         let palette = anim.sprites.get(view.file).and_then(|sprite| {
             let own = self.recoloured(ty, sprite, meta.colors);

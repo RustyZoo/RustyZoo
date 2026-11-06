@@ -102,6 +102,9 @@ impl App<'_> {
             crate::terrain::elevation_cost(self.renderer.vfs().ini()),
         );
         terrain.set_size(brush);
+        if let Some(ui) = &mut self.ui {
+            ui.clear_messages();
+        }
         self.game = Some(Game {
             world,
             staged,

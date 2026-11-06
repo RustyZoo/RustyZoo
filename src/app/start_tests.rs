@@ -1033,6 +1033,12 @@ fn an_animal_that_got_out_raises_the_alert_with_the_exclamation_and_its_name() {
         let ui = app.interface().unwrap();
         let i = ui.tree.find(45006).unwrap();
         assert_eq!(ui.tree.elements[i].text, Some(b"Zed got out".to_vec()));
+        // The text is in the history, above the other message, and never on the line.
+        assert_eq!(ui.history()[0], b"Zed got out");
+        for now in [2_000_000, 2_001_000, 2_004_000] {
+            ui.update(now);
+            assert_ne!(ui.text(7001).unwrap(), b"Zed got out");
+        }
     });
 }
 
@@ -1670,11 +1676,19 @@ fn a_completion_opens_a_dialog_and_a_branch_with_nothing_left_a_second_one() {
             2
         );
         assert_eq!(ui.text(45006).unwrap(), b"all branch-1");
-        // The line is shown: the two messages of this pass wait, one per 3000 ms.
+        // The texts are in the history, the newest above, and neither goes on the line.
         for now in [1_000_000, 1_001_000, 1_004_000] {
             ui.update(now);
         }
-        assert_eq!(ui.text(7001).unwrap(), b"all branch-1", "the line too");
+        assert_eq!(
+            ui.history(),
+            [
+                b"all branch-1".to_vec(),
+                b"done p23402".to_vec(),
+                b"done p23401".to_vec()
+            ]
+        );
+        assert!(!ui.shown(7001) && ui.text(7001).unwrap().is_empty());
         // A program the tree does not know opens the one dialog only.
         app.sim.push_research_done(done(99));
         app.research_done();

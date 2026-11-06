@@ -17,6 +17,7 @@ mod pick;
 mod placed;
 mod shape;
 mod stage;
+pub(crate) use object::rest_name;
 pub(crate) use shape::shape_of;
 #[cfg(test)]
 use stage::{add_ripples, bubbles};
@@ -178,6 +179,12 @@ pub(crate) struct Extra {
     pub looks: HashMap<u32, &'static str>,
 }
 
+/// The key of the clock of the bubbles of the filter `id` in [`Extra::idle`]: the filter's own
+/// clock is under its id.
+pub(crate) fn bubble_key(id: u32) -> u32 {
+    id | 1 << 31
+}
+
 /// The frames of the idle animations by entity id; always equal to another, see [`Extra::idle`].
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Frames(pub HashMap<u32, u32>);
@@ -197,9 +204,9 @@ pub(crate) struct FilterLook {
     pub id: u32,
     /// It is switched off: it faces no water.
     pub off: bool,
-    /// The bubbles of its last cycle are shown on the tank side of its wall, this many
-    /// milliseconds old.
-    pub bubbles: Option<u32>,
+    /// The bubbles of its last cycle are shown on the tank side of its wall; their frame is that of
+    /// the clock [`bubble_key`] names in [`Extra::idle`].
+    pub bubbles: bool,
 }
 
 /// What an animal is, as far as its footprint goes: its plain one, its egg's or its crate's.
@@ -645,8 +652,8 @@ struct Meta<'a> {
     food: i32,
     /// A tank filter that is switched off.
     off: bool,
-    /// The object is the bubbles of a tank filter, not the filter: their age in milliseconds.
-    bubbles: Option<u32>,
+    /// The object is the bubbles of the tank filter whose clock this is: the key of the clock.
+    clock: Option<u32>,
     /// The colour the object is drawn tinted with (sprite drawing 9.1).
     tint: Option<[u8; 3]>,
     /// The wall height of a pending tank gate, 0 for anything else.
@@ -790,12 +797,4 @@ fn path_view(scene: &Scene, o: usize, ty: &EntityType) -> usize {
 fn shape_index(codes: &[Option<i32>], key: i32) -> usize {
     let find = |key: i32| codes.iter().position(|&c| c == Some(key));
     find(key).or_else(|| find(100)).unwrap_or(0)
-}
-
-/// The frame of the bubbles `age` milliseconds old, in a loop of `count` frames of `delay`
-/// milliseconds that starts with the cycle.
-fn bubble_frame(age: u32, delay: u32, count: usize) -> usize {
-    (age.checked_div(delay).unwrap_or(0) as usize)
-        .checked_rem(count)
-        .unwrap_or(0)
 }

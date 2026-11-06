@@ -1,32 +1,40 @@
-//! The idle animation of the fixed objects and the fences (sprite drawing 3.6 and 6.2): scenery,
-//! buildings and the like play their `idle` animation forward in a loop, one clock each, from the
-//! step after the entity appears. A loop that ends drops the time left over, so it takes a little
-//! more than `count x delay`. When a guest comes into an empty building its base loop becomes
-//! `used` once the pass of `idle` in progress ends, and `idle` never comes back; a dead building
-//! shows `idledead` at once, and alive again `idle`, both from frame 0. A gate does not loop: its
-//! player runs only while it opens or closes.
+//! The looped animations of the fixed objects and the fences (sprite drawing 3.6 and 6.2):
+//! scenery, buildings and the like play the animation they rest on forward in a loop, one clock
+//! each, from the step after the entity appears; the bubbles of a tank filter have a clock of their
+//! own (tank staff 7.7). A loop that ends drops the time left over, so it takes a little more than
+//! `count x delay`. When a guest comes into an empty building its base loop becomes `used` once the
+//! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
+//! at once, and alive again `idle`, both from frame 0. A fence that is not a gate starts at a
+//! random time; a gate does not loop: its player runs only while it opens or closes.
 //!
-//! The clocks are not saved: a loaded zoo restarts them at frame 0. The picture reads the frames
-//! without staging the map again (`Staged::reframe`).
+//! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
+//! food object, a trash can and a dung pile the one their state chooses: a change of state starts
+//! it again at frame 0. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
+//! reads the frames without staging the map again (`Staged::reframe`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::Rng;
 use crate::behaviour::{Data, Timing};
 use crate::building::Live;
+use crate::entity::Catalogue;
+use crate::place::bulldozer::type_of;
 use crate::render::order::Kind;
+use crate::render::{bubble_key, rest_name};
 use crate::world::World;
 use crate::zoo::Entity;
 
-/// The animation an entity plays and the milliseconds it has been shown, with its timing (a
-/// count of 0: no animation to play).
-#[derive(Debug, Clone, Copy)]
+/// The frame an entity shows and the milliseconds it has been shown, with the animation's timing
+/// (a count of 0: no animation to play), and the state that chose the animation with the amount
+/// it was chosen at, if a state does.
+#[derive(Debug, Clone)]
 struct Clock {
     frame: u32,
     t: u32,
-    name: &'static str,
     timing: Timing,
-    /// The base animation, which loops.
+    state: Option<(String, i32)>,
+    /// The animation a building shows and its base animation, which loops.
+    name: &'static str,
     base: (&'static str, Timing),
     /// The base the pass in progress hands over to when it ends (`used`).
     next: Option<(&'static str, Timing)>,
@@ -36,12 +44,14 @@ struct Clock {
 }
 
 impl Clock {
-    fn new(timing: Timing, t: u32) -> Clock {
+    fn new(timing: Option<Timing>, state: Option<(String, i32)>) -> Clock {
+        let timing = timing.unwrap_or(Timing { count: 0, delay: 0 });
         Clock {
             frame: 0,
-            t,
-            name: "idle",
+            t: 0,
             timing,
+            state,
+            name: "idle",
             base: ("idle", timing),
             next: None,
             users: 0,
@@ -49,7 +59,7 @@ impl Clock {
         }
     }
 
-    /// One advance by `dt` ms (sprite drawing 6.2).
+    /// One advance of the loop by `dt` ms (sprite drawing 6.2, the base sequence alone).
     fn advance(&mut self, dt: u32) {
         let Timing { count, delay } = self.timing;
         // A still picture never advances.
@@ -103,86 +113,151 @@ impl Clock {
     }
 }
 
-/// The clocks of the fixed objects and the fences, by entity id.
+/// The clocks of the fixed objects and the fences, by entity id, and of the sets of bubbles, by the
+/// id of their filter with the count of sets that filter had made when the clock started.
 #[derive(Debug, Default)]
-pub(super) struct Idles(HashMap<u32, Clock>);
+pub(crate) struct Idles {
+    fixed: BTreeMap<u32, Clock>,
+    bubbles: BTreeMap<u32, (u32, Clock)>,
+}
 
 impl Idles {
     /// A new game starts no clock.
-    pub(super) fn clear(&mut self) {
-        self.0.clear();
+    pub(crate) fn clear(&mut self) {
+        self.fixed.clear();
+        self.bubbles.clear();
     }
 
-    /// The frame of each animated entity, for the picture.
-    pub(super) fn frames(&self) -> HashMap<u32, u32> {
-        let animated = self.0.iter().filter(|(_, c)| c.timing.count > 1);
-        animated.map(|(&id, c)| (id, c.frame)).collect()
+    /// The frame of each animated clock, for the picture: an entity under its id, the bubbles of a
+    /// filter under [`bubble_key`].
+    pub(crate) fn frames(&self) -> HashMap<u32, u32> {
+        let animated = self.fixed.iter().filter(|(_, c)| c.timing.count > 1);
+        let bubbles = (self.bubbles.iter()).map(|(&id, (_, c))| (bubble_key(id), c));
+        let bubbles = bubbles.filter(|(_, c)| c.timing.count > 1);
+        let all = animated.map(|(&id, c)| (id, c)).chain(bubbles);
+        all.map(|(key, c)| (key, c.frame)).collect()
     }
 
     /// The animation of each entity that does not show `idle` (a building in use or dead).
     pub(super) fn looks(&self) -> HashMap<u32, &'static str> {
-        let other = self.0.iter().filter(|(_, c)| c.name != "idle");
+        let other = self.fixed.iter().filter(|(_, c)| c.name != "idle");
         other.map(|(&id, c)| (id, c.name)).collect()
     }
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
-    /// this step; one made later in the step (a ripple) advances from the next. A fence that is
-    /// not a gate starts at a random time of 0 to 1999 ms (sprite drawing 3.6), a still one too. The clocks of
-    /// entities that are gone are dropped.
-    pub(super) fn register(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
-        let mut animated = 0;
+    /// this step; one made later in the step (a ripple, a set of bubbles) advances from the next. A
+    /// state that changed starts its animation again. A fence that is not a gate starts at a random
+    /// time of 0 to 1999 ms (sprite drawing 3.6), a still one too. The clocks of entities that are
+    /// gone, and of bubbles that are gone, are dropped.
+    pub(crate) fn register(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        rng: &mut Rng,
+    ) {
+        let looks = world.filter_looks();
+        let mut fixed = 0;
         for e in &world.zoo.entities {
             let Some(c) = &e.common else { continue };
             let kind = Kind::of_class(&e.class);
             if !matches!(kind, Kind::Fixed | Kind::Edge) {
                 continue;
             }
-            animated += 1;
+            fixed += 1;
             // A trash can shows its own pictures.
             let live = (e.class == "building" && e.subtype != "trshcan")
                 .then(|| world.units.buildings.get(&c.id))
                 .flatten();
-            let clock = self.0.entry(c.id).or_insert_with(|| {
-                let none = Timing { count: 0, delay: 0 };
-                let (mut timing, mut start) = (data.timing(e, "idle").unwrap_or(none), 0);
-                if kind == Kind::Edge {
-                    // A gate does not loop; any other fence draws its start time, a still one
-                    // too (the original draws before it looks at the frame count).
-                    match e.subtype.starts_with('g') {
-                        true => timing = none,
-                        false => start = rng.pick(2000),
-                    }
+            if let Some(k) = self.fixed.get_mut(&c.id)
+                && k.state.is_none()
+            {
+                if let Some(live) = live {
+                    k.track(e, live, data);
                 }
-                let mut clock = Clock::new(timing, start);
-                // Guests inside a loaded building did not just come in.
-                clock.users = live.map_or(0, Live::users_now);
-                clock
-            });
+                continue;
+            }
+            let known = self.fixed.get(&c.id);
+            let ty = type_of(cat, e);
+            let life = (c.filter).map(|f| i32::try_from(f.health).unwrap_or(i32::MAX));
+            let off = looks.iter().any(|l| l.id == c.id && l.off);
+            // A change of the amount restarts the animation, even in the same state (3.6).
+            let state = ty
+                .and_then(|t| rest_name(t, life, off, c.food))
+                .map(|n| (n, c.food));
+            if known.is_some_and(|k| k.state == state) {
+                continue;
+            }
+            // The animation the state names, else the first key of the type.
+            let base = ty.and_then(|t| t.base_animation()).map(|a| a.name);
+            let named = |name: &str| data.timing(e, name);
+            let mut timing = (state.as_ref().and_then(|s| named(&s.0)))
+                .or_else(|| named(base.as_deref().unwrap_or("idle")));
+            let mut start = 0;
+            if kind == Kind::Edge {
+                // A gate does not loop; any other fence draws its start time, a still one too
+                // (the original draws before it looks at the frame count).
+                match e.subtype.starts_with('g') {
+                    true => timing = None,
+                    false => start = rng.pick(2000),
+                }
+            }
+            let mut clock = Clock::new(timing, state);
+            clock.t = start;
             if let Some(live) = live {
+                // Guests inside a loaded building did not just come in.
+                clock.users = live.users_now();
                 clock.track(e, live, data);
             }
+            self.fixed.insert(c.id, clock);
         }
-        if self.0.len() > animated {
-            let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
+        if self.fixed.len() > fixed {
+            let live: HashSet<u32> = (world.zoo.entities.iter())
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();
-            self.0.retain(|id, _| live.contains(id));
+            self.fixed.retain(|id, _| live.contains(id));
+        }
+        self.register_bubbles(world, data);
+    }
+
+    /// The bubbles of the filters: a set that is new starts at frame 0 with the timing of the
+    /// type's `idle` animation, and goes when its filter shows none.
+    fn register_bubbles(&mut self, world: &World, data: &dyn Data) {
+        let shown: Vec<(u32, u32)> = world.filter_bubbles().collect();
+        self.bubbles
+            .retain(|id, _| shown.iter().any(|s| s.0 == *id));
+        if shown.is_empty() {
+            return;
+        }
+        let ty = |name: &str| Entity {
+            class: "objects".into(),
+            type_name: "other".into(),
+            subtype: name.into(),
+            body_size: None,
+            common: None,
+        };
+        let timing = data.timing(&ty("tankbub1"), "idle");
+        for (id, made) in shown {
+            if self.bubbles.get(&id).is_none_or(|b| b.0 != made) {
+                self.bubbles.insert(id, (made, Clock::new(timing, None)));
+            }
         }
     }
 
     /// The end of the entity pass: every clock advances by `step`.
-    pub(super) fn advance(&mut self, step: u32) {
-        self.0.values_mut().for_each(|c| c.advance(step));
+    pub(crate) fn advance(&mut self, step: u32) {
+        self.fixed.values_mut().for_each(|c| c.advance(step));
+        (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::unit::testing::{centre, entity, world_with};
 
     fn clock(count: u32, delay: u32) -> Clock {
-        Clock::new(Timing { count, delay }, 0)
+        Clock::new(Some(Timing { count, delay }), None)
     }
 
     /// A loop drops the time left over at its end: 21 frames of 125 ms at 67 ms steps take
@@ -220,7 +295,8 @@ mod tests {
         assert!(c.frame < 3);
     }
 
-    struct Fixed(Option<Timing>);
+    /// The timing of `idle`, and of the animations `named`.
+    pub(crate) struct Fixed(pub Option<Timing>, pub Vec<(&'static str, Timing)>);
 
     /// A type with `idle` of 4 frames of 100 ms, `used` of 2 frames of 100 ms and `idledead` of
     /// 3 frames of 100 ms.
@@ -234,7 +310,8 @@ mod tests {
             &[]
         }
         fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {
-            self.0.filter(|_| name == "idle")
+            let named = self.1.iter().find(|n| n.0 == name).map(|n| n.1);
+            named.or(self.0.filter(|_| name == "idle"))
         }
         fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
             0
@@ -279,13 +356,16 @@ mod tests {
             zoo.entities
                 .push(entity("animals", "lion", 2, centre((1, 1)), 0));
         });
-        let data = Fixed(Some(Timing {
-            count: 4,
-            delay: 100,
-        }));
+        let data = Fixed(
+            Some(Timing {
+                count: 4,
+                delay: 100,
+            }),
+            vec![],
+        );
         let mut idles = Idles::default();
         let step = |idles: &mut Idles, world: &World, ms: u32| {
-            idles.register(world, &data, &mut Rng::default());
+            idles.register(world, &Catalogue::default(), &data, &mut Rng::default());
             idles.advance(ms);
         };
         // The first step of a loaded map counts: 200 ms of 100 per frame.
@@ -307,7 +387,12 @@ mod tests {
         assert!(!idles.frames().contains_key(&1));
         // Types with no `idle` animation show frame 0 and are not listed.
         let mut none = Idles::default();
-        none.register(&world, &Fixed(None), &mut Rng::default());
+        none.register(
+            &world,
+            &Catalogue::default(),
+            &Fixed(None, vec![]),
+            &mut Rng::default(),
+        );
         none.advance(70);
         assert!(none.frames().is_empty());
     }
@@ -330,17 +415,20 @@ mod tests {
     fn a_fence_starts_at_a_random_time() {
         let world = fences(40, true);
         // 20 frames of 100 ms: a loop of 2000 ms shows every start.
-        let data = Fixed(Some(Timing {
-            count: 20,
-            delay: 100,
-        }));
+        let data = Fixed(
+            Some(Timing {
+                count: 20,
+                delay: 100,
+            }),
+            vec![],
+        );
         let (mut rng, mut idles) = (Rng::default(), Idles::default());
-        idles.register(&world, &data, &mut rng);
+        idles.register(&world, &Catalogue::default(), &data, &mut rng);
         let mut expect = Rng::default();
         let starts: Vec<u32> = (0..40).map(|_| expect.pick(2000)).collect();
         assert_eq!(rng.state(), expect.state(), "40 draws, none for the gate");
         for (id, t) in (1..=40).zip(&starts) {
-            assert_eq!(idles.0[&id].t, *t);
+            assert_eq!(idles.fixed[&id].t, *t);
             assert!(*t < 2000);
         }
         // Neighbouring fences are not in step.
@@ -348,7 +436,7 @@ mod tests {
         let frames = idles.frames();
         assert!(frames.values().any(|&f| f != frames[&1]));
         // A fence already known draws nothing more.
-        idles.register(&world, &data, &mut rng);
+        idles.register(&world, &Catalogue::default(), &data, &mut rng);
         assert_eq!(rng.state(), expect.state());
     }
 
@@ -360,14 +448,17 @@ mod tests {
         let mut expect = Rng::default();
         (0..3).for_each(|_| _ = expect.pick(2000));
         for data in [
-            Fixed(Some(Timing {
-                count: 1,
-                delay: 100,
-            })),
-            Fixed(None),
+            Fixed(
+                Some(Timing {
+                    count: 1,
+                    delay: 100,
+                }),
+                vec![],
+            ),
+            Fixed(None, vec![]),
         ] {
             let mut rng = Rng::default();
-            Idles::default().register(&world, &data, &mut rng);
+            Idles::default().register(&world, &Catalogue::default(), &data, &mut rng);
             assert_eq!(rng.state(), expect.state());
         }
     }
@@ -377,13 +468,16 @@ mod tests {
     #[test]
     fn a_gate_stays_on_frame_zero() {
         let world = fences(1, true);
-        let data = Fixed(Some(Timing {
-            count: 20,
-            delay: 100,
-        }));
+        let data = Fixed(
+            Some(Timing {
+                count: 20,
+                delay: 100,
+            }),
+            vec![],
+        );
         let (mut rng, mut idles) = (Rng::default(), Idles::default());
         for _ in 0..50 {
-            idles.register(&world, &data, &mut rng);
+            idles.register(&world, &Catalogue::default(), &data, &mut rng);
             idles.advance(67);
         }
         assert!(!idles.frames().contains_key(&100));
@@ -410,7 +504,7 @@ mod tests {
         };
         let (mut rng, mut idles) = (Rng::default(), Idles::default());
         let mut step = |w: &World, ms: u32| {
-            idles.register(w, &Building, &mut rng);
+            idles.register(w, &Catalogue::default(), &Building, &mut rng);
             idles.advance(ms);
             (
                 idles.looks().get(&1).copied(),
@@ -443,25 +537,112 @@ mod tests {
         assert_eq!(step(&empty, 100), (None, Some(1)));
         // A building first seen with guests inside is not a guest coming in.
         let mut seen = Idles::default();
-        seen.register(&one, &Building, &mut Rng::default());
+        seen.register(&one, &Catalogue::default(), &Building, &mut Rng::default());
         seen.advance(1000);
         assert!(seen.looks().is_empty());
         // A type with no `used` keeps its loop, and a trash can its own pictures.
         let mut none = Idles::default();
-        let fixed = Fixed(Some(Timing {
-            count: 4,
-            delay: 100,
-        }));
-        none.register(&empty, &fixed, &mut rng);
-        none.register(&one, &fixed, &mut rng);
+        let fixed = Fixed(
+            Some(Timing {
+                count: 4,
+                delay: 100,
+            }),
+            vec![],
+        );
+        none.register(&empty, &Catalogue::default(), &fixed, &mut rng);
+        none.register(&one, &Catalogue::default(), &fixed, &mut rng);
         none.advance(250);
         assert_eq!((none.looks().len(), none.frames()[&1]), (0, 2));
         let mut can = world(1, false);
         can.zoo.entities[0].subtype = "trshcan".into();
         let mut idles = Idles::default();
-        idles.register(&world(0, false), &Building, &mut rng);
-        idles.register(&can, &Building, &mut rng);
+        idles.register(&world(0, false), &Catalogue::default(), &Building, &mut rng);
+        idles.register(&can, &Catalogue::default(), &Building, &mut rng);
         idles.advance(1000);
         assert!(idles.looks().is_empty());
+    }
+
+    /// A food object plays the animation its fill chooses (sprite drawing 3.6; the type's first
+    /// key, `empty`, is not it); a change of fill starts the other animation at frame 0; a state
+    /// whose animation the type lacks falls back to `idle`.
+    #[test]
+    fn a_food_object_loops_the_animation_its_state_chooses_and_restarts_when_it_changes() {
+        let mut cat = Catalogue::default();
+        let ini = "[Characteristics/Integers]\ncMaxFoodUnits=12\n";
+        cat.push(crate::fixtures::ty("food", "food", "chum", ini));
+        let mut world = world_with((4, 4), |zoo| {
+            let mut e = entity("food", "food", 1, centre((0, 0)), 0);
+            e.subtype = "chum".into();
+            e.common.as_mut().unwrap().food = 12;
+            zoo.entities.push(e);
+        });
+        let slow = Timing {
+            count: 4,
+            delay: 100,
+        };
+        let fast = Timing {
+            count: 4,
+            delay: 50,
+        };
+        let data = Fixed(None, vec![("full", slow), ("half", fast)]);
+        let mut idles = Idles::default();
+        let step = |idles: &mut Idles, world: &World, ms: u32| {
+            idles.register(world, &cat, &data, &mut Rng::default());
+            idles.advance(ms);
+        };
+        step(&mut idles, &world, 200);
+        assert_eq!(idles.frames()[&1], 2, "full");
+        step(&mut idles, &world, 70);
+        assert_eq!(
+            idles.frames()[&1],
+            2,
+            "70 ms are not a frame: still the same state"
+        );
+        // Half full: its own animation, from frame 0, with its own delay.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 6;
+        step(&mut idles, &world, 70);
+        assert_eq!(idles.frames()[&1], 1, "half");
+        // Empty has no animation here and no `idle`: nothing to play.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 0;
+        step(&mut idles, &world, 70);
+        assert!(!idles.frames().contains_key(&1), "empty");
+        // Nothing left of a type that has no fill (huge, negative): the state clamps.
+        for food in [i32::MAX, i32::MIN, -1] {
+            world.zoo.entities[0].common.as_mut().unwrap().food = food;
+            step(&mut idles, &world, u32::MAX);
+            assert!(idles.frames().values().all(|&f| f < 4), "{food}");
+        }
+    }
+
+    /// A food object restarts its loop at frame 0 at every change of its amount, a bite that leaves
+    /// it `full` included (sprite drawing 3.6).
+    #[test]
+    fn a_food_object_restarts_its_loop_at_every_change_of_its_amount() {
+        let mut cat = Catalogue::default();
+        let ini = "[Characteristics/Integers]\ncMaxFoodUnits=12\n";
+        cat.push(crate::fixtures::ty("food", "food", "chum", ini));
+        let mut world = world_with((4, 4), |zoo| {
+            let mut e = entity("food", "food", 1, centre((0, 0)), 0);
+            e.subtype = "chum".into();
+            e.common.as_mut().unwrap().food = 12;
+            zoo.entities.push(e);
+        });
+        let full = Timing {
+            count: 4,
+            delay: 100,
+        };
+        let data = Fixed(None, vec![("full", full)]);
+        let mut idles = Idles::default();
+        let mut step = |world: &World, ms: u32| {
+            idles.register(world, &cat, &data, &mut Rng::default());
+            idles.advance(ms);
+            idles.frames()[&1]
+        };
+        assert_eq!(step(&world, 200), 2);
+        // Still `full` after the bite: frame 0 again, then 70 ms.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 11;
+        assert_eq!(step(&world, 70), 0);
+        // The same amount goes on.
+        assert_eq!(step(&world, 70), 1);
     }
 }

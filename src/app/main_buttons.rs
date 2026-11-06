@@ -2,6 +2,7 @@
 //! the keys that press them (input 4.4, 4.5).
 
 use super::*;
+use crate::ui::interface::Message;
 
 pub(super) const ZOOM_IN: i32 = 1007;
 pub(super) const ZOOM_OUT: i32 = 1023;
@@ -135,7 +136,7 @@ impl App<'_> {
         ui.hold_message(paused);
         if paused && !self.pause_said {
             let text = ui.string(400);
-            ui.message(&to_cp1252(&text), kinds::PLAIN);
+            ui.post(Message::new(&to_cp1252(&text), kinds::PLAIN).replacing());
         } else if !paused && self.pause_said {
             ui.end_message();
         }

@@ -585,3 +585,49 @@ fn the_exhibit_button_does_nothing_on_the_grounds() {
         assert!(shown(s));
     });
 }
+
+#[test]
+fn a_click_on_a_message_about_an_animal_goes_to_it_and_releases_the_bulldozer() {
+    use crate::ui::interface::Message;
+    with_game("message-click", "", |s| {
+        for side in [0, 2, 4, 6] {
+            s.fence(1, 20, 20, side);
+        }
+        let zebra = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        let game = |s: &Session| {
+            let g = s.app.game.as_ref().unwrap();
+            (g.selected, g.camera.scroll)
+        };
+        let before = game(s);
+        let ui = s.app.ui.as_mut().unwrap();
+        ui.post(Message::new(b"sick", 2).about(zebra, None));
+        ui.post(Message::new(b"plain", 3));
+        ui.post(Message::new(b"gone", 3).about(9999, None));
+        // The bulldozer is the tool; a row with no entity, or one the world does not know, or one
+        // that does not exist changes nothing but the line.
+        ui.press_button(BULLDOZER);
+        s.pass(&[]);
+        for row in [0, 1, -1, 3, i32::MAX, i32::MIN] {
+            s.app.message_clicked(row);
+        }
+        s.pass(&[]);
+        assert_eq!(game(s), before);
+        assert!(s.app.ui.as_ref().unwrap().is_down(BULLDOZER));
+        // The message about the animal: the view centres on it, it is selected and the tool is off.
+        s.app.message_clicked(2);
+        s.pass(&[]);
+        s.pass(&[]);
+        let (selected, scroll) = game(s);
+        assert_eq!(selected, Some(zebra));
+        assert_ne!(scroll, before.1, "the view moved");
+        assert!(!s.app.ui.as_ref().unwrap().is_down(BULLDOZER));
+        assert!(
+            s.app
+                .ui
+                .as_ref()
+                .unwrap()
+                .shown(crate::panel::animal::LAYOUT)
+        );
+    });
+}
