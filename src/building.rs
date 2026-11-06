@@ -444,9 +444,9 @@ pub(crate) struct Seat {
 }
 
 impl Live {
-    /// A guest is inside (users now above 0).
-    pub(crate) fn inside(&self) -> bool {
-        !self.users.is_empty() || self.extra > 0
+    /// The users now (guest buildings 4.2).
+    pub(crate) fn users_now(&self) -> u32 {
+        (self.users.len() as u32).saturating_add(self.extra)
     }
 
     pub(crate) fn new(kind: &Kind) -> Live {

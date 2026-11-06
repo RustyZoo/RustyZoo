@@ -1,8 +1,10 @@
 //! The idle animation of the fixed objects and the fences (sprite drawing 3.6 and 6.2): scenery,
 //! buildings and the like play their `idle` animation forward in a loop, one clock each, from the
 //! step after the entity appears. A loop that ends drops the time left over, so it takes a little
-//! more than `count x delay`. A building plays `used` once when a guest comes into it and
-//! `idledead` while it is dead; the base loop then starts again at frame 0.
+//! more than `count x delay`. When a guest comes into an empty building its base loop becomes
+//! `used` once the pass of `idle` in progress ends, and `idle` never comes back; a dead building
+//! shows `idledead` at once, and alive again `idle`, both from frame 0. A gate does not loop: its
+//! player runs only while it opens or closes.
 //!
 //! The clocks are not saved: a loaded zoo restarts them at frame 0. The picture reads the frames
 //! without staging the map again (`Staged::reframe`).
@@ -24,12 +26,12 @@ struct Clock {
     t: u32,
     name: &'static str,
     timing: Timing,
-    /// The animation is a sequence: it plays once, then the base takes over from frame 0.
-    once: bool,
     /// The base animation, which loops.
     base: (&'static str, Timing),
-    /// A building has a guest inside; it is in its dead state (guest buildings 10.1, 11.1.1).
-    inside: bool,
+    /// The base the pass in progress hands over to when it ends (`used`).
+    next: Option<(&'static str, Timing)>,
+    /// A building's users now and its dead state (guest buildings 10.1, 11.1.1).
+    users: u32,
     dead: bool,
 }
 
@@ -40,9 +42,9 @@ impl Clock {
             t,
             name: "idle",
             timing,
-            once: false,
             base: ("idle", timing),
-            inside: false,
+            next: None,
+            users: 0,
             dead: false,
         }
     }
@@ -50,8 +52,8 @@ impl Clock {
     /// One advance by `dt` ms (sprite drawing 6.2).
     fn advance(&mut self, dt: u32) {
         let Timing { count, delay } = self.timing;
-        // A still base picture never advances.
-        if count <= 1 && !self.once {
+        // A still picture never advances.
+        if count <= 1 {
             return;
         }
         self.t = self.t.saturating_add(dt);
@@ -68,34 +70,36 @@ impl Clock {
         }
     }
 
-    /// The base animation starts again at frame 0; the time left over is dropped.
+    /// The base animation starts again at frame 0, the one a guest asked for if there is one;
+    /// the time left over is dropped.
     fn restart(&mut self) {
+        self.base = self.next.take().unwrap_or(self.base);
         (self.name, self.timing) = self.base;
-        (self.frame, self.t, self.once) = (0, 0, false);
+        (self.frame, self.t) = (0, 0);
     }
 
-    /// A building's state of this step: the dead state changes the base (`idledead`, back to
-    /// `idle`); a guest coming in from an empty building starts `used` (guest buildings 10.1).
+    /// A building's state of this step: the dead state sets the base at once (`idledead`, back to
+    /// `idle`); a guest coming into an empty building makes `used` the base when the pass in
+    /// progress ends (guest buildings 10.1).
     fn track(&mut self, e: &Entity, live: &Live, data: &dyn Data) {
         let dead = live.dead;
         if dead != self.dead {
             self.dead = dead;
             let name = if dead { "idledead" } else { "idle" };
             if let Some(timing) = data.timing(e, name) {
-                self.base = (name, timing);
+                (self.base, self.next) = ((name, timing), None);
                 self.restart();
             }
         }
-        let inside = live.inside();
-        if inside
-            && !self.inside
+        let users = live.users_now();
+        if self.users == 0
+            && users > 0
             && !dead
             && let Some(timing) = data.timing(e, "used")
         {
-            (self.name, self.timing, self.once) = ("used", timing, true);
-            (self.frame, self.t) = (0, 0);
+            self.next = Some(("used", timing));
         }
-        self.inside = inside;
+        self.users = users;
     }
 }
 
@@ -123,7 +127,7 @@ impl Idles {
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
     /// this step; one made later in the step (a ripple) advances from the next. A fence that is
-    /// not a gate starts at a random time of 0 to 1999 ms (sprite drawing 3.6). The clocks of
+    /// not a gate starts at a random time of 0 to 1999 ms (sprite drawing 3.6), a still one too. The clocks of
     /// entities that are gone are dropped.
     pub(super) fn register(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
         let mut animated = 0;
@@ -139,12 +143,19 @@ impl Idles {
                 .then(|| world.units.buildings.get(&c.id))
                 .flatten();
             let clock = self.0.entry(c.id).or_insert_with(|| {
-                let timing = (data.timing(e, "idle")).unwrap_or(Timing { count: 0, delay: 0 });
-                // Only an animated fence draws: a still one has no time to start at.
-                let random = kind == Kind::Edge && !e.subtype.starts_with('g') && timing.count > 1;
-                let mut clock = Clock::new(timing, if random { rng.pick(2000) } else { 0 });
+                let none = Timing { count: 0, delay: 0 };
+                let (mut timing, mut start) = (data.timing(e, "idle").unwrap_or(none), 0);
+                if kind == Kind::Edge {
+                    // A gate does not loop; any other fence draws its start time, a still one
+                    // too (the original draws before it looks at the frame count).
+                    match e.subtype.starts_with('g') {
+                        true => timing = none,
+                        false => start = rng.pick(2000),
+                    }
+                }
+                let mut clock = Clock::new(timing, start);
                 // Guests inside a loaded building did not just come in.
-                clock.inside = live.is_some_and(Live::inside);
+                clock.users = live.map_or(0, Live::users_now);
                 clock
             });
             if let Some(live) = live {
@@ -301,17 +312,23 @@ mod tests {
         assert!(none.frames().is_empty());
     }
 
-    /// A fence that is not a gate starts at a random time of 0 to 1999 ms, one draw each; a gate
-    /// starts at 0 and draws nothing.
-    #[test]
-    fn a_fence_starts_at_a_random_time_and_a_gate_at_zero() {
-        let world = world_with((4, 4), |zoo| {
-            for id in 1..=40 {
+    /// A world of `n` fences of ids 1 to `n` and, when `gate`, a gate of id 100.
+    fn fences(n: u32, gate: bool) -> World {
+        world_with((4, 4), |zoo| {
+            for id in 1..=n {
                 zoo.entities.push(entity("fences", "f", id, (32, 0), 0));
             }
-            zoo.entities.push(entity("fences", "g", 41, (32, 0), 0));
-            zoo.entities.last_mut().unwrap().subtype = "gate".into();
-        });
+            if gate {
+                zoo.entities.push(entity("fences", "g", 100, (32, 0), 0));
+                zoo.entities.last_mut().unwrap().subtype = "gate".into();
+            }
+        })
+    }
+
+    /// A fence that is not a gate starts at a random time of 0 to 1999 ms, one draw each.
+    #[test]
+    fn a_fence_starts_at_a_random_time() {
+        let world = fences(40, true);
         // 20 frames of 100 ms: a loop of 2000 ms shows every start.
         let data = Fixed(Some(Timing {
             count: 20,
@@ -326,35 +343,68 @@ mod tests {
             assert_eq!(idles.0[&id].t, *t);
             assert!(*t < 2000);
         }
-        assert_eq!(idles.0[&41].t, 0);
-        // The frames are not all the same: neighbouring fences are not in step.
+        // Neighbouring fences are not in step.
         idles.advance(67);
         let frames = idles.frames();
-        assert!(frames.values().any(|&f| f != frames[&41]));
-        // A still fence (one frame) draws nothing.
-        let mut still = Rng::default();
-        let one = Fixed(Some(Timing {
-            count: 1,
-            delay: 100,
-        }));
-        Idles::default().register(&world, &one, &mut still);
-        assert_eq!(still.state(), Rng::default().state());
+        assert!(frames.values().any(|&f| f != frames[&1]));
         // A fence already known draws nothing more.
         idles.register(&world, &data, &mut rng);
         assert_eq!(rng.state(), expect.state());
     }
 
-    /// A guest coming into an empty building starts `used`, which plays once; the base loop then
-    /// restarts at frame 0. A dead building shows `idledead`, looping, until it is alive again.
+    /// A fence whose idle is a still picture draws its start time all the same: one draw a piece,
+    /// none for a gate, and with no animation at all.
     #[test]
-    fn a_building_plays_used_once_and_idledead_while_dead() {
-        let world = |f: &dyn Fn(&mut crate::building::Live)| {
+    fn a_still_fence_draws_its_start_time_too() {
+        let world = fences(3, true);
+        let mut expect = Rng::default();
+        (0..3).for_each(|_| _ = expect.pick(2000));
+        for data in [
+            Fixed(Some(Timing {
+                count: 1,
+                delay: 100,
+            })),
+            Fixed(None),
+        ] {
+            let mut rng = Rng::default();
+            Idles::default().register(&world, &data, &mut rng);
+            assert_eq!(rng.state(), expect.state());
+        }
+    }
+
+    /// A gate does not loop by itself: with an animated idle it stays on frame 0 after any number
+    /// of steps (its player runs only while it opens or closes).
+    #[test]
+    fn a_gate_stays_on_frame_zero() {
+        let world = fences(1, true);
+        let data = Fixed(Some(Timing {
+            count: 20,
+            delay: 100,
+        }));
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        for _ in 0..50 {
+            idles.register(&world, &data, &mut rng);
+            idles.advance(67);
+        }
+        assert!(!idles.frames().contains_key(&100));
+        assert!(idles.frames().contains_key(&1), "a fence loops");
+    }
+
+    /// A guest coming into an empty building lets the pass of `idle` end, then `used` loops from
+    /// frame 0 and `idle` does not come back; a second guest changes nothing. A dead building
+    /// shows `idledead` at once, and alive again `idle`, from frame 0.
+    #[test]
+    fn a_building_keeps_used_as_its_base_loop() {
+        let world = |users: u32, dead: bool| {
             let mut w = world_with((4, 4), |zoo| {
                 zoo.entities
                     .push(entity("building", "hut", 1, centre((0, 0)), 0));
             });
-            let mut live = crate::building::Live::default();
-            f(&mut live);
+            let live = crate::building::Live {
+                extra: users,
+                dead,
+                ..Default::default()
+            };
             w.units.buildings.insert(1, live);
             w
         };
@@ -367,45 +417,51 @@ mod tests {
                 idles.frames().get(&1).copied(),
             )
         };
-        let empty = world(&|_| {});
+        let (empty, one, two) = (world(0, false), world(1, false), world(2, false));
         assert_eq!(step(&empty, 150), (None, Some(1)));
-        // A guest comes in: `used` from frame 0, advanced by the step it comes in.
-        let inside = world(&|l| l.users.push((9, 0, 0)));
-        assert_eq!(step(&inside, 100), (Some("used"), Some(1)));
-        // (A building first seen with a guest inside is not a guest coming in.)
-        let mut seen = Idles::default();
-        seen.register(&inside, &Building, &mut Rng::default());
-        assert!(seen.looks().is_empty());
-        // It stays inside; the sequence ends and the base restarts at 0, not where it was.
-        assert_eq!(step(&inside, 100), (None, Some(0)));
-        assert_eq!(step(&inside, 100), (None, Some(1)), "no new use");
-        // Out, then in again: `used` again.
-        assert_eq!(step(&empty, 100).0, None);
-        assert_eq!(step(&inside, 50), (Some("used"), Some(0)));
-        // Dead: `idledead` from frame 0, looping over its 3 frames.
-        let dead = world(&|l| l.dead = true);
+        // A guest comes in: the pass of `idle` (4 frames of 100 ms) goes on to its end.
+        assert_eq!(step(&one, 100), (None, Some(2)));
+        assert_eq!(
+            step(&two, 100),
+            (None, Some(3)),
+            "a second guest: no change"
+        );
+        // The pass ends: `used` (2 frames) from frame 0.
+        assert_eq!(step(&two, 100), (Some("used"), Some(0)));
+        assert_eq!(step(&one, 100), (Some("used"), Some(1)));
+        // It loops, and it does not go back to `idle` when the guest leaves.
+        assert_eq!(step(&empty, 100), (Some("used"), Some(0)));
+        assert_eq!(step(&empty, 100), (Some("used"), Some(1)));
+        // Another guest in an empty building changes nothing more.
+        assert_eq!(step(&one, 100), (Some("used"), Some(0)));
+        // Dead: `idledead` at once from frame 0, looping over its 3 frames.
+        let dead = world(0, true);
+        assert_eq!(step(&dead, 0), (Some("idledead"), Some(0)));
         assert_eq!(step(&dead, 100), (Some("idledead"), Some(1)));
         assert_eq!(step(&dead, 200), (Some("idledead"), Some(0)), "wrapped");
-        // Alive again: `idle` from frame 0.
+        // Alive again: `idle` at once from frame 0, and `used` is gone.
         assert_eq!(step(&empty, 100), (None, Some(1)));
-        // A type with no `used` or `idledead` keeps its loop.
+        // A building first seen with guests inside is not a guest coming in.
+        let mut seen = Idles::default();
+        seen.register(&one, &Building, &mut Rng::default());
+        seen.advance(1000);
+        assert!(seen.looks().is_empty());
+        // A type with no `used` keeps its loop, and a trash can its own pictures.
         let mut none = Idles::default();
-        none.register(
-            &inside,
-            &Fixed(Some(Timing {
-                count: 4,
-                delay: 100,
-            })),
-            &mut rng,
-        );
+        let fixed = Fixed(Some(Timing {
+            count: 4,
+            delay: 100,
+        }));
+        none.register(&empty, &fixed, &mut rng);
+        none.register(&one, &fixed, &mut rng);
         none.advance(250);
         assert_eq!((none.looks().len(), none.frames()[&1]), (0, 2));
-        // A trash can shows its own pictures, whoever is inside.
-        let mut can = world(&|l| l.users.push((9, 0, 0)));
+        let mut can = world(1, false);
         can.zoo.entities[0].subtype = "trshcan".into();
         let mut idles = Idles::default();
+        idles.register(&world(0, false), &Building, &mut rng);
         idles.register(&can, &Building, &mut rng);
-        idles.register(&can, &Building, &mut rng);
+        idles.advance(1000);
         assert!(idles.looks().is_empty());
     }
 }
