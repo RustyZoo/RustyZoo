@@ -637,6 +637,22 @@ pub(crate) mod tests {
         }
     }
 
+    /// A mended piece starts at the time its worker drew; the next register draws nothing.
+    #[test]
+    fn a_mended_fence_starts_where_it_drew() {
+        let (cat, data) = (iron(), rows());
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&worn(0), &cat, &data, &mut rng);
+        let before = rng.state();
+        idles.start_fence(&worn(5), &cat, &data, (1, 1234));
+        assert_eq!(
+            (idles.fixed[&1].t, idles.fixed[&1].timing.count),
+            (1234, 20)
+        );
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        assert_eq!(rng.state(), before);
+    }
+
     /// A gate does not loop by itself: with an animated idle it stays on frame 0 after any number
     /// of steps (its player runs only while it opens or closes).
     #[test]
