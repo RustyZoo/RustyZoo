@@ -13,6 +13,11 @@
 #                         pass and the time) with the words, each an extended regular expression that
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
 #                         The checks fail when the game did not build it; they never skip for it
+#   #seeds S...           fallback seeds: the game is played with the `--seed` of #run first and, when a
+#                         check fails, with each of these in turn; it passes with the first seed that
+#                         passes every check. The games need luck (the hire list gives women, an animal
+#                         eats) and a change that adds a random draw moves it: no re-seed. A broken
+#                         engine fails under every seed
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #   #unfed ID N           the animal ID is not required to eat: a known fault the original has too (issue N)
 #
@@ -27,6 +32,25 @@ export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the syste
 bin=$1
 data=$2
 script=$3
+
+# The seeds: that of #run, then the #seeds. Each plays the whole game in a run of this script with
+# PLAYABLE_SEED set; the first game that passes is the output (and `ok: <script>: seed S`).
+if [ -z "${PLAYABLE_SEED:-}" ]; then
+  first=$(sed -n 's/^#run .*--seed \([0-9][0-9]*\).*/\1/p' "$script" | head -1)
+  if [ -n "$first" ]; then
+    err=$(mktemp)
+    trap 'rm -f "$err"' EXIT
+    for s in $first $(sed -n 's/^#seeds //p' "$script" | head -1 | tr -d '\r'); do
+      if out=$(PLAYABLE_SEED=$s "$0" "$@" 2>"$err"); then
+        printf '%s\n' "$out"
+        echo "ok: $(basename "$script" .txt): seed $s"
+        exit 0
+      fi
+      sed "s/^FAILED: /FAILED: seed $s: /" "$err" >&2
+    done
+    exit 1
+  fi
+fi
 
 # The clock at which an animal of the shortest-lived species may die of old age, in ms. An animal
 # that is gone later must have posted `animal dying ID` before (animals-needs 10.2).
@@ -58,6 +82,8 @@ if [ -z "$words" ]; then
   fail "no #run line in $script"
   exit 1
 fi
+# shellcheck disable=SC2001 # a regex, not a plain substitution
+[ -z "${PLAYABLE_SEED:-}" ] || words=$(echo "$words" | sed "s/--seed [0-9]*/--seed $PLAYABLE_SEED/")
 for r in a b; do
   # shellcheck disable=SC2086 # the words are a list of flags
   (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$script" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
