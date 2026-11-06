@@ -254,11 +254,14 @@ impl Interface {
         if let Some(h) = held {
             let id = self.id(h);
             let usable = self.tree.elements[h].state & (DISABLED | READ_ONLY) == 0;
+            let on_line = matches!(self.tree.elements[h].kind, Kind::MessageQueue)
+                && self.hit(at) == Some(h);
             match self.tree.elements[h].kind {
                 Kind::Button(_) => self.release(h, at),
                 Kind::Layout => self.event(format!("release {id}")),
                 Kind::ScrollBar(_) if usable => self.bar_up(h),
                 Kind::ListBox(_) if usable => self.list_up(h),
+                Kind::MessageQueue if usable && on_line => self.line_clicked(),
                 _ => {}
             }
         }
@@ -541,6 +544,7 @@ impl Interface {
                 if self.draggable(i) {
                     self.tree.bring_to_front(i);
                 }
+                self.history_shown(id);
             }
             _ => self.tree.elements[i].state &= !HIDDEN,
         }
@@ -557,6 +561,7 @@ impl Interface {
         self.tree.hide(i);
         let id = self.id(i);
         self.event(format!("hide {id}"));
+        self.history_hidden(id);
     }
 
     /// A layout with an element that aliases it can be dragged.
