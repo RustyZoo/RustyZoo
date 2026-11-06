@@ -87,11 +87,13 @@ impl Clock {
             }
         }
         let inside = live.inside();
-        if inside && !self.inside && !dead {
-            if let Some(timing) = data.timing(e, "used") {
-                (self.name, self.timing, self.once) = ("used", timing, true);
-                (self.frame, self.t) = (0, 0);
-            }
+        if inside
+            && !self.inside
+            && !dead
+            && let Some(timing) = data.timing(e, "used")
+        {
+            (self.name, self.timing, self.once) = ("used", timing, true);
+            (self.frame, self.t) = (0, 0);
         }
         self.inside = inside;
     }
