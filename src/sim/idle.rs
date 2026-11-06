@@ -19,6 +19,7 @@ use crate::behaviour::{Data, Timing};
 use crate::building::Live;
 use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
+use crate::render::fence_name;
 use crate::render::order::Kind;
 use crate::render::{bubble_key, rest_name};
 use crate::world::World;
@@ -126,6 +127,35 @@ impl Clock {
     }
 }
 
+/// The animation a fence piece that is not a gate shows, as the state of its clock: it changes
+/// with its life and the slope under it (sprite drawing 3.6).
+fn fence_state(world: &World, cat: &Catalogue, e: &Entity) -> Option<(String, i32)> {
+    let c = e.common.as_ref()?;
+    let ty = type_of(cat, e)?;
+    let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+    let tile = tile.map(|t| &world.zoo.tiles[t]);
+    let life = c.fence.map(|f| f.life);
+    Some((fence_name(ty, life, tile, c.rotation % 8), 0))
+}
+
+/// The clock of a fence piece that starts its animation: it draws `rand() % 2000` `draws` times
+/// and starts at the last (sprite drawing 3.6). A gate draws nothing.
+fn fence_clock(
+    world: &World,
+    cat: &Catalogue,
+    data: &dyn Data,
+    e: &Entity,
+    rng: &mut Rng,
+    draws: u32,
+) -> Clock {
+    let state = fence_state(world, cat, e);
+    let timing =
+        (state.as_ref().and_then(|s| data.timing(e, &s.0))).or_else(|| data.timing(e, "idle"));
+    let mut clock = Clock::new(timing, state);
+    clock.t = (0..draws).map(|_| rng.pick(2000)).last().unwrap_or(0);
+    clock
+}
+
 /// The clocks of the fixed objects and the fences, by entity id, and of the sets of bubbles, by the
 /// id of their filter with the count of sets that filter had made when the clock started.
 #[derive(Debug, Default)]
@@ -204,6 +234,16 @@ impl Idles {
                 }
                 continue;
             }
+            // A fence that is not a gate draws its start time, a still one too (the original draws
+            // before it looks at the frame count), and again when its picture changes.
+            if kind == Kind::Edge && !e.subtype.starts_with('g') {
+                let state = fence_state(world, cat, e);
+                if self.fixed.get(&c.id).is_none_or(|k| k.state != state) {
+                    self.fixed
+                        .insert(c.id, fence_clock(world, cat, data, e, rng, 1));
+                }
+                continue;
+            }
             let known = self.fixed.get(&c.id);
             let ty = type_of(cat, e);
             let life = (c.filter).map(|f| i32::try_from(f.health).unwrap_or(i32::MAX));
@@ -220,17 +260,11 @@ impl Idles {
             let named = |name: &str| data.timing(e, name);
             let mut timing = (state.as_ref().and_then(|s| named(&s.0)))
                 .or_else(|| named(base.as_deref().unwrap_or("idle")));
-            let mut start = 0;
+            // A gate does not loop.
             if kind == Kind::Edge {
-                // A gate does not loop; any other fence draws its start time, a still one too
-                // (the original draws before it looks at the frame count).
-                match e.subtype.starts_with('g') {
-                    true => timing = None,
-                    false => start = rng.pick(2000),
-                }
+                timing = None;
             }
             let mut clock = Clock::new(timing, state);
-            clock.t = start;
             if let Some(live) = live {
                 // Guests inside a loaded building did not just come in.
                 clock.users = live.users_now();
@@ -245,6 +279,24 @@ impl Idles {
             self.fixed.retain(|id, _| live.contains(id));
         }
         self.register_bubbles(world, data);
+    }
+
+    /// A fence piece's wear step ran at `at` in the entity loop (placing 7.4): its picture is
+    /// chosen again, which restarts its animation at a random time of 0 to 1999 ms, `draws` times
+    /// (a break draws twice, once for the broken picture and once for the one after it).
+    pub(crate) fn rewind_fence(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        rng: &mut Rng,
+        (at, draws): (usize, u32),
+    ) {
+        let e = &world.zoo.entities[at];
+        if let Some(c) = &e.common {
+            let clock = fence_clock(world, cat, data, e, rng, draws);
+            self.fixed.insert(c.id, clock);
+        }
     }
 
     /// The bubbles of the filters: a set that is new starts at frame 0 with the timing of the

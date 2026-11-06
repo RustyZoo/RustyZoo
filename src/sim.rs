@@ -791,8 +791,16 @@ impl Sim {
                 // A grandstand reads the events of its show (shows 6.3).
                 crate::show::listen_grandstand(world, cat, &mut self.events, &mut self.rng, at);
                 // A fence piece wears at its own place in the list.
+                let life = world.fence_life(at);
                 for event in world.wear(cat, at, step, &mut self.lines) {
                     self.events.post(event);
+                }
+                // A wear step chooses the picture again, which draws a start time for its
+                // animation; a break draws twice (placing 7.4).
+                if let Some(now) = world.fence_life(at).filter(|&l| Some(l) != life) {
+                    let draws = 1 + u32::from(now < 1);
+                    let rng = &mut self.rng;
+                    self.idles.rewind_fence(world, cat, data, rng, (at, draws));
                 }
                 // So does a tank filter.
                 let (events, gone) = world.filter_step(cat, at, step);
