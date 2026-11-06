@@ -744,7 +744,7 @@ mod tests {
         }
 
         // The help file of the expansions; the base game has an older one.
-        if !crate::fixtures::has_expansions(&dir) {
+        if !crate::fixtures::with_expansions("full_game_facts (help of the expansions)", &dir) {
             assert!(read("scenario/scn01/economy.cfg").is_empty());
             return;
         }
