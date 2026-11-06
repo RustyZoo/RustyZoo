@@ -25,6 +25,14 @@ pub(super) struct Placing {
     pub(super) tints: Tints,
 }
 
+/// The pending object of type `index` is a building: its random use time is drawn (guest
+/// buildings 10.1 point 2.5).
+fn pending_use(placing: &mut Placing, sim: &mut Sim, ty: &crate::entity::EntityType, index: usize) {
+    if ty.class == "building" {
+        placing.used = sim.use_time(ty).map(|time| (index, time));
+    }
+}
+
 impl App<'_> {
     /// Works out the pending object from the tool, the panel's rotation step and the pointer, and
     /// has the next draw show it. With `log`, a move over the map tells it: `tool pending TYPE
@@ -290,10 +298,7 @@ impl App<'_> {
                 rating::again(&game.world, &mut before, at, rating::reads_neighbours(ty));
                 rating::react(&mut game.world, cat, before, change, rand);
                 // The click makes the next pending object of the type (it draws its time).
-                if ty.class == "building" {
-                    let time = self.sim.use_time(ty);
-                    game.placing.used = time.map(|t| (p.ty, t));
-                }
+                pending_use(&mut game.placing, &mut self.sim, ty, p.ty);
             }
             match outcome {
                 Outcome::Placed(id) => {
@@ -420,9 +425,7 @@ impl App<'_> {
         let cat = self.renderer.catalogue();
         for ty in game.build.take_made() {
             let t = &cat.types[ty];
-            if t.class == "building" {
-                game.placing.used = self.sim.use_time(t).map(|time| (ty, time));
-            }
+            pending_use(&mut game.placing, &mut self.sim, t, ty);
             if let Some(kind) = crate::unit::Kind::of_class(t.class) {
                 game.placing.made =
                     Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));
