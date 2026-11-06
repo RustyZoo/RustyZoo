@@ -63,11 +63,13 @@ impl Idles {
 
     /// One step: the entities that are new get a clock at frame 0, the others advance by `step`.
     pub(super) fn step(&mut self, world: &World, data: &dyn Data, step: u32) {
+        let mut fixed = 0;
         for e in &world.zoo.entities {
             let Some(c) = &e.common else { continue };
             if Kind::of_class(&e.class) != Kind::Fixed {
                 continue;
             }
+            fixed += 1;
             match self.0.get_mut(&c.id) {
                 Some(clock) => clock.advance(step),
                 None => {
@@ -77,7 +79,7 @@ impl Idles {
             }
         }
         // Clocks of entities that are gone.
-        if self.0.len() > world.zoo.entities.len() {
+        if self.0.len() > fixed {
             let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();
@@ -104,25 +106,21 @@ mod tests {
     #[test]
     fn a_loop_drops_the_time_left_over_when_it_wraps() {
         let mut c = clock(21, 125);
-        let mut steps = 0;
-        while c.frame < 20 {
-            c.advance(67);
-            steps += 1;
-        }
-        c.advance(67);
-        steps += 1;
-        // Frame 20 lasts until the sum reaches 21 x 125 = 2625 ms, i.e. 40 steps = 2680 ms.
-        assert_eq!((steps * 67, c.frame, c.t), (2680, 0, 0));
-        // The second pass starts from nothing again: same length.
-        let mut again = 0;
-        loop {
-            c.advance(67);
-            again += 1;
-            if c.frame == 0 {
-                break;
+        let mut passes = Vec::new();
+        for _ in 0..2 {
+            let mut steps = 0;
+            loop {
+                c.advance(67);
+                steps += 1;
+                if c.frame == 0 && steps > 1 {
+                    break;
+                }
             }
+            passes.push(steps * 67);
+            assert_eq!(c.t, 0);
         }
-        assert_eq!(again * 67, 2680);
+        // The second pass starts from nothing again: same length.
+        assert_eq!(passes, [2680, 2680]);
     }
 
     #[test]
@@ -176,17 +174,20 @@ mod tests {
         let mut idles = Idles::default();
         idles.step(&world, &data, 70);
         assert_eq!(idles.frames().into_iter().collect::<Vec<_>>(), [(1, 0)]);
+        // The tree appeared at the first step: 70 ms, then 140 ms of 100 per frame.
         idles.step(&world, &data, 70);
-        // The tree appeared at the first step: 70 ms of 100 so far, then 140.
+        assert_eq!(idles.frames()[&1], 0);
+        idles.step(&world, &data, 70);
         assert_eq!(idles.frames()[&1], 1);
-        // A second tree starts later and is a frame behind.
+        // A second tree starts later and is behind.
         world
             .zoo
             .entities
             .push(entity("scenery", "bush", 4, centre((2, 2)), 0));
-        idles.step(&world, &data, 70);
-        idles.step(&world, &data, 70);
-        assert_eq!((idles.frames()[&1], idles.frames()[&4]), (2, 1));
+        for _ in 0..3 {
+            idles.step(&world, &data, 70);
+        }
+        assert_eq!((idles.frames()[&1], idles.frames()[&4]), (3, 1));
         world.zoo.entities.remove(0);
         idles.step(&world, &data, 70);
         assert!(!idles.frames().contains_key(&1));
