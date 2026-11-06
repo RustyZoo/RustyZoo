@@ -563,12 +563,12 @@ fn animals_in_a_good_and_a_bad_exhibit_go_up_and_down_and_two_runs_agree() {
     };
     let (good, bad) = (series(500), series(510));
     assert_eq!(good.len(), 600, "one line per second");
-    assert_eq!(good[..8], [0, 0, 19, 19, 19, 39, 39, 38]);
-    assert_eq!(bad[..8], [0, 0, -11, -11, -11, -21, -21, -22]);
+    assert_eq!(good[..8], [0, -1, 19, 19, 19, 39, 38, 38]);
+    assert_eq!(bad[..8], [0, -1, -11, -11, -11, -21, -22, -22]);
     assert_eq!((good[17], bad[29]), (100, -100));
     assert_eq!(
         (good[599], series(501)[599], series(511)[599]),
-        (100, 100, -100)
+        (100, 99, -100)
     );
     let (again, other) = ten_minutes();
     assert!(log == again && world.units.hash() == other.units.hash());

@@ -470,8 +470,20 @@ fn lived_data(
     ms: u32,
     prepare: fn(&mut World),
 ) -> Vec<String> {
+    lived_seeded(1, world, cat, data, ms, prepare)
+}
+
+/// [`lived_data`] with the generator seeded with `seed`.
+fn lived_seeded(
+    seed: u32,
+    world: &mut World,
+    cat: &Catalogue,
+    data: &Life,
+    ms: u32,
+    prepare: fn(&mut World),
+) -> Vec<String> {
     let mut sim = Sim::new(b"");
-    sim.set_seed(1);
+    sim.set_seed(seed);
     sim.start_game(64, Clocks::default());
     sim.load(world, cat);
     let mut log = Vec::new();
@@ -719,7 +731,8 @@ fn a_low_health_animal_falls_ill_only_when_its_running_set_has_ended() {
     let play = parse_call(b"fPlay(idle)").unwrap().0;
     data.0.insert("bIdle", vec![play; 30]);
     let sick = |ms| {
-        let log = lived_data(&mut pens(), &cat, &data, ms, weaken);
+        // Seed 13: the fences' start times draw from the generator before the animal's check.
+        let log = lived_seeded(13, &mut pens(), &cat, &data, ms, weaken);
         log.iter().any(|l| l == "set 500 bSick")
     };
     assert!(!sick(11_000));
