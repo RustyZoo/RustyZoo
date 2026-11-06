@@ -663,7 +663,10 @@ pub(crate) mod tests {
             assert_eq!(lion, 1905);
         }
         if language != 1033 {
-            return; // the texts and sizes of the other languages are not pinned
+            eprintln!(
+                "skipped full_game_facts (texts): only the English texts and sizes are pinned"
+            );
+            return;
         }
         for (id, text) in [
             (5006, "Lion"),
