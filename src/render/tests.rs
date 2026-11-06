@@ -2368,6 +2368,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         tint: None,
         wall: 0,
         shown: None,
+        idle: None,
     };
     let (animal, guest) = (ty("animals"), ty("guests"));
     assert!(tank::casts_shadow(&meta(&animal, 3)));
@@ -2835,5 +2836,102 @@ fn a_portal_wall_draws_the_frame_its_player_shows() {
     assert!(
         !changed(&last, &first).is_empty(),
         "the last frame is another picture"
+    );
+}
+
+/// An install with one scenery type whose idle animation has 3 frames of 125 ms, and a map with
+/// one such object (id 1).
+fn idle_install() -> (Install, Zoo) {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = b"[animation]\ndir0 = a\ndir1 = idle\nanimation = N\n".to_vec();
+    let install = Install::new(
+        "render-idle",
+        &[
+            (
+                "scenery.cfg",
+                b"[objects]\nother\n[other]\nwaterwv1 = wave.ai\n".to_vec(),
+            ),
+            ("wave.ai", b"[Animations]\nidle = idle\n".to_vec()),
+            ("objects/waterwv1/idle/idle.ani", ani),
+            (
+                "a/idle/N",
+                sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+            ),
+        ],
+    );
+    (install, tile_with(&[("objects", "other", "waterwv1")]))
+}
+
+/// The frames of the animated pictures of a staging.
+fn shown_frames_of(staged: &Staged) -> Vec<usize> {
+    (staged.pictures())
+        .filter_map(|(p, _)| match &p.pic {
+            Pic::Anim(_, _, _, frame) => Some(*frame),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn an_object_shows_the_frame_its_clock_gives() {
+    let (install, zoo) = idle_install();
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let drawn = |frames: &[(u32, u32)]| {
+        let extra = Extra {
+            idle: Frames(frames.iter().copied().collect()),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        shown_frames_of(&staged)
+    };
+    // Another entity's clock, and none, leave frame 0; a frame past the end shows the last.
+    assert_eq!(drawn(&[]), [0]);
+    assert_eq!(drawn(&[(2, 1)]), [0]);
+    assert_eq!(drawn(&[(1, 1)]), [1]);
+    assert_eq!(drawn(&[(1, 2)]), [2]);
+    assert_eq!(drawn(&[(1, u32::MAX)]), [2]);
+}
+
+#[test]
+fn a_new_frame_is_applied_without_staging_again() {
+    let (install, zoo) = idle_install();
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let at = |frame: u32| Extra {
+        idle: Frames(HashMap::from([(1, frame)])),
+        ..Extra::default()
+    };
+    let mut staged = renderer.stage_with(&zoo, 0, false, &at(0)).unwrap();
+    let (x, y) = staged.origin();
+    let size = (64, 64);
+    let view = (x, y);
+    // The object is one picture: a new frame changes only its own rectangle.
+    let rects = staged.reframe(&at(1).idle, size, view, 0).unwrap();
+    assert!(!rects.is_empty(), "{rects:?}");
+    assert_eq!(shown_frames_of(&staged), [1]);
+    // The same frame again changes nothing; a frame past the end clamps; an unknown id is ignored.
+    assert_eq!(staged.reframe(&at(1).idle, size, view, 0), Some(vec![]));
+    staged.reframe(&at(9).idle, size, view, 0);
+    assert_eq!(shown_frames_of(&staged), [2]);
+    let other = Frames(HashMap::from([(7, 0)]));
+    assert_eq!(staged.reframe(&other, size, view, 0), Some(vec![]));
+    assert_eq!(shown_frames_of(&staged), [2]);
+    // What a new staging at that frame draws is what the reframed one draws.
+    let fresh = renderer.stage_with(&zoo, 0, false, &at(2)).unwrap();
+    let (a, b) = (staged.others(true), fresh.others(true));
+    assert_eq!(a.len(), b.len());
+    assert!(
+        a.iter()
+            .zip(&b)
+            .all(|(p, q)| staged.own[p.2].0.same(&fresh.own[q.2].0))
     );
 }

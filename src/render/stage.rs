@@ -15,6 +15,15 @@ struct Objects<'a> {
     transient: usize,
 }
 
+/// What placing the items gives: the paint order, the pictures that are not tiles', the entity of
+/// each and the pictures that play an idle animation with theirs.
+struct Placing {
+    items: Vec<Entry>,
+    own: Vec<Boxed>,
+    hits: Vec<Option<pick::Hit>>,
+    idle: Vec<(usize, u32)>,
+}
+
 /// The tiles with their elevation kept in the range the scene handles.
 fn clamped(zoo: &Zoo) -> Vec<Tile> {
     zoo.tiles
@@ -79,8 +88,12 @@ impl<'a> MapRenderer<'a> {
             .collect();
         self.transients(&mut scene, zoo, extra, &looks, tiles.len(), &mut objects);
         let grounds = self.grounds_for(&scene, marks, width, rotation);
-        let (items, own, hits) =
-            self.place_items(&scene, &objects, &grounds, &looks, extra, &mut summary);
+        let Placing {
+            items,
+            own,
+            hits,
+            idle,
+        } = self.place_items(&scene, &objects, &grounds, &looks, extra, &mut summary);
         summary.objects_skipped += (0..objects.metas.len())
             .filter(|&o| !scene.is_placed(o))
             .count();
@@ -92,6 +105,7 @@ impl<'a> MapRenderer<'a> {
             items,
             own,
             hits,
+            idle,
             tile_bounds,
             bounds: tile_bounds,
             summary,
@@ -180,6 +194,7 @@ impl<'a> MapRenderer<'a> {
                 shown: shown
                     .get(&c.id)
                     .map(|s| (s.animation.as_str(), s.frame as usize)),
+                idle: extra.idle.0.get(&c.id).copied(),
             });
         }
         objects
@@ -218,6 +233,7 @@ impl<'a> MapRenderer<'a> {
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
                 shown: None,
+                idle: None,
             });
         }
     }
@@ -249,6 +265,7 @@ impl<'a> MapRenderer<'a> {
             tint: None,
             wall: 0,
             shown: None,
+            idle: None,
         };
         // The game puts a ripple on the clean water against every active wall of a tank.
         let ripple = catalogue.find("objects", b"other", b"tankripl");
@@ -318,7 +335,7 @@ impl<'a> MapRenderer<'a> {
         looks: &[tank::Look],
         extra: &Extra,
         summary: &mut Summary,
-    ) -> (Vec<Entry>, Vec<Boxed>, Vec<Option<pick::Hit>>) {
+    ) -> Placing {
         let Objects {
             metas,
             owners,
@@ -329,6 +346,8 @@ impl<'a> MapRenderer<'a> {
         let mut items = Vec::with_capacity(order.len());
         let mut own = Vec::new();
         let mut hits: Vec<Option<pick::Hit>> = Vec::new();
+        // The pictures that play an idle animation, with their entity.
+        let mut idle: Vec<(usize, u32)> = Vec::new();
         // The pictures of the item at hand.
         let mut fresh: Vec<Placed> = Vec::new();
         for item in order {
@@ -337,6 +356,7 @@ impl<'a> MapRenderer<'a> {
                 Item::Path(o) | Item::Edge(o) | Item::Object(o) => owners.get(o).copied().flatten(),
                 _ => None,
             };
+            let mut animated = false;
             match item {
                 Item::Terrain(t) => {
                     let counts = &grounds.placed[t].1;
@@ -349,16 +369,16 @@ impl<'a> MapRenderer<'a> {
                     continue;
                 }
                 Item::Object(o) if o >= *transient => {
-                    self.object(scene, o, &metas[o], &mut Summary::default(), &mut fresh)
+                    self.object(scene, o, &metas[o], &mut Summary::default(), &mut fresh);
                 }
                 Item::Object(o) if metas[o].wall > 0 && owners[o].is_none() => {
                     self.pending_wall(scene, metas, o, summary, &mut fresh)
                 }
                 Item::Path(o) | Item::Object(o) => {
-                    self.object(scene, o, &metas[o], summary, &mut fresh)
+                    animated = self.object(scene, o, &metas[o], summary, &mut fresh);
                 }
                 Item::Edge(o) if scene.wall_tank(o).is_none() => {
-                    self.object(scene, o, &metas[o], summary, &mut fresh)
+                    self.object(scene, o, &metas[o], summary, &mut fresh);
                 }
                 item => self.tank_item(scene, metas, looks, item, summary, &mut fresh),
             }
@@ -379,12 +399,20 @@ impl<'a> MapRenderer<'a> {
             for (k, p) in fresh.drain(..).enumerate() {
                 if let Some(b) = p.bounds() {
                     items.push(Entry::Own(own.len()));
+                    if let (true, 0, Some(hit)) = (animated, k, owner) {
+                        idle.push((own.len(), hit.id));
+                    }
                     own.push((p, b));
                     hits.push(owner.filter(|_| k < owned));
                 }
             }
         }
-        (items, own, hits)
+        Placing {
+            items,
+            own,
+            hits,
+            idle,
+        }
     }
 }
 

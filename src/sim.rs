@@ -23,6 +23,7 @@
 pub mod drive;
 mod events;
 pub mod hash;
+mod idle;
 mod inspect;
 mod ripple;
 mod rng;
@@ -178,6 +179,8 @@ pub(crate) struct Sim {
     world_rem: u32,
     /// The slots of the animated water (7.2).
     ripples: ripple::Ripples,
+    /// The idle animation clocks of the fixed objects (sprite drawing 6.2).
+    idles: idle::Idles,
     /// The entities that asked to be removed, by id.
     removals: Vec<u32>,
     /// The entities the step removes as the bulldozer does, with an undo record (a flooded or
@@ -223,6 +226,7 @@ impl Sim {
             world_secs: 0,
             world_rem: 0,
             ripples: ripple::Ripples::default(),
+            idles: idle::Idles::default(),
             removals: Vec::new(),
             bulldozed: Vec::new(),
             lines: Vec::new(),
@@ -299,6 +303,7 @@ impl Sim {
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
         self.ripples.clear();
+        self.idles.clear();
         self.bulldozed.clear();
         self.scenario = None;
         self.soundscape = None;
@@ -683,6 +688,11 @@ impl Sim {
         self.step_game(data, cat, world, &mut Money::default(), step, update)
     }
 
+    /// The frame each animated fixed object shows (sprite drawing 6.2), for the picture.
+    pub(crate) fn idle_frames(&self) -> std::collections::HashMap<u32, u32> {
+        self.idles.frames()
+    }
+
     /// The date of an escape (animals 11.1), then the money the units collected.
     fn book_units(&mut self, world: &mut World, money: &mut Money) {
         if std::mem::take(&mut world.units.loose) {
@@ -703,6 +713,8 @@ impl Sim {
         mut update: impl FnMut(&mut World, usize, u32),
     ) -> Report {
         self.lines.push(format!("step {step}"));
+        // The objects on the map now start their clocks, and advance by this step.
+        self.idles.register(world, data);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
@@ -784,6 +796,7 @@ impl Sim {
             }
         }
         unit::gate::forget(world);
+        self.idles.advance(step);
         for event in std::mem::take(&mut world.units.posts) {
             self.events.post(event);
         }

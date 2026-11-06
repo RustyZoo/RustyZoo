@@ -170,7 +170,22 @@ pub(crate) struct Extra {
     /// The tank filters that are switched off or show bubbles (tank staff 7.3, 7.5); a filter that
     /// is not here shows its health and no bubbles.
     pub filters: Vec<FilterLook>,
+    /// The frame each animated fixed object shows (sprite drawing 6.2). It is not compared: a new
+    /// frame is applied to the staged map by [`Staged::reframe`], without staging it again.
+    pub idle: Frames,
 }
+
+/// The frames of the idle animations by entity id; always equal to another, see [`Extra::idle`].
+#[derive(Debug, Default, Clone)]
+pub(crate) struct Frames(pub HashMap<u32, u32>);
+
+impl PartialEq for Frames {
+    fn eq(&self, _: &Frames) -> bool {
+        true
+    }
+}
+
+impl Eq for Frames {}
 
 /// What a tank filter shows besides its health.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -635,6 +650,8 @@ struct Meta<'a> {
     wall: i32,
     /// The animation and frame a unit holds.
     shown: Option<(&'a str, usize)>,
+    /// The frame of the idle animation of a fixed object, if it has a clock.
+    idle: Option<u32>,
 }
 
 /// Whether the `[Member]` list of the type holds this name.

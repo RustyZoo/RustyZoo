@@ -17,6 +17,9 @@ pub struct Staged {
     pub(super) own: Vec<Boxed>,
     /// For each picture of `own`, the entity of the zoo it was placed for (picking).
     pub(super) hits: Vec<Option<pick::Hit>>,
+    /// The pictures of `own` that play an idle animation, with the entity whose clock gives
+    /// their frame.
+    pub(super) idle: Vec<(usize, u32)>,
     /// The box `[left, top, right, bottom)` of every tile.
     pub(super) tile_bounds: [i64; 4],
     /// The box of every tile and every picture.
@@ -169,21 +172,13 @@ impl Staged {
         if kept(&before, &kept_before) != kept(&after, &kept_after) {
             return None;
         }
-        let level = Zoom::from_value(zoom);
         let mut rects: Vec<[i32; 4]> = Vec::new();
         for (s, flags) in [(old, &kept_before), (self, &kept_after)] {
             for (i, (placed, b)) in s.own.iter().enumerate() {
                 if flags[i] || (placed.grid && !grid) {
                     continue;
                 }
-                let anchor = placed.anchor(self.rotation, zoom, level);
-                let b = placed.zoomed_box(b, anchor, level);
-                let rect = [
-                    (b[0] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
-                    (b[1] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
-                    (b[2] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
-                    (b[3] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
-                ];
+                let rect = self.window_rect(placed, b, (width, height), (view_x, view_y), zoom);
                 if rect[0] < rect[2] && rect[1] < rect[3] {
                     rects.push(rect);
                     if rects.len() > MAX_CHANGES {
@@ -192,12 +187,70 @@ impl Staged {
                 }
             }
         }
-        let rects = merge(rects);
-        let area: i64 = rects
-            .iter()
-            .map(|r| i64::from(r[2] - r[0]) * i64::from(r[3] - r[1]))
-            .sum();
-        (area * 2 <= i64::from(width) * i64::from(height)).then_some(rects)
+        worth_redrawing(rects, (width, height))
+    }
+
+    /// The box of a picture in the window of `size` pixels whose top left is the view point
+    /// `view` at `zoom`, clamped to the window (empty when it is outside).
+    fn window_rect(
+        &self,
+        placed: &Placed,
+        b: &[i64; 4],
+        (width, height): (u32, u32),
+        (view_x, view_y): (i32, i32),
+        zoom: i32,
+    ) -> [i32; 4] {
+        let level = Zoom::from_value(zoom);
+        let anchor = placed.anchor(self.rotation, zoom, level);
+        let b = placed.zoomed_box(b, anchor, level);
+        [
+            (b[0] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
+            (b[1] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
+            (b[2] - i64::from(view_x)).clamp(0, i64::from(width)) as i32,
+            (b[3] - i64::from(view_y)).clamp(0, i64::from(height)) as i32,
+        ]
+    }
+
+    /// Puts the frame the clocks give (`frames`) on the pictures that play an idle animation,
+    /// without staging the map again, and returns what [`Staged::changes`] would for the window:
+    /// the rectangles of the pictures that changed. `None` when they cover too much to be worth
+    /// drawing in parts; the frames are set all the same.
+    pub(crate) fn reframe(
+        &mut self,
+        frames: &Frames,
+        size: (u32, u32),
+        view: (i32, i32),
+        zoom: i32,
+    ) -> Option<Vec<[i32; 4]>> {
+        let mut rects: Vec<[i32; 4]> = Vec::new();
+        for k in 0..self.idle.len() {
+            let (i, id) = self.idle[k];
+            let Some(&at) = frames.0.get(&id) else {
+                continue;
+            };
+            let Pic::Anim(anim, v, _, frame) = &self.own[i].0.pic else {
+                continue;
+            };
+            let last = (anim.sprites.get(v.file)).map_or(0, |s| s.0.frames.len().saturating_sub(1));
+            let at = (at as usize).min(last);
+            if *frame == at {
+                continue;
+            }
+            rects.push(self.window_rect(&self.own[i].0, &self.own[i].1, size, view, zoom));
+            if let Pic::Anim(_, _, _, frame) = &mut self.own[i].0.pic {
+                *frame = at;
+            }
+            if let Some(b) = self.own[i].0.bounds() {
+                self.own[i].1 = b;
+                self.bounds = union(self.bounds, b);
+            }
+            rects.push(self.window_rect(&self.own[i].0, &self.own[i].1, size, view, zoom));
+        }
+        rects.retain(|r| r[0] < r[2] && r[1] < r[3]);
+        match rects.len() > MAX_CHANGES {
+            true => None,
+            false => worth_redrawing(rects, size),
+        }
     }
 
     /// Draws again only the rectangles `rects` (as [`Staged::changes`] gives them) of `target`,
@@ -256,6 +309,16 @@ impl Staged {
 
 /// The most pictures that may have changed for a window to be drawn in parts.
 pub(super) const MAX_CHANGES: usize = 400;
+
+/// The rectangles joined, unless they cover more than half of the window.
+fn worth_redrawing(rects: Vec<[i32; 4]>, (width, height): (u32, u32)) -> Option<Vec<[i32; 4]>> {
+    let rects = merge(rects);
+    let area: i64 = rects
+        .iter()
+        .map(|r| i64::from(r[2] - r[0]) * i64::from(r[3] - r[1]))
+        .sum();
+    (area * 2 <= i64::from(width) * i64::from(height)).then_some(rects)
+}
 
 /// The rectangles with the ones that touch each other joined.
 pub(super) fn merge(mut rects: Vec<[i32; 4]>) -> Vec<[i32; 4]> {

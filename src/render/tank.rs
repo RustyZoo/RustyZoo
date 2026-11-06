@@ -370,7 +370,7 @@ impl MapRenderer<'_> {
         match out.len() > before {
             true => summary.objects_drawn += 1,
             // No piece of the stack exists: the wall shows what a fence of its type shows.
-            false => self.object(scene, o, meta, summary, out),
+            false => _ = self.object(scene, o, meta, summary, out),
         }
     }
 

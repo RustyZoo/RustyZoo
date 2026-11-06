@@ -81,7 +81,7 @@ Pictures, text and sound:
 - `movie`, `intro`: the AVI and Indeo 5 decoder; which intro movies play.
 - `startup`: the start-up picture, its progress bar, the product version.
 - `zoom`, `camera`: the three zoom levels; the camera, its scroll range and the full-screen rules.
-- `render`: drawing a whole map at the three zoom levels.
+- `render`: drawing a whole map at the three zoom levels; the frames of the idle animations are put on a staged map by `Staged::reframe`, without staging it again.
 
 Interface:
 
@@ -108,7 +108,7 @@ The world and its editing:
 
 The simulation:
 
-- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`.
+- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`, the idle clocks of the fixed objects (`sim::idle`).
 - `scenario`, `goal`, `research`: scenario files and goals; the units' goals; the research tree.
 - `unit`: the live state of animals, guests and staff and the update each runs per step.
 - `behaviour`: the behaviour scripts parsed into operations and run by a state machine per unit.

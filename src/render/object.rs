@@ -183,7 +183,8 @@ impl<'a> MapRenderer<'a> {
         });
     }
 
-    /// Places the picture of one object.
+    /// Places the picture of one object. True when it plays its idle animation, whose frame the
+    /// clock of its entity gives (sprite drawing 3.6).
     pub(super) fn object(
         &mut self,
         scene: &Scene,
@@ -191,18 +192,20 @@ impl<'a> MapRenderer<'a> {
         meta: &Meta,
         summary: &mut Summary,
         out: &mut Vec<Placed>,
-    ) {
+    ) -> bool {
         let obj = scene.objects[o];
         if !scene.is_placed(o) {
-            return;
+            return false;
         }
         let ty = meta.ty;
-        let anim = self
-            .member(scene, o, meta)
-            .and_then(|member| self.animation(&member));
+        let member = self.member(scene, o, meta);
+        let idle = meta.idle.is_some()
+            && member.is_some()
+            && member == ty.animation_named("idle").and_then(|a| a.member);
+        let anim = member.and_then(|member| self.animation(&member));
         let Some(anim) = anim else {
             summary.objects_missing += 1;
-            return;
+            return false;
         };
         // The pending piece of a path is an overlay that shows what a placed one would.
         let view = match obj.kind {
@@ -220,6 +223,9 @@ impl<'a> MapRenderer<'a> {
             .get(view.file)
             .map_or(0, |s| s.0.frames.len().saturating_sub(1));
         let mut frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
+        if let (true, Some(at)) = (idle, meta.idle) {
+            frame = (at as usize).min(last);
+        }
         // The bubbles go round their frames from the start of the cycle.
         if let (Some(age), Some(sprite)) = (meta.bubbles, anim.sprites.get(view.file)) {
             frame = bubble_frame(age, sprite.0.delay_ms, sprite.0.frames.len());
@@ -239,5 +245,6 @@ impl<'a> MapRenderer<'a> {
             lift: 0,
             pic: Pic::Anim(anim, view, palette, frame),
         });
+        idle
     }
 }
