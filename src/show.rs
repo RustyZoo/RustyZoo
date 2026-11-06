@@ -579,4 +579,4 @@ fn empty_facing(world: &mut World, cat: &Catalogue, inside: &dyn Fn(usize) -> bo
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

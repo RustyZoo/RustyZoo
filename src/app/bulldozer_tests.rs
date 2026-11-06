@@ -35,6 +35,11 @@ impl UiStrings for Texts {
             4913 => "Fir".into(),
             4916 => "%s mo".into(),
             22100 => "$".into(),
+            5400 => "Seal".into(),
+            11192 => "Never".into(),
+            11193 => "Infrequent".into(),
+            11194 => "Frequent".into(),
+            11195 => "Continuous".into(),
             9001 => "Shop".into(),
             _ => String::new(),
         }
@@ -45,7 +50,7 @@ impl UiStrings for Texts {
     }
 }
 
-const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+pub(super) const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
     [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
     [c]\ntype=UIButton\nid=1028\nx=300\ny=220\ndx=8\ndy=8\nstate=2048\ntransparent=0\n\
     [m]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=2\ndy=2\ntimed=1\nstate=1025\n\
@@ -196,7 +201,12 @@ pub(super) fn catalogue() -> Catalogue {
     cat
 }
 
-fn install(name: &str, ini: &str) -> crate::fixtures::Install {
+fn install(
+    name: &str,
+    ini: &str,
+    root: &str,
+    more: &[(&str, Vec<u8>)],
+) -> crate::fixtures::Install {
     // Every object is a square of 24 pixels around its anchor.
     let mut frame = Vec::new();
     for field in [24u16, 24, 12, 12, 0] {
@@ -229,7 +239,7 @@ fn install(name: &str, ini: &str) -> crate::fixtures::Install {
             "animals/Lion/lion.pal",
             palette_file(&[[255, 0, 255], [1, 2, 3]]),
         ),
-        ("ui/root.lyt", ROOT.as_bytes().to_vec()),
+        ("ui/root.lyt", root.as_bytes().to_vec()),
         ("ui/q.lyt", QUESTION.as_bytes().to_vec()),
         ("ui/animal.lyt", ANIMAL.as_bytes().to_vec()),
         ("ui/staff.lyt", STAFF.as_bytes().to_vec()),
@@ -238,6 +248,7 @@ fn install(name: &str, ini: &str) -> crate::fixtures::Install {
         ("ui/filter.lyt", FILTER.as_bytes().to_vec()),
         ("zoo.ini", ini.as_bytes().to_vec()),
     ];
+    let ui: Vec<_> = ui.iter().cloned().chain(more.iter().cloned()).collect();
     cache_install_with(&format!("app-dozer-{name}"), frame_file(), &ui)
 }
 
@@ -247,11 +258,20 @@ pub(super) struct Session<'a> {
 }
 
 pub(super) fn with_game(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
-    let install = install(name, ini);
+    with_game_of(name, ini, (catalogue(), ROOT, &[]), body);
+}
+
+/// [`with_game`] on another catalogue, root layout and more layout files.
+pub(super) fn with_game_of(
+    name: &str,
+    ini: &str,
+    (catalogue, root, more): (Catalogue, &str, &[(&str, Vec<u8>)]),
+    body: impl FnOnce(&mut Session),
+) {
+    let install = install(name, ini, root, more);
     let mut vfs = Vfs::open(&install.0).unwrap();
     vfs.overlay_ini(&Config::parse(ini.as_bytes()).unwrap())
         .unwrap();
-    let catalogue = catalogue();
     let mut app = App::new(
         MapRenderer::new(&vfs, &catalogue),
         map(),

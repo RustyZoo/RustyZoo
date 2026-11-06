@@ -45,7 +45,7 @@ pub(super) fn record(key: u32, script: u16, units: &[u32]) -> TypeRecord {
 
 /// The crowded world with two seals (21, 22) and a specialist (30) in the show of the tank, a
 /// script of `items` for seals, a schedule of the seals and the next show at AI tick 90.
-pub(super) fn staged(items: Vec<Item>) -> (World, Catalogue) {
+pub(crate) fn staged(items: Vec<Item>) -> (World, Catalogue) {
     let (mut w, mut cat) = crowded();
     cat.push(EntityType {
         name_id: SEAL as i32,
@@ -92,7 +92,7 @@ pub(super) fn show_tank(level: u32) -> Tank {
 }
 
 /// The show tank.
-pub(super) fn tank_mut(w: &mut World) -> &mut Exhibit {
+pub(crate) fn tank_mut(w: &mut World) -> &mut Exhibit {
     let id = tank_of(w, 0).unwrap();
     w.exhibits_mut().get_mut(id).unwrap()
 }
