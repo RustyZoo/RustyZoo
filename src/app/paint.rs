@@ -95,10 +95,23 @@ impl App<'_> {
         };
         want.faces.clone_from(&game.world.units.reactions);
         want.filters = game.world.filter_looks();
+        want.idle = Frames(self.sim.idle_frames());
         want.marks.extend(game.selection);
         game.dozer_extra(&mut want);
         want.marks.extend(game.assign_marks());
         if !dirty && want == game.extra {
+            // Only the frames of the idle animations moved: no new staging.
+            let size = (self.frame.width, self.frame.height);
+            let at = (game.camera.scroll, game.camera.zoom);
+            let rects = game.staged.reframe(&want.idle, size, at.0, at.1);
+            let drawn = self.painted.is_some()
+                && self.painted == Some((at.0, at.1, game.camera.rotation, game.grid));
+            match (drawn, rects) {
+                (true, Some(rects)) => self.stale.get_or_insert_default().extend(rects),
+                (true, None) => (self.painted, self.stale) = (None, None),
+                _ => {}
+            }
+            game.extra = want;
             return;
         }
         match self

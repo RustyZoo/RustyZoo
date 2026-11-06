@@ -33,7 +33,7 @@ use crate::panel::research as research_panel;
 use crate::panel::{animal, exhibit, guest, show, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
-use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
+use crate::render::{Extra, Form, Frames, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
 use crate::scenario::Scenario;
 use crate::sim::Sim;
 use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
