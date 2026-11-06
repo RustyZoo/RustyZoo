@@ -190,3 +190,24 @@ pub(crate) fn with_expansions(test: &str, dir: &std::ffi::OsStr) -> bool {
     }
     found
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_upper_case_file_is_found() {
+        let dir = TempDir::new("fixtures-case");
+        dir.write("LANG0.DLL", b"x");
+        dir.write("XPACK1/A.ZTD", b"x");
+        let found = file_ignoring_case(dir.0.as_os_str(), "lang0.dll");
+        assert_eq!(found.file_name().unwrap(), "LANG0.DLL");
+        // A missing file gives the path as asked.
+        let absent = file_ignoring_case(dir.0.as_os_str(), "none.dll");
+        assert_eq!(absent.file_name().unwrap(), "none.dll");
+        // The expansions need an archive in each folder, whatever the case of the names.
+        assert!(!has_expansions(dir.0.as_os_str()));
+        dir.write("xpack2/b.ztd", b"x");
+        assert!(has_expansions(dir.0.as_os_str()));
+    }
+}
