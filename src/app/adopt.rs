@@ -94,7 +94,7 @@ impl App<'_> {
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
-                super::carry::refusal(ui, &mut self.lines.tool, message);
+                super::carry::refusal(ui, &mut self.lines.tool, message, super::kinds::REFUSAL);
             }
         }
         self.aim(false);

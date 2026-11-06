@@ -1,6 +1,6 @@
 //! The research step's meeting with the interface (research 5.4): what a completed program does.
 
-use super::{App, EXCLAIM_PICTURE, QUESTION};
+use super::{App, EXCLAIM_PICTURE, QUESTION, kinds};
 use crate::money::SYMBOL;
 use crate::panel::research::branch_of_tab;
 use crate::research::{Done, Life, Tree};
@@ -90,7 +90,7 @@ impl App<'_> {
                 game.staff.clock.force = true;
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
-            ui.message(&to_cp1252(&text));
+            ui.message(&to_cp1252(&text), kinds::PLAIN);
             exclaim(ui, vfs);
             ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             // A branch with no program left says so in a second dialog (5.4).
@@ -99,7 +99,7 @@ impl App<'_> {
                 let text = ui
                     .string(ALL_DONE)
                     .replacen("%s", &ui.string(branch.name), 1);
-                ui.message(&to_cp1252(&text));
+                ui.message(&to_cp1252(&text), kinds::PLAIN);
                 exclaim(ui, vfs);
                 ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
             }

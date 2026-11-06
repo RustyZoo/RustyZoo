@@ -963,7 +963,7 @@ fn a_saved_game_keeps_the_awards_given_in_play_in_order_and_announces_nothing_on
             // Another game, then the load: same list, same order, and no message or award line.
             app.open_game(holding(&[]), Money::default()).unwrap();
             assert_eq!(held(app), Vec::<i32>::new());
-            app.ui.as_mut().unwrap().message(b"");
+            app.ui.as_mut().unwrap().message(b"", 0);
             assert!(app.load_saved(file.to_str().unwrap()));
             assert_eq!(held(app), [8, 3, 1, 0, -4]);
             app.pass(now + 132, &[]);
