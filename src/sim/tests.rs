@@ -105,6 +105,32 @@ fn chance_and_pick_reduce_as_the_original_does() {
 }
 
 #[test]
+fn a_game_with_a_soundscape_logs_its_points_and_draws_and_a_new_game_has_none() {
+    let own = || Soundscape::from_files(&|_| None, None);
+    // From one seed, the state and the lines after a step of a game set up by `setup`.
+    let run = |setup: &dyn Fn(&mut Sim)| {
+        let (mut s, mut w) = (sim(""), world(0));
+        setup(&mut s);
+        s.rng.seed(5);
+        s.take_lines();
+        s.step(&mut w, 67, |_, _, _| {});
+        (s.rng.state(), s.take_lines())
+    };
+    let (plain, lines) = run(&|_| {});
+    assert!(!lines.iter().any(|l| l.starts_with("soundscape")));
+    let (with, lines) = run(&|s| s.set_soundscape(own()));
+    assert_ne!(plain, with);
+    let points = lines.iter().filter(|l| l.starts_with("soundscape points "));
+    assert_eq!(points.count(), 1);
+    // The next game starts without one again.
+    let (again, _) = run(&|s| {
+        s.set_soundscape(own());
+        s.start_game(16, Clocks::default());
+    });
+    assert_eq!(again, plain);
+}
+
+#[test]
 fn the_seconds_are_the_seed_plus_the_count() {
     let mut s = Seconds::Test { seed: 7, n: 0 };
     assert_eq!([s.now(), s.now(), s.now()], [7, 8, 9]);

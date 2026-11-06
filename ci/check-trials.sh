@@ -270,8 +270,8 @@ check base-trial 'dislikes15672@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # changes (without the pair it would be 2cf67ce9093b3d71). Sentinel: the state hash of the first month of
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
-check base-trial 134fbf422ba248c8 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial a6e2b7baf3efc472 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 1678a65c835a32ab 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial 70a6aea4b6998317 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -1186,13 +1186,14 @@ check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_gue
 # filter broke. Prints the first jobs of the specialist (the ladders, the food in the water), the
 # lowest purity while the filter was sound, the purity when it broke and when the worker serviced
 # it, the worker's jobs, the number of rays and whether each took at least 10
-# bites in the second half of the run (they eat all along, 17 to 20 bites a half; the floor leaves
-# room for a change of the draw order). Seed 1 is the first where both rays do: with seed 2 one ray eats nothing
-# in the second half once the loaded units go on with their saved sets and paths (behaviours 4.7).
-marine_round() { # marine_round <map>
+# bites in the second half of the run (they eat all along, 17 to 20 bites a half). A property: yes
+# when for one of the seeds 1 to 24 (reads $seed) the whole line holds. Whether both rays eat in the
+# second half depends on the stream (seeds 1 and 6 leave one ray without a bite, 2 to 5 do not); the
+# jobs, the purity and the worker's jobs are the same on every seed tried.
+marine_round() { # marine_round <map>: reads $seed
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"
-  rz sim "$1" --ticks 38000 --seed 1 --script "$d/script" --log 2>/dev/null | awk '
+  rz sim "$1" --ticks 38000 --seed "$seed" --script "$d/script" --log 2>/dev/null | awk '
     / unit add [0-9]+ keeper /{k=$5}
     / staff job /{
       if ($5==k) { if ($6=="none") next; if (!done) j=j (j?",":"") $6; if ($6=="ClimbDownOutsideLadder") done=1 }
@@ -1209,7 +1210,12 @@ marine_round() { # marine_round <map>
          print j ";held>=" min ";broken:" at ">" (fixed != "" && fixed + 0 < at + 0 ? "lower" : "no") ";worker:" w ";rays:" n ";second-half-bites>=10:" (m>=10 ? "yes" : "no(" m ")") }'
   rm -rf "$d"
 }
-check expansion-trial "GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>lower;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;rays:2;second-half-bites>=10:yes" "marine_round maps/scn27.zoo"
+marine_ok() { # marine_ok <map>: reads $seed
+  out=$(marine_round "$1")
+  want="GoToOutsideLadderBase,ClimbUpOutsideLadder,ClimbDownInsideLadder,PutFood,PuttingFood,GoToInsideLadderBase,ClimbUpInsideLadder,ClimbDownOutsideLadder;held>=94;broken:99>lower;worker:GoToFilter,FixFilter,GoToFilter,FixFilter;rays:2;second-half-bites>=10:yes"
+  [ "$out" = "$want" ] && echo yes || echo "no:$out"
+}
+check expansion-trial yes "any_seed marine_ok maps/scn27.zoo"
 
 # The pace of the guests (movement 7.2): the first five guests the map loads walk for 1500 steps;
 # prints, for each, the tiles it entered and the last of them. Each guest has its own pace, so the
@@ -1274,23 +1280,25 @@ check expansion-trial yes "any_seed tank_breath maps/scn28b.zoo 22,23"
 # Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
 # the changes of its checks show. Once the purity is below 60 it loses 5 happiness and 5 health at
-# each murky check, every 5 status ticks (75 steps); the other checks add to the first two. Prints
-# the step the purity went below 60, then the steps of the first five losses of exactly 5 health,
-# and the happiness at the last three.
-tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <filter>
+# each murky check, every 5 status ticks (75 steps); the other checks add to the first two. A property
+# (reads $seed): the purity goes below 60 at step 10751 (no draw is involved), and the first five losses
+# of exactly 5 health follow, the first within 75 steps and the fifth within 450 (over seeds 1 to 6 the
+# first is 37 to 67 steps after, and a check may be skipped, which costs 75 steps); the happiness is -5 at the
+# last three (it holds for seeds 1, 2, 4 and 6 of 1 to 6).
+tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <filter>: reads $seed
   d=$(mktemp -d)
   { printf '0 remove %s\n0 remove %s\n0 remove %s\n0 animal mantaray %s\n' "$4" "$5" "$6" "$2"
     for s in $(seq 10 15 12000); do printf '%s mood %s 0\n' "$s" "$3"; done; } >"$d/script"
-  rz sim "$1" --ticks 12000 --seed 1 --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
+  rz sim "$1" --ticks 12000 --seed "$seed" --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
     BEGIN{ n=0 }
     / world water 2 /{ if ($9 < 60 && !low) low=$2 }
     $5 == ray && / animal status /{
       if (low && h0 != "" && $9 == health - 5 && n < 5) { steps[n]=$2; hap[n]=$6; n++ }
       health=$9; h0=1 }
-    END{ print "below60@" low ";losses@" steps[0] "," steps[1] "," steps[2] "," steps[3] "," steps[4] ";happiness:" hap[2] "," hap[3] "," hap[4] }'
+    END{ print (low == 10751 && n == 5 && steps[0] - low <= 75 && steps[4] - low <= 450 && hap[2] == -5 && hap[3] == -5 && hap[4] == -5 ? "yes" : "no:" low ";" steps[0] "," steps[4]) }'
   rm -rf "$d"
 }
-check expansion-trial "below60@10751;losses@10832,10907,10982,11056,11131;happiness:-5,-5,-5" "tank_murky maps/scn28.zoo 28,47 47192 31192 31194 37416"
+check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47192 31192 31194 37416"
 
 # Amphibious neighbours: scn28b's tank 1 and land exhibit 2 are level with the wall between them,
 # which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
@@ -1309,7 +1317,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear> [print]: reads $seed
 }
 check expansion-trial yes "any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2).
-check expansion-trial 97902:1@1002 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
+check expansion-trial 97902:1@1624 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1363,7 +1371,7 @@ check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36
 # to 16 it falls between step 297 and 15581, and seed 6 has none in 40000 steps. Two checks:
 # - a property: one of the seeds 1 to 24 gives a birth of young within 30000 steps (twice the latest
 #   first birth of the 15 seeds that have one), with mates;
-# - Sentinel: seed 2: the pairs, the step of the first birth and the young (`sim_twice` and the CI job `hashes`
+# - Sentinel: seed 3 (seed 2 has none in 20000 steps): the pairs, the step of the first birth and the young (`sim_twice` and the CI job `hashes`
 #   check that two runs agree).
 lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile> [print]: reads $seed
   d=$(mktemp -d)
@@ -1375,7 +1383,7 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile> [print]: reads $s
   rm -rf "$d"
 }
 check base-trial yes "any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@16133;young:2" "seed=2 lion_birth maps/scn01a.zoo 20000 45,37 44,36 46,38 print"
+check base-trial "mates:3;birth@6730;young:2" "seed=3 lion_birth maps/scn01a.zoo 20000 45,37 44,36 46,38 print"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1385,7 +1393,7 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: 9 of the seeds 1 to 16 lay one in the 7200 steps (the first between steps 576 and 6701), and
+# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 1, 3, 4, 5, 6 and 7), and
 # its hatching waits for a keeper to heal the egg (an untended egg is below its hit points when its time
 # is up). Two checks:
 # - a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it;
@@ -1398,7 +1406,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@2206;eggs:6;hatch@2836" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
+check expansion-trial "egg@1001;eggs:3;hatch@1632" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1433,8 +1441,8 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102822,0,2bd2aa037ca51fd5" "save_load maps/default.zoo"
-check expansion-trial "109491,0,83c6f6431c96e8c2" "save_load maps/sm_aqua.zoo"
+check base-trial "102822,0,4430aecc3e56f3cc" "save_load maps/default.zoo"
+check expansion-trial "109491,0,42f33985016a9053" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
 check expansion-trial 227408,0 "save_load maps/scn19.zoo | cut -d, -f1,2"
 

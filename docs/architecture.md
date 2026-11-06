@@ -77,6 +77,7 @@ Pictures, text and sound:
 - `text`: embedded Liberation Sans with Arial's metrics; wrapping, drawing, number, money and date formats.
 - `cursor`: the mouse cursors read from the resource DLLs.
 - `audio`, `music`: sound playback on SDL3; the menu music's loudness and fade.
+- `soundscape`: the ambient one-shots of a game (sound 8.1), drawn every step; groups that list the same files share the first one's chance and weights, each entry is its own voice.
 - `movie`, `intro`: the AVI and Indeo 5 decoder; which intro movies play.
 - `startup`: the start-up picture, its progress bar, the product version.
 - `zoom`, `camera`: the three zoom levels; the camera, its scroll range and the full-screen rules.

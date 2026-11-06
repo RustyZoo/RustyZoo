@@ -48,6 +48,7 @@ use crate::guest;
 use crate::money::{self, Money};
 use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
+use crate::soundscape::{Shot, Soundscape};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -194,6 +195,8 @@ pub(crate) struct Sim {
     /// The programs the research step completed, for the caller to apply.
     research_done: Vec<Done>,
     arrived: bool,
+    /// The ambient sounds of the game being played, if it has them (sound 8.1).
+    soundscape: Option<Soundscape>,
     /// The computer's (month, day) in UTC; a test sets another (cheats 6.1 point 2).
     pub(crate) real_day: fn() -> (u32, u32),
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
@@ -231,6 +234,7 @@ impl Sim {
             research: None,
             research_done: Vec::new(),
             arrived: false,
+            soundscape: None,
             real_day: crate::timing::utc_day,
             hire_male: false,
         };
@@ -302,6 +306,7 @@ impl Sim {
         self.idles.clear();
         self.bulldozed.clear();
         self.scenario = None;
+        self.soundscape = None;
         self.research = None;
         self.research_done.clear();
         self.events.restore(&clocks.queue);
@@ -309,6 +314,18 @@ impl Sim {
             self.tiles = tiles;
             self.reseed();
         }
+    }
+
+    /// The game just opened has this soundscape: its draws join every step (sound 8.1).
+    pub(crate) fn set_soundscape(&mut self, soundscape: Soundscape) {
+        self.soundscape = Some(soundscape);
+    }
+
+    /// The ambient one-shots the steps since the last call asked for.
+    pub(crate) fn take_shots(&mut self) -> Vec<Shot> {
+        self.soundscape
+            .as_mut()
+            .map_or_else(Vec::new, Soundscape::take_shots)
     }
 
     /// The research tree of the game just opened is built (research 7.4): the zoo status counts
@@ -704,6 +721,11 @@ impl Sim {
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);
         let bars = self.zoo_status(world, cat, money, step, month_end);
+        // The ambient soundscape follows the zoo status and the bars (simulation 3 point 1).
+        if let Some(soundscape) = &mut self.soundscape {
+            let guests = self.status.sums.guests;
+            soundscape.update(step, guests, &mut self.rng, &mut self.lines);
+        }
         world.units.now = self.calendar.elapsed_ms();
         // The AI manager: first the task pool reads the events of the buffer (simulation 4.2).
         let tiles = world.zoo.tiles.len();

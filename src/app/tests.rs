@@ -290,7 +290,7 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
         app.pass(0, &[]);
         let view = app.camera().unwrap().scroll;
         let lines = app.log_lines(0, 0);
-        assert_eq!(lines.len(), 7);
+        assert_eq!(lines.len(), 8);
         // The cash comes first (a game without a stored cash has none).
         assert_eq!(lines[0], "pass 0 t=0 money cash 0");
         let (draw, hash) = lines[1].split_once(" view=").unwrap();
@@ -309,6 +309,8 @@ fn the_log_has_one_line_per_firing_in_the_order_of_the_timers() {
                 .all(|l| l.starts_with("pass 0 t=0 sim seed "))
         );
         assert_eq!(lines[6], "pass 0 t=0 sim step 200");
+        // The step's soundscape draws its two points.
+        assert!(lines[7].starts_with("pass 0 t=0 sim soundscape points crowd "));
         // A draw that paints nothing says so.
         app.pass(20, &[]);
         assert_eq!(app.log_lines(1, 20).len(), 1);
@@ -443,8 +445,11 @@ fn a_seeded_run_logs_the_seedings_and_each_step() {
             "pass 0 t=0 sim seed 1",
             "pass 0 t=0 sim seed 2",
             "pass 0 t=0 sim step 200",
+            "pass 0 t=0 sim soundscape points crowd 3,-71 world 159,-66",
             "pass 1 t=70 sim step 70",
+            "pass 1 t=70 sim soundscape points crowd -63,-141 world 16,-47",
             "pass 2 t=140 sim step 70",
+            "pass 2 t=140 sim soundscape points crowd -78,9 world 272,68",
         ]
     );
     assert_eq!(lines, sim_lines("app-sim-b"));
