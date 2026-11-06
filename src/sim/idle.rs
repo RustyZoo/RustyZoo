@@ -140,7 +140,8 @@ impl Idles {
                 .flatten();
             let clock = self.0.entry(c.id).or_insert_with(|| {
                 let timing = (data.timing(e, "idle")).unwrap_or(Timing { count: 0, delay: 0 });
-                let random = kind == Kind::Edge && !e.subtype.starts_with('g');
+                // Only an animated fence draws: a still one has no time to start at.
+                let random = kind == Kind::Edge && !e.subtype.starts_with('g') && timing.count > 1;
                 let mut clock = Clock::new(timing, if random { rng.pick(2000) } else { 0 });
                 // Guests inside a loaded building did not just come in.
                 clock.inside = live.is_some_and(Live::inside);
@@ -330,6 +331,14 @@ mod tests {
         idles.advance(67);
         let frames = idles.frames();
         assert!(frames.values().any(|&f| f != frames[&41]));
+        // A still fence (one frame) draws nothing.
+        let mut still = Rng::default();
+        let one = Fixed(Some(Timing {
+            count: 1,
+            delay: 100,
+        }));
+        Idles::default().register(&world, &one, &mut still);
+        assert_eq!(still.state(), Rng::default().state());
         // A fence already known draws nothing more.
         idles.register(&world, &data, &mut rng);
         assert_eq!(rng.state(), expect.state());
