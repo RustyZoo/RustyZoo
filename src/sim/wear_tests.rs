@@ -131,6 +131,32 @@ fn a_piece_goes_healthy_then_decayed_then_broken_at_the_drawn_times() {
     assert_eq!((log[4].0 + log[4].1, log[4].2.0), (0, 0));
 }
 
+/// The wear step of a fence draws its new start time in the entity loop (placing 7.4): one draw
+/// for a step that wears, two for the step that breaks, none for a step that does not.
+#[test]
+fn a_wear_step_draws_one_start_time_and_a_break_two() {
+    let mut run = run(types(WEARING), world("f"), 1);
+    run.step(1000);
+    // Draws a step makes: the state of the generator is compared with picks from a copy.
+    let mut draws = |ms| {
+        let before = run.sim.rng.clone();
+        run.step(ms);
+        (0..8)
+            .find(|&n| {
+                let mut copy = before.clone();
+                (0..n).for_each(|_| _ = copy.pick(2000));
+                copy == run.sim.rng
+            })
+            .unwrap()
+    };
+    // Life 3 to 2, 2 to 1, then the break, 1 to 0.
+    assert_eq!([draws(2), draws(1), draws(1003)], [0, 1, 1]);
+    assert_eq!(draws(1003), 2);
+    // The task for the broken piece makes its own draws; the wear makes none more.
+    draws(5000);
+    assert_eq!(draws(5000), 0);
+}
+
 #[test]
 fn a_piece_that_breaks_plays_its_break_sound_once_at_the_piece() {
     let sounds = |keys: &str| {
