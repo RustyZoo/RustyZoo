@@ -13,6 +13,7 @@ use std::fmt;
 use std::path::Path;
 
 use crate::pe;
+use crate::text::from_cp1252;
 use crate::vfs::MAX_MEMBER_SIZE;
 
 /// The install language that the text of string 22015 gives: a decimal number, else (missing,
@@ -70,11 +71,27 @@ impl fmt::Display for StringsError {
 
 impl Error for StringsError {}
 
+/// The text of a `TEXT` entry in `language` (a Windows language identifier), cut at the first
+/// zero byte. The code page comes from the language: the data entries say 1252 whatever the
+/// language. Japanese is 932, Simplified Chinese 936, Korean 949, Traditional Chinese 950; any
+/// other language is Windows-1252. Bytes that the code page lacks become U+FFFD.
+pub fn decode_text(language: u32, data: &[u8]) -> String {
+    let data = &data[..data.iter().position(|&b| b == 0).unwrap_or(data.len())];
+    let encoding = match language {
+        1041 => encoding_rs::SHIFT_JIS,
+        2052 | 4100 => encoding_rs::GBK,
+        1042 => encoding_rs::EUC_KR,
+        1028 | 3076 | 5124 => encoding_rs::BIG5,
+        _ => return data.iter().map(|&b| from_cp1252(b)).collect(),
+    };
+    encoding.decode_without_bom_handling(data).0.into_owned()
+}
+
 /// One library: its file name, its non-empty strings and its `TEXT` entries by upper-case name.
 struct Library {
     name: String,
     strings: BTreeMap<u32, String>,
-    texts: HashMap<String, Vec<u8>>,
+    texts: HashMap<String, String>,
 }
 
 impl Library {
@@ -83,10 +100,10 @@ impl Library {
         let resources = pe::resources(file).ok()?;
         let strings = pe::strings(&resources).ok()?;
         let mut texts = HashMap::new();
-        for (text, data) in pe::texts(&resources) {
+        for (text, language, data) in pe::texts(&resources) {
             texts
                 .entry(text.to_ascii_uppercase())
-                .or_insert_with(|| data.to_vec());
+                .or_insert_with(|| decode_text(language, data));
         }
         Some(Library {
             name: name.to_string(),
@@ -185,25 +202,22 @@ impl StringTables {
         self.string_source(id).map_or("", |(_, text)| text)
     }
 
-    /// The bytes of the `TEXT` entry `name` (matched ignoring letter case) and the library that
+    /// The text of the `TEXT` entry `name` (matched ignoring letter case) and the library that
     /// supplies it; `None` if no library has it.
-    pub(crate) fn text_source(&self, name: &str) -> Option<(&str, &[u8])> {
-        // ponytail: an empty name is an empty text; the bytes end at the first zero byte, and
-        // are returned undecoded (Windows-1252 in the English version).
+    pub(crate) fn text_source(&self, name: &str) -> Option<(&str, &str)> {
+        // ponytail: an empty name is an empty text.
         let name = name.to_ascii_uppercase();
         if name.is_empty() {
             return None;
         }
         self.libraries.iter().find_map(|l| {
-            let data = l.texts.get(&name)?;
-            let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-            Some((l.name.as_str(), &data[..end]))
+            Some((l.name.as_str(), l.texts.get(&name)?.as_str()))
         })
     }
 
-    /// The bytes of the `TEXT` entry `name`, or an empty text if no library has it.
-    pub(crate) fn text(&self, name: &str) -> &[u8] {
-        self.text_source(name).map_or(&[], |(_, data)| data)
+    /// The text of the `TEXT` entry `name`, or an empty text if no library has it.
+    pub(crate) fn text(&self, name: &str) -> &str {
+        self.text_source(name).map_or("", |(_, text)| text)
     }
 
     /// The install language: the number of string 22015 (1033 English, 1036 French). A missing,
@@ -234,8 +248,8 @@ impl StringTables {
     }
 
     /// The merged view of the `TEXT` entries: upper-case name to the supplying library and the
-    /// bytes.
-    pub fn texts(&self) -> BTreeMap<String, (&str, &[u8])> {
+    /// text.
+    pub fn texts(&self) -> BTreeMap<String, (&str, &str)> {
         let names: BTreeSet<&String> = self.libraries.iter().flat_map(|l| l.texts.keys()).collect();
         names
             .into_iter()
