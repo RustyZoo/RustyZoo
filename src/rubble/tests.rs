@@ -143,8 +143,8 @@ fn one_cell_in_a_hundred_is_skipped_and_draws_no_rotation() {
 #[test]
 fn a_cell_outside_the_map_still_draws_but_leaves_no_piece() {
     let cat = cat(&ALL);
-    // The car's first column of cells is at x = -16, outside the map.
-    let mut w = world(("objects", "car"), (0, 64));
+    // The car's first column of cells is at x = -64, outside the map; the second at -32 is on tile 0.
+    let mut w = world(("objects", "car"), (-48, 64));
     let mut rng = Rng::default();
     let mut mirror = rng.clone();
     let pieces = run(&mut w, &cat, &mut rng);
@@ -158,7 +158,7 @@ fn a_cell_outside_the_map_still_draws_but_leaves_no_piece() {
         }
     }
     assert_eq!(pieces.len(), inside);
-    assert!(pieces.iter().all(|p| p.1 == 16));
+    assert!(pieces.iter().all(|p| p.1 == -32));
     assert_eq!(rng, mirror);
 }
 
@@ -475,13 +475,24 @@ fn a_turned_footprint_swaps_its_sides_for_scenery_and_for_a_big_building() {
 
 #[test]
 fn a_narrow_building_draws_its_pick_only_for_a_cell_inside_the_map() {
-    // The hut (1 x 2) turned is 2 x 1: cells x -16 (off the map) and 16 at y 64.
-    let mut w = turned(("building", "hut"), (0, 64), 1);
+    // The hut (1 x 2) turned is 2 x 1: cells x -64 (off the map) and -32 (tile 0) at y 64.
+    let mut w = turned(("building", "hut"), (-48, 64), 1);
     let mut rng = Rng::default();
     let mut mirror = rng.clone();
     let pieces = run(&mut w, &cat(&ALL), &mut rng);
     mirror.pick(1);
-    let want = [("brubls1".to_string(), 16, 64, 0, mirror.rand() & 7)];
+    let want = [("brubls1".to_string(), -32, 64, 0, mirror.rand() & 7)];
     assert_eq!(pieces, want);
     assert_eq!(rng, mirror);
+}
+
+#[test]
+fn a_centre_from_minus_63_to_minus_1_is_on_tile_0_and_minus_64_is_off_the_map() {
+    // The hut (1 x 2) stands on its centre in x: a piece is made unless the tile is off the map.
+    for (x, made) in [(-63, true), (-1, true), (0, true), (-64, false)] {
+        let mut w = world(("building", "hut"), (x, 64));
+        let pieces = run(&mut w, &cat(&ALL), &mut Rng::default());
+        assert_eq!(pieces.len(), if made { 2 } else { 0 }, "x = {x}");
+        assert!(pieces.iter().all(|p| p.1 == x), "x = {x}");
+    }
 }
