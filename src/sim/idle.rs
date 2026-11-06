@@ -8,7 +8,7 @@
 //! it again at frame 0. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
 //! reads the frames without staging the map again (`Staged::reframe`).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::behaviour::{Data, Timing};
 use crate::entity::Catalogue;
@@ -67,8 +67,8 @@ impl Clock {
 /// filter with the count of sets that filter had made when the clock started.
 #[derive(Debug, Default)]
 pub(crate) struct Idles {
-    fixed: HashMap<u32, Clock>,
-    bubbles: HashMap<u32, (u32, Clock)>,
+    fixed: BTreeMap<u32, Clock>,
+    bubbles: BTreeMap<u32, (u32, Clock)>,
 }
 
 impl Idles {
