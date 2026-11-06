@@ -707,51 +707,52 @@ mod tests {
             [b"animals"]
         );
 
-        // `help.cfg` writes `topic=Animation settings` but names the section with a capital S.
-        // (The help file of the expansions; the base game has an older one.)
-        if crate::fixtures::has_expansions(&dir) {
-            let help = read("help.cfg");
-            assert!(help.section("Animation Settings").is_some());
-            assert!(help.section("Animation settings").is_none());
-        }
-
         // `scenario/scn01/economy.cfg` holds one comment: no section.
         assert!(read("scenario/scn01/economy.cfg").is_empty());
-        if !crate::fixtures::measured_on("full_game_facts (totals)", &dir) {
-            return;
-        }
-        let (mut sections, mut keys, mut values, mut empty) = (0, 0, 0, 0);
-        for path in vfs.list(None) {
-            let is_config = [
-                ".ai", ".cfg", ".ani", ".scn", ".lyt", ".uca", ".ucb", ".ucs", ".ini",
-            ]
-            .iter()
-            .any(|ext| path.ends_with(ext));
-            if !is_config {
-                continue;
-            }
-            let config = read(&path);
-            empty += usize::from(config.is_empty());
-            assert_eq!(
-                config.ignored_before_first_header + config.ignored_after_broken_header,
-                0
-            );
-            for (_, section) in config.sections() {
-                sections += 1;
-                for key in section.keys() {
-                    keys += 1;
-                    values += section.get_all(key).len();
+        // The totals are those of the complete installs (and a Spanish disc has damaged files).
+        if crate::fixtures::measured_on("full_game_facts (totals)", &dir) {
+            let (mut sections, mut keys, mut values, mut empty) = (0, 0, 0, 0);
+            for path in vfs.list(None) {
+                let is_config = [
+                    ".ai", ".cfg", ".ani", ".scn", ".lyt", ".uca", ".ucb", ".ucs", ".ini",
+                ]
+                .iter()
+                .any(|ext| path.ends_with(ext));
+                if !is_config {
+                    continue;
+                }
+                let config = read(&path);
+                empty += usize::from(config.is_empty());
+                assert_eq!(
+                    config.ignored_before_first_header + config.ignored_after_broken_header,
+                    0
+                );
+                for (_, section) in config.sections() {
+                    sections += 1;
+                    for key in section.keys() {
+                        keys += 1;
+                        values += section.get_all(key).len();
+                    }
                 }
             }
+            assert_eq!(
+                (sections, keys, values, empty),
+                if crate::pe::installed_language(&dir) == 1036 {
+                    (33_610, 202_431, 300_109, 3)
+                } else {
+                    (33_621, 202_459, 300_138, 3)
+                }
+            );
         }
-        assert_eq!(
-            (sections, keys, values, empty),
-            if crate::pe::installed_language(&dir) == 1036 {
-                (33_610, 202_431, 300_109, 3)
-            } else {
-                (33_621, 202_459, 300_138, 3)
-            }
-        );
+
+        // The help file of the expansions; the base game has an older one.
+        if !crate::fixtures::has_expansions(&dir) {
+            return;
+        }
+        // `help.cfg` writes `topic=Animation settings` but names the section with a capital S.
+        let help = read("help.cfg");
+        assert!(help.section("Animation Settings").is_some());
+        assert!(help.section("Animation settings").is_none());
     }
 
     #[test]
