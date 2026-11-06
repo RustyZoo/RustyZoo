@@ -299,6 +299,7 @@ mod tests {
     fn the_user_names_of_the_french_install_are_french() {
         // Without the French folder the test has nothing to check.
         let Some(dir) = std::env::var_os("ZT_DATA_DIR_FR") else {
+            eprintln!("skipped the_user_names_of_the_french_install: ZT_DATA_DIR_FR is not set");
             return;
         };
         let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
