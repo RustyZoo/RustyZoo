@@ -27,6 +27,11 @@ struct Clock {
     t: u32,
     timing: Timing,
     state: Option<(String, i32)>,
+    /// A one-shot queued behind the base loop (`explode` of a rubble piece), waiting for the
+    /// sequence playing to end.
+    queued: Option<Timing>,
+    /// While the queued one-shot plays: the timing of the base loop that takes over after it.
+    back: Option<Timing>,
 }
 
 impl Clock {
@@ -37,14 +42,21 @@ impl Clock {
             t: 0,
             timing,
             state,
+            queued: None,
+            back: None,
         }
     }
 
-    /// One advance of the loop by `dt` ms (sprite drawing 6.2, the base sequence alone).
+    /// One advance by `dt` ms (sprite drawing 6.2): the base loop, a queued one-shot behind it.
     fn advance(&mut self, dt: u32) {
         let Timing { count, delay } = self.timing;
-        // A still picture never advances.
-        if count <= 1 {
+        // A still base picture with nothing queued never advances.
+        if count <= 1 && self.queued.is_none() && self.back.is_none() {
+            return;
+        }
+        // A sequence with no frame ends at once.
+        if count == 0 {
+            self.finish();
             return;
         }
         self.t = self.t.saturating_add(dt);
@@ -55,10 +67,20 @@ impl Clock {
             self.t -= delay;
             self.frame += 1;
             if self.frame >= count {
-                // The base sequence starts again and the time left is dropped.
-                (self.frame, self.t) = (0, 0);
+                self.finish();
                 return;
             }
+        }
+    }
+
+    /// The sequence playing ends: the queued one starts, else the base loop, at frame 0; the time
+    /// left is dropped.
+    fn finish(&mut self) {
+        (self.frame, self.t) = (0, 0);
+        if let Some(next) = self.queued.take() {
+            self.back = Some(std::mem::replace(&mut self.timing, next));
+        } else if let Some(base) = self.back.take() {
+            self.timing = base;
         }
     }
 }
@@ -86,6 +108,27 @@ impl Idles {
         let bubbles = bubbles.filter(|(_, c)| c.timing.count > 1);
         let all = animated.map(|(&id, c)| (id, c)).chain(bubbles);
         all.map(|(key, c)| (key, c.frame)).collect()
+    }
+
+    /// The rubble pieces (ids) whose one-shot `explode` is playing, in id order.
+    pub(crate) fn exploding(&self) -> Vec<u32> {
+        (self.fixed.iter())
+            .filter(|(_, c)| c.back.is_some())
+            .map(|(&id, _)| id)
+            .collect()
+    }
+
+    /// Queues `explode` once behind the `idle` base of each piece `ids` that turn-to-rubble made
+    /// (sprite drawing 3.6): it starts when the sequence playing ends. A piece with no clock or
+    /// no such animation plays nothing.
+    pub(crate) fn queue_explode(&mut self, world: &World, ids: &[u32], data: &dyn Data) {
+        for id in ids {
+            let timing =
+                (world.find(*id)).and_then(|at| data.timing(&world.zoo.entities[at], "explode"));
+            if let (Some(c), Some(t)) = (self.fixed.get_mut(id), timing) {
+                c.queued = Some(t);
+            }
+        }
     }
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
