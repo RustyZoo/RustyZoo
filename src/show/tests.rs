@@ -4,7 +4,7 @@ mod aborts;
 mod admission;
 mod audience;
 mod call;
-mod cycle;
+pub(crate) mod cycle;
 mod data;
 mod empty;
 mod lookups;

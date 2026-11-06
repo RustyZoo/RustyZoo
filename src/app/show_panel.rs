@@ -10,12 +10,12 @@ use crate::show as shows;
 
 /// The panels that showing the window hides, and that hide it when they are shown (19.3 points 3
 /// and 7): the building, buying, hiring, research, options and developer menus.
-const PANELS: [i32; 7] = [8, 3, 4, 10, 15, 5, 34];
+pub(super) const PANELS: [i32; 7] = [8, 3, 4, 10, 15, 5, 34];
 /// The zoo status panels, which showing the window hides.
-const STATUS: [i32; 2] = [14, 803];
+pub(super) const STATUS: [i32; 2] = [14, 803];
 /// The panels that hide the window when they are shown: the exhibit, animal, guest and staff
 /// panels, and [`PANELS`].
-const UNITS: [i32; 4] = [
+pub(super) const UNITS: [i32; 4] = [
     exhibit::LAYOUT,
     animal::LAYOUT,
     guest::LAYOUT,
