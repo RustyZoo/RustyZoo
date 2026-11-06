@@ -337,12 +337,11 @@ fn a_negative_kind_takes_the_general_colour() {
 fn a_missing_colour_key_takes_the_built_in_colour() {
     let shown = |name: &str, extra: &str| {
         let line = LINE.replace("timed=1", &format!("{extra}timed=1"));
-        let colours = [0, 1, 2].map(|kind| {
+        [0, 1, 2].map(|kind| {
             let mut ui = interface(&format!("{name}{kind}"), &line);
             ui.message(b"k", kind);
             ui.tree.elements[2].look.fore_color
-        });
-        colours
+        })
     };
     let built_in = [[255; 3], [0, 255, 0], [255, 0, 0]];
     // No key: not the text colour (255, 255, 255 in this line is white too, so it is told apart
