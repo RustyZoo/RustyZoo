@@ -65,21 +65,21 @@ impl Clock {
 /// The clocks of the fixed objects, by entity id, and of the sets of bubbles, by the id of their
 /// filter with the count of sets that filter had made when the clock started.
 #[derive(Debug, Default)]
-pub(super) struct Idles {
+pub(crate) struct Idles {
     fixed: HashMap<u32, Clock>,
     bubbles: HashMap<u32, (u32, Clock)>,
 }
 
 impl Idles {
     /// A new game starts no clock.
-    pub(super) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.fixed.clear();
         self.bubbles.clear();
     }
 
     /// The frame of each animated clock, for the picture: an entity under its id, the bubbles of a
     /// filter under [`bubble_key`].
-    pub(super) fn frames(&self) -> HashMap<u32, u32> {
+    pub(crate) fn frames(&self) -> HashMap<u32, u32> {
         let animated = self.fixed.iter().filter(|(_, c)| c.timing.count > 1);
         let bubbles = (self.bubbles.iter()).map(|(&id, (_, c))| (bubble_key(id), c));
         let bubbles = bubbles.filter(|(_, c)| c.timing.count > 1);
@@ -91,7 +91,7 @@ impl Idles {
     /// this step; one made later in the step (a ripple, a set of bubbles) advances from the next. A
     /// state that changed starts its animation again. The clocks of entities that are gone, and of
     /// bubbles that are gone, are dropped.
-    pub(super) fn register(&mut self, world: &World, cat: &Catalogue, data: &dyn Data) {
+    pub(crate) fn register(&mut self, world: &World, cat: &Catalogue, data: &dyn Data) {
         let looks = world.filter_looks();
         let mut fixed = 0;
         for e in &world.zoo.entities {
@@ -152,23 +152,19 @@ impl Idles {
     }
 
     /// The end of the entity pass: every clock advances by `step`.
-    pub(super) fn advance(&mut self, step: u32) {
+    pub(crate) fn advance(&mut self, step: u32) {
         self.fixed.values_mut().for_each(|c| c.advance(step));
         (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::unit::testing::{centre, entity, world_with};
 
     fn clock(count: u32, delay: u32) -> Clock {
-        Clock {
-            frame: 0,
-            t: 0,
-            timing: Timing { count, delay },
-        }
+        Clock::new(Some(Timing { count, delay }), None)
     }
 
     /// A loop drops the time left over at its end: 21 frames of 125 ms at 67 ms steps take
@@ -206,7 +202,8 @@ mod tests {
         assert!(c.frame < 3);
     }
 
-    struct Fixed(Option<Timing>);
+    /// The timing of `idle`, and of the animations `named`.
+    pub(crate) struct Fixed(pub Option<Timing>, pub Vec<(&'static str, Timing)>);
 
     impl Data for Fixed {
         fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
@@ -216,7 +213,8 @@ mod tests {
             &[]
         }
         fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {
-            self.0.filter(|_| name == "idle")
+            let named = self.1.iter().find(|n| n.0 == name).map(|n| n.1);
+            named.or(self.0.filter(|_| name == "idle"))
         }
         fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
             0
@@ -238,13 +236,16 @@ mod tests {
                 .push(entity("animals", "lion", 2, centre((1, 1)), 0));
             zoo.entities.push(entity("fences", "f", 3, (32, 0), 0));
         });
-        let data = Fixed(Some(Timing {
-            count: 4,
-            delay: 100,
-        }));
+        let data = Fixed(
+            Some(Timing {
+                count: 4,
+                delay: 100,
+            }),
+            vec![],
+        );
         let mut idles = Idles::default();
         let step = |idles: &mut Idles, world: &World, ms: u32| {
-            idles.register(world, &data);
+            idles.register(world, &Catalogue::default(), &data);
             idles.advance(ms);
         };
         // The first step of a loaded map counts: 200 ms of 100 per frame.
@@ -266,8 +267,60 @@ mod tests {
         assert!(!idles.frames().contains_key(&1));
         // Types with no `idle` animation show frame 0 and are not listed.
         let mut none = Idles::default();
-        none.register(&world, &Fixed(None));
+        none.register(&world, &Catalogue::default(), &Fixed(None, vec![]));
         none.advance(70);
         assert!(none.frames().is_empty());
+    }
+
+    /// A food object plays the animation its fill chooses (sprite drawing 3.6; the type's first
+    /// key, `empty`, is not it); a change of fill starts the other animation at frame 0; a state
+    /// whose animation the type lacks falls back to `idle`.
+    #[test]
+    fn a_food_object_loops_the_animation_its_state_chooses_and_restarts_when_it_changes() {
+        let mut cat = Catalogue::default();
+        let ini = "[Characteristics/Integers]\ncMaxFoodUnits=12\n";
+        cat.push(crate::fixtures::ty("food", "food", "chum", ini));
+        let mut world = world_with((4, 4), |zoo| {
+            let mut e = entity("food", "food", 1, centre((0, 0)), 0);
+            e.subtype = "chum".into();
+            e.common.as_mut().unwrap().food = 12;
+            zoo.entities.push(e);
+        });
+        let slow = Timing {
+            count: 4,
+            delay: 100,
+        };
+        let fast = Timing {
+            count: 4,
+            delay: 50,
+        };
+        let data = Fixed(None, vec![("full", slow), ("half", fast)]);
+        let mut idles = Idles::default();
+        let step = |idles: &mut Idles, world: &World, ms: u32| {
+            idles.register(world, &cat, &data);
+            idles.advance(ms);
+        };
+        step(&mut idles, &world, 200);
+        assert_eq!(idles.frames()[&1], 2, "full");
+        step(&mut idles, &world, 70);
+        assert_eq!(
+            idles.frames()[&1],
+            2,
+            "70 ms are not a frame: still the same state"
+        );
+        // Half full: its own animation, from frame 0, with its own delay.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 6;
+        step(&mut idles, &world, 70);
+        assert_eq!(idles.frames()[&1], 1, "half");
+        // Empty has no animation here and no `idle`: nothing to play.
+        world.zoo.entities[0].common.as_mut().unwrap().food = 0;
+        step(&mut idles, &world, 70);
+        assert!(!idles.frames().contains_key(&1), "empty");
+        // Nothing left of a type that has no fill (huge, negative): the state clamps.
+        for food in [i32::MAX, i32::MIN, -1] {
+            world.zoo.entities[0].common.as_mut().unwrap().food = food;
+            step(&mut idles, &world, u32::MAX);
+            assert!(idles.frames().values().all(|&f| f < 4), "{food}");
+        }
     }
 }

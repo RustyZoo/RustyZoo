@@ -2361,7 +2361,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         colors: &[],
         life: None,
         off: false,
-        bubbles: None,
+        clock: None,
         mode,
         portal: false,
         food: 0,
@@ -2631,7 +2631,7 @@ fn a_tank_filter_shows_off_broken_decayed_or_idle_by_its_water_and_its_health() 
             filters: vec![FilterLook {
                 id: 1,
                 off,
-                bubbles: None,
+                bubbles: false,
             }],
             ..Extra::default()
         };
@@ -2699,21 +2699,21 @@ fn the_bubbles_of_a_filter_face_away_from_it_and_stand_at_the_wall_edge_facing_i
     };
     let found = |zoo: &Zoo, cat: &Catalogue, extra: &Extra| {
         (bubbles(&scene, zoo, cat, extra).into_iter())
-            .map(|(_, tile, age, o)| (tile, age, o.x, o.y, o.z, o.facing))
+            .map(|(_, tile, id, o)| (tile, id, o.x, o.y, o.z, o.facing))
             .collect::<Vec<_>>()
     };
     // On tank tile (1, 1), at the middle of its west edge, which faces the filter: its wall is
     // there. They face away from the filter (2 + 4).
     assert_eq!(
-        found(&zoo, &cat, &extra(1, false, Some(80))),
-        [(5, 80, 64, 96, 0, 6)]
+        found(&zoo, &cat, &extra(1, false, true)),
+        [(5, 1, 64, 96, 0, 6)]
     );
     // None when off, when the filter shows none, or for another id.
-    assert!(found(&zoo, &cat, &extra(1, true, Some(0))).is_empty());
-    assert!(found(&zoo, &cat, &extra(1, false, None)).is_empty());
-    assert!(found(&zoo, &cat, &extra(2, false, Some(0))).is_empty());
+    assert!(found(&zoo, &cat, &extra(1, true, true)).is_empty());
+    assert!(found(&zoo, &cat, &extra(1, false, false)).is_empty());
+    assert!(found(&zoo, &cat, &extra(2, false, true)).is_empty());
     // None when it faces a tile that is no tank, is off the map, or the catalogue has no `tankbub1`.
-    let some = extra(1, false, Some(0));
+    let some = extra(1, false, true);
     place(&mut zoo, 32, 96, 0);
     assert!(found(&zoo, &cat, &some).is_empty());
     place(&mut zoo, 32, 96, 6);
@@ -2725,14 +2725,14 @@ fn the_bubbles_of_a_filter_face_away_from_it_and_stand_at_the_wall_edge_facing_i
     assert_eq!(found(&zoo, &cat, &some).len(), 1);
     // The other sides: the middle of the north edge, of the south edge and of the east edge.
     place(&mut zoo, 96, 32, 4);
-    assert_eq!(found(&zoo, &cat, &some), [(5, 0, 96, 64, 0, 0)]);
+    assert_eq!(found(&zoo, &cat, &some), [(5, 1, 96, 64, 0, 0)]);
     place(&mut zoo, 224, 160, 6);
-    assert_eq!(found(&zoo, &cat, &some), [(10, 0, 191, 160, 0, 2)]);
+    assert_eq!(found(&zoo, &cat, &some), [(10, 1, 191, 160, 0, 2)]);
     place(&mut zoo, 96, 224, 0);
-    assert_eq!(found(&zoo, &cat, &some), [(9, 0, 96, 191, 0, 4)]);
+    assert_eq!(found(&zoo, &cat, &some), [(9, 1, 96, 191, 0, 4)]);
     // From inside the tank no piece stands on the edge: the centre of the tank tile.
     place(&mut zoo, 160, 160, 6);
-    assert_eq!(found(&zoo, &cat, &some), [(9, 0, 96, 160, 0, 2)]);
+    assert_eq!(found(&zoo, &cat, &some), [(9, 1, 96, 160, 0, 2)]);
 }
 
 #[test]
@@ -2743,7 +2743,7 @@ fn the_bubbles_stand_three_steps_under_the_water_and_never_over_the_filter() {
         filters: vec![FilterLook {
             id: 1,
             off: false,
-            bubbles: Some(0),
+            bubbles: true,
         }],
         ..Extra::default()
     };
@@ -2768,25 +2768,6 @@ fn the_bubbles_stand_three_steps_under_the_water_and_never_over_the_filter() {
     ] {
         assert_eq!(height(&mut zoo, level, filter_z), z, "{level} {filter_z}");
     }
-}
-
-#[test]
-fn the_bubbles_go_round_their_frames_from_the_cycle() {
-    // 17 frames of 83 ms: a loop of 1,411 ms, begun anew with each cycle.
-    for (age, frame) in [
-        (0, 0),
-        (82, 0),
-        (83, 1),
-        (1_410, 16),
-        (1_411, 0),
-        (2_999, 2),
-    ] {
-        assert_eq!(bubble_frame(age, 83, 17), frame, "{age}");
-    }
-    // A picture without frames or a delay shows the first.
-    assert_eq!(bubble_frame(500, 0, 17), 0);
-    assert_eq!(bubble_frame(500, 83, 0), 0);
-    assert_eq!(bubble_frame(u32::MAX, 1, 3), (u32::MAX % 3) as usize);
 }
 
 #[test]

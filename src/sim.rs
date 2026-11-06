@@ -23,7 +23,7 @@
 pub mod drive;
 mod events;
 pub mod hash;
-mod idle;
+pub(crate) mod idle;
 mod inspect;
 mod ripple;
 mod rng;
