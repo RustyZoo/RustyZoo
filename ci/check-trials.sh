@@ -1114,8 +1114,12 @@ check expansion-trial 'none' 'scripted "2 mouse 875 230\n3 down\n4 up\n20 mouse 
 
 # An undo while a building is held (placing 8, unit placing 8.7): a gift stand is bought (130), placed, picked up by
 # a second click and Backspace pressed: its move is cancelled and it is removed with its whole price (one
-# removal told, the cash back to its start: seed 1 is the first where no guest pays meanwhile).
-check expansion-trial '75000;1' 'scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed 1 | awk "/ money cash /{c=\$6} / world remove .* undo\$/{n++} END{print c \";\" n+0}"'
+# removal told, the cash back to its start). A guest may pay meanwhile on a seed: a property, yes when
+# for one of the seeds 1 to 24 (reads $seed) the cash is back and one removal was told.
+undo_held() {
+  scripted "2 pause\n3 mouse 25 129\n4 down\n5 up\n6 mouse 60 150\n7 down\n8 up\n10 mouse 600 400\n12 down\n13 up\n14 key escape\n16 mouse 600 400\n17 down\n18 up\n20 down\n21 up\n25 key backspace\n" maps/scn19.zoo --headless --passes 30 --clock 200 --cash 75000 --seed "$seed" | awk '/ money cash /{c=$6} / world remove .* undo$/{n++} END{print (c == 75000 && n == 1) ? "yes" : "no:" c ";" n+0}'
+}
+check expansion-trial yes "any_seed undo_held"
 
 # The pick-up and the drop record nothing for the undo: the burger stand is sold, the gift stand picked up and
 # put down, then Backspace gives the burger stand back.
@@ -1189,7 +1193,8 @@ check expansion-trial 'income_$0_upkeep_$0_profit_$0_month_$0_$0_$0_months_1_gue
 # bites in the second half of the run (they eat all along, 17 to 20 bites a half). A property: yes
 # when for one of the seeds 1 to 24 (reads $seed) the whole line holds. Whether both rays eat in the
 # second half depends on the stream (seeds 1 and 6 leave one ray without a bite, 2 to 5 do not); the
-# jobs, the purity and the worker's jobs are the same on every seed tried.
+# jobs, the purity (`held>=94` too: the filter model draws nothing) and the worker's jobs are the same on every
+# seed tried (1 to 12).
 marine_round() { # marine_round <map>: reads $seed
   d=$(mktemp -d)
   printf '0 remove 25163\n0 keeper 20,40\n0 animal mantaray 27,49\n31000 worker 20,40\n' >"$d/script"

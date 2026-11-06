@@ -9,6 +9,7 @@
 # for it to eat (the sums before a change read through a rating draw too, and so does the grounds'
 # update after an entity placed on them).
 #run maps/default.zoo --cash 75000 --seed 5 --passes 25000 --clock 200
+#seeds 3 8 6 1 2 4 5 7
 #exhibit 16,36,21,41
 #months 12
 #expect 1 exhibit gate [0-9]+
