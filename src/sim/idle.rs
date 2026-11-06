@@ -1,32 +1,57 @@
-//! The idle animation of the fixed objects (sprite drawing 3.6 and 6.2): scenery, buildings and the
-//! like play their `idle` animation forward in a loop, one clock each, from the step after the
-//! entity appears. A loop that ends drops the time left over, so it takes a little more than
-//! `count x delay`.
+//! The idle animation of the fixed objects and the fences (sprite drawing 3.6 and 6.2): scenery,
+//! buildings and the like play their `idle` animation forward in a loop, one clock each, from the
+//! step after the entity appears. A loop that ends drops the time left over, so it takes a little
+//! more than `count x delay`. A building plays `used` once when a guest comes into it and
+//! `idledead` while it is dead; the base loop then starts again at frame 0.
 //!
 //! The clocks are not saved: a loaded zoo restarts them at frame 0. The picture reads the frames
 //! without staging the map again (`Staged::reframe`).
 
 use std::collections::HashMap;
 
+use super::Rng;
 use crate::behaviour::{Data, Timing};
+use crate::building::Live;
 use crate::render::order::Kind;
 use crate::world::World;
+use crate::zoo::Entity;
 
-/// The frame an entity shows and the milliseconds it has been shown, with the animation's timing
-/// (a count of 0: no animation to play).
+/// The animation an entity plays and the milliseconds it has been shown, with its timing (a
+/// count of 0: no animation to play).
 #[derive(Debug, Clone, Copy)]
 struct Clock {
     frame: u32,
     t: u32,
+    name: &'static str,
     timing: Timing,
+    /// The animation is a sequence: it plays once, then the base takes over from frame 0.
+    once: bool,
+    /// The base animation, which loops.
+    base: (&'static str, Timing),
+    /// A building has a guest inside; it is in its dead state (guest buildings 10.1, 11.1.1).
+    inside: bool,
+    dead: bool,
 }
 
 impl Clock {
-    /// One advance of the loop by `dt` ms (sprite drawing 6.2, the base sequence alone).
+    fn new(timing: Timing, t: u32) -> Clock {
+        Clock {
+            frame: 0,
+            t,
+            name: "idle",
+            timing,
+            once: false,
+            base: ("idle", timing),
+            inside: false,
+            dead: false,
+        }
+    }
+
+    /// One advance by `dt` ms (sprite drawing 6.2).
     fn advance(&mut self, dt: u32) {
         let Timing { count, delay } = self.timing;
-        // A still picture never advances.
-        if count <= 1 {
+        // A still base picture never advances.
+        if count <= 1 && !self.once {
             return;
         }
         self.t = self.t.saturating_add(dt);
@@ -37,15 +62,42 @@ impl Clock {
             self.t -= delay;
             self.frame += 1;
             if self.frame >= count {
-                // The base sequence starts again and the time left is dropped.
-                (self.frame, self.t) = (0, 0);
+                self.restart();
                 return;
             }
         }
     }
+
+    /// The base animation starts again at frame 0; the time left over is dropped.
+    fn restart(&mut self) {
+        (self.name, self.timing) = self.base;
+        (self.frame, self.t, self.once) = (0, 0, false);
+    }
+
+    /// A building's state of this step: the dead state changes the base (`idledead`, back to
+    /// `idle`); a guest coming in from an empty building starts `used` (guest buildings 10.1).
+    fn track(&mut self, e: &Entity, live: &Live, data: &dyn Data) {
+        let dead = live.dead;
+        if dead != self.dead {
+            self.dead = dead;
+            let name = if dead { "idledead" } else { "idle" };
+            if let Some(timing) = data.timing(e, name) {
+                self.base = (name, timing);
+                self.restart();
+            }
+        }
+        let inside = !live.users.is_empty() || live.extra > 0;
+        if inside && !self.inside && !dead {
+            if let Some(timing) = data.timing(e, "used") {
+                (self.name, self.timing, self.once) = ("used", timing, true);
+                (self.frame, self.t) = (0, 0);
+            }
+        }
+        self.inside = inside;
+    }
 }
 
-/// The clocks of the fixed objects, by entity id.
+/// The clocks of the fixed objects and the fences, by entity id.
 #[derive(Debug, Default)]
 pub(super) struct Idles(HashMap<u32, Clock>);
 
@@ -61,27 +113,37 @@ impl Idles {
         animated.map(|(&id, c)| (id, c.frame)).collect()
     }
 
+    /// The animation of each entity that does not show `idle` (a building in use or dead).
+    pub(super) fn looks(&self) -> HashMap<u32, &'static str> {
+        let other = self.0.iter().filter(|(_, c)| c.name != "idle");
+        other.map(|(&id, c)| (id, c.name)).collect()
+    }
+
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
-    /// this step; one made later in the step (a ripple) advances from the next. The clocks of
+    /// this step; one made later in the step (a ripple) advances from the next. A fence that is
+    /// not a gate starts at a random time of 0 to 1999 ms (sprite drawing 3.6). The clocks of
     /// entities that are gone are dropped.
-    pub(super) fn register(&mut self, world: &World, data: &dyn Data) {
-        let mut fixed = 0;
+    pub(super) fn register(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
+        let mut animated = 0;
         for e in &world.zoo.entities {
             let Some(c) = &e.common else { continue };
-            if Kind::of_class(&e.class) != Kind::Fixed {
+            let kind = Kind::of_class(&e.class);
+            if !matches!(kind, Kind::Fixed | Kind::Edge) {
                 continue;
             }
-            fixed += 1;
-            self.0.entry(c.id).or_insert_with(|| {
+            animated += 1;
+            let clock = self.0.entry(c.id).or_insert_with(|| {
                 let timing = (data.timing(e, "idle")).unwrap_or(Timing { count: 0, delay: 0 });
-                Clock {
-                    frame: 0,
-                    t: 0,
-                    timing,
-                }
+                let random = kind == Kind::Edge && !e.subtype.starts_with('g');
+                Clock::new(timing, if random { rng.pick(2000) } else { 0 })
             });
+            if e.class == "building" && e.subtype != "trshcan" {
+                if let Some(live) = world.units.buildings.get(&c.id) {
+                    clock.track(e, live, data);
+                }
+            }
         }
-        if self.0.len() > fixed {
+        if self.0.len() > animated {
             let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();

@@ -70,6 +70,8 @@ impl<'a> MapRenderer<'a> {
                 let max = crate::build::number(ty, "cMaxFoodUnits").unwrap_or(0.0) as i32;
                 crate::animal::food::STATES[crate::animal::food::fullness(meta.food, max)].into()
             }
+            // A building in use or dead shows that animation.
+            "building" => meta.look.unwrap_or("").into(),
             _ => String::new(),
         };
         // Without the swimming pictures an animal in a tank shows its rest picture.
@@ -199,9 +201,14 @@ impl<'a> MapRenderer<'a> {
         }
         let ty = meta.ty;
         let member = self.member(scene, o, meta);
+        // A fence plays its idle animation on a slope too.
+        let names = match ty.class {
+            "fences" => ["idle", "idle30p", "idle30n"],
+            _ => [meta.look.unwrap_or("idle"); 3],
+        };
         let idle = meta.idle.is_some()
             && member.is_some()
-            && member == ty.animation_named("idle").and_then(|a| a.member);
+            && (names.iter()).any(|n| member == ty.animation_named(n).and_then(|a| a.member));
         let anim = member.and_then(|member| self.animation(&member));
         let Some(anim) = anim else {
             summary.objects_missing += 1;
