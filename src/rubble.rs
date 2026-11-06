@@ -74,7 +74,7 @@ pub(crate) fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     pieces(world, kit, &entity, &c)
 }
 
-/// The rubble an entity leaves, cell by cell (4.6 points 2 to 5).
+/// The rubble an entity leaves, cell by cell (4.6 points 2 to 5; a cell's tile truncates toward zero).
 fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool {
     let ty = type_of(kit.cat, entity);
     let Some(ty) = ty else {
