@@ -444,6 +444,11 @@ pub(crate) struct Seat {
 }
 
 impl Live {
+    /// A guest is inside (users now above 0).
+    pub(crate) fn inside(&self) -> bool {
+        !self.users.is_empty() || self.extra > 0
+    }
+
     pub(crate) fn new(kind: &Kind) -> Live {
         Live {
             price: kind.price,

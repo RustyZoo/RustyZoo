@@ -86,7 +86,7 @@ impl Clock {
                 self.restart();
             }
         }
-        let inside = !live.users.is_empty() || live.extra > 0;
+        let inside = live.inside();
         if inside && !self.inside && !dead {
             if let Some(timing) = data.timing(e, "used") {
                 (self.name, self.timing, self.once) = ("used", timing, true);
@@ -132,15 +132,20 @@ impl Idles {
                 continue;
             }
             animated += 1;
+            // A trash can shows its own pictures.
+            let live = (e.class == "building" && e.subtype != "trshcan")
+                .then(|| world.units.buildings.get(&c.id))
+                .flatten();
             let clock = self.0.entry(c.id).or_insert_with(|| {
                 let timing = (data.timing(e, "idle")).unwrap_or(Timing { count: 0, delay: 0 });
                 let random = kind == Kind::Edge && !e.subtype.starts_with('g');
-                Clock::new(timing, if random { rng.pick(2000) } else { 0 })
+                let mut clock = Clock::new(timing, if random { rng.pick(2000) } else { 0 });
+                // Guests inside a loaded building did not just come in.
+                clock.inside = live.is_some_and(Live::inside);
+                clock
             });
-            if e.class == "building" && e.subtype != "trshcan" {
-                if let Some(live) = world.units.buildings.get(&c.id) {
-                    clock.track(e, live, data);
-                }
+            if let Some(live) = live {
+                clock.track(e, live, data);
             }
         }
         if self.0.len() > animated {
@@ -163,11 +168,7 @@ mod tests {
     use crate::unit::testing::{centre, entity, world_with};
 
     fn clock(count: u32, delay: u32) -> Clock {
-        Clock {
-            frame: 0,
-            t: 0,
-            timing: Timing { count, delay },
-        }
+        Clock::new(Timing { count, delay }, 0)
     }
 
     /// A loop drops the time left over at its end: 21 frames of 125 ms at 67 ms steps take
@@ -207,6 +208,10 @@ mod tests {
 
     struct Fixed(Option<Timing>);
 
+    /// A type with `idle` of 4 frames of 100 ms, `used` of 2 frames of 100 ms and `idledead` of
+    /// 3 frames of 100 ms.
+    struct Building;
+
     impl Data for Fixed {
         fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
             None
@@ -225,9 +230,33 @@ mod tests {
         }
     }
 
+    impl Data for Building {
+        fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+            None
+        }
+        fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[crate::behaviour::Row] {
+            &[]
+        }
+        fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<Timing> {
+            let count = match name {
+                "idle" => 4,
+                "used" => 2,
+                "idledead" => 3,
+                _ => return None,
+            };
+            Some(Timing { count, delay: 100 })
+        }
+        fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
+            0
+        }
+        fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
+            None
+        }
+    }
+
     /// An entity present when a step starts advances by that step; one made during the step
-    /// (a ripple) first advances in the next. Units, fences and objects with no idle animation
-    /// have no clock; a removed entity's clock goes.
+    /// (a ripple) first advances in the next. Units and objects with no idle animation have no
+    /// clock; a removed entity's clock goes.
     #[test]
     fn an_entity_first_seen_at_a_step_advances_by_it() {
         let mut world = world_with((4, 4), |zoo| {
@@ -235,7 +264,6 @@ mod tests {
                 .push(entity("scenery", "tree", 1, centre((0, 0)), 0));
             zoo.entities
                 .push(entity("animals", "lion", 2, centre((1, 1)), 0));
-            zoo.entities.push(entity("fences", "f", 3, (32, 0), 0));
         });
         let data = Fixed(Some(Timing {
             count: 4,
@@ -243,7 +271,7 @@ mod tests {
         }));
         let mut idles = Idles::default();
         let step = |idles: &mut Idles, world: &World, ms: u32| {
-            idles.register(world, &data);
+            idles.register(world, &data, &mut Rng::default());
             idles.advance(ms);
         };
         // The first step of a loaded map counts: 200 ms of 100 per frame.
@@ -265,8 +293,108 @@ mod tests {
         assert!(!idles.frames().contains_key(&1));
         // Types with no `idle` animation show frame 0 and are not listed.
         let mut none = Idles::default();
-        none.register(&world, &Fixed(None));
+        none.register(&world, &Fixed(None), &mut Rng::default());
         none.advance(70);
         assert!(none.frames().is_empty());
+    }
+
+    /// A fence that is not a gate starts at a random time of 0 to 1999 ms, one draw each; a gate
+    /// starts at 0 and draws nothing.
+    #[test]
+    fn a_fence_starts_at_a_random_time_and_a_gate_at_zero() {
+        let world = world_with((4, 4), |zoo| {
+            for id in 1..=40 {
+                zoo.entities.push(entity("fences", "f", id, (32, 0), 0));
+            }
+            zoo.entities.push(entity("fences", "g", 41, (32, 0), 0));
+            zoo.entities.last_mut().unwrap().subtype = "gate".into();
+        });
+        // 20 frames of 100 ms: a loop of 2000 ms shows every start.
+        let data = Fixed(Some(Timing {
+            count: 20,
+            delay: 100,
+        }));
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&world, &data, &mut rng);
+        let mut expect = Rng::default();
+        let starts: Vec<u32> = (0..40).map(|_| expect.pick(2000)).collect();
+        assert_eq!(rng.state(), expect.state(), "40 draws, none for the gate");
+        for (id, t) in (1..=40).zip(&starts) {
+            assert_eq!(idles.0[&id].t, *t);
+            assert!(*t < 2000);
+        }
+        assert_eq!(idles.0[&41].t, 0);
+        // The frames are not all the same: neighbouring fences are not in step.
+        idles.advance(67);
+        let frames = idles.frames();
+        assert!(frames.values().any(|&f| f != frames[&41]));
+        // A fence already known draws nothing more.
+        idles.register(&world, &data, &mut rng);
+        assert_eq!(rng.state(), expect.state());
+    }
+
+    /// A guest coming into an empty building starts `used`, which plays once; the base loop then
+    /// restarts at frame 0. A dead building shows `idledead`, looping, until it is alive again.
+    #[test]
+    fn a_building_plays_used_once_and_idledead_while_dead() {
+        let world = |f: &dyn Fn(&mut crate::building::Live)| {
+            let mut w = world_with((4, 4), |zoo| {
+                zoo.entities
+                    .push(entity("building", "hut", 1, centre((0, 0)), 0));
+            });
+            let mut live = crate::building::Live::default();
+            f(&mut live);
+            w.units.buildings.insert(1, live);
+            w
+        };
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        let mut step = |w: &World, ms: u32| {
+            idles.register(w, &Building, &mut rng);
+            idles.advance(ms);
+            (
+                idles.looks().get(&1).copied(),
+                idles.frames().get(&1).copied(),
+            )
+        };
+        let empty = world(&|_| {});
+        assert_eq!(step(&empty, 150), (None, Some(1)));
+        // A guest comes in: `used` from frame 0, advanced by the step it comes in.
+        let inside = world(&|l| l.users.push((9, 0, 0)));
+        assert_eq!(step(&inside, 100), (Some("used"), Some(1)));
+        // (A building first seen with a guest inside is not a guest coming in.)
+        let mut seen = Idles::default();
+        seen.register(&inside, &Building, &mut Rng::default());
+        assert!(seen.looks().is_empty());
+        // It stays inside; the sequence ends and the base restarts at 0, not where it was.
+        assert_eq!(step(&inside, 100), (None, Some(0)));
+        assert_eq!(step(&inside, 100), (None, Some(1)), "no new use");
+        // Out, then in again: `used` again.
+        assert_eq!(step(&empty, 100).0, None);
+        assert_eq!(step(&inside, 50), (Some("used"), Some(0)));
+        // Dead: `idledead` from frame 0, looping over its 3 frames.
+        let dead = world(&|l| l.dead = true);
+        assert_eq!(step(&dead, 100), (Some("idledead"), Some(1)));
+        assert_eq!(step(&dead, 200), (Some("idledead"), Some(0)), "wrapped");
+        // Alive again: `idle` from frame 0.
+        assert_eq!(step(&empty, 100), (None, Some(1)));
+        // A type with no `used` or `idledead` keeps its loop.
+        let mut none = Idles::default();
+        none.register(
+            &inside,
+            &Fixed(Some(Timing {
+                count: 4,
+                delay: 100,
+            })),
+            &mut rng,
+        );
+        none.advance(250);
+        assert_eq!((none.looks().len(), none.frames()[&1]), (0, 2));
+        // A trash can shows its own pictures, whoever is inside.
+        let mut can = world(&|l| l.users.push((9, 0, 0)));
+        can.zoo.entities[0].subtype = "trshcan".into();
+        let mut idles = Idles::default();
+        idles.register(&can, &Building, &mut rng);
+        idles.register(&can, &Building, &mut rng);
+        assert!(idles.looks().is_empty());
     }
 }
