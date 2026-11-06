@@ -573,7 +573,7 @@ fn a_start_with_reset_zeroes_the_figures_and_sets_the_dates() {
 
 fn looks(world: &World) -> Vec<(bool, bool)> {
     (world.filter_looks().iter())
-        .map(|l| (l.off, l.bubbles.is_some()))
+        .map(|l| (l.off, l.bubbles))
         .collect()
 }
 
@@ -586,16 +586,18 @@ fn a_cycle_shows_bubbles_for_3000_ms_and_a_filter_without_water_is_off_with_none
     world.filter_step(&cat, at, 67);
     assert_eq!(looks(&world), [(false, true)]);
     assert_eq!(world.filter_looks()[0].id, id);
-    assert_eq!(
-        world.filter_looks()[0].bubbles,
-        Some(0),
-        "begun with the cycle"
-    );
-    world.filter_step(&cat, at, 2_999);
+    // One set of bubbles was made, with the cycle.
+    assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
+    // They count down in the update of the cycle too: 3000 - 67 ms are left.
+    world.filter_step(&cat, at, 2_932);
     assert_eq!(looks(&world), [(false, true)]);
-    assert_eq!(world.filter_looks()[0].bubbles, Some(2_999));
+    assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
     world.filter_step(&cat, at, 1);
-    assert!(looks(&world).is_empty(), "3000 ms after the cycle");
+    assert!(
+        looks(&world).is_empty(),
+        "3000 ms from the start of the cycle's update"
+    );
+    world.filter_step(&cat, at, 67);
     // The next cycle is 50 s after the first and brings them again; a step of 0 changes nothing.
     world.filter_step(&cat, at, 0);
     world.filter_step(&cat, at, 46_999);
@@ -614,7 +616,8 @@ fn a_cycle_shows_bubbles_for_3000_ms_and_a_filter_without_water_is_off_with_none
     assert!(looks(&world).is_empty());
     // A removed filter keeps no look.
     world.set_paused(false);
-    world.filter_step(&cat, at, 50_000);
+    world.filter_step(&cat, at, 48_000);
+    world.filter_step(&cat, at, 2_000);
     assert_eq!(looks(&world), [(false, true)]);
     assert!(world.remove(id));
     assert!(looks(&world).is_empty());
@@ -626,12 +629,8 @@ fn a_broken_filter_makes_no_bubbles_and_odd_steps_do_not_panic() {
     world.filter_step(&cat, at, 67);
     assert!(looks(&world).is_empty());
     let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    // A step of 3000 ms or more leaves the set of its cycle no time (3000 - step).
     world.filter_step(&cat, at, u32::MAX);
-    assert_eq!(looks(&world), [(false, true)]);
-    // The bubbles of that cycle last 3000 ms from its step.
-    world.filter_step(&cat, at, 1);
-    assert_eq!(looks(&world), [(false, true)]);
-    world.filter_step(&cat, at, 3_000);
     assert!(looks(&world).is_empty());
     // A type with a huge delay still shows the bubbles of the first cycle.
     let (mut world, cat, at) = filtered(10, [200_000, 0], "cFilterDelay=99999999999");
@@ -689,4 +688,134 @@ fn a_switched_off_filter_plays_no_loop_and_plays_again_with_water() {
         world.filter_step(&cat, at, 1);
         assert_eq!(world.filter_loops(&cat).len(), 1, "{health} water back");
     }
+}
+
+/// The bubbles of a filter play on a clock of their own, in the timing of the data (17 frames of
+/// 83 ms here): a set made with a cycle starts at frame 0, one made anew restarts, a cycle while
+/// the set shows continues it, and the clock goes with the bubbles.
+#[test]
+fn the_bubbles_run_their_own_clock_from_the_cycle_that_made_them() {
+    use crate::behaviour::Timing;
+    use crate::render::bubble_key;
+    use crate::sim::idle::{Idles, tests::Fixed};
+    let data = Fixed(
+        Some(Timing {
+            count: 17,
+            delay: 83,
+        }),
+        Vec::new(),
+    );
+    // A cycle each 1 s: the next one comes while the set of the last shows.
+    let (mut world, cat, at) = filtered(10, [200_000, 0], "cFilterDelay=1\ncFilterUpkeep=50");
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    let key = bubble_key(id);
+    let mut idles = Idles::default();
+    let mut step = |world: &mut World, ms: u32| {
+        idles.register(world, &cat, &data);
+        world.filter_step(&cat, at, ms);
+        idles.advance(ms);
+        idles.frames().get(&key).copied()
+    };
+    // Made in the first step: its clock starts at frame 0 and first advances in the next step.
+    assert_eq!(step(&mut world, 67), None);
+    // Then 67 ms per step in frames of 83: the second cycle (1 s later, at the 16th step) finds the
+    // set showing and does not restart it; at the end of the 17 frames the time left is dropped.
+    for n in 1..=21 {
+        assert_eq!(step(&mut world, 67), Some(67 * n / 83), "{n}");
+    }
+    assert_eq!(
+        step(&mut world, 67),
+        Some(0),
+        "wrapped, with no time left over"
+    );
+    assert_eq!(step(&mut world, 67), Some(0));
+    assert_eq!(step(&mut world, 67), Some(1));
+}
+
+#[test]
+fn a_set_of_bubbles_made_anew_restarts_the_clock_and_no_timing_means_no_clock() {
+    use crate::behaviour::Timing;
+    use crate::render::bubble_key;
+    use crate::sim::idle::{Idles, tests::Fixed};
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    let key = bubble_key(id);
+    // The type has no timing: the bubbles show their first frame, and are not listed.
+    let mut idles = Idles::default();
+    world.filter_step(&cat, at, 67);
+    idles.register(&world, &cat, &Fixed(None, Vec::new()));
+    idles.advance(10_000);
+    assert_eq!(idles.frames().get(&key), None);
+    // A count of 0 or a delay of 0 never advances; a huge step ends on a frame of the loop.
+    let data = Fixed(
+        Some(Timing {
+            count: 17,
+            delay: 83,
+        }),
+        Vec::new(),
+    );
+    let mut idles = Idles::default();
+    idles.register(&world, &cat, &data);
+    idles.advance(u32::MAX);
+    assert!(idles.frames()[&key] < 17);
+    // The set ends after 3 s; the cycle 50 s after the first makes another, from frame 0.
+    world.filter_step(&cat, at, 3_000);
+    idles.register(&world, &cat, &data);
+    assert_eq!(idles.frames().get(&key), None);
+    world.filter_step(&cat, at, 46_990);
+    idles.register(&world, &cat, &data);
+    assert_eq!(idles.frames().get(&key), None);
+    world.filter_step(&cat, at, 10);
+    idles.register(&world, &cat, &data);
+    assert_eq!(idles.frames().get(&key), Some(&0));
+}
+
+/// The timer of the bubbles counts down after the cycle, in the same update (tank staff 7.3 point
+/// 7): a cycle in the update where the timer would end keeps the set and its clock.
+#[test]
+fn a_cycle_in_the_update_where_the_bubble_timer_ends_continues_the_set() {
+    use crate::behaviour::Timing;
+    use crate::render::bubble_key;
+    use crate::sim::idle::{Idles, tests::Fixed};
+    // A cycle each 3 s.
+    let (mut world, cat, at) = filtered(10, [200_000, 0], "cFilterDelay=3\ncFilterUpkeep=50");
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    let key = bubble_key(id);
+    let data = Fixed(
+        Some(Timing {
+            count: 17,
+            delay: 83,
+        }),
+        Vec::new(),
+    );
+    let mut idles = Idles::default();
+    world.filter_step(&cat, at, 67);
+    idles.register(&world, &cat, &data);
+    idles.advance(500);
+    assert_eq!(idles.frames()[&key], 6);
+    // 2000 ms later 933 are left of the set, and the next cycle is in 1000: its update would end
+    // the set, and makes it last 3000 - 1000 more.
+    world.filter_step(&cat, at, 2_000);
+    world.filter_step(&cat, at, 1_000);
+    assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
+    idles.register(&world, &cat, &data);
+    assert_eq!(idles.frames()[&key], 6, "the same set: its clock goes on");
+}
+
+/// The set a cycle makes has 3000 ms less the step of that update left.
+#[test]
+fn a_set_of_bubbles_has_3000_ms_minus_the_step_left_at_the_end_of_its_cycle_update() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 1_000);
+    world.filter_step(&cat, at, 1_999);
+    assert_eq!(looks(&world), [(false, true)]);
+    world.filter_step(&cat, at, 1);
+    assert!(looks(&world).is_empty());
+    // Not paid by a step of 3000 or more, nor by 0 less than 3000.
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 3_000);
+    assert!(looks(&world).is_empty());
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    world.filter_step(&cat, at, 0);
+    assert_eq!(looks(&world), [(false, true)]);
 }

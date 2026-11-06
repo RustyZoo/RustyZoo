@@ -23,7 +23,7 @@
 pub mod drive;
 mod events;
 pub mod hash;
-mod idle;
+pub(crate) mod idle;
 mod inspect;
 mod ripple;
 mod rng;
@@ -714,7 +714,7 @@ impl Sim {
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
-        self.idles.register(world, data);
+        self.idles.register(world, cat, data);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);

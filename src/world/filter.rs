@@ -30,11 +30,12 @@ const EXTREME: u32 = 1;
 const BUBBLES_MS: i32 = 3000;
 
 /// What a filter shows besides its record (tank staff 7.3): switched off, and the milliseconds the
-/// bubbles of its last cycle have left.
+/// bubbles of its last cycle have left, and how many sets of bubbles it has made.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(super) struct View {
     off: bool,
     bubbles: i32,
+    made: u32,
 }
 
 /// The numbers of a filter type, with the program's value for a missing key (tank staff 7.1).
@@ -149,9 +150,17 @@ impl World {
             .map(|(&id, v)| FilterLook {
                 id,
                 off: v.off,
-                bubbles: (v.bubbles > 0).then(|| (BUBBLES_MS - v.bubbles) as u32),
+                bubbles: v.bubbles > 0,
             })
             .collect()
+    }
+
+    /// The filters that show bubbles, each with the count of the sets it has made: a set that is
+    /// made anew (its filter had none then) starts its own clock (tank staff 7.7).
+    pub(crate) fn filter_bubbles(&self) -> impl Iterator<Item = (u32, u32)> {
+        (self.filter_view.iter())
+            .filter(|(_, v)| v.bubbles > 0)
+            .map(|(&id, v)| (id, v.made))
     }
 
     /// The loop each filter plays now (tank staff 7.7): the healthy one while its health is above
@@ -392,10 +401,9 @@ impl World {
         // A filter with no water to serve is off and shows no bubbles (7.3 points 2 and 3).
         let mut view = self.filter_view.get(&id).copied().unwrap_or_default();
         view.off = tank.is_none();
-        view.bubbles = match view.off {
-            true => 0,
-            false => ms(i64::from(view.bubbles) - step).max(0),
-        };
+        if view.off {
+            view.bubbles = 0;
+        }
         // The cycle: only a tank holding water is cleaned.
         if let Some(tank) = tank {
             timer = ms(i64::from(timer) - step);
@@ -417,9 +425,15 @@ impl World {
                 self.units
                     .world_note(format!("filter {id} {} {now}", f.health));
                 timer = ms(k.delay_ms);
+                // A cycle makes a set of bubbles only when its filter shows none (7.7).
+                view.made = view.made.wrapping_add(u32::from(view.bubbles == 0));
                 view.bubbles = BUBBLES_MS;
             }
         }
+        // The bubbles count down after the cycle, in the same update (7.3 point 7): the set a cycle
+        // makes has this step less than its 3000 ms left, and one whose time ends in the update
+        // of a cycle goes on.
+        view.bubbles = ms(i64::from(view.bubbles) - step).max(0);
         // The wear, on or off.
         let mut events = Vec::new();
         decay = ms(i64::from(decay) - step);
@@ -452,7 +466,8 @@ impl World {
                 f.upkeep[1] = 0;
             }
         }
-        match view == View::default() {
+        // A filter that shows nothing keeps no view (and so no count of its sets of bubbles).
+        match (view.off, view.bubbles) == (false, 0) {
             true => self.filter_view.remove(&id),
             false => self.filter_view.insert(id, view),
         };
