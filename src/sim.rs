@@ -713,6 +713,8 @@ impl Sim {
         mut update: impl FnMut(&mut World, usize, u32),
     ) -> Report {
         self.lines.push(format!("step {step}"));
+        // The objects on the map now start their clocks, and advance by this step.
+        self.idles.register(world, data);
         // The game manager: the time, the calendar, whose month flag of the step before is acted
         // on here, and the zoo status (zoo status 4).
         self.total = self.total.wrapping_add(step);
@@ -794,7 +796,7 @@ impl Sim {
             }
         }
         unit::gate::forget(world);
-        self.idles.step(world, data, step);
+        self.idles.advance(step);
         for event in std::mem::take(&mut world.units.posts) {
             self.events.post(event);
         }

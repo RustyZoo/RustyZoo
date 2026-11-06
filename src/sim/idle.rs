@@ -61,8 +61,10 @@ impl Idles {
         animated.map(|(&id, c)| (id, c.frame)).collect()
     }
 
-    /// One step: the entities that are new get a clock at frame 0, the others advance by `step`.
-    pub(super) fn step(&mut self, world: &World, data: &dyn Data, step: u32) {
+    /// The start of a step: the entities that are new get a clock at frame 0, which advances by
+    /// this step; one made later in the step (a ripple) advances from the next. The clocks of
+    /// entities that are gone are dropped.
+    pub(super) fn register(&mut self, world: &World, data: &dyn Data) {
         let mut fixed = 0;
         for e in &world.zoo.entities {
             let Some(c) = &e.common else { continue };
@@ -70,30 +72,31 @@ impl Idles {
                 continue;
             }
             fixed += 1;
-            match self.0.get_mut(&c.id) {
-                Some(clock) => clock.advance(step),
-                None => {
-                    let timing = data
-                        .timing(e, "idle")
-                        .unwrap_or(Timing { count: 0, delay: 0 });
-                    self.0.insert(
-                        c.id,
-                        Clock {
-                            frame: 0,
-                            t: 0,
-                            timing,
-                        },
-                    );
-                }
+            if !self.0.contains_key(&c.id) {
+                let timing = data
+                    .timing(e, "idle")
+                    .unwrap_or(Timing { count: 0, delay: 0 });
+                self.0.insert(
+                    c.id,
+                    Clock {
+                        frame: 0,
+                        t: 0,
+                        timing,
+                    },
+                );
             }
         }
-        // Clocks of entities that are gone.
         if self.0.len() > fixed {
             let live: std::collections::HashSet<u32> = (world.zoo.entities.iter())
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();
             self.0.retain(|id, _| live.contains(id));
         }
+    }
+
+    /// The end of the entity pass: every clock advances by `step`.
+    pub(super) fn advance(&mut self, step: u32) {
+        self.0.values_mut().for_each(|c| c.advance(step));
     }
 }
 
@@ -165,10 +168,11 @@ mod tests {
         }
     }
 
-    /// Each fixed object has its own clock from the step after it appears; units, fences and
-    /// objects with no idle animation have none; a removed entity's clock goes.
+    /// An entity present when a step starts advances by that step; one made during the step
+    /// (a ripple) first advances in the next. Units, fences and objects with no idle animation
+    /// have no clock; a removed entity's clock goes.
     #[test]
-    fn each_fixed_object_runs_its_own_clock() {
+    fn an_entity_first_seen_at_a_step_advances_by_it() {
         let mut world = world_with((4, 4), |zoo| {
             zoo.entities
                 .push(entity("scenery", "tree", 1, centre((0, 0)), 0));
@@ -181,29 +185,31 @@ mod tests {
             delay: 100,
         }));
         let mut idles = Idles::default();
-        idles.step(&world, &data, 70);
-        assert_eq!(idles.frames().into_iter().collect::<Vec<_>>(), [(1, 0)]);
-        // The tree appeared at the first step: 70 ms, then 140 ms of 100 per frame.
-        idles.step(&world, &data, 70);
-        assert_eq!(idles.frames()[&1], 0);
-        idles.step(&world, &data, 70);
-        assert_eq!(idles.frames()[&1], 1);
-        // A second tree starts later and is behind.
+        let mut step = |idles: &mut Idles, world: &World, ms: u32| {
+            idles.register(world, &data);
+            idles.advance(ms);
+        };
+        // The first step of a loaded map counts: 200 ms of 100 per frame.
+        step(&mut idles, &world, 200);
+        assert_eq!(idles.frames().into_iter().collect::<Vec<_>>(), [(1, 2)]);
+        // A second tree made in the middle of a step does not advance in it.
         world
             .zoo
             .entities
             .push(entity("scenery", "bush", 4, centre((2, 2)), 0));
-        for _ in 0..3 {
-            idles.step(&world, &data, 70);
-        }
-        assert_eq!((idles.frames()[&1], idles.frames()[&4]), (3, 1));
+        idles.advance(70);
+        assert_eq!(idles.frames().get(&4), None);
+        step(&mut idles, &world, 70);
+        assert_eq!((idles.frames()[&1], idles.frames()[&4]), (3, 0));
+        step(&mut idles, &world, 70);
+        assert_eq!(idles.frames()[&4], 1);
         world.zoo.entities.remove(0);
-        idles.step(&world, &data, 70);
+        step(&mut idles, &world, 70);
         assert!(!idles.frames().contains_key(&1));
         // Types with no `idle` animation show frame 0 and are not listed.
         let mut none = Idles::default();
-        none.step(&world, &Fixed(None), 70);
-        none.step(&world, &Fixed(None), 70);
+        none.register(&world, &Fixed(None));
+        none.advance(70);
         assert!(none.frames().is_empty());
     }
 }
