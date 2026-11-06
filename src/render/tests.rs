@@ -926,14 +926,9 @@ fn a_ripple_plays_its_frames_from_its_age_and_loops() {
         (250, 2),
         (374, 2),
         (375, 0),
-        (u32::MAX, 0),
+        (u32::MAX, (u32::MAX / 125 % 3) as usize),
     ] {
-        let want = if age == u32::MAX {
-            (age / 125 % 3) as usize
-        } else {
-            frame
-        };
-        assert_eq!(drawn(vec![(1, age)]), want, "{age}");
+        assert_eq!(drawn(vec![(1, age)]), frame, "{age}");
     }
 }
 
