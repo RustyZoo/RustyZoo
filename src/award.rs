@@ -206,6 +206,9 @@ mod tests {
     #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
     fn full_game_definitions() {
         let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+        if !crate::fixtures::with_expansions("full_game_definitions", &dir) {
+            return;
+        }
         let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
         let found = Definitions::load(&vfs);
         assert_eq!(

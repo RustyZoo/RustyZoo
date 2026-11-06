@@ -567,10 +567,10 @@ mod tests {
         }
         // The tasks that both the English and the French install hold (the French one lacks 122).
         let held = [101, 102, 103, 113, 114, 118, 124, 128];
-        assert!(
-            checked >= 100 && jobs >= 5 && held.iter().all(|t| kinds.contains(t)),
-            "{checked} {jobs} {kinds:?}"
-        );
+        // The base game alone has fewer maps and tasks.
+        let all = checked >= 100 && jobs >= 5 && held.iter().all(|t| kinds.contains(t));
+        let base = !crate::fixtures::has_expansions(vfs.root().as_os_str()) && checked > 0;
+        assert!(all || base, "{checked} {jobs} {kinds:?}");
     }
 
     /// The keeper's block in the zoo a save of the world of [`walking`] writes.

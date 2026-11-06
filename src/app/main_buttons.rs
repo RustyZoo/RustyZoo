@@ -102,7 +102,8 @@ impl App<'_> {
         let Some(game) = &mut self.game else { return };
         let (zoom, narrow) = (game.camera.zoom, game.camera.narrow());
         if narrow {
-            game.camera.set_fullscreen(&game.world.zoo, true);
+            let at = game.selected_point();
+            game.camera.set_fullscreen(&game.world.zoo, at, true);
         }
         if let Some(ui) = &mut self.ui {
             ui.disable(ZOOM_OUT, zoom < -1);
@@ -134,7 +135,7 @@ impl App<'_> {
         ui.hold_message(paused);
         if paused && !self.pause_said {
             let text = ui.string(400);
-            ui.message(&to_cp1252(&text));
+            ui.message(&to_cp1252(&text), kinds::PLAIN);
         } else if !paused && self.pause_said {
             ui.end_message();
         }

@@ -47,7 +47,7 @@ impl App<'_> {
         let size = (self.frame.width as i32, self.frame.height as i32);
         let mut camera = Camera::open(&zoo.view, size, self.settings);
         if self.fullscreen {
-            camera.set_fullscreen(&zoo, true);
+            camera.set_fullscreen(&zoo, None, true);
         }
         let brush = (zoo.view.brush & 0xff) as usize;
         let language = crate::strings::Language::of(self.renderer.vfs().root());
@@ -150,6 +150,7 @@ impl App<'_> {
             guest: Default::default(),
             research: Default::default(),
             building: Default::default(),
+            show: Default::default(),
             selected: None,
             carry: None,
             held: None,

@@ -101,7 +101,7 @@ impl App<'_> {
                 }
                 None => text,
             };
-            ui.message(&to_cp1252(&text));
+            ui.message(&to_cp1252(&text), kinds::of(id as i32));
         }
     }
 
@@ -132,7 +132,7 @@ impl App<'_> {
                     names
                 };
                 let text = (names.iter()).fold(ui.string(message), |t, n| t.replacen("%s", n, 1));
-                ui.message(&to_cp1252(&text));
+                ui.message(&to_cp1252(&text), kinds::of(message));
                 research::alert(ui, self.renderer.vfs(), message, &text);
             }
         }

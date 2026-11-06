@@ -331,6 +331,7 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
             max_short_width: 120,
             max_long_width: 300,
             popup_delay: d.popup_delay,
+            message_interval: d.message_interval,
         }
     );
     // The popup delay: up to an hour; 0 and below are kept as read; a wrong kind of number is not set.
@@ -361,6 +362,12 @@ fn settings_come_from_the_ui_section_ignoring_case_and_keep_the_defaults_for_the
         4096
     );
     assert!(!read("[UI]\nhelpType=0\n").long_help);
+    // The repeat interval keeps its value as read, even 0 or below.
+    let interval = |v: &str| read(&format!("[UI]\nminimumMessageInterval={v}\n")).message_interval;
+    assert_eq!([interval("5"), interval("0"), interval("-3")], [5, 0, -3]);
+    assert_eq!(interval("2147483647"), i32::MAX);
+    assert_eq!(read("").message_interval, 60);
+    assert_eq!(interval("x"), 60);
     // Another section does not count.
     assert_eq!(read("[user]\ntooltipDelay=9\n"), d);
 }

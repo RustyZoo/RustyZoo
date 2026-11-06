@@ -1245,7 +1245,8 @@ fn full_game_goal_states_round_trip() {
         }
     }
     eprintln!("{files} files, {exact} with the goals they hold");
-    assert!(exact > 0);
+    // The maps of the base game alone are older than version 86.
+    assert!(exact > 0 || !crate::fixtures::has_expansions(&dir));
 }
 
 /// The deeds the start triggers of `body` leave, with `[9]` a popup.

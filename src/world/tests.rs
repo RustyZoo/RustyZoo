@@ -499,6 +499,9 @@ fn the_exterior_matches_the_original_on_the_shipped_maps() {
         ("crater", 14407),
         ("default", 3075),
     ] {
+        if crate::fixtures::base_lacks(&vfs, &format!("maps/{map}.zoo")) {
+            continue;
+        }
         let zoo = Zoo::parse(&vfs.read(&format!("maps/{map}.zoo")).unwrap()).unwrap();
         let tiles = zoo.tiles.len();
         let world = World::new(zoo, |e| renderer.shape(e));
@@ -632,9 +635,10 @@ fn loading_a_map_spends_two_show_ids_for_each_show_tank_and_makes_no_info() {
         ("maps/med_kids", 1),
         ("saved games/test", 2),
     ] {
-        // The saved zoo is not in every install.
+        // The saved zoo is not in every install, nor the maps of the expansions.
         let Ok(bytes) = vfs.read(&format!("{map}.zoo")) else {
-            assert!(map.starts_with("saved"), "{map}");
+            let skipped = crate::fixtures::base_lacks(&vfs, &format!("{map}.zoo"));
+            assert!(map.starts_with("saved") || skipped, "{map}");
             continue;
         };
         let zoo = Zoo::parse(&bytes).unwrap();

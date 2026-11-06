@@ -15,6 +15,18 @@ const NOT_FILLED: i32 = 10550;
 const NOT_DRAINED: i32 = 10551;
 
 impl App<'_> {
+    /// The buttons of the tank tab (4.7); whether `id` is one of them.
+    pub(super) fn tank_button(&mut self, id: i32) -> bool {
+        match id {
+            exhibit::WALL_DOWN | exhibit::WALL_UP => self.tank_wall(id == exhibit::WALL_UP),
+            exhibit::GROUND_DOWN | exhibit::GROUND_UP => self.tank_ground(id == exhibit::GROUND_UP),
+            exhibit::SALT | exhibit::FRESH => self.tank_fill(id == exhibit::SALT),
+            exhibit::DRAIN => self.tank_drain(),
+            _ => return false,
+        }
+        true
+    }
+
     /// The tank of the exhibit the panel shows, with its prices.
     fn panel_tank(&self) -> Option<(u32, Prices)> {
         let game = self.game.as_ref()?;
@@ -28,7 +40,7 @@ impl App<'_> {
         self.lines.tool.push(format!("tool message {id}"));
         if let Some(ui) = &mut self.ui {
             let text = ui.string(id).replacen("%s", name, 1);
-            ui.message(&to_cp1252(&text));
+            ui.message(&to_cp1252(&text), kinds::REFUSAL);
         }
     }
 

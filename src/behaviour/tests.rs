@@ -306,6 +306,9 @@ fn hostile_text_does_not_panic() {
 fn full_game_survey() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let found = survey(&Vfs::open(std::path::Path::new(&dir)).unwrap()).unwrap();
+    if !crate::fixtures::measured_on("full_game_survey", &dir) {
+        return;
+    }
     // The French install ships other files, so its totals differ.
     let french = crate::pe::installed_language(&dir) == 1036;
     let (counts, rest, play) = if french {

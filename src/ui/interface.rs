@@ -100,8 +100,11 @@ pub struct Interface {
     /// The game is paused: a message line with nothing waiting restarts its count (ui layout
     /// 4.13 point 4).
     message_paused: bool,
-    /// The messages waiting for the message line, the oldest first.
-    message_queue: VecDeque<Vec<u8>>,
+    /// The messages waiting for the message line with their kinds, the oldest first.
+    message_queue: VecDeque<(Vec<u8>, i32)>,
+    /// The texts of the message line's list (the shown, the waiting and the older ones) and the
+    /// clock (ms) they were posted at, the oldest first.
+    message_list: VecDeque<(Vec<u8>, u32)>,
 }
 
 impl Interface {
@@ -137,6 +140,7 @@ impl Interface {
             file_size: HashMap::new(),
             message_paused: false,
             message_queue: VecDeque::new(),
+            message_list: VecDeque::new(),
         };
         ui.start_tooltip();
         ui.sync_owners();

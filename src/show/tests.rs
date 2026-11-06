@@ -8,6 +8,7 @@ mod cycle;
 mod data;
 mod empty;
 mod lookups;
+mod panel;
 mod performer;
 mod relay;
 mod validate;

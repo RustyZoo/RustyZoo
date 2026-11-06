@@ -231,6 +231,9 @@ fn a_tree_takes_no_more_than_the_most_programs() {
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn the_full_install_gives_two_branches_22_categories_and_about_120_programs_at_9_percent() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    if !crate::fixtures::with_expansions("the_full_install_gives_two_branches", &dir) {
+        return;
+    }
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     // Every freeform start says `research=research.cfg`.
     let map = crate::lists::freeform_list(&vfs).remove(0);

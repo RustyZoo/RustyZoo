@@ -607,7 +607,7 @@ pending_object() { # pending_object <map> <script>
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;272b61a1cede756f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;061dde0b578c0cf3" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;c153815a6d5b365b" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
 check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;efa3ad2b1370df6c" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
@@ -724,7 +724,7 @@ building_place() { # building_place <map>
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;54c1c4d355b2e07d" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;0f73818e1506f244" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;4565c11c425af47d" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -817,6 +817,31 @@ panel_animal() { # panel_animal <map>
 }
 check base-trial '35179_"Giraffe_2"_happiness_69_hunger_93_health_100_suitability_89_fed_Recently_slept_Recently' "panel_animal maps/scn01.zoo"
 check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_suitability_75_fed_Recently_slept_Recently' "panel_animal maps/scn19.zoo"
+
+# The show panel (information panels 19): a click on the show tank's row of the exhibit list opens
+# the window (Marine Mania only), a click on another exhibit's row closes it, and so does the
+# exhibit panel's close button.
+show_panel() { # show_panel <map>
+  d=$(mktemp -d)
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 512\n5 down\n6 up\n8 mouse 900 445\n9 down\n10 up\n12 mouse 900 512\n13 down\n14 up\n16 mouse 1008 411\n17 down\n18 up\n' >"$d/script"
+  rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel show window /{printf "%s,", $7} END{print ""}'
+  rm -rf "$d"
+}
+check expansion-trial "open,closed,open,closed," "show_panel maps/scn28.zoo"
+
+# A grandstand that faces the show tank opens the window; the exhibit list button then shows the
+# exhibit panel, which hides it (19.3 point 7). The grandstand is the one at 472 316 once the view
+# is scrolled ten times.
+show_stand_window() { # show_stand_window <map>
+  d=$(mktemp -d)
+  { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
+    printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
+  rz run "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+    awk '/ panel show window /{printf "%s,", $7} END{print ""}'
+  rm -rf "$d"
+}
+check expansion-trial "open,closed," "show_stand_window maps/scn28.zoo"
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
@@ -1098,7 +1123,8 @@ check expansion-trial 'carry;drop;1' 'scripted "2 mouse 875 230\n3 down\n4 up\n6
 
 # The same click, printing the name and the price of the panel: a loaded building shows the price its
 # record stores (guest buildings 4.1), not the type's default. A grandstand of scn28 stores 3.00 where
-# the type's price is 5.00.
+# the type's price is 5.00. This one faces the empty show tank: the click opens the show panel, and
+# its first admission update has no species, so the price goes to 0.00 (shows 33.2).
 loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
@@ -1107,7 +1133,7 @@ loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
     sed -n 's/.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) .*/\1 \2/p' | head -1 | tr ' ' _
   rm -rf "${d:?}"
 }
-check expansion-trial '"Show_Grandstand_4"_$3.00' "loaded_price maps/scn28.zoo 10 1 0 472 316"
+check expansion-trial '"Show_Grandstand_4"_$0.00' "loaded_price maps/scn28.zoo 10 1 0 472 316"
 
 # The users of a building are back inside after a load (guest buildings 4.1, 6.5): a guest the record
 # lists is on the use of its building (task `dobuilding`), so its first goal is to leave, after the

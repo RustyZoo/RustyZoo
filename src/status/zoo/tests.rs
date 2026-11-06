@@ -395,6 +395,9 @@ fn the_first_check_of_a_shipped_freeform_map_gives_the_observed_rating() {
         ("med_kids", 81, 78),
     ];
     for (map, setup, first) in table {
+        if crate::fixtures::base_lacks(&vfs, &format!("maps/{map}.zoo")) {
+            continue;
+        }
         let catalogue = Catalogue::load(&vfs).unwrap();
         let renderer = MapRenderer::new(&vfs, &catalogue);
         let bytes = vfs.read(&format!("maps/{map}.zoo")).unwrap();

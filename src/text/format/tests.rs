@@ -350,15 +350,26 @@ fn the_installed_strings_format_as_the_game_does() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let tables = StringTables::open(std::path::Path::new(&dir)).unwrap();
     assert_eq!(money(&tables, 74878, true), "$74,878");
-    if crate::pe::installed_language(&dir) == 1036 {
+    let language = crate::pe::installed_language(&dir);
+    if language != 1033 {
         // The month and weekday names come from the regional settings (English in a test build),
-        // so the French patterns give the same names; only the text around them differs.
+        // so the patterns of the other languages give the same names; only the text around them
+        // differs (and the day may come first outside French).
         let first = day(2001, 1, 1, 0);
+        let has = |text: &str, name: &str| match language {
+            1036 => text.starts_with(name),
+            _ => text.contains(name),
+        };
+        // Chinese writes the months and the days as numbers.
+        let chinese = matches!(language, 0x804 | 0x404);
         for id in [22012, 22014] {
             let text = date(tables.string(id), &first);
-            assert!(text.starts_with("Jan") && text.ends_with('1'), "{text}");
+            assert!(chinese || has(&text, "Jan"), "{text}");
+            assert!(chinese || text.ends_with('1'), "{text}");
+            assert!(text.contains('1'), "{text}");
         }
-        assert!(date(tables.string(22013), &first).starts_with("Mon"));
+        let weekday = date(tables.string(22013), &first);
+        assert!(chinese || has(&weekday, "Mon"), "{weekday}");
         assert!(!graph_month(&tables, 12).is_empty());
         assert!(build(&tables, 1030, &[Text("X")]).contains('X'));
         return;
