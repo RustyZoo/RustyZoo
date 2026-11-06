@@ -108,7 +108,7 @@ The world and its editing:
 
 The simulation:
 
-- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`, the idle clocks of the fixed objects (`sim::idle`).
+- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`, the idle clocks of the fixed objects and the fences, with the `used` and `idledead` animations of the buildings (`sim::idle`).
 - `scenario`, `goal`, `research`: scenario files and goals; the units' goals; the research tree.
 - `unit`: the live state of animals, guests and staff and the update each runs per step.
 - `behaviour`: the behaviour scripts parsed into operations and run by a state machine per unit.
