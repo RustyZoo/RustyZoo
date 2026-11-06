@@ -626,6 +626,9 @@ impl<'a> App<'a> {
             }
             self.pause_message();
             if let Some(ui) = &mut self.ui {
+                if let Some(game) = &self.game {
+                    ui.entities_found(|id| game.world.find(id).is_some());
+                }
                 ui.update(now);
                 if let Some(menu) = &mut self.menu {
                     self.menu_events.extend(menu.update(ui, now));

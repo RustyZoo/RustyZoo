@@ -170,30 +170,16 @@ fn the_pause_string_leaves_the_list_with_the_line() {
 }
 
 #[test]
-fn a_post_removes_the_pause_string_and_the_removal_does_not_lower_the_waiting_count() {
-    // Shown line, the string waiting behind it: the message on the line comes back after the new one.
+fn a_post_removes_the_pause_string_that_waits() {
+    // Shown line, the string waiting behind it: the post removes it and the message waits.
     let (mut ui, _) = history("removal", "");
     ui.message(b"X", 3);
     ui.update(1000);
     ui.post(Message::new(b"P", 3).replacing());
     ui.message(b"M", 3);
     assert_eq!(ui.history(), [b"M".to_vec(), b"X".to_vec()]);
-    assert_eq!(ui.waiting, 2);
     ui.update(1033);
-    assert_eq!(line(&ui).0, b"X");
-    count_from(&mut ui, 1200);
-    ui.update(1400);
     assert_eq!(line(&ui).0, b"M");
-    // Alone in the list: the new message still waits and is the one that stays in the pause.
-    let (mut ui, _) = history("removal-alone", "");
-    ui.hold_message(true);
-    ui.post(Message::new(b"P", 3).replacing());
-    ui.update(1000);
-    ui.message(b"M", 3);
-    assert_eq!((ui.history(), ui.waiting), (vec![b"M".to_vec()], 1));
-    ui.update(1033);
-    ui.update(1300);
-    assert_eq!(line(&ui), (b"M".to_vec(), true));
     // A message that does not replace stays in the list when the line hides.
     let (mut ui, _) = history("no-removal", "");
     ui.message(b"A", 3);
@@ -201,6 +187,70 @@ fn a_post_removes_the_pause_string_and_the_removal_does_not_lower_the_waiting_co
     ui.update(1100);
     assert!(!line(&ui).1);
     assert_eq!(ui.history(), [b"A".to_vec()]);
+}
+
+#[test]
+fn the_waiting_cut_does_not_count_the_removed_pause_string() {
+    // [400, X] + M gives [M, X] with 1 waiting; [400, X, Y] + M gives 2.
+    for (older, waiting) in [(1, 1), (2, 2)] {
+        let (mut ui, _) = history(&format!("cut{older}"), "");
+        for n in 0..older {
+            ui.message(format!("X{n}").as_bytes(), 3);
+        }
+        ui.update(1000);
+        ui.post(Message::new(b"P", 3).replacing());
+        ui.message(b"M", 3);
+        assert_eq!(ui.history().len(), older + 1);
+        assert_eq!(ui.waiting, waiting, "{older} older");
+    }
+    // The string alone: the post is listed, waits for nothing and never reaches the line; the
+    // string stays for the whole pause and the line hides with the message still listed.
+    let (mut ui, _) = history("cut-alone", "");
+    ui.hold_message(true);
+    ui.post(Message::new(b"P", 3).replacing());
+    ui.update(1000);
+    ui.message(b"M", 3);
+    assert_eq!((ui.history(), ui.waiting), (vec![b"M".to_vec()], 0));
+    ui.update(1033);
+    ui.update(1300);
+    assert_eq!(line(&ui), (b"P".to_vec(), true));
+    ui.hold_message(false);
+    ui.end_message();
+    ui.update(1400);
+    assert!(!line(&ui).1);
+    assert_eq!(ui.history(), [b"M".to_vec()]);
+}
+
+#[test]
+fn a_full_list_drops_its_oldest_before_the_pause_string_goes() {
+    let (mut ui, _) = history("full", "queueSize=3\n");
+    ui.message(b"A", 3);
+    ui.message(b"B", 3);
+    ui.update(1000);
+    ui.post(Message::new(b"P", 3).replacing());
+    assert_eq!(ui.history(), [b"P".to_vec(), b"B".to_vec(), b"A".to_vec()]);
+    ui.message(b"M", 3);
+    assert_eq!(ui.history(), [b"M".to_vec(), b"B".to_vec()]);
+    assert_eq!(ui.waiting, 1);
+}
+
+#[test]
+fn the_line_icon_is_tested_again_when_a_waiting_message_is_taken() {
+    let (mut ui, icon) = history("icon-again", "");
+    let line_icon = |ui: &Interface| ui.tree.elements[2].look.icon;
+    ui.message(b"A", 3);
+    ui.post(Message::new(b"B", 3).about(5, Some(icon)));
+    ui.post(Message::new(b"C", 3).about(6, Some(icon)));
+    ui.entities_found(|_| true);
+    ui.update(1000);
+    ui.update(1100);
+    assert_eq!((line(&ui).0, line_icon(&ui)), (b"B".to_vec(), Some(icon)));
+    // 6 leaves the world before its message is taken: no icon on the line, the row keeps it.
+    ui.entities_found(|id| id != 6);
+    ui.update(1200);
+    ui.update(1300);
+    assert_eq!((line(&ui).0, line_icon(&ui)), (b"C".to_vec(), None));
+    assert!(rows(&ui)[0].1, "the row keeps its icon");
 }
 
 #[test]

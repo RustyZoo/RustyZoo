@@ -61,6 +61,8 @@ pub(super) struct Entry {
     pub(super) at: u32,
     pub(super) entity: Option<u32>,
     pub(super) icon: Option<Picture>,
+    /// The world still has the entity (set by the game before each update, 4.14 point 8).
+    pub(super) found: bool,
     pub(super) show: bool,
     pub(super) replace: bool,
 }
@@ -92,11 +94,6 @@ impl Interface {
             return false;
         }
         let shown = self.visible(i);
-        // A pause string at the front goes before the new entry comes in (4.14 point 5).
-        let removed = shown && self.messages.front().is_some_and(|e| e.replace);
-        if removed {
-            self.messages.pop_front();
-        }
         // The list holds `queueSize` entries and drops its oldest when full; a negative size never
         // drops (4.13 point 9).
         let size = match self.tree.elements[i].queue.size {
@@ -106,6 +103,11 @@ impl Interface {
         if self.messages.len() >= size {
             self.messages.pop_back();
         }
+        // On a shown line a pause string at the front then goes before the new entry comes in
+        // (4.14 point 5).
+        if shown && self.messages.front().is_some_and(|e| e.replace) {
+            self.messages.pop_front();
+        }
         let (entity, icon) = m.entity.map_or((None, None), |(e, icon)| (Some(e), icon));
         self.messages.push_front(Entry {
             text: m.text.to_vec(),
@@ -113,13 +115,14 @@ impl Interface {
             at: now,
             entity,
             icon,
+            found: true,
             show: m.show,
             replace: m.replace,
         });
         if shown {
-            // The removal does not lower the count (4.14 point 5): the cut sees the list as it was
-            // before it. One place less than the list wait, for the shown message.
-            let places = (self.messages.len() + usize::from(removed)).saturating_sub(1);
+            // One place less than the list (after all three steps) wait, for the shown message;
+            // the removed pause string does not count (4.14 point 5).
+            let places = self.messages.len().saturating_sub(1);
             self.waiting = (self.waiting + 1).min(places);
             self.tree.elements[i].countdown = Some(0);
         } else if m.show && !m.text.is_empty() {
@@ -141,7 +144,9 @@ impl Interface {
         let Some(entry) = self.messages.get(n) else {
             return;
         };
-        let (text, icon) = (entry.text.clone(), entry.icon);
+        // The icon is tested again now: an entity gone from the world gives none (4.14 point 8).
+        let icon = entry.icon.filter(|_| entry.entity.is_none() || entry.found);
+        let text = entry.text.clone();
         let e = &mut self.tree.elements[i];
         // The C remainder: a negative kind is the general colour (4.13 point 11).
         e.look.fore_color = e.queue.colors[(entry.kind % 3).max(0) as usize];
@@ -164,6 +169,13 @@ impl Interface {
             .collect();
         self.refill_rows(queue.list, rows);
         self.set_row_colors(queue.list, colors);
+    }
+
+    /// Tells the list which entities of its messages the world still has, before an update.
+    pub(crate) fn entities_found(&mut self, found: impl Fn(u32) -> bool) {
+        for e in &mut self.messages {
+            e.found = e.entity.is_none_or(&found);
+        }
     }
 
     /// Tells the message line whether the game is paused: then a line with nothing waiting keeps
