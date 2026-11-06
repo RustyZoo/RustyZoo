@@ -1394,8 +1394,9 @@ fn full_game_facts() {
     assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (767, 2848, 0, 2, 2));
 
     // The saved game exists in the English install only.
-    if crate::pe::installed_language(&dir) == 1036 {
-        eprintln!("skipped: saved games/test.zoo is not in the French install");
+    let english = crate::pe::installed_language(&dir) == 1033 && crate::fixtures::is_measured(&dir);
+    if !english && !vfs.contains("saved games/test.zoo") {
+        eprintln!("skipped: saved games/test.zoo is only in the English install");
     } else {
         let save = load("saved games/test.zoo").unwrap();
         assert_eq!(
@@ -1419,6 +1420,9 @@ fn full_game_facts() {
         assert_eq!((c.x, c.y, c.z, c.rotation, c.id), (800, 4704, 0, 4, 37091));
     }
 
+    if !crate::fixtures::measured_on("full_game_facts (all maps)", &dir) {
+        return;
+    }
     // Every .zoo file: 96 parse (95 in the French install), 3 are older than version 38, 6 of version 38 are corrupted.
     // Two of the 96 (the leftovers of the scenario archive, versions 45 and 55) hold entities
     // of a type without definition, which the original cannot load before version 70.
@@ -2727,10 +2731,12 @@ fn full_game_round_trip() {
             same += 1;
         }
     }
-    // The 96 files that parse (95 in the French install, which lacks the saved game).
-    assert!(files >= 95, "{files} files");
+    // The 96 files that parse (95 in the French install, which lacks the saved game); the
+    // other installs have other maps, and a base-only one has none of version 106.
+    let measured = crate::fixtures::is_measured(&dir);
+    assert!(files >= if measured { 95 } else { 1 }, "{files} files");
     assert!(
-        same >= 10 && refused < 10,
+        (same >= 10 || !measured) && refused < 10,
         "{same} identical, {refused} refused"
     );
 }

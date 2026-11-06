@@ -114,3 +114,101 @@ impl Drop for Install {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+/// The path of the file of `dir` that is named `name` in any letter case (some installs have
+/// upper-case names).
+pub(crate) fn file_ignoring_case(dir: &std::ffi::OsStr, name: &str) -> PathBuf {
+    let found = std::fs::read_dir(dir).unwrap().flatten().find(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(name)
+    });
+    found.map_or_else(|| PathBuf::from(dir).join(name), |entry| entry.path())
+}
+
+/// Whether the install holds both expansions (a folder of each with archives in it).
+pub(crate) fn has_expansions(dir: &std::ffi::OsStr) -> bool {
+    ["xpack1", "xpack2"].iter().all(|name| {
+        let sub = file_ignoring_case(dir, name);
+        std::fs::read_dir(sub).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .ends_with(".ztd")
+            })
+        })
+    })
+}
+
+/// Whether the install is the complete English or French one: both expansions, and the language
+/// of its `lang0.dll` (the Dutch install has an English one).
+pub(crate) fn is_measured(dir: &std::ffi::OsStr) -> bool {
+    matches!(crate::pe::installed_language(dir), 1033 | 1036) && has_expansions(dir)
+}
+
+/// Whether the facts of a full-game test were measured on this install (`is_measured`). Prints
+/// why the test goes no further when not.
+pub(crate) fn measured_on(test: &str, dir: &std::ffi::OsStr) -> bool {
+    let measured = is_measured(dir);
+    if !measured {
+        eprintln!(
+            "skipped {test}: its counts and texts were measured on the complete English and French installs"
+        );
+    }
+    measured
+}
+
+/// Whether the test can read `member`. An install without the expansions may lack it (their maps
+/// and animals): the test goes no further and prints why. An install with them that lacks it is
+/// a failure for the test to find.
+pub(crate) fn has_member(test: &str, vfs: &crate::vfs::Vfs, member: &str) -> bool {
+    let skip = !vfs.contains(member) && !has_expansions(vfs.root().as_os_str());
+    if skip {
+        eprintln!("skipped {test}: the install has no {member} and no expansions");
+    }
+    !skip
+}
+
+/// Whether `member` is missing from an install without the expansions, which is where the maps
+/// and animals of the expansions are: a test goes on to the next one. A member missing from an
+/// install with the expansions is a failure for the test to find.
+pub(crate) fn base_lacks(vfs: &crate::vfs::Vfs, member: &str) -> bool {
+    let lacks = !vfs.contains(member) && !has_expansions(vfs.root().as_os_str());
+    if lacks {
+        eprintln!("skipped {member}: not in this install, which has no expansions");
+    }
+    lacks
+}
+
+/// Whether the install can run a test that reads the maps, scenarios and animals of the
+/// expansions. Prints why the test goes no further when it cannot.
+pub(crate) fn with_expansions(test: &str, dir: &std::ffi::OsStr) -> bool {
+    let found = has_expansions(dir);
+    if !found {
+        eprintln!("skipped {test}: the install has no expansions");
+    }
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_upper_case_file_is_found() {
+        let dir = TempDir::new("fixtures-case");
+        dir.write("LANG0.DLL", b"x");
+        dir.write("XPACK1/A.ZTD", b"x");
+        let found = file_ignoring_case(dir.0.as_os_str(), "lang0.dll");
+        assert_eq!(found.file_name().unwrap(), "LANG0.DLL");
+        // A missing file gives the path as asked.
+        let absent = file_ignoring_case(dir.0.as_os_str(), "none.dll");
+        assert_eq!(absent.file_name().unwrap(), "none.dll");
+        // The expansions need an archive in each folder, whatever the case of the names.
+        assert!(!has_expansions(dir.0.as_os_str()));
+        dir.write("xpack2/b.ztd", b"x");
+        assert!(has_expansions(dir.0.as_os_str()));
+    }
+}

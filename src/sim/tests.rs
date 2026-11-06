@@ -1508,6 +1508,14 @@ fn the_bench_users_of_a_shipped_old_file_sit_again_by_their_use_set() {
     use crate::{exhibit::TankConfig, place, terrain, vfs::Vfs, world::Decay};
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    // An update makes the bench a building of the zoo; without it the guests never sit.
+    let bench = vfs.read("scenery/other/bench.ai").unwrap();
+    let bench = crate::config::Config::parse(&bench).unwrap();
+    let zoo_bench = (bench.section("Member")).is_some_and(|m| m.keys().any(|k| k == b"zoo"));
+    // The base game alone has the older bench; an install with the expansions must have the update.
+    if !zoo_bench && !crate::fixtures::with_expansions("the_bench_users", &dir) {
+        return;
+    }
     let cat = Catalogue::load(&vfs).unwrap();
     let bytes = vfs.read("maps/scn01a.zoo").unwrap();
     let (zoo, money) = crate::zoo::Zoo::parse_money(&bytes)
@@ -1725,8 +1733,13 @@ fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
             assert_eq!(a.building, b.building, "{member}: building {}", a.id);
         }
     }
+    // The base game alone has one of these maps and three of these buildings.
+    let (least_maps, least_buildings) = match crate::fixtures::has_expansions(&dir) {
+        true => (4, 40),
+        false => (1, 3),
+    };
     assert!(
-        maps >= 4 && buildings >= 40,
+        maps >= least_maps && buildings >= least_buildings,
         "{maps} maps, {buildings} buildings"
     );
 }

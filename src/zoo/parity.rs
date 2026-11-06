@@ -128,6 +128,10 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
         .into_iter()
         .filter(|m| m.ends_with(".zoo"))
         .collect();
+    // The budgets were measured on the English and French installs: the files of the others
+    // differ in what they store (their language, for one), and a base-only install has few
+    // of version 105 and 106. They are measured and printed, not held to the budgets.
+    let measured = crate::fixtures::is_measured(&dir);
     let (mut failed, mut checked) = (Vec::new(), 0);
     // Four files at a time: a run loads the whole catalogue.
     for group in members.chunks(4) {
@@ -140,7 +144,7 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
                 None => {}
                 Some(Err(why)) => {
                     println!("{why}");
-                    if !REFUSED.contains(&member.as_str()) {
+                    if measured && !REFUSED.contains(&member.as_str()) {
                         failed.push(why);
                     }
                 }
@@ -149,7 +153,7 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
                     checked += 1;
                     let pin = BUDGET.iter().find(|b| b.0 == member.as_str());
                     let (max_bytes, max_size) = pin.map_or(DEFAULT, |b| (b.1, b.2));
-                    if bytes > max_bytes || size.unsigned_abs() > max_size {
+                    if measured && (bytes > max_bytes || size.unsigned_abs() > max_size) {
                         failed.push(format!(
                             "{report}\n  budget: bytes {max_bytes} size +-{max_size}"
                         ));
@@ -158,7 +162,7 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
             }
         }
     }
-    assert!(checked >= 10, "{checked} files measured");
+    assert!(checked >= 10 || !measured, "{checked} files measured");
     assert!(failed.is_empty(), "over budget:\n{}", failed.join("\n"));
 }
 
@@ -188,6 +192,9 @@ fn what_differs_is_counted_by_section() {
 fn a_stepped_scn28_save_holds_the_record_that_the_specialists_need_test_made() {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    if !crate::fixtures::has_member("a_stepped_scn28_save", &vfs, "maps/scn28.zoo") {
+        return;
+    }
     let old = Zoo::parse(&vfs.read("maps/scn28.zoo").unwrap()).unwrap();
     let key = 9552;
     let mut now = 0;

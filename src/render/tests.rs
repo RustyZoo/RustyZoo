@@ -2387,7 +2387,12 @@ fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut renderer = MapRenderer::new(&vfs, &catalogue);
-    for member in ["maps/default.zoo", "maps/med_kids.zoo"] {
+    // The base game has no `med_kids`.
+    let members = ["maps/default.zoo", "maps/med_kids.zoo"];
+    for member in members
+        .into_iter()
+        .filter(|m| !crate::fixtures::base_lacks(&vfs, m))
+    {
         let zoo = Zoo::parse(&vfs.read(member).unwrap()).unwrap();
         for rotation in [0, 1] {
             let (whole, _) = renderer.render(&zoo, rotation).unwrap();
@@ -2789,6 +2794,9 @@ fn a_portal_wall_draws_the_frame_its_player_shows() {
     // Shows 32.6 point 5: frame 0 closed, the last frame open; a wall with no player shows frame 0.
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    if !crate::fixtures::has_member("a_portal_wall", &vfs, "maps/scn28.zoo") {
+        return;
+    }
     let catalogue = Catalogue::load(&vfs).unwrap();
     let zoo = Zoo::parse(&vfs.read("maps/scn28.zoo").unwrap())
         .and_then(|z| z.checked(&catalogue))

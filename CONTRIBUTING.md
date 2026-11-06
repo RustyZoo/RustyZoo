@@ -26,7 +26,7 @@ Everything is written in English: code, comments, commit messages, pull requests
 
 Never commit original game files, or anything derived from them: extracted sprites, texts, decompiled code and the like. RustyZoo must contain no original code or assets.
 
-Tests that need real game data are marked `#[ignore]` and read the install path of the game from the `ZT_DATA_DIR` environment variable. Run them with `cargo test -- --ignored`. They expect either the English or the French install and pick their expected values by the language of `lang0.dll`.
+Tests that need real game data are marked `#[ignore]` and read the install path of the game from the `ZT_DATA_DIR` environment variable. Run them with `cargo test -- --ignored`. They expect either the English or the French install and pick their expected values by the language of `lang0.dll`. They also run on the other editions (German, Spanish, Italian, Dutch, Chinese, with or without expansions, with upper-case file names): a count, text or map pinned on the complete English or French install is checked there only (`fixtures::is_measured`), and a test that needs an expansion map or a damaged archive prints `skipped` and why.
 
 ## Clean room
 

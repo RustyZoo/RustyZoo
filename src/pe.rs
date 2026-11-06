@@ -56,7 +56,7 @@ pub(crate) const RT_STRING: u32 = 6;
 /// pick their expected values by it: 1033 is English, 1036 French).
 #[cfg(test)]
 pub(crate) fn installed_language(dir: &std::ffi::OsStr) -> u32 {
-    let file = std::fs::read(std::path::Path::new(dir).join("lang0.dll")).unwrap();
+    let file = std::fs::read(crate::fixtures::file_ignoring_case(dir, "lang0.dll")).unwrap();
     let found = resources(&file).unwrap();
     let table = found.iter().find(|r| r.kind == ResKey::Id(RT_STRING));
     table.expect("lang0.dll has no string table").language
@@ -643,23 +643,27 @@ pub(crate) mod tests {
     #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
     fn full_game_facts() {
         let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
-        let file = std::fs::read(std::path::Path::new(&dir).join("lang0.dll")).unwrap();
+        let file = std::fs::read(crate::fixtures::file_ignoring_case(&dir, "lang0.dll")).unwrap();
         let found = resources(&file).unwrap();
         let table = strings(&found).unwrap();
         assert_eq!(table.len(), 3161);
-        if installed_language(&dir) == 1036 {
-            // Language-neutral: the same ids carry a text, the texts have their own sizes.
-            assert!(
-                [5006, 9400, 8016, 3270]
-                    .iter()
-                    .all(|id| !table[id].is_empty())
-            );
-            assert_eq!(texts(&found).len(), 220);
-            let lion = texts(&found)
-                .into_iter()
-                .find(|(n, _)| *n == "LION_GENERAL");
-            assert_eq!(lion.unwrap().1.len(), 1905);
-            return;
+        // Language-neutral: the same ids carry a text, the texts have their own sizes.
+        assert!(
+            [5006, 9400, 8016, 3270]
+                .iter()
+                .all(|id| !table[id].is_empty())
+        );
+        assert_eq!(texts(&found).len(), 220);
+        let lion = texts(&found)
+            .into_iter()
+            .find(|(n, _)| *n == "LION_GENERAL");
+        let lion = lion.unwrap().1.len();
+        let language = installed_language(&dir);
+        if language == 1036 {
+            assert_eq!(lion, 1905);
+        }
+        if language != 1033 {
+            return; // the texts and sizes of the other languages are not pinned
         }
         for (id, text) in [
             (5006, "Lion"),
@@ -669,10 +673,6 @@ pub(crate) mod tests {
         ] {
             assert_eq!(table[&id], text);
         }
-        assert_eq!(texts(&found).len(), 220);
-        let lion = texts(&found)
-            .into_iter()
-            .find(|(n, _)| *n == "LION_GENERAL");
-        assert_eq!(lion.unwrap().1.len(), 1595);
+        assert_eq!(lion, 1595);
     }
 }
