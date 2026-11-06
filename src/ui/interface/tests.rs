@@ -302,9 +302,7 @@ fn a_message_takes_the_colour_of_its_kind_modulo_3() {
         (3, [1, 2, 3]),
         (4, [0, 255, 0]),
         (5, [255, 0, 0]),
-        (-1, [255, 0, 0]),
         (i32::MAX, [0, 255, 0]),
-        (i32::MIN, [0, 255, 0]),
     ]
     .into_iter()
     .enumerate()
@@ -320,10 +318,41 @@ fn a_message_takes_the_colour_of_its_kind_modulo_3() {
     assert_eq!(colour(&ui), [0, 255, 0]);
     ui.update(5000);
     assert_eq!(colour(&ui), [255, 0, 0]);
-    // A line with no colour keys uses its text colour for every kind.
-    let mut plain = interface("kinds-plain", LINE);
-    plain.message(b"x", 2);
-    assert_eq!(plain.tree.elements[2].look.fore_color, [255; 3]);
+}
+
+#[test]
+fn a_negative_kind_takes_the_general_colour() {
+    for (n, kind) in [-1, -2, -3, -4, i32::MIN].into_iter().enumerate() {
+        let mut ui = coloured(&format!("negative{n}"), "");
+        ui.message(b"k", kind);
+        assert_eq!(
+            ui.tree.elements[2].look.fore_color,
+            [1, 2, 3],
+            "kind {kind}"
+        );
+    }
+}
+
+#[test]
+fn a_missing_colour_key_takes_the_built_in_colour() {
+    let shown = |name: &str, extra: &str| {
+        let line = LINE.replace("timed=1", &format!("{extra}timed=1"));
+        let colours = [0, 1, 2].map(|kind| {
+            let mut ui = interface(&format!("{name}{kind}"), &line);
+            ui.message(b"k", kind);
+            ui.tree.elements[2].look.fore_color
+        });
+        colours
+    };
+    let built_in = [[255; 3], [0, 255, 0], [255, 0, 0]];
+    // No key: not the text colour (255, 255, 255 in this line is white too, so it is told apart
+    // by the green and the red).
+    assert_eq!(shown("no-keys", ""), built_in);
+    // Fewer than 3 values: the built-in colour; a longer key: its first 3 values.
+    let two = "goodcolor=9\ngoodcolor=9\nurgentcolor=7\n";
+    assert_eq!(shown("two-values", two), built_in);
+    let four = "goodcolor=1\ngoodcolor=2\ngoodcolor=3\ngoodcolor=4\n";
+    assert_eq!(shown("four-values", four)[1], [1, 2, 3]);
 }
 
 #[test]
@@ -359,8 +388,9 @@ fn a_text_repeated_within_the_minimum_interval_is_dropped_below_kind_3() {
 }
 
 #[test]
-fn the_minimum_message_interval_comes_from_the_ini_file_and_odd_values_do_not_break_it() {
-    let dropped = |interval: Option<i32>, gap: u64| {
+fn the_repeat_interval_is_a_32_bit_unsigned_product_in_ms() {
+    // Whether a text posted at `first` and again at `second` (ms) is dropped.
+    let dropped = |interval: Option<i32>, first: u64, second: u64| {
         let mut ui = interface("interval", LINE);
         if let Some(n) = interval {
             ui.set_settings(tooltip::Settings {
@@ -368,19 +398,30 @@ fn the_minimum_message_interval_comes_from_the_ini_file_and_odd_values_do_not_br
                 ..tooltip::Settings::default()
             });
         }
-        ui.message(b"A", 0);
-        ui.set_time(gap);
-        ui.message(b"A", 0);
-        ui.message_list.len() == 1
+        ui.set_time(first);
+        assert!(ui.message(b"A", 0));
+        ui.set_time(second);
+        let posted = ui.message(b"A", 0);
+        assert_eq!(ui.message_list.len(), if posted { 2 } else { 1 });
+        !posted
     };
-    assert!(dropped(None, 59_000), "missing: 60 s");
-    assert!(!dropped(None, 61_000));
-    assert!(dropped(Some(5), 4_999));
-    assert!(!dropped(Some(5), 5_000));
-    assert!(!dropped(Some(0), 0), "0 never drops");
-    assert!(!dropped(Some(-60), 0), "negative never drops");
-    assert!(dropped(Some(i32::MAX), 1_000_000_000));
-    assert!(!dropped(Some(i32::MIN + 1), 0));
+    assert!(dropped(None, 0, 59_999), "missing: 60 s");
+    assert!(!dropped(None, 0, 60_000));
+    assert!(dropped(Some(5), 0, 4_999));
+    assert!(!dropped(Some(5), 0, 5_000));
+    assert!(!dropped(Some(0), 0, 0), "0 never drops");
+    // A negative interval is a huge unsigned one: every equal text still listed drops.
+    assert!(dropped(Some(-60), 0, 0));
+    assert!(dropped(Some(-1), 0, 4_000_000_000));
+    assert!(!dropped(Some(i32::MIN), 0, 1_000), "2^31 * 1000 wraps to 0");
+    // A product above 2^32 ms wraps: 4 294 968 s is 704 ms.
+    assert!(dropped(Some(4_294_968), 0, 703));
+    assert!(!dropped(Some(4_294_968), 0, 704));
+    assert!(dropped(Some(i32::MAX), 0, 1_000_000));
+    // The clock is 32 bits and the age an unsigned difference: across the wrap the text is
+    // recent; a clock gone back is an entry about 2^32 ms old.
+    assert!(dropped(None, u64::from(u32::MAX) - 10, 1 << 32 | 5));
+    assert!(!dropped(None, 100_000, 0));
 }
 
 #[test]
