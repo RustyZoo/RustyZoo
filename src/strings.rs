@@ -455,7 +455,7 @@ mod tests {
             tables.libraries().last()
         );
         // The count, the order and the texts below are those of the complete installs.
-        if !crate::fixtures::is_measured(&dir) {
+        if !crate::fixtures::measured_on("full_game_facts (libraries)", &dir) {
             return;
         }
         assert_eq!(tables.libraries().count(), 19);

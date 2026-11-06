@@ -186,6 +186,7 @@ fn full_game_award_goals_are_followed_by_their_popup() {
     };
     assert_eq!(found, (1..=last).collect::<Vec<_>>());
     if last == 12 {
+        eprintln!("skipped full_game_award_goals (awards 13 to 18): the install has no expansions");
         return;
     }
     // Award 17: "below" a value the file leaves out.

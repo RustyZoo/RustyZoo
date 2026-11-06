@@ -160,14 +160,15 @@ pub(crate) fn measured_on(test: &str, dir: &std::ffi::OsStr) -> bool {
     measured
 }
 
-/// Whether the game files hold `member`. Prints why the test goes no further when they do not
-/// (the base game has no expansion maps and animals).
+/// Whether the test can read `member`. An install without the expansions may lack it (their maps
+/// and animals): the test goes no further and prints why. An install with them that lacks it is
+/// a failure for the test to find.
 pub(crate) fn has_member(test: &str, vfs: &crate::vfs::Vfs, member: &str) -> bool {
-    let found = vfs.contains(member);
-    if !found {
-        eprintln!("skipped {test}: the install has no {member}");
+    let skip = !vfs.contains(member) && !has_expansions(vfs.root().as_os_str());
+    if skip {
+        eprintln!("skipped {test}: the install has no {member} and no expansions");
     }
-    found
+    !skip
 }
 
 /// Whether `member` is missing from an install without the expansions, which is where the maps

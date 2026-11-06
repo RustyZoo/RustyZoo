@@ -2389,7 +2389,10 @@ fn on_real_maps_any_window_of_one_staging_is_a_window_of_the_whole_map() {
     let mut renderer = MapRenderer::new(&vfs, &catalogue);
     // The base game has no `med_kids`.
     let members = ["maps/default.zoo", "maps/med_kids.zoo"];
-    for member in members.into_iter().filter(|m| vfs.contains(m)) {
+    for member in members
+        .into_iter()
+        .filter(|m| !crate::fixtures::base_lacks(&vfs, m))
+    {
         let zoo = Zoo::parse(&vfs.read(member).unwrap()).unwrap();
         for rotation in [0, 1] {
             let (whole, _) = renderer.render(&zoo, rotation).unwrap();
