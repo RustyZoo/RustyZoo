@@ -112,7 +112,8 @@ impl Clock {
             self.dead = dead;
             let name = if dead { "idledead" } else { "idle" };
             if let Some(timing) = data.timing(e, name) {
-                (self.base, self.next) = ((name, timing), None);
+                // The switch clears the player, a queued `used` included.
+                (self.base, self.next, self.queued) = ((name, timing), None, None);
                 self.restart();
             }
         }
@@ -134,6 +135,9 @@ impl Clock {
 pub(crate) struct Idles {
     fixed: BTreeMap<u32, Clock>,
     bubbles: BTreeMap<u32, (u32, Clock)>,
+    /// The `used` queued by the check of this step (entity id, timing, times): it joins the queue
+    /// after the clocks advance, so it cannot start before the next step.
+    later: Vec<(u32, Timing, u32)>,
 }
 
 impl Idles {
@@ -141,6 +145,7 @@ impl Idles {
     pub(crate) fn clear(&mut self) {
         self.fixed.clear();
         self.bubbles.clear();
+        self.later.clear();
     }
 
     /// The frame of each animated clock, for the picture: an entity under its id, the bubbles of a
@@ -174,16 +179,14 @@ impl Idles {
     }
 
     /// Queues `used` `times` times behind the base loop of the building at `at`, as the rubble's
-    /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). A building with no
-    /// clock or no `used` plays nothing.
+    /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). It joins the queue
+    /// when the clocks advance at the end of the step: the original advances the animation before
+    /// the check. A building with no clock or no `used` plays nothing.
     pub(crate) fn queue_used(&mut self, world: &World, at: usize, times: u32, data: &dyn Data) {
         let e = &world.zoo.entities[at];
         let id = e.common.as_ref().map_or(0, |c| c.id);
-        if let (Some(c), Some(t)) = (self.fixed.get_mut(&id), data.timing(e, "used")) {
-            // A play that comes while another is queued adds to it.
-            let waiting = c.queued.filter(|q| q.0 == "used").map_or(0, |q| q.2);
-            let times = times.saturating_add(waiting);
-            c.queued = (times > 0).then_some(("used", t, times));
+        if let (true, Some(t)) = (self.fixed.contains_key(&id), data.timing(e, "used")) {
+            self.later.push((id, t, times));
         }
     }
 
@@ -291,6 +294,14 @@ impl Idles {
     pub(crate) fn advance(&mut self, step: u32) {
         self.fixed.values_mut().for_each(|c| c.advance(step));
         (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
+        for (id, t, times) in self.later.drain(..) {
+            if let Some(c) = self.fixed.get_mut(&id) {
+                // A play that comes while another is queued adds to it.
+                let waiting = c.queued.filter(|q| q.0 == "used").map_or(0, |q| q.2);
+                let times = times.saturating_add(waiting);
+                c.queued = (times > 0).then_some(("used", t, times));
+            }
+        }
     }
 }
 

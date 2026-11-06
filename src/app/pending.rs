@@ -11,6 +11,9 @@ pub(super) struct Placing {
     /// The pending staff member made when its item was chosen (staff 4.2): the type and the
     /// counters it drew; the hire gives them to the unit.
     pub(super) made: Option<(usize, crate::unit::Staff)>,
+    /// The random use time drawn when the pending building was made (guest buildings 10.1 point
+    /// 2.5): the type and the time; the building placed keeps it.
+    pub(super) used: Option<(usize, u32)>,
     /// The gate tool's pending gate (`pending` is its object), while it is over a fence piece.
     pub(super) gate: Option<place::gate::Gate>,
     /// The fence piece the gate tool last judged under the pointer (placing 6.4: the pending gate
@@ -274,7 +277,8 @@ impl App<'_> {
             );
             if let Outcome::Placed(id) = outcome {
                 crate::building::built(&mut game.world, ty, id, self.sim.calendar().elapsed_ms());
-                self.sim.draw_use(&mut game.world, cat, id);
+                let kept = game.placing.used.take_if(|u| u.0 == p.ty).map(|u| u.1);
+                self.sim.keep_use(&mut game.world, cat, id, kept);
                 crate::show::added(&mut game.world, cat, id);
                 let (habitat, name) = rating::object(ty);
                 let change = (!fence).then_some(rating::Change::Object {
@@ -285,6 +289,11 @@ impl App<'_> {
                 let rand = &mut || self.sim.rng.rand();
                 rating::again(&game.world, &mut before, at, rating::reads_neighbours(ty));
                 rating::react(&mut game.world, cat, before, change, rand);
+                // The click makes the next pending object of the type (it draws its time).
+                if ty.class == "building" {
+                    let time = self.sim.use_time(ty);
+                    game.placing.used = time.map(|t| (p.ty, t));
+                }
             }
             match outcome {
                 Outcome::Placed(id) => {
@@ -411,6 +420,9 @@ impl App<'_> {
         let cat = self.renderer.catalogue();
         for ty in game.build.take_made() {
             let t = &cat.types[ty];
+            if t.class == "building" {
+                game.placing.used = self.sim.use_time(t).map(|time| (ty, time));
+            }
             if let Some(kind) = crate::unit::Kind::of_class(t.class) {
                 game.placing.made =
                     Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));

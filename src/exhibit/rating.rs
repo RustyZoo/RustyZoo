@@ -375,6 +375,12 @@ thread_local! {
     static TESTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
+/// A test sets the counter of the reachability tests.
+#[cfg(test)]
+pub(crate) fn set_tests(n: u32) {
+    TESTS.set(n);
+}
+
 /// The reachability tests since the last one that went on (5.8).
 pub(crate) fn tests() -> u32 {
     TESTS.get()

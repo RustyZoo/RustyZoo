@@ -35,14 +35,19 @@ fn next(u: &Use, now: u32, rng: &mut Rng) -> u32 {
     now.wrapping_add(u.min as u32).wrapping_add(r)
 }
 
+/// The time of a building of type `ty` made at the AI clock `now`: none, and no draw, for a type
+/// that is not of random use.
+pub(crate) fn time(ty: &EntityType, now: u32, rng: &mut Rng) -> Option<u32> {
+    read(ty).map(|u| next(&u, now, rng))
+}
+
 /// The time of the building at `at` is drawn from the AI clock `now` (it was made or its
 /// statistics were reset). Nothing for another type.
 pub(crate) fn draw(world: &mut World, cat: &Catalogue, at: usize, now: u32, rng: &mut Rng) {
     let e = &world.zoo.entities[at];
-    let Some(u) = type_of(cat, e).and_then(read) else {
+    let Some(time) = type_of(cat, e).and_then(|t| time(t, now, rng)) else {
         return;
     };
-    let time = next(&u, now, rng);
     if let Some(c) = world.zoo.entities[at].common.as_mut() {
         c.stamp = Some(time);
     }
@@ -252,9 +257,10 @@ mod tests {
         assert!(stamp(&w).unwrap() >= 20, "a new time was drawn");
     }
 
-    /// The sim draws at placing and at a reset start, and at load keeps the stored time.
+    /// The sim gives a placed building its pending object's time (or draws one when it has none),
+    /// draws at a reset start, and at load keeps the stored time.
     #[test]
-    fn the_sim_draws_at_placing_at_a_reset_and_at_load() {
+    fn the_sim_keeps_at_placing_draws_at_a_reset_and_keeps_the_stored_time_at_load() {
         use crate::sim::Sim;
         use crate::zoo::Clocks;
         let c = cat("cRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60");
@@ -273,9 +279,12 @@ mod tests {
         let drawn = |sim: &Sim, ticks: u32| ticks + 20 + sim.rng.clone().pick(40);
         let mut sim = at(500);
         let (mut w, want) = (world(None, 70), drawn(&sim, 500));
-        sim.draw_use(&mut w, &c, 1);
+        sim.keep_use(&mut w, &c, 1, None);
         assert_eq!(stamp(&w), Some(want));
-        sim.draw_use(&mut w, &c, 99);
+        let state = sim.rng.clone();
+        sim.keep_use(&mut w, &c, 1, Some(7));
+        assert_eq!((stamp(&w), &sim.rng), (Some(7), &state), "no draw");
+        sim.keep_use(&mut w, &c, 99, None);
         let (mut w, want) = (world(Some(3), 70), drawn(&at(900), 900));
         at(900).draw_use_all(&mut w, &c);
         assert_eq!(stamp(&w), Some(want));

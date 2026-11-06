@@ -128,6 +128,7 @@ impl App<'_> {
             placing: pending::Placing {
                 pending: None,
                 made: None,
+                used: None,
                 gate: None,
                 gate_over: None,
                 run: Vec::new(),
