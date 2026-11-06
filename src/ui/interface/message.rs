@@ -282,3 +282,14 @@ impl Interface {
         self.actions.push(Action::Message(self.waiting as i32));
     }
 }
+
+/// The texts of the list, the newest first.
+#[cfg(test)]
+impl Interface {
+    pub(crate) fn history(&self) -> Vec<Vec<u8>> {
+        self.messages.iter().map(|e| e.text.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests;
