@@ -9,12 +9,12 @@
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for
 # rocks and plants cost points) and want 70; with these they rate it 91.
-# The seed 46 draws women for the three hires (see the hire panel below). The hires come before the
+# The seed 14 draws women for the three hires (see the hire panel below). The hires come before the
 # adoption: an animal placed rates its exhibit at once (habitat rating 9.4), which draws from the
 # shared stream.
 # The ray 25039 never eats (issue 1013, which the original has too): it gets the food task on the
 # tile next to the food while still swimming, and is carried past the food.
-#run maps/sm_aqua.zoo --cash 75000 --seed 46 --passes 12700 --clock 200
+#run maps/sm_aqua.zoo --cash 75000 --seed 14 --passes 12700 --clock 200
 #exhibit 16,35,21,40
 #months 6
 #unfed 25039 1013
@@ -75,7 +75,9 @@
 # hire panel: a marine specialist, a tour guide, a maintenance worker, one placement each (the
 # kind is chosen before it). A hire draws the sex of the next one, and the list shows only the DRT
 # base when a man is drawn (the staff of the trials are women only), which then stays chosen and
-# hires nobody: the seed 46 draws women for the start and the first two hires.
+# hires nobody: the seed 14 draws women for the start and the first two hires.
+# (The seed was 46 before the soundscape drew its ambient chances at every step, paused ones too, which
+# moved the sex draws of the hires.)
 56 mouse 25 175
 57 down
 58 up
