@@ -50,7 +50,8 @@ impl App<'_> {
                     .push(format!("speed {}", self.timers.speed.factor()));
             }
             (Command::Fullscreen(on), Some(game)) => {
-                game.camera.set_fullscreen(&game.world.zoo, on);
+                let at = game.selected_point();
+                game.camera.set_fullscreen(&game.world.zoo, at, on);
                 self.zoom_check();
             }
             // The Pause key works through a question too, but the question gives the flag back as

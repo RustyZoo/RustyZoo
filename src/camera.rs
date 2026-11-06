@@ -294,11 +294,16 @@ impl Camera {
     }
 
     /// The window goes to full screen or back. A view at zoom 2 or more that full screen does not
-    /// offer is zoomed out to 0 with the steps of 8.1 (8.3, 8.4 point 5).
-    pub(crate) fn set_fullscreen(&mut self, map: &Zoo, fullscreen: bool) {
+    /// offer is zoomed out to 0 with the steps of 8.1, `selected` as for `zoom` (8.3, 8.4 point 5).
+    pub(crate) fn set_fullscreen(
+        &mut self,
+        map: &Zoo,
+        selected: Option<(i32, i32)>,
+        fullscreen: bool,
+    ) {
         self.fullscreen = fullscreen;
         if self.narrow() && self.zoom >= 2 {
-            self.change(map, None, |c| c.zoom = 0);
+            self.change(map, selected, |c| c.zoom = 0);
         }
     }
 
