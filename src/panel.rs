@@ -7,4 +7,5 @@ pub mod exhibit;
 pub mod follow;
 pub mod guest;
 pub mod research;
+pub mod show;
 pub mod staff;

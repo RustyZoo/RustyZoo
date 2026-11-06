@@ -30,7 +30,7 @@ use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
 use crate::panel::research as research_panel;
-use crate::panel::{animal, exhibit, guest, staff};
+use crate::panel::{animal, exhibit, guest, show, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{Extra, Form, MapRenderer, Mark, RenderError, Shown, Staged, check_size};
@@ -153,6 +153,8 @@ struct Game {
     research: crate::panel::research::Panel,
     /// The building panels and the building selected.
     building: crate::panel::building::Panel,
+    /// The show panel (Marine Mania).
+    show: crate::panel::show::Panel,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -895,6 +897,7 @@ mod research;
 mod saves;
 mod scenario;
 mod scenario_ui;
+mod show_panel;
 mod staff_panel;
 mod start;
 mod tank_panel;

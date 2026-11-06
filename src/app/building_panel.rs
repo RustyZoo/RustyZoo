@@ -34,6 +34,7 @@ impl App<'_> {
         game.selected = Some(id);
         game.building.select(id, layout);
         ui.show(layout);
+        self.show_stand(id);
     }
 
     /// Hides the building panels: the next look clears the selection.

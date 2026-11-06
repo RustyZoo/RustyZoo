@@ -51,7 +51,8 @@ impl App<'_> {
     /// then `world stage` when an edit made the draw stage the map again,
     /// then `panel exhibit ...`, `panel status ...`, `panel donations ...`, `panel animals ...`,
     /// `panel plaque ...` and `panel line ...` for what the exhibit panel and the recommendations
-    /// plaque show, when it changed (see the usage of `run`),
+    /// plaque show, when it changed (see the usage of `run`), and `panel show window open|closed`,
+    /// `panel show ...` and `panel finances ...` for the show panel,
     /// then `terrain enter paint|modify`, `terrain brush SIZE X,Y`, `terrain size N`, `terrain type N`,
     /// `terrain paint N`, `terrain cost N`, `terrain accept N`, `terrain cancel N`, `terrain leave`,
     /// `terrain short` and `terrain undo N` (the price of the tiles an undo gave back) for what the

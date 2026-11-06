@@ -1,6 +1,6 @@
 //! The admission of a show and the price of its grandstands (shows 33): the show panel edits the
 //! admission of one species of a show tank and writes it into the price of every grandstand that
-//! faces the show. The panel itself is not built yet; these are the steps it will call.
+//! faces the show. The panel ([`crate::panel::show`]) calls these steps.
 
 use super::{Sight, info_slot};
 use crate::building::{Live, kind_of};
