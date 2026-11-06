@@ -55,14 +55,14 @@ impl<'a> Message<'a> {
 
 /// One entry of the list.
 pub(super) struct Entry {
-    text: Vec<u8>,
-    kind: i32,
+    pub(super) text: Vec<u8>,
+    pub(super) kind: i32,
     /// The clock (ms, 32 bits) of the post.
-    at: u32,
-    entity: Option<u32>,
-    icon: Option<Picture>,
-    show: bool,
-    replace: bool,
+    pub(super) at: u32,
+    pub(super) entity: Option<u32>,
+    pub(super) icon: Option<Picture>,
+    pub(super) show: bool,
+    pub(super) replace: bool,
 }
 
 impl Interface {
@@ -228,7 +228,8 @@ impl Interface {
             self.sync_history(i);
         }
         if let Some(i) = self.tree.find(LAYOUT) {
-            self.hide_element(i);
+            self.tree.hide(i);
+            self.history_hidden(LAYOUT);
         }
     }
 

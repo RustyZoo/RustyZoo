@@ -895,6 +895,7 @@ mod command;
 mod exhibits;
 mod gates;
 mod guest_panel;
+mod history;
 mod kinds;
 mod log;
 mod main_buttons;

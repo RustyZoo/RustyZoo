@@ -150,6 +150,7 @@ impl App<'_> {
             return;
         };
         self.game = None;
+        ui.clear_messages();
         self.marks.clean(ui);
         (self.painted, self.drawn_at) = (None, None);
         for id in GAME_LAYOUTS {

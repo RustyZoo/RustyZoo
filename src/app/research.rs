@@ -5,7 +5,7 @@ use crate::money::SYMBOL;
 use crate::panel::research::branch_of_tab;
 use crate::research::{Done, Life, Tree};
 use crate::text::to_cp1252;
-use crate::ui::interface::{Buttons, Interface};
+use crate::ui::interface::{Buttons, Interface, Message};
 use crate::vfs::Vfs;
 
 /// The message strings: a program made available, and a branch with no program left.
@@ -18,13 +18,15 @@ pub(super) fn exclaim(ui: &mut Interface, vfs: &Vfs) {
     ui.set_question_icon(QUESTION, picture);
 }
 
-/// An animal that got out raises the non-modal alert, with the exclamation picture and the text
-/// already in the message line (animals 11.4); any other message of an animal opens nothing.
-pub(super) fn alert(ui: &mut Interface, vfs: &Vfs, message: i32, text: &str) {
-    if message == crate::animal::ESCAPED {
-        exclaim(ui, vfs);
-        ui.notify(QUESTION, &to_cp1252(text), Buttons::OK);
+/// The non-modal dialog asked with the message option (ui layout 4.15): the text is posted to the
+/// history only, never to the line, just before the dialog opens with the exclamation picture.
+pub(super) fn dialog(ui: &mut Interface, vfs: &Vfs, m: Message) {
+    exclaim(ui, vfs);
+    let text = m.text;
+    if !text.is_empty() {
+        ui.post(m.listed_only());
     }
+    ui.notify(QUESTION, text, Buttons::OK);
 }
 
 /// The upgrade lists of the building types for a tree just built or loaded (research 6.3, 7.2).
@@ -90,18 +92,14 @@ impl App<'_> {
                 game.staff.clock.force = true;
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
-            ui.message(&to_cp1252(&text), kinds::PLAIN);
-            exclaim(ui, vfs);
-            ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+            dialog(ui, vfs, Message::new(&to_cp1252(&text), kinds::PLAIN));
             // A branch with no program left says so in a second dialog (5.4).
             let idle = self.sim.research().and_then(|t| t.branch_of(d.name));
             if let Some(branch) = idle.filter(|b| b.current.is_none()) {
                 let text = ui
                     .string(ALL_DONE)
                     .replacen("%s", &ui.string(branch.name), 1);
-                ui.message(&to_cp1252(&text), kinds::PLAIN);
-                exclaim(ui, vfs);
-                ui.notify(QUESTION, &to_cp1252(&text), Buttons::OK);
+                dialog(ui, vfs, Message::new(&to_cp1252(&text), kinds::PLAIN));
             }
         }
     }

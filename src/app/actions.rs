@@ -30,6 +30,11 @@ impl App<'_> {
                     }
                     self.requested();
                 }
+                Action::Row(crate::ui::interface::HISTORY_LIST, row) | Action::Message(row)
+                    if self.game.is_some() =>
+                {
+                    self.message_clicked(row);
+                }
                 Action::Row(exhibit::LIST, row) if self.game.is_some() => self.panel_row(row),
                 Action::Row(exhibit::ANIMALS, row) if self.game.is_some() => {
                     self.panel_animal(row);

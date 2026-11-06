@@ -367,23 +367,23 @@ fn a_text_repeated_within_the_minimum_interval_is_dropped_below_kind_3() {
     // Dropped: no queue, the count is not emptied.
     ui.set_time(10_000);
     ui.message(b"A", 0);
-    assert!(ui.message_queue.is_empty());
-    assert_eq!(ui.message_list.len(), 1);
+    assert_eq!(ui.waiting, 0);
+    assert_eq!(ui.messages.len(), 1);
     // Other texts, and kinds of 3 and more, are not dropped.
     ui.message(b"B", 1);
     ui.message(b"A", 3);
     ui.message(b"A", 7);
-    assert_eq!(ui.message_queue.len(), 3);
+    assert_eq!(ui.waiting, 3);
     // After the interval the same text goes through (59 999 ms: dropped, 60 000 ms: through).
     ui.set_time(20_000);
     ui.message(b"C", 0);
-    let len = ui.message_queue.len();
+    let len = ui.waiting;
     ui.set_time(79_999);
     ui.message(b"C", 2);
-    assert_eq!(ui.message_queue.len(), len);
+    assert_eq!(ui.waiting, len);
     ui.set_time(80_000);
     ui.message(b"C", 2);
-    assert_eq!(ui.message_queue.len(), len + 1);
+    assert_eq!(ui.waiting, len + 1);
 }
 
 #[test]
@@ -401,7 +401,7 @@ fn the_repeat_interval_is_a_32_bit_unsigned_product_in_ms() {
         assert!(ui.message(b"A", 0));
         ui.set_time(second);
         let posted = ui.message(b"A", 0);
-        assert_eq!(ui.message_list.len(), if posted { 2 } else { 1 });
+        assert_eq!(ui.messages.len(), if posted { 2 } else { 1 });
         !posted
     };
     assert!(dropped(None, 0, 59_999), "missing: 60 s");
@@ -431,10 +431,10 @@ fn the_list_forgets_its_oldest_entry_and_a_dropped_text_can_come_back() {
     ui.message(b"B", 0);
     ui.message(b"C", 0);
     // The list holds 2 entries: A is gone, so it is no repeat; B still is.
-    let texts: Vec<_> = ui.message_list.iter().map(|e| e.0.clone()).collect();
-    assert_eq!(texts, [b"B".to_vec(), b"C".to_vec()]);
+    let texts: Vec<_> = ui.messages.iter().map(|e| e.text.clone()).collect();
+    assert_eq!(texts, [b"C".to_vec(), b"B".to_vec()]);
     ui.message(b"B", 0);
-    assert_eq!(ui.message_list.len(), 2);
+    assert_eq!(ui.messages.len(), 2);
     ui.message(b"A", 0);
-    assert_eq!(ui.message_list.iter().last().unwrap().0, b"A");
+    assert_eq!(ui.messages.front().unwrap().text, b"A");
 }
