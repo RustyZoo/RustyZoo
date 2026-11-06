@@ -74,7 +74,7 @@ pub(crate) fn leave_rubble(world: &mut World, kit: &mut Kit, id: u32) -> bool {
     pieces(world, kit, &entity, &c)
 }
 
-/// The rubble an entity leaves, cell by cell (4.6 points 2 to 5).
+/// The rubble an entity leaves, cell by cell (4.6 points 2 to 5; a cell's tile truncates toward zero).
 fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool {
     let ty = type_of(kit.cat, entity);
     let Some(ty) = ty else {
@@ -104,7 +104,9 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
     for i in (0..fx).step_by(step) {
         for j in (0..fy).step_by(step) {
             let (cx, cy) = (c.x - fx * 16 + 16 + 32 * i, c.y - fy * 16 + 16 + 32 * j);
-            let tile = world.tile_index(cx.div_euclid(64), cy.div_euclid(64));
+            // The tile is the centre divided by 64 truncating toward zero: -63..-1 is on tile 0.
+            let (tx, ty) = (cx / 64, cy / 64);
+            let tile = world.tile_index(tx, ty);
             let kind = if building {
                 // A building's cell draws its pick only when its tile exists; no 1 in 100 skip.
                 let Some(_) = tile else { continue };
@@ -117,12 +119,12 @@ fn pieces(world: &mut World, kit: &mut Kit, entity: &Entity, c: &Common) -> bool
                 kinds[0]
             };
             let Some(tile) = tile else { continue };
-            // The piece stands on the ground at its point.
+            // The piece stands on the ground at its point, whose offset is the signed C remainder.
             let (x, y) = match by_tile {
-                true => (cx.div_euclid(64) * 64 + 32, cy.div_euclid(64) * 64 + 32),
+                true => (tx * 64 + 32, ty * 64 + 32),
                 false => (cx, cy),
             };
-            let z = ground_height(&world.zoo.tiles[tile], x.rem_euclid(64), y.rem_euclid(64));
+            let z = ground_height(&world.zoo.tiles[tile], x % 64, y % 64);
             let name = kit.template.replacen("%s", &c.name, 1);
             let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
             let piece = Entity {
