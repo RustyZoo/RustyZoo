@@ -2,7 +2,7 @@
 all-features = true
 
 [licenses]
-# The project's own licences (workspace crate and vendored nihav) plus what the tree uses.
+# GPL: the root crate. AGPL: the vendored nihav crates and the root crate (its licence is GPL AND AGPL).
 allow = ["GPL-3.0-or-later", "AGPL-3.0-or-later", "MIT", "Apache-2.0", "BSD-3-Clause", "Zlib"]
 confidence-threshold = 0.9
 
@@ -19,3 +19,7 @@ wildcards = "allow"
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "warn"
+ignore = [
+    # ttf-parser unmaintained via fontdue, no fixed version; tracked in #1349
+    "RUSTSEC-2026-0192",
+]
