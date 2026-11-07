@@ -26,6 +26,13 @@ impl Sim {
         }
     }
 
+    /// The use sounds of the `used` sequences that began this step start at their buildings.
+    pub(super) fn use_sounds(&mut self, world: &mut World) {
+        for (id, heard) in self.idles.take_heard() {
+            world.units.push_sound(id, Some(heard));
+        }
+    }
+
     /// The random use time of a pending building of type `ty`, drawn when it is made (guest
     /// buildings 10.1 point 2.5): none for a type that is not of random use.
     pub(crate) fn use_time(&mut self, ty: &crate::entity::EntityType) -> Option<u32> {
