@@ -270,7 +270,6 @@ impl Cx<'_, '_> {
     /// building target is walked to; if that fails it leaves the building's members and recovers
     /// from the water, mode 1. Whether the guest is returning with a target and no task.
     pub(in crate::goal) fn return_ladder(&mut self) -> bool {
-        let unit = self.unit.id;
         let (building, returning) = match self.guest() {
             Some(g) => (g.building, g.returning.is_some()),
             None => return false,
@@ -279,12 +278,19 @@ impl Cx<'_, '_> {
             return false;
         }
         if !self.set_out(building) {
-            if let Some(live) = self.world.units.buildings.get_mut(&building) {
-                live.members.retain(|&m| m != unit);
-            }
-            self.set_task(RECOVER, 1, 0, None);
+            self.recover_from_water(building);
         }
         true
+    }
+
+    /// A returning guest whose walk to its building cannot start (goals 12.2.1 point 2): it leaves
+    /// the building's members and recovers from the water, mode 1.
+    pub(in crate::goal) fn recover_from_water(&mut self, building: u32) {
+        let unit = self.unit.id;
+        if let Some(live) = self.world.units.buildings.get_mut(&building) {
+            live.members.retain(|&m| m != unit);
+        }
+        self.set_task(RECOVER, 1, 0, None);
     }
 
     /// The guest's AI reset (guest buildings 12.2 point 21, simulation 8.1): a guest in the

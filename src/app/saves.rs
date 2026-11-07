@@ -75,8 +75,9 @@ impl App<'_> {
 
     /// Writes the game to `path` through a file beside it that is renamed when it is whole, so a
     /// failed save keeps the file that was there.
-    fn write_zoo(&self, path: &Path) -> Result<(), String> {
-        let game = self.game.as_ref().ok_or("no game to save")?;
+    fn write_zoo(&mut self, path: &Path) -> Result<(), String> {
+        let game = self.game.as_mut().ok_or("no game to save")?;
+        self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());

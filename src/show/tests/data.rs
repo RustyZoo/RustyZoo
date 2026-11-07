@@ -93,7 +93,7 @@ fn orca_at_its_ball(vfs: &Vfs) -> (Run, u32, u32) {
 }
 
 /// The run `run` saved and opened again as Continue does.
-fn reload(vfs: &Vfs, run: &Run) -> Run {
+fn reload(vfs: &Vfs, run: &mut Run) -> Run {
     let cat = Catalogue::load(vfs).unwrap();
     let (zoo, money) = Zoo::parse_money(&run.save().unwrap())
         .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
@@ -146,7 +146,7 @@ fn an_orca_in_an_orcaball_keeps_its_trick_need_through_a_save_a_reset_and_a_load
     crate::goal::stop_use(run.world.units.get_mut(orca).unwrap());
     assert_eq!(saved_need(&run.save().unwrap(), orca), toy);
     // A load gives it back whatever the task and the building are.
-    let back = reload(&vfs, &run);
+    let mut back = reload(&vfs, &mut run);
     let Part::Animal(a) = &back.world.units.get(orca).unwrap().part else {
         panic!("no animal")
     };
@@ -221,7 +221,7 @@ fn the_portal_of_scn28_opens_for_an_orca_on_its_way_to_the_show_and_closes_after
     both(&mut run, 1);
     assert_eq!(frame(&run.world, second.1, n), n - 1);
     // Saved while open and loaded: byte 1, the last frame, nothing animating.
-    let loaded = reload(&vfs, &run);
+    let loaded = reload(&vfs, &mut run);
     let [a, _] = walls(&loaded.world);
     assert!(open_byte(&loaded.world, a.0));
     assert_eq!(frame(&loaded.world, a.1, n), n - 1);

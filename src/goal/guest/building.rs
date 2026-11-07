@@ -118,10 +118,10 @@ impl Cx<'_, '_> {
         let (want, none) = wants(need);
         self.think(want, None);
         let found = self.nearest(need, i64::from(radius), !energy);
-        if found.is_ok_and(|b| self.head_for(b, need)) {
-            return;
-        }
         match found {
+            Ok(b) if self.head_for_at(b, need, energy) => return,
+            // The walk start has cleared the goal and thought what it had to (6.2 point 2).
+            Ok(_) if !energy => return,
             Err(Some(b)) => self.think(CROWDED, Some(b)),
             _ => self.think(none, None),
         }
@@ -159,16 +159,53 @@ impl Cx<'_, '_> {
 
     /// Guest buildings 6.2: the guest takes building `b` for `need` and sets out for the entrance
     /// of the nearest open slot: task 0x66, or 0x67 for a type with a direct entrance. Whether it
-    /// did; if not, the target is cleared.
+    /// did. If not (guest buildings 6.2 point 2, goals 12.2.1 point 2): a guest thinks 10243 when
+    /// the building is at its capacity and the goal record has a target tile; a returning guest
+    /// recovers from the water and the start counts as done; any other guest clears its goal,
+    /// which raises its wandered flag.
     pub(in crate::goal) fn head_for(&mut self, b: u32, need: &'static str) -> bool {
+        self.head_for_at(b, need, false)
+    }
+
+    /// [`Cx::head_for`]; `shortcut` for the searches that pass 1 to the walk start (the energy
+    /// seek and the first trash search), whose failure is never the water recovery.
+    pub(in crate::goal) fn head_for_at(
+        &mut self,
+        b: u32,
+        need: &'static str,
+        shortcut: bool,
+    ) -> bool {
+        let tiled = self.record().target.tile.is_some();
         if let Some(g) = self.guest() {
             (g.need, g.building) = (Some(need), b);
         }
-        let started = self.set_out(b);
-        if !started {
-            self.clear_target();
+        if self.set_out(b) {
+            return true;
         }
-        started
+        let returning = self.guest().is_some_and(|g| g.returning.is_some());
+        if self.guest().is_some() {
+            if tiled && self.at_capacity(b) {
+                self.think(CROWDED, Some(b));
+            }
+            if returning && !shortcut {
+                self.recover_from_water(b);
+                return true;
+            }
+            self.clear_goal();
+        }
+        self.clear_target();
+        false
+    }
+
+    /// Whether building `id` has a slot and its users have reached `cCapacity` (the crowded test
+    /// of guest buildings 6.2 point 2).
+    fn at_capacity(&self, id: u32) -> bool {
+        let Some((_, kind)) = self.building(id) else {
+            return false;
+        };
+        let live = self.world.units.buildings.get(&id);
+        let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
+        !kind.slots.is_empty() && users >= kind.capacity.max(0) as usize
     }
 
     /// The walk of [`Cx::head_for`] to the entrance of the nearest open slot of building `b`.
@@ -258,14 +295,11 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Whether building `id` has no open slot for the guest.
-    pub(super) fn full(&mut self, id: u32) -> bool {
-        let Some((e, kind)) = self.building(id) else {
-            return false;
-        };
-        let who = self.species();
-        let live = self.world.units.buildings.get(&id);
-        !building::has_open_slot(self.world, &e, &kind, live, who.as_ref())
+    /// Whether building `id` exists and satisfies the need being served (goals 11.3: the slot
+    /// search finds no building otherwise).
+    fn serves(&mut self, id: u32) -> bool {
+        let need = self.need();
+        (self.building(id)).is_some_and(|(_, k)| need.is_none_or(|n| k.satisfies(n)))
     }
 
     /// A building with no free slot (goals 11.3): a guest thinks it is crowded, the building joins
@@ -283,8 +317,9 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn building_arrived(&mut self) {
         self.cost_back();
         let id = self.target().0;
-        // A building that is gone (rubble) only ends the goal: no thought, no note (goals 11.3).
-        if self.building(id).is_none() {
+        // A building that is gone (rubble) or no longer serves the need only ends the goal: no
+        // thought, no note (goals 11.3).
+        if !self.serves(id) {
             return self.clear_goal();
         }
         let slot = self.open_slot(id);
@@ -309,7 +344,7 @@ impl Cx<'_, '_> {
         let Some(id) = self.aim().map(|(b, _, _)| *b) else {
             return;
         };
-        let Some((_, kind)) = self.building(id) else {
+        let Some((_, kind)) = self.building(id).filter(|_| self.serves(id)) else {
             return self.clear_goal();
         };
         let Some((slot, _)) = self.open_slot(id) else {
@@ -363,12 +398,9 @@ impl Cx<'_, '_> {
     /// 0x68 check done: one time in 15 the goal ends when the building is gone or no longer
     /// serves the need (a full slot is left to the complete); done at the slot.
     pub(in crate::goal) fn enter_check_done(&mut self) {
-        let (id, need) = (self.target().0, self.need());
-        if self.ctx.rng.pick(15) == 0 {
-            let serves = self.building(id);
-            if !serves.is_some_and(|(_, k)| need.is_none_or(|n| k.satisfies(n))) {
-                return self.reset();
-            }
+        let id = self.target().0;
+        if self.ctx.rng.pick(15) == 0 && !self.serves(id) {
+            return self.reset();
         }
         if self.reached(false) {
             self.record().done = true;
@@ -386,6 +418,10 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn enter_arrived(&mut self) {
         self.unit.path.clear();
         let (id, slot) = self.target();
+        // A building that no longer serves the need ends the goal only (goals 11.3, 11.3.1).
+        if !self.serves(id) {
+            return self.clear_goal();
+        }
         let set = self.building(id).filter(|(_, k)| self.uses_set(k));
         let started = match set {
             Some((e, _)) if self.may_add(id, slot) => {

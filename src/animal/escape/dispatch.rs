@@ -7,9 +7,15 @@ use crate::unit::{Ctx, Unit};
 use crate::world::World;
 
 /// The predator, playmate and prey searches that follow a firing of the escape check; the rules are
-/// [`Cx::escape_dispatch`]'s, which reads the task as it was before this check.
-pub(super) fn run(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
-    let task = unit.goal.record.task;
+/// [`Cx::escape_dispatch`]'s; `task` is the goal task read before the check's rampage step.
+pub(super) fn run(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    task: u8,
+) {
     let mut cx = Cx {
         unit,
         world,
