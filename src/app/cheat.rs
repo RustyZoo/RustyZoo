@@ -3,7 +3,7 @@
 
 use super::App;
 use super::cheat_guest::palette_set;
-use crate::cheat::{Cheat, Fly, Named, Subject};
+use crate::cheat::{Cheat, Fly, Named, Subject, WITCH};
 use crate::flight;
 use crate::text::from_cp1252;
 
@@ -83,6 +83,7 @@ impl App<'_> {
             self.sim.note(format!("flight {id} missing"));
             return;
         };
+        self.sim.spawns.add(id);
         let files = self.renderer.set_files(ty);
         let Some(game) = &mut self.game else { return };
         let made = flight::launch(&mut game.world, cat, ty, files, &mut self.sim.rng);
@@ -102,6 +103,9 @@ impl App<'_> {
         let (set, fly) = self.cheats.season.game_started(real);
         if let Some(fly) = fly {
             self.sim.note(fly.line());
+            // The permanent witch makes no creature: the witch type spawns every 30 s (ambients 7.4).
+            self.sim.spawns.add(WITCH);
+            self.sim.spawns.period(WITCH, 30);
         }
         if real {
             palette_set(&mut game.world, cat, [10, 2, 11], [7, 5]);

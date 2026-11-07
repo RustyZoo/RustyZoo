@@ -180,6 +180,8 @@ pub(crate) struct Sim {
     /// The world clock: whole seconds and the milliseconds left over.
     world_secs: u32,
     world_rem: u32,
+    /// The spawn list of the world (ambients 7).
+    pub(crate) spawns: crate::flight::Spawns,
     /// The slots of the animated water (7.2).
     ripples: ripple::Ripples,
     /// The idle animation clocks of the fixed objects (sprite drawing 6.2).
@@ -228,6 +230,7 @@ impl Sim {
             next_clear: 0,
             world_secs: 0,
             world_rem: 0,
+            spawns: Default::default(),
             ripples: ripple::Ripples::default(),
             idles: idle::Idles::default(),
             removals: Vec::new(),
@@ -305,6 +308,7 @@ impl Sim {
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
+        self.spawns.clear();
         self.ripples.clear();
         self.idles.clear();
         self.bulldozed.clear();
@@ -432,6 +436,23 @@ impl Sim {
     pub(crate) fn start_scenario(&mut self, scenario: Scenario) {
         scenario.start(&mut self.lines);
         self.scenario = Some(scenario);
+    }
+
+    /// The world clock advances by `step` ms, then the ambient creatures whose period passed are
+    /// made (ambients 7 point 2).
+    fn tick_world(&mut self, data: &dyn Data, cat: &Catalogue, world: &mut World, step: u32) {
+        let total = self.world_rem.wrapping_add(step);
+        self.world_rem = total % 1000;
+        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        for ty in self.spawns.due(cat, self.world_secs) {
+            crate::flight::launch(world, cat, ty, data.set_files(ty), &mut self.rng);
+        }
+    }
+
+    /// The scenario's ambients join the spawn list, after its start hook (scenarios 5.2, ambients 7).
+    pub(crate) fn add_scenario_ambients(&mut self) {
+        let ids = self.scenario.as_ref().map_or(&[][..], |s| s.ambients());
+        ids.iter().for_each(|&id| self.spawns.add(id));
     }
 
     /// A saved game that holds `scenario` opened (scenarios 5.3): its goals read the stored
@@ -843,9 +864,7 @@ impl Sim {
         crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
         self.water_effects(world, cat, step);
-        let total = self.world_rem.wrapping_add(step);
-        self.world_rem = total % 1000;
-        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).
         crate::show::listen_world(world, cat, &mut self.events, &mut self.rng);
         // The scenario manager.
