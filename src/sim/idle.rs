@@ -204,13 +204,21 @@ impl Idles {
     /// Queues `used` `times` times behind the base loop of the building at `at`, as the rubble's
     /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). It joins the queue
     /// when the clocks advance at the end of the step: the original advances the animation before
-    /// the check. A building with no clock or no `used` plays nothing.
-    pub(crate) fn queue_used(&mut self, world: &World, at: usize, times: u32, data: &dyn Data) {
+    /// the check. A building with no clock or no `used` plays nothing and gives `false`.
+    pub(crate) fn queue_used(
+        &mut self,
+        world: &World,
+        at: usize,
+        times: u32,
+        data: &dyn Data,
+    ) -> bool {
         let e = &world.zoo.entities[at];
         let id = e.common.as_ref().map_or(0, |c| c.id);
-        if let (true, Some(t)) = (self.fixed.contains_key(&id), data.timing(e, "used")) {
-            self.later.push((id, t, times));
-        }
+        let timing = data
+            .timing(e, "used")
+            .filter(|_| self.fixed.contains_key(&id));
+        self.later.extend(timing.map(|t| (id, t, times)));
+        timing.is_some()
     }
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
