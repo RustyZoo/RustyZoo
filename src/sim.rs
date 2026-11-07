@@ -554,6 +554,12 @@ impl Sim {
     pub(crate) fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
+        // Every entity base word stored as 0 is the AI clock (zoo format 6.4, from version 35).
+        if world.zoo.version >= 35 {
+            for c in (world.zoo.entities.iter_mut()).filter_map(|e| e.common.as_mut()) {
+                c.stamp.get_or_insert(self.ai_ticks);
+            }
+        }
         for at in 0..world.zoo.entities.len() {
             if old && world.is_fence(at) {
                 self.heal(world, cat, at);

@@ -1807,3 +1807,45 @@ fn a_step_queues_the_explode_of_the_pieces_just_made() {
     assert_eq!(at(&mut sim, &mut w), Vec::<u32>::new());
     assert!(w.units.take_exploded().is_empty());
 }
+
+/// A load stamps the AI clock on every entity whose stored base word is 0, of every class, from
+/// version 35 (zoo format 6.4); a stored word stays, and an older file stays as it was.
+#[test]
+fn a_load_stamps_every_entity_with_a_zero_word_with_the_clock() {
+    use crate::unit::testing::{centre, entity, world_with};
+    let classes = ["objects", "food", "paths", "fences", "tankwall", "ambient"]
+        .into_iter()
+        .chain([
+            "filter", "rubble", "building", "animals", "guests", "keepers",
+        ]);
+    for (version, ticks, want) in [(70, 900, Some(900)), (35, 0, Some(0)), (34, 900, None)] {
+        let mut w = world_with((4, 4), |zoo| {
+            zoo.version = version;
+            for (id, class) in classes.clone().enumerate() {
+                zoo.entities
+                    .push(entity(class, "x", id as u32 + 1, centre((0, 0)), 0));
+            }
+            zoo.entities
+                .push(entity("objects", "x", 99, centre((1, 1)), 0));
+        });
+        w.zoo.version = version;
+        for e in &mut w.zoo.entities {
+            let c = e.common.as_mut().unwrap();
+            c.stamp = (c.id == 99).then_some(7);
+        }
+        let mut sim = Sim::new(b"");
+        sim.start_game(
+            16,
+            Clocks {
+                ai_ticks: ticks,
+                ..Clocks::default()
+            },
+        );
+        sim.load(&mut w, &Catalogue::default());
+        for e in &w.zoo.entities {
+            let c = e.common.as_ref().unwrap();
+            let want = if c.id == 99 { Some(7) } else { want };
+            assert_eq!(c.stamp, want, "{} version {version}", e.class);
+        }
+    }
+}
