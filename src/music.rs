@@ -44,6 +44,17 @@ pub fn vehicle_turn(seen: bool, playing: bool, sum: i32) -> LoopTurn {
         _ => loop_turn(playing, sum),
     }
 }
+/// The turn of a loop with no position, as the soundscape's (sound 8.1): it is tried once, at its
+/// start (`tried`: it was), so one that did not start, for a sum over [`START_LIMIT`], never does
+/// later; a playing one takes its new volume, unless the sum is over 10,000, which keeps the
+/// volume it had (sound 4.1). It is never stopped by its sum.
+pub fn scene_turn(tried: bool, playing: bool, sum: i32) -> LoopTurn {
+    match (tried, playing, sum) {
+        (_, true, ..=10_000) => LoopTurn::Refresh,
+        (false, false, ..=START_LIMIT) => LoopTurn::Start,
+        _ => LoopTurn::Idle,
+    }
+}
 /// The most the fade term `F` may reach before the music is stopped.
 const FADE_END: i32 = 3000;
 /// A step of this many milliseconds or more does not advance the fade.
@@ -241,6 +252,21 @@ mod tests {
         assert_eq!(vehicle_turn(true, true, REFRESH_LIMIT + 1), Stop);
         // Stopped: the voice is gone, so it is not playing and never starts again.
         assert_eq!(vehicle_turn(true, false, 0), Idle);
+    }
+
+    #[test]
+    fn a_soundscape_loop_is_tried_once_and_its_start_needs_a_sum_not_over_6000() {
+        use LoopTurn::*;
+        assert_eq!(scene_turn(false, false, START_LIMIT), Start);
+        assert_eq!(scene_turn(false, false, START_LIMIT + 1), Idle);
+        // The crowd loop with a slider below 100: 600 + 1,500 + 4,500, and never later at a lower fade.
+        assert_eq!(scene_turn(true, false, 2100), Idle);
+        assert_eq!(scene_turn(true, false, i32::MIN), Idle);
+        // A playing one follows its sum, never stops, and keeps its volume over 10,000.
+        assert_eq!(scene_turn(true, true, REFRESH_LIMIT + 1), Refresh);
+        assert_eq!(scene_turn(true, true, 10_000), Refresh);
+        assert_eq!(scene_turn(true, true, 10_001), Idle);
+        assert_eq!(scene_turn(true, true, i32::MIN), Refresh);
     }
 
     #[test]

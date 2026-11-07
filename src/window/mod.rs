@@ -305,6 +305,7 @@ fn sound_and_log(
     sound.restart(vfs, app);
     sound.clicks(vfs, app);
     sound.loops(vfs, app);
+    sound.scene(vfs, app);
     Ok(())
 }
 
