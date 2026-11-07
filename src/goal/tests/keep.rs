@@ -66,12 +66,23 @@ fn tank() -> World {
 
 #[test]
 fn only_the_random_walk_and_the_keeper_food_task_get_the_pile_and_the_tile_past_it() {
-    let end = |task, keys| walk(&mut ground(), keys, task, (14, 10)).map(|p| p[p.len() - 3..].to_vec());
+    let end =
+        |task, keys| walk(&mut ground(), keys, task, (14, 10)).map(|p| p[p.len() - 3..].to_vec());
     let w = ground();
     let t = |x| tile(&w, (x, 10));
     for task in [RANDOM, KEEPER_FOOD] {
-        assert_eq!(end(task, "cKeepMoving=1"), Some(vec![t(13), t(14), t(15)]), "{task}");
-        for keys in ["cKeepMoving=0", "cKeepMoving=2", "cKeepMoving=-1", "", "cKeepMoving=2147483647"] {
+        assert_eq!(
+            end(task, "cKeepMoving=1"),
+            Some(vec![t(13), t(14), t(15)]),
+            "{task}"
+        );
+        for keys in [
+            "cKeepMoving=0",
+            "cKeepMoving=2",
+            "cKeepMoving=-1",
+            "",
+            "cKeepMoving=2147483647",
+        ] {
             let p = walk(&mut ground(), keys, task, (14, 10)).unwrap();
             assert_eq!(p.last(), Some(&t(13)), "{task} {keys}");
         }
@@ -96,7 +107,11 @@ fn a_keep_moving_swimmer_in_a_tank_goes_over_the_food_and_one_tile_past_it() {
     assert_eq!(end(p, 3), Some(vec![t(3), t(4), t(5)]));
     // The drink task and a species that does not keep moving stop on the neighbour.
     for (task, keys) in [(DRINK, "cKeepMoving=1"), (KEEPER_FOOD, "cKeepMoving=0")] {
-        assert_eq!(end(path(task, keys, (4, 3)), 1), Some(vec![t(3)]), "{task} {keys}");
+        assert_eq!(
+            end(path(task, keys, (4, 3)), 1),
+            Some(vec![t(3)]),
+            "{task} {keys}"
+        );
     }
     // The food at the wall (5, 3): the tile past is not water, so one point is appended.
     let p = path(KEEPER_FOOD, "cKeepMoving=1", (5, 3));

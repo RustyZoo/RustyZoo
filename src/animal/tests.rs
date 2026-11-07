@@ -2351,7 +2351,10 @@ fn walks_of(keys: &str, (id, pile): (u32, (i32, i32))) -> Vec<(Vec<usize>, usize
         assert!(run.apply(&Command::Food(pile.0, pile.1, "herbchow".into(), Some(45))));
         for _ in 0..40 * 15 {
             let log = step_log(&mut run, &data);
-            if log.iter().any(|l| l == &format!("unit set {id} bFindKeeperFood")) {
+            if log
+                .iter()
+                .any(|l| l == &format!("unit set {id} bFindKeeperFood"))
+            {
                 let unit = run.world.units.get(id).unwrap();
                 let target = unit.goal.record.target.tile.unwrap();
                 found.push((unit.path.clone(), target));
@@ -2419,6 +2422,67 @@ fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
             .iter()
             .all(|(p, t)| p.last() == Some(t))
     );
+}
+
+/// The eating flag and the task of zebra 500 in the step of its first bite, with the extra zebra
+/// keys `keys`, for each seed from 1 to 9.
+fn first_bites(keys: &str) -> Vec<(bool, u8)> {
+    use crate::sim::drive::{Command, Run};
+    let mut found = vec![];
+    for seed in 1..10 {
+        let mut run = Run::new(
+            (b"", b""),
+            (feeding_of(keys), Class::default()),
+            pens(),
+            Default::default(),
+            seed,
+        );
+        let data = Eats::new();
+        step_log(&mut run, &data);
+        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        for _ in 0..40 * 15 {
+            if step_log(&mut run, &data)
+                .iter()
+                .any(|l| l.starts_with("animal eat 500"))
+            {
+                let unit = run.world.units.get(500).unwrap();
+                let Part::Animal(a) = &unit.part else {
+                    panic!("not an animal");
+                };
+                found.push((a.eating, unit.goal.record.task));
+                break;
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn a_keep_moving_animal_takes_the_random_walk_when_it_eats_and_sets_no_eating_flag() {
+    let keep = first_bites("cKeepMoving=1\n");
+    assert_eq!(keep.len(), 9);
+    assert!(
+        keep.iter().all(|&b| b == (false, crate::goal::RANDOM)),
+        "{keep:?}"
+    );
+    // Any other value eats the usual way: the flag is up and the food task goes on.
+    let huge = format!("cKeepMoving={}\n", i32::MAX);
+    for keys in [
+        "",
+        "cKeepMoving=0\n",
+        "cKeepMoving=-1\n",
+        "cKeepMoving=2\n",
+        &huge,
+    ] {
+        let usual = first_bites(keys);
+        assert_eq!(usual.len(), 9, "{keys}");
+        let food = (true, crate::goal::KEEPER_FOOD);
+        assert!(usual.iter().all(|&b| b == food), "{keys}: {usual:?}");
+    }
 }
 
 #[test]
