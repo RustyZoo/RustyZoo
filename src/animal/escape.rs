@@ -7,7 +7,6 @@ mod dispatch;
 
 use super::{Animal, Class, ESCAPE, Env, Keys, Out, fire};
 use crate::behaviour::{Data, Env as Run};
-use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::path::{Mover, SLOT};
 use crate::rubble::{Kit, PIECE_NAME, leave_rubble};
@@ -67,7 +66,7 @@ pub(crate) fn crossing(kind: u32) -> Option<&'static str> {
 /// plays the crossing animation; leaving it, or reaching the last tile `B` without having entered
 /// it, breaks the fence of a bash, or of a jump by a species that bashes; `B` plays `run` after a
 /// jump or a climb.
-pub(crate) fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: usize) {
+pub(crate) fn entered(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, new: usize) {
     let bash = unit.mover.bash > 0;
     let Part::Animal(a) = &mut unit.part else {
         return;
@@ -94,7 +93,7 @@ pub(crate) fn entered(unit: &mut Unit, world: &mut World, cat: &Catalogue, new: 
     if smash {
         w.broken = 1;
         let line = (w.a, w.b);
-        break_line(world, cat, line, new);
+        break_line(world, ctx, line, new);
     }
 }
 
@@ -145,8 +144,9 @@ pub(crate) fn trample(unit: &Unit, world: &mut World, ctx: &mut Ctx, t: usize) {
 
 /// Breaks the fence behind tile `t` on the way from `A` to `B` (the sign direction `d`): the piece
 /// on `t`'s side `d + 4` and the one on side `d` of the neighbour that way, each only when it is a
-/// piece that can break.
-fn break_line(world: &mut World, cat: &Catalogue, (a, b): ([i32; 2], [i32; 2]), t: usize) {
+/// piece that can break. A piece that breaks draws two start times, here in the animal's update
+/// (sprite drawing 3.6 item 4).
+fn break_line(world: &mut World, ctx: &mut Ctx, (a, b): ([i32; 2], [i32; 2]), t: usize) {
     let step = ((b[0] - a[0]).signum(), (b[1] - a[1]).signum());
     let Some(d) = DIR.iter().position(|&s| s == step) else {
         return;
@@ -155,14 +155,12 @@ fn break_line(world: &mut World, cat: &Catalogue, (a, b): ([i32; 2], [i32; 2]), 
     let behind = world.neighbour(t, back).and_then(|n| world.edge(n, d));
     let mut lines = Vec::new();
     for p in [world.edge(t, back), behind].into_iter().flatten() {
-        if !world.wears(cat, p) {
-            continue;
+        let mut events = Vec::new();
+        if world.break_piece(ctx.cat, p, &mut lines, &mut events) {
+            let start = (0..2).map(|_| ctx.rng.pick(2000)).last().unwrap_or(0);
+            let id = world.zoo.entities[p].common.as_ref().map(|c| c.id);
+            world.units.mended.extend(id.map(|id| (id, start)));
         }
-        let fence = (world.zoo.entities[p].common.as_mut()).and_then(|c| c.fence.as_mut());
-        if let Some(f) = fence.filter(|f| f.life > 1) {
-            f.life = 1;
-        }
-        let events = world.wear(cat, p, u32::MAX, &mut lines);
         world.units.posts.extend(events);
     }
     lines.into_iter().for_each(|l| world.units.world_note(l));

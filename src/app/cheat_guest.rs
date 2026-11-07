@@ -146,12 +146,7 @@ impl App<'_> {
                 palette_set(&mut game.world, cat, guests, buildings)
             }
             Cheat::GuestsLeave => each_guest(&mut game.world, |g| g.leave = true),
-            Cheat::FencesBreak => {
-                let mut lines = Vec::new();
-                let events = game.world.break_fences(cat, &mut lines);
-                lines.into_iter().for_each(|l| self.sim.note(l));
-                events.into_iter().for_each(|e| self.sim.post(e));
-            }
+            Cheat::FencesBreak => self.sim.break_fences(&mut game.world, cat),
             Cheat::GuestsSick => guests_sick(&mut game.world),
             Cheat::UnlockScenarios => {
                 if let Some(menu) = &mut self.menu {

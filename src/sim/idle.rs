@@ -170,6 +170,9 @@ fn fence_clock(world: &World, cat: &Catalogue, data: &dyn Data, e: &Entity, star
 pub(crate) struct Idles {
     fixed: BTreeMap<u32, Clock>,
     bubbles: BTreeMap<u32, (u32, Clock)>,
+    /// The start times drawn for fence pieces outside the entity loop, taken by the next
+    /// [`Idles::register`].
+    pub(super) starts: BTreeMap<u32, u32>,
     /// The `used` queued by the check of this step (entity id, timing, times): it joins the queue
     /// after the clocks advance, so it cannot start before the next step.
     later: Vec<(u32, Timing, u32, Option<Heard>)>,
@@ -182,6 +185,7 @@ impl Idles {
     pub(crate) fn clear(&mut self) {
         self.fixed.clear();
         self.bubbles.clear();
+        self.starts.clear();
         self.later.clear();
         self.heard.clear();
     }
@@ -189,6 +193,13 @@ impl Idles {
     /// The use sounds the `used` sequences that began since the last call start at their building.
     pub(crate) fn take_heard(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.heard)
+    }
+
+    /// The start time of the fence piece `id` was drawn outside the entity loop (a heal or a
+    /// break, sprite drawing 3.6 items 4 and 5): its animation starts there at the next register,
+    /// whether or not its picture changed.
+    pub(crate) fn start_next(&mut self, id: u32, start: u32) {
+        self.starts.insert(id, start);
     }
 
     /// The frame of each animated clock, for the picture: an entity under its id, the bubbles of a
@@ -279,7 +290,10 @@ impl Idles {
             // before it looks at the frame count), and again when its picture changes.
             if kind == Kind::Edge && !e.subtype.starts_with('g') {
                 let state = fence_state(world, cat, e);
-                if self.fixed.get(&c.id).is_none_or(|k| k.state != state) {
+                if let Some(start) = self.starts.remove(&c.id) {
+                    self.fixed
+                        .insert(c.id, fence_clock(world, cat, data, e, start));
+                } else if self.fixed.get(&c.id).is_none_or(|k| k.state != state) {
                     self.fixed
                         .insert(c.id, fence_clock(world, cat, data, e, rng.pick(2000)));
                 }
@@ -319,6 +333,7 @@ impl Idles {
                 .collect();
             self.fixed.retain(|id, _| live.contains(id));
         }
+        self.starts.clear();
         self.register_bubbles(world, data);
     }
 

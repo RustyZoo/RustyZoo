@@ -1752,7 +1752,11 @@ fn a_fence_drag_buys_pieces_on_the_side_of_the_press_and_each_tile_has_its_own_s
         ],
     );
     assert_eq!(cost(&app), Some(0));
+    let mut drawn = app.sim.rng.clone();
     app.pass(140, &[Command::Mouse(Mouse::Up)]);
+    // Each morph draws an interval and its start time.
+    (0..12).for_each(|_| _ = drawn.rand());
+    assert_eq!(app.sim.rng.state(), drawn.state());
     let told = lines(&app, 8, 140);
     assert_eq!(told.len(), 6, "a retype for each piece, no cash line");
     assert_eq!(told[0], "world retype fences/iron/ 20,20 side 0 id 1");

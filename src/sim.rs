@@ -441,11 +441,6 @@ impl Sim {
         self.scenario.as_ref()
     }
 
-    /// Posts an event to the queue, as a unit's change does.
-    pub(crate) fn post(&mut self, event: Event) {
-        self.events.post(event);
-    }
-
     /// Moves the events the world has posted since the last step into the queue at once, so a save
     /// or a hash taken before the next step holds them, ahead of that step's own posts
     /// (guest buildings 6.6 point 4).
