@@ -765,9 +765,7 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
-                for mended in std::mem::take(&mut world.units.mended) {
-                    self.idles.start_fence(world, cat, data, mended);
-                }
+                self.start_mended(world, cat, data);
                 self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
