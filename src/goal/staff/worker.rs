@@ -462,6 +462,14 @@ impl Cx<'_, '_> {
             if self.world.heal(cat, id, &mut || rng.rand()).is_none() {
                 continue;
             }
+            // The routine ends with the piece's position validation: a piece that is not a gate
+            // draws its start time right after its interval, its picture changed or not.
+            let gate = (self.world.find(id))
+                .is_none_or(|e| self.world.zoo.entities[e].subtype.starts_with('g'));
+            if !gate {
+                let start = self.ctx.rng.pick(2000);
+                self.world.units.mended.push((id, start));
+            }
             let life = (self.world.find(id))
                 .and_then(|e| self.world.zoo.entities[e].common.as_ref()?.fence)
                 .map_or(0, |f| f.life);

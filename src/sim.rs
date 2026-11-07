@@ -29,6 +29,7 @@ mod ripple;
 mod rng;
 #[cfg(test)]
 mod tests;
+mod wear;
 #[cfg(test)]
 mod wear_tests;
 
@@ -512,29 +513,6 @@ impl Sim {
         }
     }
 
-    /// Makes the fence piece at `at` healthy and draws its wear interval (placing 7.4); a line
-    /// tells of a piece that wears.
-    fn heal(&mut self, world: &mut World, cat: &Catalogue, at: usize) {
-        let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
-            return;
-        };
-        if let Some(interval) = world.heal(cat, id, &mut || self.rng.rand())
-            && world.wears(cat, at)
-        {
-            self.lines.push(format!("fence {id} healthy {interval}"));
-        }
-    }
-
-    /// The repair cheat (placing 7.4): every fence piece that is broken or at or below its type's
-    /// decayed life is made healthy.
-    pub(crate) fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
-        for at in 0..world.zoo.entities.len() {
-            if world.decayed(cat, at) {
-                self.heal(world, cat, at);
-            }
-        }
-    }
-
     /// A new game (not a saved one) has just been set up: with `fences` (the map file's
     /// `resetfences` above 0) every fence piece is made healthy and draws its wear interval,
     /// otherwise the pieces stay as the map stores them (placing 7.4); the timers, the donation
@@ -784,6 +762,9 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
+                for mended in std::mem::take(&mut world.units.mended) {
+                    self.idles.start_fence(world, cat, data, mended);
+                }
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);
@@ -791,9 +772,7 @@ impl Sim {
                 // A grandstand reads the events of its show (shows 6.3).
                 crate::show::listen_grandstand(world, cat, &mut self.events, &mut self.rng, at);
                 // A fence piece wears at its own place in the list.
-                for event in world.wear(cat, at, step, &mut self.lines) {
-                    self.events.post(event);
-                }
+                self.wear_fence(world, cat, data, at, step);
                 // So does a tank filter.
                 let (events, gone) = world.filter_step(cat, at, step);
                 for event in events {

@@ -17,7 +17,7 @@ mod pick;
 mod placed;
 mod shape;
 mod stage;
-pub(crate) use object::rest_name;
+pub(crate) use object::{fence_name, rest_name};
 pub(crate) use shape::shape_of;
 #[cfg(test)]
 use stage::{add_ripples, bubbles};

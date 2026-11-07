@@ -460,6 +460,9 @@ pub struct Units {
     pub(crate) gawk: crate::guest::gawk::Gawk,
     /// The events the units posted to the task pool during the step, which the step posts.
     pub(crate) posts: Vec<Event>,
+    /// The fence pieces a worker mended during the step, with the start time each drew
+    /// (sprite drawing 3.6 item 5), which the step gives to their animation.
+    pub(crate) mended: Vec<(u32, u32)>,
     /// The maintenance task pool (staff 8.2).
     pub(crate) pool: crate::staff::pool::Pool,
     world_lines: Vec<String>,
@@ -521,6 +524,7 @@ impl Default for Units {
             mega: Default::default(),
             gawk: Default::default(),
             posts: Vec::new(),
+            mended: Vec::new(),
             pool: Default::default(),
             world_lines: Vec::new(),
             reactions: Vec::new(),
