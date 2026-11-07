@@ -51,7 +51,7 @@ use crate::guest;
 use crate::money::{self, Money};
 use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
-use crate::soundscape::{SceneLoop, Shot, Soundscape};
+use crate::soundscape::{Calls, SceneLoop, Shot, Soundscape};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -202,6 +202,8 @@ pub(crate) struct Sim {
     arrived: bool,
     /// The ambient sounds of the game being played, if it has them (sound 8.1).
     soundscape: Option<Soundscape>,
+    /// The calls of the ambient creatures: the groups outlive a game (ambients 6.4 point 4).
+    calls: Calls,
     /// The computer's (month, day) in UTC; a test sets another (cheats 6.1 point 2).
     pub(crate) real_day: fn() -> (u32, u32),
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
@@ -241,6 +243,7 @@ impl Sim {
             research_done: Vec::new(),
             arrived: false,
             soundscape: None,
+            calls: Calls::default(),
             real_day: crate::timing::utc_day,
             hire_male: false,
         };
@@ -330,9 +333,9 @@ impl Sim {
 
     /// The ambient one-shots the steps since the last call asked for.
     pub(crate) fn take_shots(&mut self) -> Vec<Shot> {
-        self.soundscape
-            .as_mut()
-            .map_or_else(Vec::new, Soundscape::take_shots)
+        let mut shots = (self.soundscape.as_mut()).map_or_else(Vec::new, Soundscape::take_shots);
+        shots.extend(self.calls.take());
+        shots
     }
 
     /// The loops of the soundscape playing now (sound 8.1).
@@ -795,6 +798,8 @@ impl Sim {
                 self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
+                let calls = &mut self.calls;
+                crate::flight::call(calls, world, cat, data, at, step, &mut self.rng);
                 crate::show::advance_portals(world, data, at, step);
                 update(world, at, step);
                 // A grandstand reads the events of its show (shows 6.3).

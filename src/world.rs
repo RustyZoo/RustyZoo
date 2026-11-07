@@ -279,15 +279,21 @@ impl World {
     /// A loaded zoo whose stored locale is not the install language keeps no entity name either:
     /// each entity is named like a new one (type text in the install language, numbered by the
     /// counters of a new world in file order), then the file's counters are put back
-    /// (localisation 10, zoo format 2 rule 5). Needs the type names of `units.names`, so it runs
-    /// once the interface gave them.
+    /// (localisation 10, zoo format 2 rule 5). A loaded ambient with an empty name is named so in
+    /// any case (ambients 3.3). Needs the type names of `units.names`, so it runs once the
+    /// interface gave them.
     pub(crate) fn name_loaded_entities(&mut self, cat: &Catalogue) {
-        if self.zoo.locale == self.language.number {
-            return;
-        }
+        let same = self.zoo.locale == self.language.number;
         let kept = std::mem::take(&mut self.zoo.names);
         let mut entities = std::mem::take(&mut self.zoo.entities);
         for e in &mut entities {
+            // The names of the file stay, but an ambient with none is named as it is added
+            // (ambients 3.3 point 2).
+            let blank =
+                e.class == "ambient" && e.common.as_ref().is_some_and(|c| c.name.is_empty());
+            if same && !blank {
+                continue;
+            }
             let name = match crate::place::bulldozer::type_of(cat, e) {
                 Some(t) => crate::place::unit::named(self, t),
                 None => String::new(),

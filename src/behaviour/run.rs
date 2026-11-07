@@ -56,6 +56,10 @@ pub trait Data {
     fn set_files(&self, _ty: &EntityType) -> usize {
         0
     }
+    /// The bytes of the data file `name`; `None` when there is none.
+    fn read(&self, _name: &str) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// No data: no set, no animation.

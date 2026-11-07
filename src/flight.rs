@@ -7,16 +7,20 @@
 //! the permanent witch add entries, and the world manager makes a creature for each entry whose
 //! type has a period that has passed.
 //!
-//! Not done yet: the group sound of the witch and the birds, and the shadow over the water of a
-//! tank.
+//! Every move of a creature plays the call its type names (`cSoundName`, ambients 6.4); a creature
+//! added with no name gets its type's text alone (ambients 3.3).
+//!
+//! Not done yet: the shadow over the water of a tank.
 
 use std::collections::BTreeMap;
 
+use crate::behaviour::Data;
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
 use crate::render::order::{STEP, ground_height};
 use crate::render::shape_of;
 use crate::sim::Rng;
+use crate::soundscape::Calls;
 use crate::world::World;
 use crate::zoo::{Common, Entity, Flight};
 
@@ -49,6 +53,15 @@ fn frequency(ty: &EntityType) -> i32 {
         .and_then(|s| s.get("cFrequency"))
         .and_then(to_int)
         .unwrap_or(0)
+}
+
+/// `cSoundName` of the type: the file of its call, empty (no call) by default.
+fn sound_name(ty: &EntityType) -> String {
+    let section = ty.config.as_deref();
+    let section = section.and_then(|c| c.section("Characteristics/Strings"));
+    section
+        .and_then(|s| s.get("cSoundName"))
+        .map_or_else(String::new, crate::vfs::name_from_bytes)
 }
 
 /// The spawn list of the world (ambients 7): for each entry the type's name id and the world second
@@ -145,6 +158,7 @@ pub(crate) fn launch(
             y: ty_ * 64,
             z: ground_height(&world.zoo.tiles[tile], 0, 0),
             rotation: FACING[side][choice],
+            name: crate::place::unit::named(world, ty),
             flight: Some(Flight {
                 speed: speed(ty),
                 acc: 0,
@@ -198,6 +212,31 @@ pub(crate) fn advance(world: &mut World, at: usize, step: u32, removals: &mut Ve
     if !on_map {
         removals.push(id);
     }
+}
+
+/// The call of the creature at position `at` of the entity list after its move (ambients 6.4): its
+/// group plays at the creature's map position with the step `step`, whatever the move made of the
+/// creature. A creature without speed, or any other entity, is silent.
+pub(crate) fn call(
+    calls: &mut Calls,
+    world: &World,
+    cat: &Catalogue,
+    data: &dyn Data,
+    at: usize,
+    step: u32,
+    rng: &mut Rng,
+) {
+    let e = &world.zoo.entities[at];
+    let Some(c) = e.common.as_ref().filter(|_| e.class == "ambient") else {
+        return;
+    };
+    if c.flight.is_none_or(|f| f.speed == 0) {
+        return;
+    }
+    let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
+        return;
+    };
+    calls.play(&sound_name(ty), &|n| data.read(n), (c.x, c.y), step, rng);
 }
 
 #[cfg(test)]
