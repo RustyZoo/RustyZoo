@@ -440,7 +440,7 @@ impl Sim {
 
     /// The world clock advances by `step` ms, then the ambient creatures whose period passed are
     /// made (ambients 7 point 2).
-    fn world_clock(&mut self, data: &dyn Data, cat: &Catalogue, world: &mut World, step: u32) {
+    fn tick_world(&mut self, data: &dyn Data, cat: &Catalogue, world: &mut World, step: u32) {
         let total = self.world_rem.wrapping_add(step);
         self.world_rem = total % 1000;
         self.world_secs = self.world_secs.wrapping_add(total / 1000);
@@ -859,7 +859,7 @@ impl Sim {
         crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
         self.water_effects(world, cat, step);
-        self.world_clock(data, cat, world, step);
+        self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).
         crate::show::listen_world(world, cat, &mut self.events, &mut self.rng);
         // The scenario manager.
