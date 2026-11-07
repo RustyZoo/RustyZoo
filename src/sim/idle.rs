@@ -157,7 +157,7 @@ pub(crate) struct Idles {
     bubbles: BTreeMap<u32, (u32, Clock)>,
     /// The start times drawn for fence pieces outside the entity loop, taken by the next
     /// [`Idles::register`].
-    starts: BTreeMap<u32, u32>,
+    pub(super) starts: BTreeMap<u32, u32>,
 }
 
 impl Idles {
@@ -666,6 +666,26 @@ pub(crate) mod tests {
         );
         idles.register(&worn(5), &cat, &data, &mut rng);
         assert_eq!(rng.state(), before);
+    }
+
+    /// A start time drawn outside the loop (a heal, a break) is taken at the next register, the
+    /// picture changed or not, with no draw; one for a piece that is gone is dropped.
+    #[test]
+    fn a_start_drawn_outside_the_loop_is_taken_at_the_next_register() {
+        let (cat, data) = (iron(), rows());
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        let before = rng.state();
+        idles.start_next(1, 777);
+        idles.start_next(99, 5);
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        assert_eq!((idles.fixed[&1].t, rng.state()), (777, before));
+        assert!(idles.starts.is_empty());
+        // Taken once: the next register leaves the clock alone.
+        idles.advance(50);
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        let k = &idles.fixed[&1];
+        assert_eq!((k.frame, k.t, rng.state()), (8, 27, before));
     }
 
     /// A gate does not loop by itself: with an animated idle it stays on frame 0 after any number

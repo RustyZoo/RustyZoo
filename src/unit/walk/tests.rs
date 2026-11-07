@@ -793,9 +793,17 @@ fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk
             |unit: &mut Unit, p| crate::animal::escape::walk_done(unit, &w, Some(tile_of(&w, p)));
         assert!(ends(&mut unit, (5, 3)) && ends(&mut unit, (6, 3)));
         assert!(!ends(&mut unit, (6, 3)));
-        (seen, w.units.posts.len())
+        let id = w.zoo.entities[piece].common.as_ref().unwrap().id;
+        (seen, w.units.posts.len(), (w.units.mended.clone(), id), rng)
     };
-    let (seen, posts) = steps(3, 6);
+    let (seen, posts, (mended, id), rng) = steps(3, 6);
+    // The break drew its two start times in the animal's update, for the piece that broke.
+    let mut expect = crate::sim::Rng::default();
+    let starts = [expect.pick(2000), expect.pick(2000)];
+    assert_eq!(
+        (mended, rng.state()),
+        (vec![(id, starts[1])], expect.state())
+    );
     assert_eq!(
         seen,
         [(None, 1, 0, 5), (None, 1, 1, 0), (None, 1, 1, 0)],
@@ -804,7 +812,8 @@ fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk
     // Broken, and at its decayed life 0 too.
     assert_eq!(posts, 2, "the broken piece's events");
     // A jumper that does not bash leaves the fence whole and runs on.
-    let (seen, posts) = steps(1, 0);
+    let (seen, posts, (mended, _), rng) = steps(1, 0);
+    assert!(mended.is_empty() && rng.state() == crate::sim::Rng::default().state());
     let jump = [
         (Some("jump_high"), 1, 0, 5),
         (None, 1, 0, 5),

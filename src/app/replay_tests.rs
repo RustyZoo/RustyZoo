@@ -71,9 +71,9 @@ fn timers(app: &App) -> Vec<[u32; 2]> {
     pieces.filter_map(|c| Some(c.fence?.timers)).collect()
 }
 
-/// The intervals the pieces draw one after the other from the generator seeded with the last
-/// of the `seeds` after `skip` draws: the first seeding is the start of the program, the second
-/// the map.
+/// The intervals the pieces draw one after the other, each followed by its start time, from the
+/// generator seeded with the last of the `seeds` after `skip` draws: the first seeding is the
+/// start of the program, the second the map.
 fn drawn(app: &App, skip: usize) -> Vec<[u32; 2]> {
     let game = app.game.as_ref().unwrap();
     let mut world = World::new(game.world.zoo.clone(), |_| None);
@@ -82,8 +82,11 @@ fn drawn(app: &App, skip: usize) -> Vec<[u32; 2]> {
     rng.seed(SEEDS[1]);
     (0..skip).for_each(|_| _ = rng.rand());
     (1..=4)
-        .map(|id| [world.heal(app.renderer.catalogue(), id, &mut || rng.rand())])
-        .map(|i| [i[0].unwrap(); 2])
+        .map(|id| {
+            let interval = world.heal(app.renderer.catalogue(), id, &mut || rng.rand());
+            _ = rng.rand();
+            [interval.unwrap(); 2]
+        })
         .collect()
 }
 

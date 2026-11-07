@@ -645,5 +645,96 @@ fn the_break_cheat_spares_what_never_wears() {
     }
     // No piece at all.
     let mut w = world_with((4, 4), |_| {});
-    assert!(w.break_fences(&types(WEARING), &mut Vec::new()).0.is_empty());
+    assert!(
+        w.break_fences(&types(WEARING), &mut Vec::new())
+            .0
+            .is_empty()
+    );
+}
+
+/// A run of the pieces of `subtypes` (ids 7, 8 ...), healthy, and the generator as it stands.
+fn drawn(subtypes: &[&str]) -> Run {
+    let mut w = world_with((4, 4), |zoo| {
+        for (i, (id, subtype)) in (7..).zip(subtypes).enumerate() {
+            let mut piece = entity("fences", "iron", id, (96 + 64 * i as i32, 64), 0);
+            piece.subtype = (*subtype).into();
+            zoo.entities.push(piece);
+        }
+    });
+    w.set_decay(Decay {
+        min: 1000,
+        max: 3000,
+    });
+    let mut run = run(types(WEARING), w, 1);
+    // The heal of the load, taken at the first register.
+    run.sim.idles.starts.clear();
+    run
+}
+
+/// The generator `n` draws after `rng`.
+fn after(rng: &super::Rng, n: u32) -> super::Rng {
+    let mut next = rng.clone();
+    (0..n).for_each(|_| _ = next.pick(2000));
+    next
+}
+
+#[test]
+fn every_heal_draws_the_start_of_a_piece_right_after_its_interval() {
+    let cat = types(WEARING);
+    // `resetfences` (a piece, a gate that draws its interval only, a piece), the repair cheat and
+    // the heal of an old file: two draws a piece that is not a gate, one for a gate.
+    let mut run = drawn(&["f", "g", "f"]);
+    let before = run.sim.rng.clone();
+    run.sim
+        .new_game(&mut run.world, &cat, &mut Money::default(), true);
+    assert_eq!(run.sim.rng.state(), after(&before, 5).state());
+    // The start of a piece follows its own interval: the second draw of its pair.
+    let (first, last) = (after(&before, 1), after(&before, 4));
+    assert_eq!(run.sim.idles.starts[&7], first.clone().pick(2000));
+    assert_eq!(run.sim.idles.starts[&9], last.clone().pick(2000));
+    assert!(!run.sim.idles.starts.contains_key(&8));
+    // The repair cheat heals the pieces that are broken, not the gate.
+    let mut run = drawn(&["f", "f"]);
+    run.world.zoo.entities[1]
+        .common
+        .as_mut()
+        .unwrap()
+        .fence
+        .as_mut()
+        .unwrap()
+        .life = 0;
+    let before = run.sim.rng.clone();
+    run.sim.repair_fences(&mut run.world, &cat);
+    assert_eq!(run.sim.rng.state(), after(&before, 2).state());
+    assert_eq!(run.sim.idles.starts.keys().collect::<Vec<_>>(), [&8]);
+    // A file older than version 55 heals its pieces at load.
+    let mut run = drawn(&["f"]);
+    run.world.zoo.version = 54;
+    let before = run.sim.rng.clone();
+    run.sim.heal(&mut run.world, &cat, 0);
+    assert_eq!(run.sim.rng.state(), after(&before, 2).state());
+}
+
+#[test]
+fn the_break_cheat_draws_two_starts_for_each_piece_that_breaks_at_its_place() {
+    let cat = types(WEARING);
+    let mut run = drawn(&["f", "g", "f"]);
+    run.world.zoo.entities[2]
+        .common
+        .as_mut()
+        .unwrap()
+        .fence
+        .as_mut()
+        .unwrap()
+        .life = 0;
+    let before = run.sim.rng.clone();
+    run.sim.break_fences(&mut run.world, &cat);
+    // Piece 7 breaks (two draws); the gate wears never, and the broken piece 9 stays as it is.
+    assert_eq!(run.sim.rng.state(), after(&before, 2).state());
+    assert_eq!(run.sim.idles.starts[&7], after(&before, 1).pick(2000));
+    assert_eq!(run.sim.idles.starts.len(), 1);
+    // Nothing left to break: no draw.
+    let after_first = run.sim.rng.clone();
+    run.sim.break_fences(&mut run.world, &cat);
+    assert_eq!(run.sim.rng.state(), after_first.state());
 }
