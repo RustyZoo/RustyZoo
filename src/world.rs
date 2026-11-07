@@ -188,6 +188,10 @@ pub struct World {
     /// type name, subtype, added), that the show panel has not seen yet (information panels 19.9.9;
     /// not saved, not hashed).
     toys: Vec<(String, String, String, bool)>,
+    /// The ids of the buildings in the order they were last added to the map (placed, read, set
+    /// down after a move, put back): the order of the world's need lists (guest buildings 3.4),
+    /// which the entity list does not keep after a move (not saved, not hashed).
+    added: Vec<u32>,
     /// A saved zoo is being read: a portal flag that changes keeps the open byte (shows 31.3 point 7).
     reading: bool,
     /// The sprite players of the portal walls, by the id of the piece (shows 32.6; not saved).
@@ -239,6 +243,7 @@ impl World {
             research: Default::default(),
             show_moves: Vec::new(),
             toys: Vec::new(),
+            added: Vec::new(),
             reading: true,
             portal_players: Default::default(),
         };
@@ -559,6 +564,21 @@ impl World {
             );
             self.toys.push(note);
         }
+    }
+
+    /// Notes that the building `id` was added to the map: it goes last in every need list.
+    pub(crate) fn note_added(&mut self, id: u32) {
+        self.added.retain(|&x| x != id);
+        self.added.push(id);
+    }
+
+    /// Sorts `items` into the need lists' order; a building never noted keeps the entity list's
+    /// order, after the noted ones.
+    pub(crate) fn in_need_order<T>(&self, items: &mut [T], id_of: impl Fn(&T) -> u32) {
+        items.sort_by_cached_key(|t| {
+            let id = id_of(t);
+            (self.added.iter().position(|&x| x == id)).unwrap_or(usize::MAX)
+        });
     }
 
     /// The toys added and removed that the show panel has not seen yet.

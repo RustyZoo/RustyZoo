@@ -357,14 +357,16 @@ fn post_abort(world: &mut World, show: u16) {
     });
 }
 
-/// The grandstands of a world in the order of the building list, as (id, position in the entity
-/// list).
+/// The grandstands of a world in the order of the `grandstand` need list (shows 9.2: appended at
+/// each add, so a moved one goes last), as (id, position in the entity list).
 fn grandstands(world: &World, cat: &Catalogue) -> Vec<(u32, usize)> {
     let default = world.units.prices.default;
-    (world.zoo.entities.iter().enumerate())
+    let mut stands: Vec<_> = (world.zoo.entities.iter().enumerate())
         .filter(|(_, e)| kind_of(cat, e, default).is_some_and(|k| k.satisfies("grandstand")))
         .filter_map(|(at, e)| Some((e.common.as_ref()?.id, at)))
-        .collect()
+        .collect();
+    world.in_need_order(&mut stands, |s| s.0);
+    stands
 }
 
 /// What the show of a grandstand is read from (shows 4.1): the show tanks, the grandstands and the
@@ -428,6 +430,12 @@ fn faces_in(world: &World, ground: &Ground, inside: &dyn Fn(usize) -> bool, at: 
 /// The pass for the building `id` just added to the map (placed, set down, put back): it runs only
 /// when the building is a grandstand (shows 4.2); any other building runs none.
 pub(crate) fn added(world: &mut World, cat: &Catalogue, id: u32) {
+    if world
+        .find(id)
+        .is_some_and(|at| world.zoo.entities[at].class == "building")
+    {
+        world.note_added(id);
+    }
     let default = world.units.prices.default;
     let stand = world.find(id).is_some_and(|at| {
         kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand"))
@@ -440,6 +448,10 @@ pub(crate) fn added(world: &mut World, cat: &Catalogue, id: u32) {
 /// The pass of a zoo being loaded, for the entity `at` just read (shows 4.2): it runs only when
 /// that entity is a grandstand, and sees only the entities read so far.
 pub(crate) fn loaded(world: &mut World, cat: &Catalogue, at: usize) {
+    let e = &world.zoo.entities[at];
+    if let (true, Some(id)) = (e.class == "building", e.common.as_ref().map(|c| c.id)) {
+        world.note_added(id);
+    }
     let default = world.units.prices.default;
     if kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand")) {
         associate_upto(world, cat, at);
