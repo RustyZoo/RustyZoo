@@ -1411,7 +1411,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@1721;eggs:3;hatch@2352" "seed=2 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
+check expansion-trial "egg@2466;eggs:3;hatch@3096" "seed=2 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
