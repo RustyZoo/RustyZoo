@@ -25,7 +25,7 @@ jobs:
     outputs:
       legs: ${{ steps.legs.outputs.legs }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 2
@@ -51,13 +51,18 @@ jobs:
 
   # The Linux leg, then the other systems (only with the legs `all`): the same job. The Linux legs of
   # `build` and `play` run on the self-hosted runners (they hold the full game installs, see the steps
-  # marked self-hosted) for a push and a pull request from this repository, on a GitHub-hosted runner for
-  # a pull request from a fork. Never `pull_request_target`: a fork's code must not meet the game data.
+  # marked self-hosted) for a push and a pull request by the maintainer from this repository, on a
+  # GitHub-hosted runner for any other pull request (a fork, a Dependabot branch). Never `pull_request_target`: a fork's code must not meet the game data.
   build:
     name: build (${{ matrix.os }})
     needs: scope
     if: needs.scope.outputs.legs != 'none'
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","gamedata","rustyzoo"]') || matrix.os }}
+    runs-on: &gamedata-runner ${{ ((github.event_name == 'push' && !startsWith(github.ref_name, 'dependabot/')) ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'SlendyMilky' &&
+      !startsWith(github.head_ref, 'dependabot/'))) &&
+      fromJSON('["self-hosted","linux","x64","gamedata","rustyzoo"]') || matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -88,7 +93,7 @@ jobs:
       RUSTYZOO_ENGLISH_DATES: 1
     steps: &build-steps
       - &checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -142,7 +147,7 @@ jobs:
 
       - &cargo-cache
         if: runner.environment == 'github-hosted'
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -230,7 +235,7 @@ jobs:
       # Self-hosted: no cache, the script downloads them.
       - &trials-cache
         if: runner.environment == 'github-hosted'
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ runner.temp }}/trials/base-trial
@@ -303,7 +308,7 @@ jobs:
 
       # Self-hosted: no upload (the egress proxy blocks the artifact storage, and nothing downloads it).
       - if: runner.environment == 'github-hosted'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.path }}
@@ -348,7 +353,7 @@ jobs:
     name: play (${{ matrix.os }})
     needs: scope
     if: needs.scope.outputs.legs != 'none'
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","gamedata","rustyzoo"]') || matrix.os }}
+    runs-on: *gamedata-runner
     timeout-minutes: 45
     strategy:
       fail-fast: false

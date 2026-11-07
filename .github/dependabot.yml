@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps
+    groups:
+      cargo:
+        patterns: ["*"]
+    ignore:
+      # SDL is built from source: a minor bump (breaking for 0.x) moves the SDL sources, so it is updated by hand.
+      - dependency-name: "sdl3*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: deps
+    groups:
+      actions:
+        patterns: ["*"]
