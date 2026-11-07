@@ -337,6 +337,32 @@ fn two_users_of_a_building_get_one_abort_event_each_in_entering_order() {
 }
 
 #[test]
+fn a_moved_grandstand_is_swept_last() {
+    let (mut w, cat) = world(9, "glass", &[(7, (1, 2), 2), (8, (1, 3), 2)]);
+    associate(&mut w, &cat);
+    // Read in file order.
+    for id in [7, 8] {
+        let at = w.find(id).unwrap();
+        loaded(&mut w, &cat, at);
+    }
+    for (id, user) in [(7, 1), (8, 2)] {
+        w.units.buildings.get_mut(&id).unwrap().users = vec![(user, 0, 0)];
+    }
+    let swept = |w: &mut World| {
+        w.units.posts.clear();
+        empty_show_grandstands(w, &cat, 1001);
+        aborts(w)
+    };
+    assert_eq!(swept(&mut w), [1, 2]);
+    // Set down after a move, 7 goes last in the need list; the entity list is unchanged.
+    added(&mut w, &cat, 7);
+    for id in [7, 8] {
+        w.units.buildings.get_mut(&id).unwrap().users = vec![(id - 6, 0, 0)];
+    }
+    assert_eq!(swept(&mut w), [2, 1]);
+}
+
+#[test]
 fn a_user_listed_by_the_live_list_and_the_record_gets_one_abort_event() {
     let (mut w, cat) = crowded();
     let at = w.find(7).unwrap();
