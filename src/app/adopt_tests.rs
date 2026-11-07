@@ -81,7 +81,7 @@ fn map() -> Zoo {
 }
 
 /// The window point of the world point (`wx`, `wy`).
-fn point(camera: &Camera, wx: i32, wy: i32) -> Command {
+pub(super) fn point(camera: &Camera, wx: i32, wy: i32) -> Command {
     let (px, py) = zoom_view(camera.zoom, project(camera.rotation, wx, wy, 0));
     let (x, y) = (
         px - i64::from(camera.scroll.0),
@@ -92,7 +92,7 @@ fn point(camera: &Camera, wx: i32, wy: i32) -> Command {
 
 /// Runs `test` on a game with the pen map, the fences, a zebra (2) and a zookeeper (3) in the
 /// catalogue, 2000 in cash, and the clock stopped.
-fn with_app(name: &str, test: impl FnOnce(&mut App)) {
+pub(super) fn with_app(name: &str, test: impl FnOnce(&mut App)) {
     with_staff(name, &["m", "f"], test);
 }
 
@@ -128,6 +128,18 @@ fn with_staff(name: &str, sexes: &[&str], test: impl FnOnce(&mut App)) {
             height: 0,
         });
     }
+    // The last type is a geyser of random use: 20 to 60 ticks between two plays.
+    let ini = "[Characteristics/Integers]\ncPurchaseCost=100\ncRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60\n";
+    catalogue.push(EntityType {
+        class: "building",
+        type_name: b"geyser".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: Some(std::sync::Arc::new(Config::parse(ini.as_bytes()).unwrap())),
+        name_id: 0,
+        footprint: [2, 2, 1],
+        height: 0,
+    });
     let mut app = App::new(
         MapRenderer::new(&vfs, &catalogue),
         map(),
@@ -164,7 +176,7 @@ fn said(app: &App, pass: u64) -> Vec<String> {
         .collect()
 }
 
-fn click(app: &mut App, pass: u64, to: Command) -> Vec<String> {
+pub(super) fn click(app: &mut App, pass: u64, to: Command) -> Vec<String> {
     app.pass(pass, &[to]);
     app.pass(pass + 1, &[Command::Mouse(Mouse::Down)]);
     app.pass(pass + 2, &[Command::Mouse(Mouse::Up)]);

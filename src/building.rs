@@ -12,7 +12,7 @@
 //! spills it).
 //! The panels that set the price and show the figures are [`crate::panel::building`]'s.
 //! A building that is deleted or picked up pushes its users out ([`leave::push_out`]).
-//! Left for later issues: the random use animation and the sounds, `cUseRandomSlot`.
+//! The random use animation is [`random_use`]'s. Left for later issues: the sounds, `cUseRandomSlot`.
 //!
 //! The log family `building`: `building use <id> <guest>` when a guest becomes a user and
 //! `building buy <id> <item> <price>` when it buys an item, and `building price <id> <price>` when
@@ -34,6 +34,7 @@ pub mod birth;
 pub mod dead;
 pub mod items;
 pub mod leave;
+pub mod random_use;
 pub mod ret;
 pub mod upgrade;
 pub mod users;

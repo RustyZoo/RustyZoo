@@ -1286,9 +1286,10 @@ fn the_hire_panel_ends_with_the_drt_base_that_shows_the_helicopter_details() {
         (text(&ui, 3620), text(&ui, 3611), text(&ui, 3613)),
         ("Name150".into(), "$2,000".into(), "Cares".into())
     );
-    assert!(
-        build.take_made().is_empty(),
-        "a building is no pending staff member"
+    assert_eq!(
+        build.take_made(),
+        [0],
+        "a building is a pending building, no staff member"
     );
     // Without it, or not a member of the expansion, or not available, the base is not listed.
     assert_eq!(sync(&cat_on, 0).0.list, [2, 3]);

@@ -128,6 +128,7 @@ impl App<'_> {
             placing: pending::Placing {
                 pending: None,
                 made: None,
+                used: None,
                 gate: None,
                 gate_over: None,
                 run: Vec::new(),
@@ -319,6 +320,8 @@ impl App<'_> {
                 for id in crate::building::reset_all(&mut game.world, now) {
                     self.sim.remove(id);
                 }
+                let cat = self.renderer.catalogue();
+                self.sim.draw_use_all(&mut game.world, cat);
             }
             if start.forget_last {
                 // A scenario or freeform map is a new game: the set-up rating check.

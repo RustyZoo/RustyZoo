@@ -4,7 +4,8 @@
 //! own (tank staff 7.7). A loop that ends drops the time left over, so it takes a little more than
 //! `count x delay`. When a guest comes into an empty building its base loop becomes `used` once the
 //! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
-//! at once, and alive again `idle`, both from frame 0. A fence that is not a gate starts at a
+//! at once, and alive again `idle`, both from frame 0; a building of random use queues `used` once
+//! behind the base when its time is up (`building::random_use`). A fence that is not a gate starts at a
 //! random time, again when its picture changes or it wears, and plays the row its life and the slope
 //! choose; a gate does not loop: its player runs only while it opens or closes.
 //!
@@ -45,7 +46,7 @@ struct Clock {
     dead: bool,
     /// A one-shot queued behind the base loop (`explode` of a rubble piece): it starts when the
     /// sequence playing ends, then the base loop takes over for good.
-    queued: Option<(&'static str, Timing)>,
+    queued: Option<(&'static str, Timing, u32)>,
 }
 
 impl Clock {
@@ -94,8 +95,9 @@ impl Clock {
     /// The sequence playing ends: the queued one starts, else the base animation again, the one a
     /// guest asked for if there is one, at frame 0; the time left over is dropped.
     fn restart(&mut self) {
-        if let Some(queued) = self.queued.take() {
-            (self.name, self.timing) = queued;
+        if let Some((name, timing, times)) = self.queued.take() {
+            (self.name, self.timing) = (name, timing);
+            self.queued = (times > 1).then_some((name, timing, times - 1));
         } else {
             self.base = self.next.take().unwrap_or(self.base);
             (self.name, self.timing) = self.base;
@@ -112,7 +114,8 @@ impl Clock {
             self.dead = dead;
             let name = if dead { "idledead" } else { "idle" };
             if let Some(timing) = data.timing(e, name) {
-                (self.base, self.next) = ((name, timing), None);
+                // The switch clears the player, a queued `used` included.
+                (self.base, self.next, self.queued) = ((name, timing), None, None);
                 self.restart();
             }
         }
@@ -158,6 +161,9 @@ pub(crate) struct Idles {
     /// The start times drawn for fence pieces outside the entity loop, taken by the next
     /// [`Idles::register`].
     pub(super) starts: BTreeMap<u32, u32>,
+    /// The `used` queued by the check of this step (entity id, timing, times): it joins the queue
+    /// after the clocks advance, so it cannot start before the next step.
+    later: Vec<(u32, Timing, u32)>,
 }
 
 impl Idles {
@@ -166,6 +172,7 @@ impl Idles {
         self.fixed.clear();
         self.bubbles.clear();
         self.starts.clear();
+        self.later.clear();
     }
 
     /// The start time of the fence piece `id` was drawn outside the entity loop (a heal or a
@@ -200,8 +207,20 @@ impl Idles {
             let timing =
                 (world.find(*id)).and_then(|at| data.timing(&world.zoo.entities[at], "explode"));
             if let (Some(c), Some(t)) = (self.fixed.get_mut(id), timing) {
-                c.queued = Some(("explode", t));
+                c.queued = Some(("explode", t, 1));
             }
+        }
+    }
+
+    /// Queues `used` `times` times behind the base loop of the building at `at`, as the rubble's
+    /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). It joins the queue
+    /// when the clocks advance at the end of the step: the original advances the animation before
+    /// the check. A building with no clock or no `used` plays nothing.
+    pub(crate) fn queue_used(&mut self, world: &World, at: usize, times: u32, data: &dyn Data) {
+        let e = &world.zoo.entities[at];
+        let id = e.common.as_ref().map_or(0, |c| c.id);
+        if let (true, Some(t)) = (self.fixed.contains_key(&id), data.timing(e, "used")) {
+            self.later.push((id, t, times));
         }
     }
 
@@ -351,6 +370,14 @@ impl Idles {
     pub(crate) fn advance(&mut self, step: u32) {
         self.fixed.values_mut().for_each(|c| c.advance(step));
         (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
+        for (id, t, times) in self.later.drain(..) {
+            if let Some(c) = self.fixed.get_mut(&id) {
+                // A play that comes while another is queued adds to it.
+                let waiting = c.queued.filter(|q| q.0 == "used").map_or(0, |q| q.2);
+                let times = times.saturating_add(waiting);
+                c.queued = (times > 0).then_some(("used", t, times));
+            }
+        }
     }
 }
 
@@ -403,7 +430,7 @@ pub(crate) mod tests {
 
     /// A type with `idle` of 4 frames of 100 ms, `used` of 2 frames of 100 ms and `idledead` of
     /// 3 frames of 100 ms.
-    struct Building;
+    pub(crate) struct Building;
 
     impl Data for Fixed {
         fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {

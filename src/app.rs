@@ -924,6 +924,8 @@ mod undo;
 #[cfg(test)]
 mod adopt_tests;
 #[cfg(test)]
+mod random_use_tests;
+#[cfg(test)]
 mod tank_panel_tests;
 
 #[cfg(test)]
