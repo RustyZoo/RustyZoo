@@ -66,6 +66,12 @@ fn decides(ty: &EntityType) -> bool {
             .any(|key| crate::build::number(ty, key) == Some(1.0))
 }
 
+/// Whether `ty` is a toy or show object: not a guest building, with a dead key. Its live state
+/// is only the dead state, never saved (11.1.1), so the save keeps the record it was read with.
+pub(crate) fn is_toy(ty: &EntityType) -> bool {
+    !crate::month::is_guest_building(ty) && decides(ty)
+}
+
 /// Decides the dead state of the new or set down building `id` of type `ty`: no user is
 /// there to put out.
 pub(crate) fn decide(world: &mut World, ty: &EntityType, id: u32) {

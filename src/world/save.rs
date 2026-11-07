@@ -130,9 +130,9 @@ impl World {
                 e.common = None;
                 continue;
             }
-            // A toy has no live state of its own, a dead one included: its record stays (11.1.1).
+            // A toy's live state is its dead state only: its record stays (11.1.1).
             let live_building =
-                (self.units.buildings.get(&c.id)).filter(|_| crate::month::is_guest_building(ty));
+                (self.units.buildings.get(&c.id)).filter(|_| !crate::building::dead::is_toy(ty));
             match e.class.as_str() {
                 "animals" => {
                     let k = animal::Keys::of(ty, &self.units.class).researched(ty, &self.research);
