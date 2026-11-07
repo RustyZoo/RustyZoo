@@ -88,6 +88,20 @@ fn a_zoom_change_centres_the_tile_too() {
 }
 
 #[test]
+fn only_a_zoom_that_changes_the_value_is_told() {
+    let beach = map(75, 75, 0);
+    let mut c = camera(0, 0, (1216, 16), 1, BEACH);
+    assert!(!c.take_zoomed(), "a restored zoom is not a change");
+    c.rotate(&beach, None, true);
+    assert!(!c.take_zoomed(), "a turn is not a zoom");
+    c.zoom(&beach, None, true);
+    assert!(c.take_zoomed());
+    assert!(!c.take_zoomed(), "told once");
+    c.zoom(&beach, None, true);
+    assert!(!c.take_zoomed(), "refused at the limit");
+}
+
+#[test]
 fn a_zoom_change_keeps_the_scroll_when_the_tile_stays_in_the_window() {
     let beach = map(75, 75, 0);
     let mut c = camera(0, 1, (208, 84), 1, (800, 600));

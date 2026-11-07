@@ -40,12 +40,16 @@ fn keys(on_land: bool, surface: bool, height: i32) -> Keys {
 }
 
 fn cave() -> EntityType {
+    typed("cave", CAVE)
+}
+
+fn typed(name: &str, config: &str) -> EntityType {
     EntityType {
         class: "building",
-        type_name: b"cave".to_vec(),
+        type_name: name.as_bytes().to_vec(),
         subtype: Vec::new(),
         file: None,
-        config: Some(Arc::new(Config::parse(CAVE.as_bytes()).unwrap())),
+        config: Some(Arc::new(Config::parse(config.as_bytes()).unwrap())),
         name_id: 0,
         footprint: [2, 2, 1],
         height: 0,
@@ -503,4 +507,127 @@ fn a_loaded_tank_stirs_no_guest() {
         Some(9)
     );
     assert_eq!(w.take_stirred(), Vec::<u32>::new());
+}
+
+/// A tank toy: not a guest building, dead on land, a surface object.
+const TOY: &str = "[Characteristics/Integers]\ncCapacity=1\ncDeadOnLand=1\ncSurface=1\n\
+    [Satisfies]\nshowtrick\n";
+
+/// A type that is dead when it stands on a water tile.
+const BUOY: &str = "[Characteristics/Integers]\ncCapacity=3\ncDeadOnFlatWater=1\n\
+    [Satisfies]\nbuilding\n[slots]\nname=a\n\
+    [a]\nslotpos=0\nslotpos=0\nentrpos=0\nentrpos=48\nexitpos=0\nexitpos=48\ncapacity=3\n";
+
+/// A tank of `flooded` with a building of type `ty` (it must be named "cave" to be taken by a
+/// tank), id 7, and no figures yet.
+fn flooded_toy(ty: EntityType) -> (World, Catalogue, u32) {
+    let mut cat = Catalogue::default();
+    cat.push(ty);
+    let mut w = world_with((8, 8), |zoo| {
+        walls(zoo);
+        zoo.entities
+            .push(entity("building", "cave", 7, centre((3, 3)), 0));
+    });
+    w.set_tank_config(CONFIG);
+    w.set_paused(true);
+    let id = w.tank_at(3 * 8 + 3).expect("a tank");
+    w.set_height(id, 9);
+    assert_eq!(w.fill(id), None);
+    w.take_wet();
+    (w, cat, id)
+}
+
+#[test]
+fn a_removed_wall_takes_the_tank_away_and_the_cave_goes_dead() {
+    let (mut w, cat, _) = flooded();
+    decide_all(&mut w, &cat);
+    assert!(!w.units.buildings[&7].dead);
+    assert!(w.remove(100));
+    assert_eq!(w.tank_at(3 * 8 + 3), None, "no tank any more");
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let live = &w.units.buildings[&7];
+    assert!(live.dead && live.users.is_empty());
+    assert!(!w.units.get(1).unwrap().hidden, "the user is put out");
+}
+
+#[test]
+fn a_tank_made_validates_the_objects_again() {
+    let (mut w, cat, _) = flooded();
+    w.take_reshaped();
+    let wall = w.zoo.entities.iter().find(|e| e.common.as_ref().is_some_and(|c| c.id == 100));
+    let wall = wall.unwrap().clone();
+    assert!(w.remove(100));
+    w.take_reshaped();
+    let shape = crate::unit::testing::shape(&wall);
+    w.add(wall, shape).expect("the wall is back");
+    assert!(w.tank_at(3 * 8 + 3).is_some(), "a tank again");
+    assert!(w.take_reshaped());
+    assert!(!w.take_reshaped(), "told once");
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+}
+
+#[test]
+fn a_toy_is_dead_in_a_tank_with_no_water_and_keeps_no_figures_otherwise() {
+    let (mut w, cat, tank) = flooded_toy(typed("cave", TOY));
+    let ty = cat.types.last().unwrap();
+    decide_all(&mut w, &cat);
+    assert!(w.units.buildings.is_empty(), "alive: nothing stored");
+    w.set_paused(false);
+    assert!(w.drain(tank));
+    let mut sim = crate::sim::Sim::new(b"");
+    for _ in 0..12 {
+        sim.step_in(&mut w, &cat, 100, |_, _, _| {});
+    }
+    assert_eq!(w.tank(tank).unwrap().level, 0);
+    assert!(w.units.buildings[&7].dead, "drained");
+    // Put down again where the water is: alive.
+    w.set_paused(true);
+    assert_eq!(w.fill(tank), None);
+    w.take_wet();
+    decide(&mut w, ty, 7);
+    assert!(!w.units.buildings[&7].dead);
+}
+
+#[test]
+fn a_toy_set_down_in_an_empty_tank_is_dead() {
+    let (mut w, cat, tank) = flooded_toy(typed("cave", TOY));
+    w.set_paused(true);
+    assert!(w.drain(tank));
+    assert_eq!(w.tank(tank).unwrap().level, 0);
+    crate::building::built(&mut w, cat.types.last().unwrap(), 7, 0);
+    assert!(w.units.buildings[&7].dead);
+}
+
+#[test]
+fn a_tile_turning_water_validates_the_objects_on_it() {
+    let (mut w, cat, _) = flooded_toy(typed("cave", BUOY));
+    w.set_water(vec![false, true]);
+    let tile = |w: &World| w.zoo.tiles[3 * 8 + 3];
+    let live = Live {
+        users: vec![(1, 0, 0)],
+        ..Live::new(&Kind::of(cat.types.last().unwrap(), 0.0))
+    };
+    w.units.buildings.insert(7, live);
+    w.take_reshaped();
+    decide_all(&mut w, &cat);
+    assert!(!w.units.buildings[&7].dead);
+    let t = tile(&w);
+    assert!(w.set_tile(3, 3, t.elevation, t.shape, 1));
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    let live = &w.units.buildings[&7];
+    assert!(live.dead && live.users.is_empty(), "on water: dead, emptied");
+    assert!(w.set_tile(3, 3, t.elevation, t.shape, 0));
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    assert!(!w.units.buildings[&7].dead, "on land again");
+}
+
+#[test]
+fn a_revalidation_puts_out_the_users_of_a_building_loaded_dead() {
+    let (mut w, cat, tank) = flooded();
+    w.set_height(tank, 3);
+    w.take_wet();
+    decide_all(&mut w, &cat);
+    assert_eq!(w.units.buildings[&7].users.len(), 1, "kept at the load");
+    revalidate(&mut w, &cat);
+    assert!(w.units.buildings[&7].users.is_empty());
 }
