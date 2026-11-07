@@ -6,7 +6,8 @@
 //! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
 //! at once, and alive again `idle`, both from frame 0; a building of random use queues `used` once
 //! behind the base when its time is up (`building::random_use`). A fence that is not a gate starts at a
-//! random time; a gate does not loop: its player runs only while it opens or closes.
+//! random time, again when its picture changes or it wears, and plays the row its life and the slope
+//! choose; a gate does not loop: its player runs only while it opens or closes.
 //!
 //! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
 //! food object, a trash can and a dung pile the one their state chooses: a change of state starts
@@ -20,6 +21,7 @@ use crate::behaviour::{Data, Timing};
 use crate::building::Live;
 use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
+use crate::render::fence_name;
 use crate::render::order::Kind;
 use crate::render::{bubble_key, rest_name};
 use crate::world::World;
@@ -129,6 +131,27 @@ impl Clock {
     }
 }
 
+/// The animation a fence piece that is not a gate shows, as the state of its clock: it changes
+/// with its life and the slope under it (sprite drawing 3.6).
+fn fence_state(world: &World, cat: &Catalogue, e: &Entity) -> Option<(String, i32)> {
+    let c = e.common.as_ref()?;
+    let ty = type_of(cat, e)?;
+    let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+    let tile = tile.map(|t| &world.zoo.tiles[t]);
+    let life = c.fence.map(|f| f.life);
+    Some((fence_name(ty, life, tile, c.rotation % 8), 0))
+}
+
+/// The clock of a fence piece whose animation starts at `start` ms (sprite drawing 3.6).
+fn fence_clock(world: &World, cat: &Catalogue, data: &dyn Data, e: &Entity, start: u32) -> Clock {
+    let state = fence_state(world, cat, e);
+    let timing =
+        (state.as_ref().and_then(|s| data.timing(e, &s.0))).or_else(|| data.timing(e, "idle"));
+    let mut clock = Clock::new(timing, state);
+    clock.t = start;
+    clock
+}
+
 /// The clocks of the fixed objects and the fences, by entity id, and of the sets of bubbles, by the
 /// id of their filter with the count of sets that filter had made when the clock started.
 #[derive(Debug, Default)]
@@ -223,6 +246,16 @@ impl Idles {
                 }
                 continue;
             }
+            // A fence that is not a gate draws its start time, a still one too (the original draws
+            // before it looks at the frame count), and again when its picture changes.
+            if kind == Kind::Edge && !e.subtype.starts_with('g') {
+                let state = fence_state(world, cat, e);
+                if self.fixed.get(&c.id).is_none_or(|k| k.state != state) {
+                    self.fixed
+                        .insert(c.id, fence_clock(world, cat, data, e, rng.pick(2000)));
+                }
+                continue;
+            }
             let known = self.fixed.get(&c.id);
             let ty = type_of(cat, e);
             let life = (c.filter).map(|f| i32::try_from(f.health).unwrap_or(i32::MAX));
@@ -239,17 +272,11 @@ impl Idles {
             let named = |name: &str| data.timing(e, name);
             let mut timing = (state.as_ref().and_then(|s| named(&s.0)))
                 .or_else(|| named(base.as_deref().unwrap_or("idle")));
-            let mut start = 0;
+            // A gate does not loop.
             if kind == Kind::Edge {
-                // A gate does not loop; any other fence draws its start time, a still one too
-                // (the original draws before it looks at the frame count).
-                match e.subtype.starts_with('g') {
-                    true => timing = None,
-                    false => start = rng.pick(2000),
-                }
+                timing = None;
             }
             let mut clock = Clock::new(timing, state);
-            clock.t = start;
             if let Some(live) = live {
                 // Guests inside a loaded building did not just come in.
                 clock.users = live.users_now();
@@ -264,6 +291,40 @@ impl Idles {
             self.fixed.retain(|id, _| live.contains(id));
         }
         self.register_bubbles(world, data);
+    }
+
+    /// A fence piece's wear step ran at `at` in the entity loop (placing 7.4): its picture is
+    /// chosen again, which restarts its animation at a random time of 0 to 1999 ms, `draws` times
+    /// (a break draws three times: the break's picture, its validation's and the wear step's).
+    pub(crate) fn rewind_fence(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        rng: &mut Rng,
+        (at, draws): (usize, u32),
+    ) {
+        let e = &world.zoo.entities[at];
+        if let Some(c) = &e.common {
+            let start = (0..draws).map(|_| rng.pick(2000)).last().unwrap_or(0);
+            self.fixed
+                .insert(c.id, fence_clock(world, cat, data, e, start));
+        }
+    }
+
+    /// A worker mended the fence piece `id` and its start time `start` was drawn in the step
+    /// (sprite drawing 3.6 item 5): its animation starts there, so the next register draws nothing.
+    pub(crate) fn start_fence(
+        &mut self,
+        world: &World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        (id, start): (u32, u32),
+    ) {
+        if let Some(e) = world.find(id).map(|at| &world.zoo.entities[at]) {
+            self.fixed
+                .insert(id, fence_clock(world, cat, data, e, start));
+        }
     }
 
     /// The bubbles of the filters: a set that is new starts at frame 0 with the timing of the
@@ -515,6 +576,108 @@ pub(crate) mod tests {
             Idles::default().register(&world, &Catalogue::default(), &data, &mut rng);
             assert_eq!(rng.state(), expect.state());
         }
+    }
+
+    /// A catalogue with the fence type `iron`/`f` whose `cDecayedLife` is 2.
+    fn iron() -> Catalogue {
+        let mut cat = Catalogue::default();
+        cat.push(crate::entity::EntityType {
+            class: "fences",
+            type_name: b"iron".to_vec(),
+            subtype: b"f".to_vec(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                crate::config::Config::parse(b"[f/Characteristics/Integers]\ncDecayedLife=2\n")
+                    .unwrap(),
+            )),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        cat
+    }
+
+    /// A world with one `iron` fence (id 1) of the given life, on flat ground.
+    fn worn(life: i32) -> World {
+        world_with((4, 4), |zoo| {
+            let mut piece = entity("fences", "iron", 1, (32, 0), 0);
+            piece.subtype = "f".into();
+            piece.common.as_mut().unwrap().fence.as_mut().unwrap().life = life;
+            zoo.entities.push(piece);
+        })
+    }
+
+    /// `idle` of 20 frames of 100 ms, `det` of 10 frames of 50 ms, `broke` of 4 frames of 25 ms.
+    fn rows() -> Fixed {
+        let t = |count, delay| Timing { count, delay };
+        Fixed(
+            Some(t(20, 100)),
+            vec![("det", t(10, 50)), ("broke", t(4, 25))],
+        )
+    }
+
+    /// A worn fence plays the animation its life chooses, not `idle`'s timing; when the picture
+    /// changes the clock starts again at a new random time, one draw (sprite drawing 3.6).
+    #[test]
+    fn a_worn_fence_follows_its_own_animation() {
+        let (cat, data) = (iron(), rows());
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        let mut expect = Rng::default();
+        let start = |idles: &mut Idles, life: i32, rng: &mut Rng| {
+            idles.register(&worn(life), &cat, &data, rng);
+            idles.fixed[&1].t
+        };
+        for (life, count) in [(5, 20), (2, 10), (0, 4)] {
+            let t = start(&mut idles, life, &mut rng);
+            assert_eq!(t, expect.pick(2000), "life {life}");
+            assert_eq!(idles.fixed[&1].timing.count, count, "life {life}");
+            // The same picture again: no new draw.
+            start(&mut idles, life, &mut rng);
+            assert_eq!(rng.state(), expect.state());
+        }
+        // A gate keeps `idle` whatever its life.
+        let mut gate = worn(0);
+        gate.zoo.entities[0].subtype = "g".into();
+        let mut none = Idles::default();
+        none.register(&gate, &cat, &data, &mut rng);
+        assert!(none.frames().is_empty());
+    }
+
+    /// A wear step rewinds the clock in place: one draw, three for a break, the last one is the
+    /// start time.
+    #[test]
+    fn the_wear_step_of_a_fence_draws_again() {
+        let (cat, data) = (iron(), rows());
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        for (life, draws, count) in [(2, 1, 10), (0, 3, 4)] {
+            let before = rng.clone();
+            idles.rewind_fence(&worn(life), &cat, &data, &mut rng, (0, draws));
+            let mut expect = before;
+            let starts: Vec<u32> = (0..draws).map(|_| expect.pick(2000)).collect();
+            assert_eq!(rng.state(), expect.state(), "life {life}");
+            assert_eq!(idles.fixed[&1].t, starts[draws as usize - 1]);
+            assert_eq!(idles.fixed[&1].timing.count, count);
+            // The register of the next step finds the picture as it is: no draw.
+            idles.register(&worn(life), &cat, &data, &mut rng);
+            assert_eq!(rng.state(), expect.state());
+        }
+    }
+
+    /// A mended piece starts at the time its worker drew; the next register draws nothing.
+    #[test]
+    fn a_mended_fence_starts_where_it_drew() {
+        let (cat, data) = (iron(), rows());
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&worn(0), &cat, &data, &mut rng);
+        let before = rng.state();
+        idles.start_fence(&worn(5), &cat, &data, (1, 1234));
+        assert_eq!(
+            (idles.fixed[&1].t, idles.fixed[&1].timing.count),
+            (1234, 20)
+        );
+        idles.register(&worn(5), &cat, &data, &mut rng);
+        assert_eq!(rng.state(), before);
     }
 
     /// `used` queued behind a building's loop plays `times` times, one pass each, then the base

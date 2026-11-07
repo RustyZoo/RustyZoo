@@ -46,32 +46,41 @@ pub(crate) fn rest_name(
     })
 }
 
+/// The animation a fence piece shows (sprite drawing 3.6): `idle` for a gate whatever its life,
+/// else `det` at or below the type's `cDecayedLife`, `broke` below 1, with the slope of the tile.
+pub(crate) fn fence_name(
+    ty: &EntityType,
+    life: Option<i32>,
+    tile: Option<&crate::zoo::Tile>,
+    facing: u32,
+) -> String {
+    let gate = ty.subtype.first() == Some(&b'g');
+    let decayed = ty
+        .config
+        .as_deref()
+        .and_then(|c| c.section([&ty.subtype[..], b"/Characteristics/Integers"].concat()))
+        .and_then(|s| s.get("cDecayedLife"))
+        .and_then(to_int)
+        .unwrap_or(0);
+    let row = match life {
+        Some(life) if !gate && life < 1 => "broke",
+        Some(life) if !gate && life <= decayed => "det",
+        _ => "idle",
+    };
+    match tile {
+        Some(t) => slope_name(row, t, facing),
+        None => row.to_string(),
+    }
+}
+
 impl<'a> MapRenderer<'a> {
     /// The `.ani` member an object shows at rest.
     pub(super) fn member(&self, scene: &Scene, o: usize, meta: &Meta) -> Option<String> {
         let (obj, ty) = (&scene.objects[o], meta.ty);
         let wanted = match ty.class {
             "fences" | "tankwall" => {
-                let gate = ty.subtype.first() == Some(&b'g');
-                // A gate shows the intact row whatever its life; the others by life.
-                let decayed = ty
-                    .config
-                    .as_deref()
-                    .and_then(|c| {
-                        c.section([&ty.subtype[..], b"/Characteristics/Integers"].concat())
-                    })
-                    .and_then(|s| s.get("cDecayedLife"))
-                    .and_then(to_int)
-                    .unwrap_or(0);
-                let row = match meta.life {
-                    Some(life) if !gate && life < 1 => "broke",
-                    Some(life) if !gate && life <= decayed => "det",
-                    _ => "idle",
-                };
-                match scene.tile_at(obj.x, obj.y) {
-                    Some(t) => slope_name(row, &scene.tiles[t], obj.facing),
-                    None => row.to_string(),
-                }
+                let tile = scene.tile_at(obj.x, obj.y).map(|t| &scene.tiles[t]);
+                fence_name(ty, meta.life, tile, obj.facing)
             }
             // An animal inside a tank swims: below the water it shows `subidle`, at the surface
             // `surfidle` (sprite drawing 3.6).

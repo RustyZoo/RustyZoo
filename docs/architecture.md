@@ -108,7 +108,7 @@ The world and its editing:
 
 The simulation:
 
-- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`, the clocks of the fixed objects' and fences' looped animation (a fence starts at a random time), the one their state chooses for a filter, food, trash can or dung pile, the `used` and `idledead` animations of the buildings, and of the filter bubbles (`sim::idle`).
+- `sim`: the step: the managers in the original's order, the generator (`sim::Rng`), the state hash, `sim::drive::Run`, the clocks of the fixed objects' and fences' looped animation (a fence starts at a random time, and again at each wear step and each worker repair; it plays `det` and `broke` and the sloped rows), the one their state chooses for a filter, food, trash can or dung pile, the `used` and `idledead` animations of the buildings, and of the filter bubbles (`sim::idle`).
 - `scenario`, `goal`, `research`: scenario files and goals; the units' goals; the research tree.
 - `unit`: the live state of animals, guests and staff and the update each runs per step.
 - `behaviour`: the behaviour scripts parsed into operations and run by a state machine per unit.

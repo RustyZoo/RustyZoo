@@ -106,6 +106,11 @@ impl World {
             .is_some_and(|(l, ty)| i64::from(l) <= limit(ty))
     }
 
+    /// The life of the fence piece at `at`, if it carries one.
+    pub(crate) fn fence_life(&self, at: usize) -> Option<i32> {
+        (self.zoo.entities[at].common.as_ref()).and_then(|c| Some(c.fence?.life))
+    }
+
     /// Whether the entity at `at` is a fence piece or a tank wall (the class of 6.7 of the zoo format).
     pub(crate) fn is_fence(&self, at: usize) -> bool {
         matches!(&*self.zoo.entities[at].class, "fences" | "tankwall")
