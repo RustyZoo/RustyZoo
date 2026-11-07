@@ -2327,6 +2327,11 @@ fn the_walk_to_keeper_food_ends_on_the_pile_or_on_a_neighbour_where_the_animal_e
 /// The path of zebra 500 and the target of its walk to the pile at tile (3, 2) when the walk
 /// starts, with the extra zebra keys `keys`, for each seed from 1 to 39.
 fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
+    walks_of(keys, (500, (3, 2)))
+}
+
+/// [`walks_to_the_pile`] for zebra `id` and the pile at the tile `pile`.
+fn walks_of(keys: &str, (id, pile): (u32, (i32, i32))) -> Vec<(Vec<usize>, usize)> {
     use crate::sim::drive::{Command, Run};
     let mut found = vec![];
     for seed in 1..40 {
@@ -2339,15 +2344,15 @@ fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
         );
         let data = Eats::new();
         step_log(&mut run, &data);
-        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+        let Part::Animal(a) = &mut run.world.units.get_mut(id).unwrap().part else {
             panic!("not an animal");
         };
         (a.hunger, a.counters[HUNGER]) = (60, 0);
-        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        assert!(run.apply(&Command::Food(pile.0, pile.1, "herbchow".into(), Some(45))));
         for _ in 0..40 * 15 {
             let log = step_log(&mut run, &data);
-            if log.iter().any(|l| l == "unit set 500 bFindKeeperFood") {
-                let unit = run.world.units.get(500).unwrap();
+            if log.iter().any(|l| l == &format!("unit set {id} bFindKeeperFood")) {
+                let unit = run.world.units.get(id).unwrap();
                 let target = unit.goal.record.target.tile.unwrap();
                 found.push((unit.path.clone(), target));
                 break;
@@ -2374,6 +2379,27 @@ fn a_keep_moving_animal_goes_on_over_the_pile_and_one_step_past_it() {
         assert_eq!(path[n - 3..], [target, pile, past], "{path:?}");
     }
     assert!(beside > 0);
+}
+
+/// A pile in the corner of its pen: the step past it is fenced off or off the map, so the path
+/// of a keep-moving animal gets the pile appended and nothing after it.
+#[test]
+fn a_keep_moving_animal_gets_no_point_past_a_pile_whose_far_side_is_blocked() {
+    let width = usize::try_from(SIZE).unwrap();
+    // (3, 1) in the first pen has the north and east fences behind it; (7, 1) in the second pen
+    // is in the corner on the east edge of the map.
+    for (animal, pile) in [(500, (3, 1)), (510, (7, 1))] {
+        let tile = usize::try_from(pile.1).unwrap() * width + usize::try_from(pile.0).unwrap();
+        let walks = walks_of("cKeepMoving=1\n", (animal, pile));
+        assert!(walks.iter().any(|(_, target)| *target != tile), "{pile:?}");
+        for (path, target) in walks {
+            let n = path.len();
+            assert_eq!(path.last(), Some(&tile), "{pile:?}: {path:?}");
+            if target != tile {
+                assert_eq!(path[n - 2], target, "{pile:?}: {path:?}");
+            }
+        }
+    }
 }
 
 #[test]

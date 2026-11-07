@@ -65,6 +65,8 @@ pub(crate) struct Meal {
     pub start: bool,
     pub queue: bool,
     pub stop: bool,
+    /// A keep-moving species took the bite: its task becomes the random walk (5.3 point 4).
+    pub random: bool,
 }
 
 impl Animal {
@@ -90,7 +92,10 @@ pub(crate) fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
         }
         (m.start, m.in_set) = (true, true);
     }
-    (a.no_food, a.eating) = (false, true);
+    // A species with `cKeepMoving` exactly 1 walks on and gets no eating flag (5.3 point 4).
+    let keeps = k.keep_moving == 1;
+    (a.no_food, m.random) = (false, keeps);
+    a.eating |= !keeps;
     a.unmark(super::HUNGRY);
     m.left -= bite;
     m.bites += bite;
@@ -99,7 +104,7 @@ pub(crate) fn eat(a: &mut Animal, k: &Keys, m: &mut Meal) {
         a.stop_eating(false, m);
     }
     a.hunger_change = k.food_value.saturating_mul(bite).saturating_neg();
-    m.queue = m.left > 0 && !m.cannot_act;
+    m.queue = m.left > 0 && !m.cannot_act && !keeps;
 }
 
 /// `fEat` among the checks: the bite that empties the pile reads the exhibit's animal list at
@@ -367,6 +372,16 @@ pub(crate) fn apply(
     }
     if m.queue {
         unit.runner.queue("bEat", false, true);
+    }
+    if m.random {
+        let mut cx = Cx {
+            unit,
+            world,
+            ctx,
+            at,
+            data,
+        };
+        cx.set_task(crate::goal::RANDOM, 1, 0, None);
     }
     if m.stop {
         halt(unit, world, ctx, at, data);
