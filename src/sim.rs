@@ -174,6 +174,10 @@ pub(crate) struct Sim {
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
     ai_ticks: u32,
+    /// The AI clock held before the file of the game just started set its own: 0 in a fresh
+    /// process, the previous game's clock when a zoo is loaded inside a running game. A stored 0
+    /// in an entity's base word takes this (zoo format 6.4).
+    held_ticks: u32,
     /// The AI tick at which the unreachable list is next emptied; a value of the session, not
     /// of the zoo (simulation 4.3).
     next_clear: u32,
@@ -225,6 +229,7 @@ impl Sim {
             play_time: 0,
             ai_rem: 0,
             ai_ticks: 0,
+            held_ticks: 0,
             next_clear: 0,
             world_secs: 0,
             world_rem: 0,
@@ -302,6 +307,7 @@ impl Sim {
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
         self.play_time = clocks.play_time;
+        self.held_ticks = self.ai_ticks;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
@@ -554,10 +560,11 @@ impl Sim {
     pub(crate) fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
-        // Every entity base word stored as 0 is the AI clock (zoo format 6.4, from version 35).
+        // Every entity base word stored as 0 is the AI clock held before the file's own was read
+        // (zoo format 6.4, from version 35).
         if world.zoo.version >= 35 {
             for c in (world.zoo.entities.iter_mut()).filter_map(|e| e.common.as_mut()) {
-                c.stamp.get_or_insert(self.ai_ticks);
+                c.stamp.get_or_insert(self.held_ticks);
             }
         }
         for at in 0..world.zoo.entities.len() {
@@ -568,7 +575,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
-            crate::building::random_use::loaded(world, cat, at, self.ai_ticks, &mut self.rng);
+            crate::building::random_use::loaded(world, cat, at, self.held_ticks, &mut self.rng);
             crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,

@@ -164,8 +164,8 @@ pub struct Common {
     /// version 67 (empty before, and when the entity stores none).
     pub colors: Vec<u8>,
     /// The AI clock stamp of the entity base (zoo format 6.4): the tick a guest took its building
-    /// slot, among others. A stored 0 is the current tick: the parser keeps it as `None` and the
-    /// sim's load stamps it (from version 35), so a save writes that tick back.
+    /// slot, among others. A stored 0 is the AI clock held before the file's own is read (0 in a fresh
+    /// process): the parser keeps it as `None` and the sim's load stamps it (from version 35).
     pub stamp: Option<u32>,
     /// The condition of a fence or tank wall of a version from 55; `None` for everything else.
     pub(crate) fence: Option<Fence>,

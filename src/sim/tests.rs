@@ -1808,8 +1808,10 @@ fn a_step_queues_the_explode_of_the_pieces_just_made() {
     assert!(w.units.take_exploded().is_empty());
 }
 
-/// A load stamps the AI clock on every entity whose stored base word is 0, of every class, from
-/// version 35 (zoo format 6.4); a stored word stays, and an older file stays as it was.
+/// A load stamps the AI clock held before the file's own was read on every entity whose stored
+/// base word is 0, of every class, from version 35 (zoo format 6.4): 0 in a fresh run, the clock of
+/// the running game when a zoo is loaded inside it, never the file's clock. A stored word stays,
+/// and an older file stays as it was.
 #[test]
 fn a_load_stamps_every_entity_with_a_zero_word_with_the_clock() {
     use crate::unit::testing::{centre, entity, world_with};
@@ -1818,7 +1820,12 @@ fn a_load_stamps_every_entity_with_a_zero_word_with_the_clock() {
         .chain([
             "filter", "rubble", "building", "animals", "guests", "keepers",
         ]);
-    for (version, ticks, want) in [(70, 900, Some(900)), (35, 0, Some(0)), (34, 900, None)] {
+    for (version, running, want) in [
+        (70, None, Some(0)),
+        (70, Some(900), Some(900)),
+        (35, Some(900), Some(900)),
+        (34, Some(900), None),
+    ] {
         let mut w = world_with((4, 4), |zoo| {
             zoo.version = version;
             for (id, class) in classes.clone().enumerate() {
@@ -1834,13 +1841,18 @@ fn a_load_stamps_every_entity_with_a_zero_word_with_the_clock() {
             c.stamp = (c.id == 99).then_some(7);
         }
         let mut sim = Sim::new(b"");
-        sim.start_game(
-            16,
-            Clocks {
-                ai_ticks: ticks,
+        let start = |sim: &mut Sim, ai_ticks| {
+            let clocks = Clocks {
+                ai_ticks,
                 ..Clocks::default()
-            },
-        );
+            };
+            sim.start_game(16, clocks);
+        };
+        // A game that ran to this clock, then the zoo of the file (own clock 5000) opens.
+        if let Some(ticks) = running {
+            start(&mut sim, ticks);
+        }
+        start(&mut sim, 5000);
         sim.load(&mut w, &Catalogue::default());
         for e in &w.zoo.entities {
             let c = e.common.as_ref().unwrap();
