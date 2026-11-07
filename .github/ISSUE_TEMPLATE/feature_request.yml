@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an addition or a change
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RustyZoo keeps the behaviour of the original game first. Changes to how the game plays are unlikely; additions that leave it as it is (options, tools, platform support) are welcome.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: original
+    attributes:
+      label: How does the original game behave here?
+      description: If it already does this, or does the opposite, say so.
+  - type: checkboxes
+    id: no-game-files
+    attributes:
+      label: No original game files
+      options:
+        - label: I attach no original game file or anything extracted from it.
+          required: true
