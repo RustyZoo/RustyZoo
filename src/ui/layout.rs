@@ -224,6 +224,8 @@ pub(crate) struct Look {
     pub color_as_icon: bool,
     pub volatile: bool,
     pub update_while_paused: bool,
+    /// The `animation` an image shows besides its first (the game's code chooses it).
+    pub shown: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -228,6 +228,7 @@ impl Tree {
             color_as_icon: false,
             volatile: true,
             update_while_paused: true,
+            shown: 0,
         };
         if !layout {
             let (animation, normal) = match s.get_all("animation") {
@@ -295,6 +296,7 @@ impl Tree {
                 color_as_icon: flag("colorasicon", false),
                 volatile: flag("volatile", true),
                 update_while_paused: flag("updateWhilePaused", true),
+                shown: 0,
             };
         }
         let index = self.elements.len();

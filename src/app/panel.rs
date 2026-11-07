@@ -128,6 +128,10 @@ impl App<'_> {
             self.close_animal();
         }
         self.show_exhibit_set();
+        // Selecting the gate sets the same exhibit again (19.3 point 1).
+        if slot.is_some() {
+            self.show_exhibit_set();
+        }
     }
 
     /// A row of the exhibit panel's animal list was selected (10.5): that animal is selected,

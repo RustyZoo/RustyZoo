@@ -65,6 +65,7 @@ pub(crate) fn staged(items: Vec<Item>) -> (World, Catalogue) {
             .entities
             .push(entity(class, name, id, centre((6, 1)), 0));
     }
+    w.pad_shapes();
     let all = w.zoo.entities.clone();
     w.units.sync(&all);
     w.zoo.shows.scripts = vec![Script {

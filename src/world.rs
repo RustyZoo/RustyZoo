@@ -194,6 +194,12 @@ pub struct World {
 }
 
 impl World {
+    /// Gives the entities a test pushed straight into the zoo a place without a shape.
+    #[cfg(test)]
+    pub(crate) fn pad_shapes(&mut self) {
+        self.shapes.resize(self.zoo.entities.len(), None);
+    }
+
     /// The world of a test zoo in the shipped language (see [`World::with_language`]).
     #[cfg(test)]
     pub(crate) fn new(zoo: Zoo, shape: impl Fn(&Entity) -> Option<Shape>) -> World {

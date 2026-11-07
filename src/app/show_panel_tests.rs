@@ -7,6 +7,7 @@ use super::bulldozer_tests::{ROOT, Session, with_game_of};
 use crate::panel::show::{self, FINANCES_TAB, LAYOUT, SCRIPT_TAB};
 use crate::panel::{animal, exhibit, guest, research, staff};
 use crate::show::tests::cycle::{staged, tank_mut};
+use crate::ui::layout::Kind;
 
 /// The menu panels that hide the window (building, buying, hiring, research, options, developer),
 /// the zoo status panels, and the exhibit, animal, guest and staff panels.
@@ -68,7 +69,17 @@ fn layouts() -> (String, Vec<(String, Vec<u8>)>) {
 /// A game on the staged world of the show tests, whose show tank is returned, with its window
 /// hidden and the panel unopened.
 fn with_show(name: &str, body: impl FnOnce(&mut Session, u32)) {
-    let (mut world, cat) = staged(vec![]);
+    with_staged(name, |_, _| {}, body);
+}
+
+/// [`with_show`] on a staged world and catalogue that `stage` changed first.
+fn with_staged(
+    name: &str,
+    stage: impl FnOnce(&mut crate::world::World, &mut crate::entity::Catalogue),
+    body: impl FnOnce(&mut Session, u32),
+) {
+    let (mut world, mut cat) = staged(vec![]);
+    stage(&mut world, &mut cat);
     let x = tank_mut(&mut world).id;
     world.zoo.shows.next_script = 2001;
     let (root, files) = layouts();
@@ -266,5 +277,58 @@ fn another_exhibit_on_the_exhibit_panel_writes_the_changed_list_before_the_windo
             .iter()
             .find(|sc| sc.id == script);
         assert!(found.is_some_and(|sc| sc.items.is_empty()));
+    });
+}
+
+#[test]
+fn a_row_click_on_a_show_tank_with_a_gate_fills_the_trick_lists_twice() {
+    use crate::show::trick::tricks;
+    let tail = |defaultavailable: u8| {
+        format!(
+            "[tricks]\ntrick=a\n[tricks/a]\nid=11200\ntype=0\ndefaultavailable={defaultavailable}\n"
+        )
+    };
+    let stage = |w: &mut crate::world::World, cat: &mut crate::entity::Catalogue| {
+        let id = crate::show::tests::cycle::SEAL as i32;
+        let seal = cat.types.iter_mut().find(|t| t.name_id == id).unwrap();
+        let config =
+            |t: u8| std::sync::Arc::new(crate::config::Config::parse(tail(t).as_bytes()).unwrap());
+        seal.config = Some(config(1));
+        // The saved script holds the trick, saved available, and one that is not listed.
+        let mut items = tricks(seal);
+        items.push(crate::zoo::Item {
+            id: 11999,
+            ..items[0].clone()
+        });
+        w.zoo.shows.scripts[0].items = items;
+        // The type's own copy of the trick is not available: the second fill drops it.
+        seal.config = Some(config(0));
+        cat.push(crate::fixtures::ty(
+            "fences",
+            "iron",
+            "g",
+            "[HabitatFence]\n",
+        ));
+    };
+    with_staged("show-twice", stage, |s, _| {
+        let gate = s.app.renderer.catalogue().types.len() - 1;
+        let piece = s.fence(gate, 1, 1, 0);
+        // The piece made an exhibit of its own and renumbered the others.
+        let game = s.app.game.as_mut().unwrap();
+        let x = crate::show::tests::cycle::tank_mut(&mut game.world).id;
+        game.world.set_gate(x, piece);
+        s.app.interface().unwrap().show(exhibit::LAYOUT);
+        s.pass(&[]);
+        let game = s.app.game.as_ref().unwrap();
+        let row = (0..9)
+            .find(|&r| game.panel.exhibit_of(r) == Some(x))
+            .unwrap();
+        s.app.panel_row(row as i32);
+        let ui = s.app.interface().unwrap();
+        let list = ui.tree.find(show::SHOWN).unwrap();
+        let Kind::ListBox(l) = &ui.tree.elements[list].kind else {
+            panic!("a list box");
+        };
+        assert!(l.rows.rows.is_empty(), "the second fill dropped the trick");
     });
 }
