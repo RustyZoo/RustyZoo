@@ -189,23 +189,17 @@ impl App<'_> {
         }
     }
 
-    /// The select action of a trick list ran (19.9.5): the buttons follow the row.
-    pub(super) fn show_tricks_row(&mut self, list: i32, row: i32) {
-        playing!(self, game, ui);
-        let row = usize::try_from(row).ok();
-        match list {
-            show::AVAILABLE => game.show.avail_select(ui, row),
-            _ => game.show.show_select(ui, row),
-        }
-    }
-
-    /// A row of a drop-down was chosen.
+    /// A row of a drop-down was chosen, or the select action of a trick list ran.
     pub(super) fn show_row(&mut self, list: i32, row: i32) {
         playing!(self, game, ui);
         let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
+        let place = usize::try_from(row).ok();
         match list {
             show::SPECIES_LIST => game.show.choose_species(ui, &mut game.world, cat, vfs, row),
-            _ => game.show.choose_frequency(ui, &mut game.world, cat, row),
+            show::FREQUENCY_LIST => game.show.choose_frequency(ui, &mut game.world, cat, row),
+            // The select action of a trick list (19.9.5): the buttons follow the row.
+            show::AVAILABLE => return game.show.avail_select(ui, place),
+            _ => return game.show.show_select(ui, place),
         }
         game.building.clock.force = true;
         game.show.clock.force = true;

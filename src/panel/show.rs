@@ -18,6 +18,8 @@ use crate::ui::widgets::Row;
 use crate::vfs::Vfs;
 use crate::world::{World, filter_months_since};
 
+mod editor;
+
 // The window, its tabs and the two drop-down layouts.
 pub(crate) const LAYOUT: i32 = 41;
 pub(crate) const SCRIPT_TAB: i32 = 11126;
@@ -44,6 +46,19 @@ pub(crate) const LATER: i32 = 11118;
 pub(crate) const AVAILABLE: i32 = 11111;
 pub(crate) const SHOWN: i32 = 11115;
 const TRICK_BUTTONS: [i32; 4] = [ADD, REMOVE, EARLIER, LATER];
+/// The buttons of the window that run an action of the game.
+pub(crate) const BUTTONS: [i32; 8] = [
+    UP,
+    DOWN,
+    SPECIES_BUTTON,
+    FREQUENCY_BUTTON,
+    ADD,
+    REMOVE,
+    EARLIER,
+    LATER,
+];
+/// The lists whose select action the game follows.
+pub(crate) const LISTS: [i32; 4] = [SPECIES_LIST, FREQUENCY_LIST, AVAILABLE, SHOWN];
 const TRICK_LISTS: [i32; 2] = [AVAILABLE, SHOWN];
 const BENEFIT: i32 = 11120;
 const FACE: i32 = 11121;
@@ -57,8 +72,6 @@ const LOSS: [u8; 3] = [250, 7, 7];
 const BREAK_EVEN: [u8; 3] = [255, 228, 173];
 /// The interface clock time between two refreshes (ms).
 pub(crate) const PERIOD: u64 = 10_000;
-
-mod editor;
 
 /// The frequencies of the four rows, in AI ticks between two shows (-1 never).
 fn frequencies(world: &World) -> [i32; 4] {

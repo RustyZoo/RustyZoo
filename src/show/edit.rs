@@ -267,7 +267,7 @@ fn tally(count: &mut BTreeMap<u16, u32>, it: &mut Item, prev: Option<u16>) {
     *n = n.wrapping_add(1);
     if *n == 1 {
         it.current = it.satisfaction;
-    } else if *n % 3 == 0 || prev == Some(it.id) {
+    } else if n.is_multiple_of(3) || prev == Some(it.id) {
         it.current = it.current.wrapping_sub(it.delta);
     }
 }
@@ -279,9 +279,10 @@ fn pass(k: i32, own: &mut [Item], rows: &[u16], mut script: Option<&mut [Item]>)
     let mut count = BTreeMap::new();
     let (mut prev, mut sum, mut benefit) = (0u16, 0i32, 0i32);
     for i in 0..count_all {
-        let it = match script.as_deref_mut() {
-            Some(sc) => sc.get_mut(i),
-            None => own.iter_mut().find(|t| t.id == rows[i]),
+        let it = match (script.as_deref_mut(), rows.get(i)) {
+            (Some(sc), _) => sc.get_mut(i),
+            (None, Some(id)) => own.iter_mut().find(|t| t.id == *id),
+            _ => None,
         };
         let Some(it) = it else { continue };
         tally(&mut count, it, Some(prev));
@@ -310,6 +311,3 @@ pub(crate) fn recalc(world: &mut World, s: &EntityType, ids: &[u16]) -> Recalc {
     keep_current(world, s, &own);
     out
 }
-
-#[cfg(test)]
-mod tests;

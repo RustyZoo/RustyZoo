@@ -145,8 +145,8 @@ impl Panel {
         let shown = ui.shown(super::SCRIPT_LAYOUT);
         if !std::mem::replace(&mut self.editor.script_shown, shown) && shown {
             if let Some(r) = ui.selected_row(super::FREQUENCY_LIST) {
-                let text = ui.row_text(super::FREQUENCY_LIST, r).unwrap_or_default();
-                ui.set_text(FREQUENCY_BUTTON, &text.to_vec());
+                let text = ui.row_text(super::FREQUENCY_LIST, r).map(<[u8]>::to_vec);
+                ui.set_text(FREQUENCY_BUTTON, &text.unwrap_or_default());
             }
             ui.set_hidden(super::FREQUENCY_LAYOUT, true);
             for button in super::TRICK_BUTTONS {
