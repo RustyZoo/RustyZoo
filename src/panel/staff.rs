@@ -12,6 +12,7 @@ use crate::goal;
 use crate::money::{SYMBOL, Symbol};
 use crate::panel::exhibit::{Clock, type_at};
 use crate::panel::follow::set_follow_icon;
+use crate::show;
 use crate::staff;
 use crate::status::Words;
 use crate::text::format::{self, Arg};
@@ -70,6 +71,19 @@ const EXITING: i32 = 10306;
 const EGGS: i32 = 10321;
 const CLEANING_TANK: i32 = 10327;
 const CLEANING_POO: i32 = 10514;
+const TRANQUILIZING: i32 = 10308;
+const CONTAINING: i32 = 10309;
+const SHOW_UNKNOWN: i32 = 10325;
+const SHOW: i32 = 10326;
+/// The jobs of a capture: the crate, and the show of the marine specialist.
+const CRATE: u8 = 15;
+/// The helicopter's texts by task: waiting at the base, landing, taking off, returning.
+const HELI: [(u8, i32); 4] = [
+    (goal::USE, 10316),
+    (goal::ENTER_BUILDING, 10317),
+    (goal::EXIT_BUILDING, 10318),
+    (goal::ENTRANCE, 10319),
+];
 /// The scientist's type id, which has a text of its own for raking.
 const SCIENTIST: i32 = 9551;
 /// The worker's texts by job, and when it has none the text of the wander.
@@ -99,14 +113,21 @@ pub(crate) enum Place {
     Exhibit(String),
 }
 
-/// The job text of a staff member (staff 9): the string and the name that goes in its `%s`;
-/// `None` for an empty text. `at` gives the place of a tile, `animal` whether an entity is an
-/// animal and then an egg. The shows and the captures are M7's.
+/// An animal the text looks at: whether it is an egg, and its name.
+pub(crate) struct Seen {
+    pub egg: bool,
+    pub name: String,
+}
+
+/// The job text of a staff member (staff 9, 7.11.1 point 9): the string and the name that goes in
+/// its `%s`; `None` for an empty text. `at` gives the place of a tile, `animal` what an entity is
+/// when it is an animal, `show` the name of the show with an id, when there is one.
 pub(crate) fn duty(
     unit: &Unit,
     type_id: i32,
     at: impl Fn(Option<usize>) -> Place,
-    animal: impl Fn(u32) -> Option<bool>,
+    animal: impl Fn(u32) -> Option<Seen>,
+    show: impl Fn(u16) -> Option<String>,
 ) -> Option<(i32, Option<String>)> {
     let r = &unit.goal.record;
     let plain = |id| Some((id, None));
@@ -119,18 +140,30 @@ pub(crate) fn duty(
         Kind::Keeper => match (r.task, r.job) {
             (_, j) if FOOD.contains(&j) => plain(PLACING),
             (_, j) if HEAL.contains(&j) => {
-                animal(r.job_target.id).map(|egg| (if egg { EGGS } else { HEALING }, None))
+                animal(r.job_target.id).map(|a| (if a.egg { EGGS } else { HEALING }, None))
             }
             (_, j) if DUNG.contains(&j) => plain(if type_id == SCIENTIST {
                 CLEANING_POO
             } else {
                 RAKING
             }),
+            (goal::CAPTURE, j) => {
+                let id = if j == CRATE { CONTAINING } else { TRANQUILIZING };
+                animal(captured(unit)).map(|a| (id, Some(a.name)))
+            }
             (_, j) if TANK.contains(&j) => plain(CLEANING_TANK),
             (goal::HABITAT | 126, _) => going(GOING),
             (EXIT, _) => plain(EXITING),
             (goal::RANDOM, _) => plain(MONITORING),
+            (_, show::CONDUCT) => Some(match show(unit.show) {
+                Some(name) => (SHOW, Some(name)),
+                None => (SHOW_UNKNOWN, None),
+            }),
             _ => None,
+        },
+        Kind::Heli => match r.task {
+            goal::CAPTURE => animal(captured(unit)).map(|a| (TRANQUILIZING, Some(a.name))),
+            t => HELI.iter().find(|h| h.0 == t).and_then(|h| plain(h.1)),
         },
         Kind::Worker => match WORKER_JOBS.iter().find(|&&(j, _)| j == r.job) {
             Some(&(_, id)) => plain(id),
@@ -148,6 +181,14 @@ pub(crate) fn duty(
             _ => plain(GUIDE_MONITORING),
         },
         _ => None,
+    }
+}
+
+/// The animal a staff member has taken as his capture job, 0 for none.
+fn captured(unit: &Unit) -> u32 {
+    match &unit.part {
+        Part::Staff(s) => s.captured,
+        _ => 0,
     }
 }
 
@@ -272,11 +313,22 @@ impl Panel {
                 None => Place::None,
             }
         };
-        let egg = |id: u32| match &world.units.get(id)?.part {
-            Part::Animal(a) => Some(a.egg),
-            _ => None,
+        let animal = |id: u32| {
+            let u = world.units.get(id)?;
+            let Part::Animal(a) = &u.part else {
+                return None;
+            };
+            let name = world.find(id).and_then(|e| world.zoo.entities[e].common.as_ref());
+            Some(Seen {
+                egg: a.egg,
+                name: name.map_or(String::new(), |c| c.name.clone()),
+            })
         };
-        let text = duty(unit, ty.map_or(0, |t| t.name_id), place, egg).map_or(
+        let show = |id: u16| {
+            let x = crate::show::exhibit_of(world, id)?;
+            Some(world.exhibits().get(x)?.name.clone())
+        };
+        let text = duty(unit, ty.map_or(0, |t| t.name_id), place, animal, show).map_or(
             String::new(),
             |(s, name)| {
                 let none = Words::new(|_| String::new());

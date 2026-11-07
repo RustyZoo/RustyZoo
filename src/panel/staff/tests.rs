@@ -10,7 +10,7 @@ fn unit(kind: Kind, task: u8, job: u8, tile: Option<usize>, job_target: u32) -> 
 }
 
 /// The text of a unit: tile 1 is in the exhibit "Pen", tile 2 on the grounds, any other has none;
-/// entity 7 is an egg, 8 an animal, anything else no animal.
+/// entity 7 is an egg, 8 an animal called "Rex", anything else no animal; show 5 is "Tank".
 fn text(u: &Unit, type_id: i32) -> Option<(i32, Option<String>)> {
     let at = |t: Option<usize>| match t {
         Some(1) => Place::Exhibit("Pen".into()),
@@ -18,11 +18,14 @@ fn text(u: &Unit, type_id: i32) -> Option<(i32, Option<String>)> {
         _ => Place::None,
     };
     let animal = |id: u32| match id {
-        7 => Some(true),
-        8 => Some(false),
+        7 | 8 => Some(Seen {
+            egg: id == 7,
+            name: "Rex".into(),
+        }),
         _ => None,
     };
-    duty(u, type_id, at, animal)
+    let show = |id: u16| (id == 5).then(|| "Tank".to_string());
+    duty(u, type_id, at, animal, show)
 }
 
 fn keeper(task: u8, job: u8, tile: Option<usize>, target: u32) -> Option<(i32, Option<String>)> {
@@ -65,6 +68,65 @@ fn a_keepers_walk_names_the_exhibit_and_a_wander_monitors() {
     // Between two jobs, in his duties, and with no task, he shows nothing.
     assert_eq!(keeper(0x6e, 0, None, 0), None);
     assert_eq!(keeper(0, 0, None, 0), None);
+}
+
+#[test]
+fn a_captures_text_names_the_animal_and_the_crate_changes_it() {
+    let capture = |job, animal, kind, task| {
+        let mut u = unit(kind, task, job, None, 0);
+        if let Part::Staff(s) = &mut u.part {
+            s.captured = animal;
+        }
+        text(&u, NAMED)
+    };
+    let rex = |id| Some((id, Some("Rex".to_string())));
+    assert_eq!(capture(13, 8, Kind::Keeper, 0x6f), rex(10308));
+    assert_eq!(capture(14, 8, Kind::Keeper, 0x6f), rex(10308));
+    assert_eq!(capture(15, 8, Kind::Keeper, 0x6f), rex(10309));
+    assert_eq!(capture(13, 9, Kind::Keeper, 0x6f), None, "no such animal");
+    assert_eq!(capture(13, 0, Kind::Keeper, 0x6f), None, "none taken");
+    // The job text of a dung job still wins, and another task does not show the capture.
+    assert_eq!(capture(5, 8, Kind::Keeper, 0x6f), Some((10302, None)));
+    assert_eq!(capture(13, 8, Kind::Keeper, 0x6e), None);
+}
+
+#[test]
+fn a_conducting_keeper_names_his_show_or_the_unknown_one() {
+    let conduct = |job, show| {
+        let mut u = unit(Kind::Keeper, 0x6e, job, None, 0);
+        u.show = show;
+        text(&u, 9552)
+    };
+    assert_eq!(conduct(19, 5), Some((10326, Some("Tank".into()))));
+    assert_eq!(conduct(19, 0), Some((10325, None)), "no show");
+    assert_eq!(conduct(19, 6), Some((10325, None)), "a gone show");
+    assert_eq!(conduct(19, u16::MAX), Some((10325, None)));
+    assert_eq!(conduct(23, 5), None, "the way to the ladder");
+    // His round before the job: the monitor task shows first.
+    let mut u = unit(Kind::Keeper, 1, 19, None, 0);
+    u.show = 5;
+    assert_eq!(text(&u, 9552), Some((10304, None)));
+}
+
+#[test]
+fn a_helicopters_text_follows_its_task() {
+    let heli = |task, animal| {
+        let mut u = unit(Kind::Heli, task, 0, None, 0);
+        if let Part::Staff(s) = &mut u.part {
+            s.captured = animal;
+        }
+        text(&u, 9550)
+    };
+    assert_eq!(heli(0x6a, 0), Some((10316, None)));
+    assert_eq!(heli(0x68, 0), Some((10317, None)));
+    assert_eq!(heli(0x69, 0), Some((10318, None)));
+    assert_eq!(heli(0x67, 0), Some((10319, None)));
+    assert_eq!(heli(0x6f, 8), Some((10308, Some("Rex".into()))));
+    assert_eq!(heli(0x6f, 9), None, "no such animal");
+    assert_eq!(heli(0x6f, 0), None);
+    assert_eq!(heli(1, 0), None);
+    assert_eq!(heli(0, 0), None);
+    assert_eq!(heli(u8::MAX, 0), None);
 }
 
 #[test]
