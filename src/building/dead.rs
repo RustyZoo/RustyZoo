@@ -1,8 +1,10 @@
 //! The dead state of a building (guest buildings 11.1.1). A building is dead when its type's
 //! keys say so for the ground it stands on and the water of the tank under it. It is decided
 //! when the building is placed, put down or loaded, and again each time the water level or the
-//! wall height of its tank moves. A building found dead outside a load puts all its users out
-//! (a forced leave, 11.1) and refuses new ones (6.1).
+//! wall height of its tank moves, a tank is made or goes, the ground of a tile changes and the
+//! view zooms. A building found dead outside a load puts all its users out (a forced leave, 11.1)
+//! and refuses new ones (6.1). The tank toys and show objects carry the keys too and are decided
+//! the same way.
 
 use super::{Kind, Live, leave::push_out};
 use crate::entity::{Catalogue, EntityType};
@@ -46,16 +48,28 @@ fn decide_at(world: &mut World, kind: &Kind, at: usize) -> bool {
     let water: Vec<bool> = tiles.iter().map(|&t| world.is_water(t)).collect();
     let dead = is_dead(&kind.dead, level, &water);
     let id = world.zoo.entities[at].common.as_ref().map_or(0, |c| c.id);
-    (world.units.buildings.entry(id))
-        .or_insert_with(|| Live::new(kind))
-        .dead = dead;
+    // An object that is alive and has no figures keeps none (a toy).
+    if dead || world.units.buildings.contains_key(&id) {
+        (world.units.buildings.entry(id))
+            .or_insert_with(|| Live::new(kind))
+            .dead = dead;
+    }
     dead
+}
+
+/// Whether objects of type `ty` can be dead: a guest building, or a type with a dead key (the
+/// tank toys and show objects).
+fn decides(ty: &EntityType) -> bool {
+    crate::month::is_guest_building(ty)
+        || ["cDeadOnLand", "cDeadOnFlatWater", "cDeadUnderwater"]
+            .iter()
+            .any(|key| crate::build::number(ty, key) == Some(1.0))
 }
 
 /// Decides the dead state of the new or set down building `id` of type `ty`: no user is
 /// there to put out.
 pub(crate) fn decide(world: &mut World, ty: &EntityType, id: u32) {
-    if !crate::month::is_guest_building(ty) {
+    if !decides(ty) {
         return;
     }
     let kind = Kind::of(ty, world.units.prices.default);
@@ -68,7 +82,7 @@ pub(crate) fn decide(world: &mut World, ty: &EntityType, id: u32) {
 /// put out (the loader's flag, 11.1.1).
 pub(crate) fn decide_all(world: &mut World, cat: &Catalogue) {
     for at in 0..world.zoo.entities.len() {
-        if let Some(kind) = guest_kind(world, cat, at) {
+        if let Some(kind) = decider(world, cat, at) {
             decide_at(world, &kind, at);
         }
     }
@@ -82,26 +96,41 @@ pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue, rng: &mut crate::s
     for tank in world.take_wet() {
         tank_changed(world, cat, tank);
     }
+    if world.take_reshaped() {
+        revalidate(world, cat);
+    }
     for tank in world.take_stirred() {
         crate::goal::stir_units(world, cat, rng, tank);
     }
 }
 
+/// A tank was made or went, or the ground of a tile or the view changed (11.1.1): every object
+/// is validated again, and each one found dead puts all its users out. The spec validates the
+/// objects of the tiles concerned; the state depends on nothing else, so the pass over all of
+/// them differs only for a building that was loaded dead.
+pub(crate) fn revalidate(world: &mut World, cat: &Catalogue) {
+    validate(world, cat, None);
+}
+
 /// The water level or the wall height of tank `tank` moved: the buildings standing on its tiles
 /// are validated again, and each one found dead puts all its users out.
 pub(crate) fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
+    validate(world, cat, Some(tank));
+}
+
+/// Validates the objects of tank `only`, or all of them, again.
+fn validate(world: &mut World, cat: &Catalogue, only: Option<u32>) {
     for at in 0..world.zoo.entities.len() {
-        let Some(kind) = guest_kind(world, cat, at) else {
+        let Some(kind) = decider(world, cat, at) else {
             continue;
         };
-        let on = world
-            .footprint(at)
-            .and_then(|(own, _)| own)
-            .is_some_and(|t| world.tank_at(t) == Some(tank));
-        if !on {
-            continue;
-        }
-        if decide_at(world, &kind, at)
+        let on = only.is_none_or(|tank| {
+            (world.footprint(at))
+                .and_then(|(own, _)| own)
+                .is_some_and(|t| world.tank_at(t) == Some(tank))
+        });
+        if on
+            && decide_at(world, &kind, at)
             && let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id)
         {
             push_out(world, cat, id);
@@ -109,10 +138,9 @@ pub(crate) fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
     }
 }
 
-/// The kind of the entity at `at` when it is a guest building.
-fn guest_kind(world: &World, cat: &Catalogue, at: usize) -> Option<Kind> {
-    let ty =
-        type_of(cat, &world.zoo.entities[at]).filter(|ty| crate::month::is_guest_building(ty))?;
+/// The kind of the entity at `at` when its dead state is decided (see [`decides`]).
+fn decider(world: &World, cat: &Catalogue, at: usize) -> Option<Kind> {
+    let ty = type_of(cat, &world.zoo.entities[at]).filter(|ty| decides(ty))?;
     Some(Kind::of(ty, world.units.prices.default))
 }
 

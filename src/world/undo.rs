@@ -290,6 +290,7 @@ impl World {
                         let moved = (tile.elevation, tile.shape)
                             != (self.zoo.tiles[t].elevation, self.zoo.tiles[t].shape);
                         self.zoo.tiles[t] = tile;
+                        self.reshaped = true;
                         if moved {
                             self.reheight(t);
                         }

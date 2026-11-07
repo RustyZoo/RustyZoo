@@ -75,6 +75,8 @@ pub(crate) struct Camera {
     selection: (i32, i32),
     /// The earliest time of the next edge step, ms.
     next_edge: i64,
+    /// The zoom changed since the last [`Camera::take_zoomed`].
+    zoomed: bool,
 }
 
 /// A view-space position at normal zoom, with the zoom of 2.4 applied: the zoom value is the
@@ -115,6 +117,7 @@ impl Camera {
             brush: ((view.brush & 0xff) as i32).clamp(1, 5),
             selection: (0, 0),
             next_edge: 0,
+            zoomed: false,
         }
     }
 
@@ -288,6 +291,12 @@ impl Camera {
         }
     }
 
+    /// Whether the zoom changed since the last call (the objects are validated again, guest
+    /// buildings 11.1.1).
+    pub(crate) fn take_zoomed(&mut self) -> bool {
+        std::mem::take(&mut self.zoomed)
+    }
+
     /// Full screen with a view of 800 pixels in width (8.3).
     pub(crate) fn narrow(&self) -> bool {
         self.fullscreen && self.size.0 == NARROW
@@ -334,7 +343,9 @@ impl Camera {
             self.selection = (first(tx, map.width), first(ty, map.height));
         }
         // 2. Change.
+        let zoom = self.zoom;
         apply(self);
+        self.zoomed |= self.zoom != zoom;
         // 3. Locate the tile.
         let (tx, ty) = (self.selection.0 + offset, self.selection.1 + offset);
         let z = u32::try_from(tx)
