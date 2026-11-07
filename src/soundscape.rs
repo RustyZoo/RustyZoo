@@ -3,6 +3,7 @@
 //! once per second of steps each group rolls whether it plays one sound there. The world loop and
 //! the crowd loop are in [`loops`].
 
+mod calls;
 mod loops;
 
 use std::collections::BTreeMap;
@@ -12,6 +13,7 @@ use crate::sim::Rng;
 use crate::vfs::{Vfs, name_from_bytes};
 use loops::{Files, Loops};
 
+pub(crate) use calls::Calls;
 pub use loops::SceneLoop;
 
 /// The file of each group when the scenario names none (sound 8.1).
@@ -37,6 +39,50 @@ impl Group {
     fn files(&self) -> Vec<String> {
         self.sounds.iter().map(|(f, _)| f.clone()).collect()
     }
+
+    /// One play of the group for a step of `step` ms (sound 8.1 points 3 and 4): the step joins
+    /// the shared `clock`; above a second the surplus is taken off and one draw rolls the chance,
+    /// then one draw picks the sound by cumulative weight.
+    fn roll(&self, clock: &mut u32, step: u32, rng: &mut Rng) -> Roll {
+        *clock = clock.wrapping_add(step);
+        if *clock <= SECOND {
+            return Roll::Idle;
+        }
+        *clock = (*clock - 1) % SECOND + 1;
+        if self.chance == 0 || rng.pick(self.chance) != 0 {
+            return Roll::Miss;
+        }
+        let draw = (rng.rand() % 100) as i32;
+        let mut sum = 0i32;
+        let found = self.sounds.iter().position(|(_, prob)| {
+            sum = sum.wrapping_add(*prob);
+            draw < sum
+        });
+        found.map_or(Roll::Dud(draw), |entry| Roll::Play(entry, draw))
+    }
+
+    /// The one-shot of the sound `entry`, each entry being its own voice, `(dx, dy)` from the centre.
+    fn shot(&self, entry: usize, dx: i32, dy: i32) -> Shot {
+        Shot {
+            file: self.sounds[entry].0.clone(),
+            voice: format!("ambient {entry} {}", self.files().join(" ")),
+            at: None,
+            dx,
+            dy,
+        }
+    }
+}
+
+/// What a play of a group came to.
+enum Roll {
+    /// Not above a second yet.
+    Idle,
+    /// The chance did not hit.
+    Miss,
+    /// The weights hold no sound for the draw.
+    Dud(i32),
+    /// The entry to play and the draw that chose it.
+    Play(usize, i32),
 }
 
 /// An `[ambientlevels]` file: the groups with the range of levels each one serves.
@@ -106,6 +152,9 @@ pub(crate) struct Shot {
     /// The sound group's list of files and the entry: each entry of a group is its own voice
     /// (sound 8.1 point 9).
     pub voice: String,
+    /// The map position of a creature's call, placed as it stands against the centre of the view
+    /// (ambients 6.4 point 5); `None`: `(dx, dy)` from the centre.
+    pub at: Option<(i32, i32)>,
     pub dx: i32,
     pub dy: i32,
 }
@@ -214,34 +263,16 @@ impl Soundscape {
         ];
         for (name, group, (dx, dy)) in plays {
             let Some(group) = group else { continue };
-            let files = group.files();
-            let clock = clocks.entry(files).or_insert(0);
-            *clock = clock.wrapping_add(step);
-            if *clock <= SECOND {
-                continue;
-            }
-            *clock = (*clock - 1) % SECOND + 1;
-            if group.chance == 0 || rng.pick(group.chance) != 0 {
-                log.push(format!("soundscape {name} roll no"));
-                continue;
-            }
-            let draw = (rng.rand() % 100) as i32;
-            let mut sum = 0i32;
-            let found = group.sounds.iter().enumerate().find(|(_, (_, prob))| {
-                sum = sum.wrapping_add(*prob);
-                draw < sum
-            });
-            match found {
-                Some((entry, (file, _))) => {
+            let clock = clocks.entry(group.files()).or_insert(0);
+            match group.roll(clock, step, rng) {
+                Roll::Idle => {}
+                Roll::Miss => log.push(format!("soundscape {name} roll no")),
+                Roll::Dud(draw) => log.push(format!("soundscape {name} roll {draw} none")),
+                Roll::Play(entry, draw) => {
+                    let file = &group.sounds[entry].0;
                     log.push(format!("soundscape {name} roll {draw} {file}"));
-                    shots.push(Shot {
-                        file: file.clone(),
-                        voice: format!("ambient {entry} {}", group.files().join(" ")),
-                        dx,
-                        dy,
-                    });
+                    shots.push(group.shot(entry, dx, dy));
                 }
-                None => log.push(format!("soundscape {name} roll {draw} none")),
             }
         }
     }

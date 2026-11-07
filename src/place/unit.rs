@@ -498,11 +498,16 @@ pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
 }
 
 /// The name of a new entity of the type from the type's name text (`world.units.names`): empty
-/// when the interface gave none.
+/// when the interface gave none. An ambient's text is kept only when it holds a visible character
+/// (ambients 3.3).
 pub(crate) fn named(world: &mut World, ty: &EntityType) -> String {
-    match world.units.names.get(&ty.name_id).cloned() {
-        Some(text) => name(world, ty, &text),
-        None => String::new(),
+    let Some(text) = world.units.names.get(&ty.name_id).cloned() else {
+        return String::new();
+    };
+    let shown = text.chars().any(|c| !c.is_whitespace() && !c.is_control());
+    match ty.class == "ambient" && !shown {
+        true => String::new(),
+        false => name(world, ty, &text),
     }
 }
 

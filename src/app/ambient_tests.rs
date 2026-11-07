@@ -1,8 +1,10 @@
 //! The ambient one-shots of the soundscape (sound 8.1) reach the player placed in the view.
 
 use super::developer_tests::with_world;
+use super::told::shot_at;
 use super::*;
 use crate::entity::Catalogue;
+use crate::soundscape::Shot;
 
 const WORLD: &[u8] = b"[ambientlevels]\ngroup = g\nvalue = -100\nvalue = 100\n[g]\nchance = 1\nsound = sounds/bird.wav\nprob = 100\n";
 
@@ -103,4 +105,23 @@ fn the_world_loop_and_the_crowd_loop_are_asked_for_from_the_first_pass() {
             assert!(app.scene_loops().is_empty());
         },
     );
+}
+
+#[test]
+fn a_call_is_placed_by_its_map_position_against_the_centre_of_the_view() {
+    let shot = |at, dx, dy| Shot {
+        file: "a.wav".into(),
+        voice: "v".into(),
+        at,
+        dx,
+        dy,
+    };
+    let centre = (1000, -500);
+    assert_eq!(shot_at(&shot(None, 7, -9), centre), (1007, -509));
+    assert_eq!(shot_at(&shot(Some((64, 128)), 7, -9), centre), (64, 128));
+    let far = shot_at(
+        &shot(Some((i32::MIN, i32::MAX)), 0, 0),
+        (i64::MAX, i64::MIN),
+    );
+    assert_eq!(far, (i64::from(i32::MIN), i64::from(i32::MAX)));
 }
