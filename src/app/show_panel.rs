@@ -169,14 +169,15 @@ impl App<'_> {
         playing!(self, game, ui);
         let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
         match id {
-            show::ADD => {
-                let said = game.show.add(ui, &mut game.world, cat, vfs);
+            show::ADD | show::REMOVE | show::EARLIER | show::LATER => {
+                let w = &mut game.world;
+                let said = match id {
+                    show::ADD => game.show.add(ui, w, cat, vfs),
+                    show::REMOVE => game.show.remove(ui, w, cat, vfs),
+                    _ => game.show.shift(ui, w, cat, vfs, id == show::EARLIER),
+                };
                 self.lines.panel.extend(said);
-            }
-            show::REMOVE => game.show.remove(ui, &mut game.world, cat, vfs),
-            show::EARLIER | show::LATER => {
-                game.show
-                    .shift(ui, &mut game.world, cat, vfs, id == show::EARLIER);
+                self.lines.panel.extend(game.show.note(ui, &game.world));
             }
             show::UP | show::DOWN => {
                 game.show.press(ui, &mut game.world, cat, id == show::UP);
@@ -186,7 +187,6 @@ impl App<'_> {
             show::FREQUENCY_BUTTON => _ = ui.focus(show::FREQUENCY_LIST),
             _ => {}
         }
-        game.show.clock.force = true;
     }
 
     /// The select action of a trick list ran (19.9.5): the buttons follow the row.

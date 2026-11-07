@@ -225,13 +225,10 @@ impl Panel {
         world: &mut World,
         cat: &Catalogue,
         vfs: &Vfs,
-    ) {
-        let Some(i) = ui
+    ) -> Option<String> {
+        let i = ui
             .selected_row(SHOWN)
-            .filter(|&i| i < self.editor.shown.len())
-        else {
-            return;
-        };
+            .filter(|&i| i < self.editor.shown.len())?;
         self.remove_row(ui, vfs, i);
         if i > 0 {
             ui.select_row(SHOWN, Some(i - 1));
@@ -239,6 +236,7 @@ impl Panel {
         self.show_select(ui, ui.selected_row(SHOWN));
         self.recalc(ui, world, cat);
         self.editor.changed = true;
+        None
     }
 
     /// Takes row `i` out of the show list: a selection after it moves up by one, the selection
@@ -260,7 +258,7 @@ impl Panel {
         cat: &Catalogue,
         vfs: &Vfs,
         earlier: bool,
-    ) {
+    ) -> Option<String> {
         let n = self.editor.shown.len();
         let i = ui.selected_row(SHOWN);
         let from = match (earlier, i) {
@@ -276,6 +274,7 @@ impl Panel {
         self.show_select(ui, ui.selected_row(SHOWN));
         self.recalc(ui, world, cat);
         self.editor.changed = true;
+        None
     }
 
     /// `update_available` (19.9.9 point 1): the available tricks are asked again, for a research

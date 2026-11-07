@@ -50,7 +50,11 @@ pub(crate) fn staged(items: Vec<Item>) -> (World, Catalogue) {
     let (mut w, mut cat) = crowded();
     cat.push(EntityType {
         name_id: SEAL as i32,
-        ..kind("animals", "seal", "[tricks]\ntrick=a\n")
+        ..kind(
+            "animals",
+            "seal",
+            "[tricks]\ntrick=a\n[tricks/a]\nid=11200\ntype=0\ndefaultavailable=1\n",
+        )
     });
     for (id, class, name) in [
         (21, "animals", "seal"),

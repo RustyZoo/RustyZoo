@@ -364,6 +364,11 @@ impl Panel {
             t if t != self.species => self.set_species(ui, world, cat, vfs, t),
             _ => {}
         }
+        self.note(ui, world)
+    }
+
+    /// The log lines of what changed since the last time they were asked for.
+    pub(crate) fn note(&mut self, ui: &Interface, world: &World) -> Vec<String> {
         let told = self.told(ui, world);
         match told == self.told {
             true => Vec::new(),

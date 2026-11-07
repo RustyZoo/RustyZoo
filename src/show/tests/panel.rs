@@ -116,7 +116,7 @@ fn opening_on_a_show_tank_fills_the_species_the_admission_and_the_frequency() {
     assert_eq!(text(&ui, 11104), "$0.00");
     assert!(on(&ui, 11105) && !on(&ui, 11106) && !on(&ui, 11113));
     // The refresh of the same state tells the exhibit and species once.
-    assert_eq!(p.refresh(&mut ui, &mut w, &cat, &vfs).len(), 2);
+    assert_eq!(p.refresh(&mut ui, &mut w, &cat, &vfs).len(), 3);
     assert!(p.refresh(&mut ui, &mut w, &cat, &vfs).is_empty());
 }
 
