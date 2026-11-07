@@ -130,6 +130,9 @@ impl World {
                 e.common = None;
                 continue;
             }
+            // A toy has no live state of its own, a dead one included: its record stays (11.1.1).
+            let live_building =
+                (self.units.buildings.get(&c.id)).filter(|_| crate::month::is_guest_building(ty));
             match e.class.as_str() {
                 "animals" => {
                     let k = animal::Keys::of(ty, &self.units.class).researched(ty, &self.research);
@@ -173,7 +176,7 @@ impl World {
                             .get_or_insert_with(|| fresh::building_new(kind.price, now));
                     }
                     // The users, figures and price it has now (zoo format 6.9).
-                    if let Some(live) = self.units.buildings.get(&c.id) {
+                    if let Some(live) = live_building {
                         let trash = kind.satisfies("trash");
                         c.building = (c.building.take()).map(|b| live.record(b, trash));
                     }
@@ -181,17 +184,14 @@ impl World {
                 _ => {}
             }
             // The "show soon" flag of a grandstand is the live one (shows 3.5).
-            if let (Some(b), Some(live)) = (c.building.as_mut(), self.units.buildings.get(&c.id)) {
+            if let (Some(b), Some(live)) = (c.building.as_mut(), live_building) {
                 let default = self.units.prices.default;
                 if Kind::of(ty, default).satisfies("grandstand") {
                     b.fill = live.fill;
                 }
             }
             // The current upgrade of a building is the live one (research 6.3).
-            if let (Some(b), true) = (
-                c.building.as_mut(),
-                self.units.buildings.contains_key(&c.id),
-            ) {
+            if let (Some(b), true) = (c.building.as_mut(), live_building.is_some()) {
                 b.upgrade = self.units.upgrade_index.get(&c.id).copied().unwrap_or(0);
             }
             if matches!(

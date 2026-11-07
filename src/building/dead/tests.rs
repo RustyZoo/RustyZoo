@@ -645,3 +645,43 @@ fn a_revalidation_puts_out_the_users_of_a_building_loaded_dead() {
     revalidate(&mut w, &cat);
     assert!(w.units.buildings[&7].users.is_empty());
 }
+
+/// A toy that turns dead keeps its own building record in a save (zoo format 6.9): the dead
+/// state is not saved (11.1.1), so its price and construction date must not become those of a
+/// new building.
+#[test]
+fn a_dead_toy_keeps_its_saved_record() {
+    let (mut w, cat, tank) = flooded_toy(typed("cave", TOY));
+    let bits = |v: f32| v.to_bits();
+    let record = crate::zoo::BuildingRecord {
+        guests: [0; 3],
+        income: [bits(0.0); 3],
+        upkeep: Some(bits(0.0)),
+        upgrade: 0,
+        price: bits(5.5),
+        users: Vec::new(),
+        users_now: 0,
+        members: Vec::new(),
+        fill: 0,
+        built: 126_227_808_000_000_000,
+    };
+    let at = w.find(7).unwrap();
+    w.zoo.entities[at].common.as_mut().unwrap().building = Some(record.clone());
+    w.set_paused(true);
+    assert!(w.drain(tank));
+    decide_all(&mut w, &cat);
+    assert!(w.units.buildings.get(&7).is_some_and(|l| l.dead), "dead");
+    let mut zoo = w.saved(|_| true);
+    w.finish_save(&mut zoo, &cat);
+    let at = (zoo.entities.iter())
+        .position(|e| e.common.as_ref().is_some_and(|c| c.id == 7))
+        .unwrap();
+    let saved = zoo.entities[at]
+        .common
+        .as_ref()
+        .unwrap()
+        .building
+        .clone()
+        .unwrap();
+    assert_eq!((saved.price, saved.built), (record.price, record.built));
+}
