@@ -62,7 +62,9 @@ pub(crate) fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log:
     world.in_need_order(&mut stock, |s| s.0);
     let mut total = 0.0_f32;
     for (id, at) in stock {
-        let Some(ty) = type_of(cat, &world.zoo.entities[at]) else { continue };
+        let Some(ty) = type_of(cat, &world.zoo.entities[at]) else {
+            continue;
+        };
         let u = upkeep_of(&world.units, ty, id);
         total += u;
         // Each building rolls its monthly figures in the same loop (guest buildings 9).
