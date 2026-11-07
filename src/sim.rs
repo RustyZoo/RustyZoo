@@ -438,6 +438,17 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
+    /// The world clock advances by `step` ms, then the ambient creatures whose period passed are
+    /// made (ambients 7 point 2).
+    fn world_clock(&mut self, data: &dyn Data, cat: &Catalogue, world: &mut World, step: u32) {
+        let total = self.world_rem.wrapping_add(step);
+        self.world_rem = total % 1000;
+        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        for ty in self.spawns.due(cat, self.world_secs) {
+            crate::flight::launch(world, cat, ty, data.set_files(ty), &mut self.rng);
+        }
+    }
+
     /// The scenario's ambients join the spawn list, after its start hook (scenarios 5.2, ambients 7).
     pub(crate) fn add_scenario_ambients(&mut self) {
         let ids = self.scenario.as_ref().map_or(&[][..], |s| s.ambients());
@@ -848,13 +859,7 @@ impl Sim {
         crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
         self.water_effects(world, cat, step);
-        let total = self.world_rem.wrapping_add(step);
-        self.world_rem = total % 1000;
-        self.world_secs = self.world_secs.wrapping_add(total / 1000);
-        // The ambient creatures whose period passed are made (ambients 7 point 2).
-        for ty in self.spawns.due(cat, self.world_secs) {
-            crate::flight::launch(world, cat, ty, data.set_files(ty), &mut self.rng);
-        }
+        self.world_clock(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).
         crate::show::listen_world(world, cat, &mut self.events, &mut self.rng);
         // The scenario manager.
