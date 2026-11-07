@@ -303,20 +303,11 @@ fn a_row_click_on_a_show_tank_with_a_gate_fills_the_trick_lists_twice() {
         w.zoo.shows.scripts[0].items = items;
         // The type's own copy of the trick is not available: the second fill drops it.
         seal.config = Some(config(0));
-        cat.push(crate::fixtures::ty(
-            "fences",
-            "iron",
-            "g",
-            "[HabitatFence]\n",
-        ));
+        // A wall piece of the tank is its gate.
+        let x = crate::show::tests::cycle::tank_mut(w).id;
+        w.set_gate(x, 500);
     };
-    with_staged("show-twice", stage, |s, _| {
-        let gate = s.app.renderer.catalogue().types.len() - 1;
-        let piece = s.fence(gate, 1, 1, 0);
-        // The piece made an exhibit of its own and renumbered the others.
-        let game = s.app.game.as_mut().unwrap();
-        let x = crate::show::tests::cycle::tank_mut(&mut game.world).id;
-        game.world.set_gate(x, piece);
+    with_staged("show-twice", stage, |s, x| {
         s.app.interface().unwrap().show(exhibit::LAYOUT);
         s.pass(&[]);
         let game = s.app.game.as_ref().unwrap();

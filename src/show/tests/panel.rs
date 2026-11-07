@@ -46,7 +46,8 @@ pub(super) fn window(name: &str) -> (Interface, Vfs) {
     let body: String = texts.map(|i| one("UIText", i)).collect::<String>()
         + &buttons.map(|i| one("UIButton", i)).concat()
         + &lists.map(|i| one("UIListBox", i)).concat()
-        + &one("UIEditableText", 11104);
+        + &one("UIEditableText", 11104)
+        + &one("UIImage", 11121);
     let layout = format!("[LayoutInfo]\nid=41\nx=0\ny=0\ndx=60\ndy=20\n{body}");
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n\
         [c]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";

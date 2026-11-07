@@ -24,6 +24,7 @@ const ADD: i32 = 11113;
 const REMOVE: i32 = 11114;
 const EARLIER: i32 = 11117;
 const LATER: i32 = 11118;
+const FACE: i32 = 11121;
 
 /// A hoop (4, delta 3, complexity 5), a tail (3, 3, 2), a ball too deep for the tank (water at 3)
 /// and the food trick.
@@ -50,10 +51,15 @@ struct Rig {
 /// A rig whose seals have the tricks above, whose script holds `script`, and whose record has
 /// used its default script up.
 fn rig(name: &str, script: &[u16]) -> Rig {
+    rig_of(name, script, TRICKS)
+}
+
+/// [`rig`] with the tricks file `tricks`.
+fn rig_of(name: &str, script: &[u16], tricks_file: &str) -> Rig {
     let (mut w, mut cat) = staged(vec![]);
     let seal = cat.types.iter_mut().find(|t| t.name_id == SEAL as i32);
     let seal = seal.unwrap();
-    seal.config = Some(Arc::new(Config::parse(TRICKS.as_bytes()).unwrap()));
+    seal.config = Some(Arc::new(Config::parse(tricks_file.as_bytes()).unwrap()));
     let list = tricks(seal);
     let items = script
         .iter()
@@ -62,7 +68,10 @@ fn rig(name: &str, script: &[u16]) -> Rig {
     w.zoo.shows.next_script = 2001;
     info_mut(&mut w).lookup(SEAL, 0).default_flag = false;
     let x = super::cycle::tank_mut(&mut w).id;
-    let (ui, vfs) = window(name);
+    let (mut ui, vfs) = window(name);
+    // The face has the three animations pos, mid and neg.
+    let face = ui.tree.find(FACE).unwrap();
+    ui.tree.elements[face].look.animation = vec![None; 3];
     let mut r = Rig {
         w,
         cat,
@@ -513,4 +522,32 @@ fn a_building_added_or_removed_is_noted_for_the_panel_and_an_animal_is_not() {
     assert!(w.remove(toy));
     assert_eq!(w.take_toys(), [note(false)]);
     assert!(w.take_toys().is_empty());
+}
+
+#[test]
+fn the_benefit_face_is_positive_at_a_gain_middle_at_zero_and_negative_below() {
+    // A hoop that loses 30 each time: the first adds 4, the next ones take the delta.
+    let mut r = rig_of(
+        "ed-face",
+        &[],
+        &TRICKS.replace("satisfactiondelta=3", "satisfactiondelta=30"),
+    );
+    let face = |r: &Rig| r.ui.tree.elements[r.ui.tree.find(FACE).unwrap()].look.shown;
+    // The empty list: no benefit, the middle face.
+    assert_eq!((text(&r.ui, 11120), face(&r)), ("0".into(), 1));
+    r.add(0);
+    assert_eq!((text(&r.ui, 11120), face(&r)), ("+4".into(), 0));
+    r.add(0);
+    r.add(0);
+    assert!(
+        text(&r.ui, 11120).starts_with('-'),
+        "{}",
+        text(&r.ui, 11120)
+    );
+    assert_eq!(face(&r), 2);
+    // Emptied again, the face is the middle one.
+    for _ in 0..3 {
+        r.remove();
+    }
+    assert_eq!((text(&r.ui, 11120), face(&r)), ("0".into(), 1));
 }
