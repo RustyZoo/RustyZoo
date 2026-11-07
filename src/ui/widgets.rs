@@ -139,6 +139,8 @@ pub struct Row {
     pub disabled: bool,
     /// The small picture in front of the text, in the slot of `miniconwidth` by `miniconheight`.
     pub icon: Option<super::layout::Picture>,
+    /// The picture a disabled row shows instead of `icon`, when it has one.
+    pub grayed_icon: Option<super::layout::Picture>,
 }
 
 /// A key a list reads.

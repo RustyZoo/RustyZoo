@@ -40,6 +40,9 @@ impl App<'_> {
                 Action::Row(l @ (show::SPECIES_LIST | show::FREQUENCY_LIST), r) => {
                     self.show_row(l, r)
                 }
+                Action::Row(l @ (show::AVAILABLE | show::SHOWN), r) if self.game.is_some() => {
+                    self.show_tricks_row(l, r);
+                }
                 Action::Edited(show::ADMISSION) if self.game.is_some() => self.show_typed(),
                 Action::Edited(animal::NAME) if self.game.is_some() => self.animal_rename(),
                 Action::Row(crate::build::SELECTOR_LIST, row) if self.game.is_some() => {
@@ -85,7 +88,14 @@ impl App<'_> {
                     self.ask(kind);
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
-                show::UP | show::DOWN | show::SPECIES_BUTTON | show::FREQUENCY_BUTTON
+                show::UP
+                | show::DOWN
+                | show::SPECIES_BUTTON
+                | show::FREQUENCY_BUTTON
+                | show::ADD
+                | show::REMOVE
+                | show::EARLIER
+                | show::LATER
                     if self.game.is_some() =>
                 {
                     self.show_pressed(id);

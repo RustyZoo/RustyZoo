@@ -40,6 +40,7 @@ pub(super) fn record(key: u32, script: u16, units: &[u32]) -> TypeRecord {
         attendance: [0; 3],
         date: 0,
         units: units.to_vec(),
+        default_flag: true,
     }
 }
 

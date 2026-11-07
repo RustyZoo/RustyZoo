@@ -1,7 +1,6 @@
 //! The show panel (information panels 19, shows 33; Marine Mania): a centred window with the
 //! exhibit's name, the admission of the selected species, the species drop-down and two tabs, the
-//! script tab (the frequency drop-down; the trick editor is not built, 19.9) and the
-//! finances tab.
+//! script tab (the frequency drop-down and the trick editor, `editor`) and the finances tab.
 //!
 //! [`Panel`] holds the exhibit `X` and the species `s` of shows 33.1 and fills the layouts from the
 //! world; the admission and the frequency write into it. What shows and hides the window is
@@ -16,6 +15,7 @@ use crate::text::{format, to_cp1252};
 use crate::timing::file_time;
 use crate::ui::interface::Interface;
 use crate::ui::widgets::Row;
+use crate::vfs::Vfs;
 use crate::world::{World, filter_months_since};
 
 // The window, its tabs and the two drop-down layouts.
@@ -35,9 +35,16 @@ pub(crate) const FREQUENCY_BUTTON: i32 = 11108;
 pub(crate) const FREQUENCY_LIST: i32 = 11191;
 /// The strings of the four frequencies, Never first.
 const FREQUENCY_NAMES: i32 = 11192;
-/// The trick editor's buttons, lists and benefit text and face, left empty (19.9).
-const TRICK_BUTTONS: [i32; 4] = [11113, 11114, 11117, 11118];
-const TRICK_LISTS: [i32; 2] = [11111, 11115];
+/// The trick editor's layout, buttons, lists and benefit text and face (19.9).
+const SCRIPT_LAYOUT: i32 = 42;
+pub(crate) const ADD: i32 = 11113;
+pub(crate) const REMOVE: i32 = 11114;
+pub(crate) const EARLIER: i32 = 11117;
+pub(crate) const LATER: i32 = 11118;
+pub(crate) const AVAILABLE: i32 = 11111;
+pub(crate) const SHOWN: i32 = 11115;
+const TRICK_BUTTONS: [i32; 4] = [ADD, REMOVE, EARLIER, LATER];
+const TRICK_LISTS: [i32; 2] = [AVAILABLE, SHOWN];
 const BENEFIT: i32 = 11120;
 const FACE: i32 = 11121;
 /// The first of the sixteen cells of the finances (attendance, income, upkeep, profit; current,
@@ -50,6 +57,8 @@ const LOSS: [u8; 3] = [250, 7, 7];
 const BREAK_EVEN: [u8; 3] = [255, 228, 173];
 /// The interface clock time between two refreshes (ms).
 pub(crate) const PERIOD: u64 = 10_000;
+
+mod editor;
 
 /// The frequencies of the four rows, in AI ticks between two shows (-1 never).
 fn frequencies(world: &World) -> [i32; 4] {
@@ -104,6 +113,8 @@ pub(crate) struct Panel {
     pub rows: Vec<u32>,
     /// The frequency is Never: the admission, species and trick controls are off.
     disabled: bool,
+    /// The trick lists and the flag of a change not written yet.
+    editor: editor::Editor,
     /// The grandstand that opened the panel on the finances tab: deselecting it closes it.
     pub stand: Option<u32>,
     pub clock: Clock,
@@ -122,12 +133,13 @@ impl Panel {
         ui: &mut Interface,
         world: &mut World,
         cat: &Catalogue,
+        vfs: &Vfs,
         x: Option<u32>,
     ) {
         self.exhibit = x;
         self.told.clear();
         self.clock.force = true;
-        self.fill_exhibit(ui, world, cat);
+        self.fill_exhibit(ui, world, cat, vfs);
         if x.is_none() {
             ui.set_hidden(LAYOUT, true);
         }
@@ -135,15 +147,10 @@ impl Panel {
 
     /// `fill_exhibit()` (19.4): no species, the trick editor empty, the frequency of the exhibit
     /// selected, the species list collected and its first species selected.
-    fn fill_exhibit(&mut self, ui: &mut Interface, world: &mut World, cat: &Catalogue) {
+    fn fill_exhibit(&mut self, ui: &mut Interface, world: &mut World, cat: &Catalogue, vfs: &Vfs) {
         self.species = None;
         self.update_admission(ui, world, cat);
-        for list in TRICK_LISTS {
-            ui.set_rows(list, Vec::new());
-        }
-        for button in TRICK_BUTTONS {
-            ui.set_enabled(button, false);
-        }
+        self.clear_tricks(ui);
         ui.set_text(BENEFIT, b"");
         ui.set_image(FACE, 1);
         let Some(x) = self.exhibit else { return };
@@ -168,7 +175,7 @@ impl Panel {
         }
         let first = self.collect_species(ui, world, cat);
         if first.is_some() {
-            self.set_species(ui, world, cat, first);
+            self.set_species(ui, world, cat, vfs, first);
         }
         match frequency == Some(-1) {
             true => self.disable_all(ui),
@@ -183,10 +190,13 @@ impl Panel {
         ui: &mut Interface,
         world: &mut World,
         cat: &Catalogue,
+        vfs: &Vfs,
         t: Option<u32>,
     ) {
         if t != self.species {
+            self.flush_tricks(ui, world, cat);
             self.species = t;
+            self.fill_tricks(ui, world, cat, vfs);
             self.update_admission(ui, world, cat);
             self.update_stats(ui, world);
         }
@@ -198,12 +208,17 @@ impl Panel {
         ui.set_enabled(SPECIES_BUTTON, true);
         ui.set_enabled(ADMISSION, true);
         self.update_admission(ui, world, cat);
+        for list in TRICK_LISTS {
+            ui.set_enabled(list, true);
+        }
+        self.select_current(ui);
     }
 
     /// `disable_all()` (19.4): the frequency button stays on, so that Never can be undone.
     fn disable_all(&mut self, ui: &mut Interface) {
         self.disabled = true;
-        for id in [SPECIES_BUTTON, UP, DOWN, ADMISSION] {
+        let off = [SPECIES_BUTTON, UP, DOWN, ADMISSION];
+        for id in off.into_iter().chain(TRICK_BUTTONS).chain(TRICK_LISTS) {
             ui.set_enabled(id, false);
         }
     }
@@ -297,12 +312,13 @@ impl Panel {
         ui: &mut Interface,
         world: &mut World,
         cat: &Catalogue,
+        vfs: &Vfs,
         row: i32,
     ) {
         let t = usize::try_from(row).ok().and_then(|r| self.rows.get(r));
         let t = t.copied();
         self.put_species_button(ui, t);
-        self.set_species(ui, world, cat, t.filter(|&t| is_animal(cat, t)));
+        self.set_species(ui, world, cat, vfs, t.filter(|&t| is_animal(cat, t)));
         ui.unfocus(SPECIES_LIST);
     }
 
@@ -340,11 +356,12 @@ impl Panel {
         ui: &mut Interface,
         world: &mut World,
         cat: &Catalogue,
+        vfs: &Vfs,
     ) -> Vec<String> {
         self.update_stats(ui, world);
         match self.collect_species(ui, world, cat) {
-            None => self.fill_exhibit(ui, world, cat),
-            t if t != self.species => self.set_species(ui, world, cat, t),
+            None => self.fill_exhibit(ui, world, cat, vfs),
+            t if t != self.species => self.set_species(ui, world, cat, vfs, t),
             _ => {}
         }
         let told = self.told(ui, world);
@@ -376,6 +393,7 @@ impl Panel {
             text(ADMISSION)
         )];
         if self.species.is_some() {
+            told.push(self.tricks_told(ui));
             let cells: Vec<String> = (CELLS..CELLS + 16).map(text).collect();
             told.push(format!(
                 "finances {} months {}",

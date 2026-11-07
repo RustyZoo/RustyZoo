@@ -34,7 +34,7 @@ impl Strings for Words {
 }
 
 /// The window with the elements the panel writes, all of one size.
-fn window(name: &str) -> Interface {
+fn window(name: &str) -> (Interface, Vfs) {
     let one =
         |kind: &str, id: i32| format!("[e{id}]\ntype={kind}\nid={id}\nx=0\ny=0\ndx=60\ndy=20\n");
     let texts = [11102, 11120, 11173].into_iter().chain(11140..11156);
@@ -52,11 +52,12 @@ fn window(name: &str) -> Interface {
         ("ui/p.lyt", layout.into_bytes()),
     ];
     let install = Install::new(name, &files);
-    let mut tree = Tree::load(&Vfs::open(&install.0).unwrap(), "ui/root.lyt", 0);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut tree = Tree::load(&vfs, "ui/root.lyt", 0);
     tree.resolve(100, 80, |_| 12);
     let mut ui = Interface::new(tree, Box::new(Words));
     ui.show(show::LAYOUT);
-    ui
+    (ui, vfs)
 }
 
 fn text(ui: &Interface, id: i32) -> String {
@@ -68,13 +69,13 @@ fn on(ui: &Interface, id: i32) -> bool {
 }
 
 /// The staged world with the panel open on its show tank.
-fn open(name: &str) -> (World, Catalogue, Interface, Panel, u32) {
+fn open(name: &str) -> (World, Catalogue, Interface, Panel, u32, Vfs) {
     let (mut w, cat) = staged(vec![]);
     let x = tank_mut(&mut w).id;
-    let mut ui = window(name);
+    let (mut ui, vfs) = window(name);
     let mut p = Panel::default();
-    p.set_exhibit(&mut ui, &mut w, &cat, Some(x));
-    (w, cat, ui, p, x)
+    p.set_exhibit(&mut ui, &mut w, &cat, &vfs, Some(x));
+    (w, cat, ui, p, x, vfs)
 }
 
 #[test]
@@ -91,7 +92,7 @@ fn the_typed_text_loses_the_first_symbol_and_every_separator() {
 fn the_species_rows_skip_type_0_the_specialist_and_records_without_units() {
     let (mut w, ..) = staged(vec![]);
     let x = tank_mut(&mut w).id;
-    let ui = window("panel-species");
+    let (ui, _) = window("panel-species");
     let info = info_mut(&mut w);
     info.lookup(0, 0).units = vec![1];
     info.lookup(KEEPER, 0).units = vec![2];
@@ -104,7 +105,7 @@ fn the_species_rows_skip_type_0_the_specialist_and_records_without_units() {
 
 #[test]
 fn opening_on_a_show_tank_fills_the_species_the_admission_and_the_frequency() {
-    let (mut w, cat, mut ui, mut p, _) = open("panel-open");
+    let (mut w, cat, mut ui, mut p, _, vfs) = open("panel-open");
     assert_eq!((p.species, p.rows.clone()), (Some(SEAL), vec![SEAL]));
     assert_eq!(text(&ui, 11123), "Seal");
     // The frequency of the info, 90, is the third row.
@@ -115,13 +116,13 @@ fn opening_on_a_show_tank_fills_the_species_the_admission_and_the_frequency() {
     assert_eq!(text(&ui, 11104), "$0.00");
     assert!(on(&ui, 11105) && !on(&ui, 11106) && !on(&ui, 11113));
     // The refresh of the same state tells the exhibit and species once.
-    assert_eq!(p.refresh(&mut ui, &mut w, &cat).len(), 2);
-    assert!(p.refresh(&mut ui, &mut w, &cat).is_empty());
+    assert_eq!(p.refresh(&mut ui, &mut w, &cat, &vfs).len(), 2);
+    assert!(p.refresh(&mut ui, &mut w, &cat, &vfs).is_empty());
 }
 
 #[test]
 fn a_grandstand_that_faces_the_show_tank_names_it_and_one_turned_away_names_none() {
-    let (w, cat, _, _, x) = open("panel-stand");
+    let (w, cat, _, _, x, _) = open("panel-stand");
     assert_eq!(crate::show::faced_exhibit(&w, &cat, 7), Some(x));
     assert_eq!(crate::show::faced_exhibit(&w, &cat, 8), None);
     assert_eq!(crate::show::faced_exhibit(&w, &cat, 99), None);
@@ -129,7 +130,7 @@ fn a_grandstand_that_faces_the_show_tank_names_it_and_one_turned_away_names_none
 
 #[test]
 fn the_buttons_and_the_typed_text_set_the_admission_and_the_grandstand_price() {
-    let (mut w, cat, mut ui, p, _) = open("panel-admission");
+    let (mut w, cat, mut ui, p, _, _) = open("panel-admission");
     p.press(&mut ui, &mut w, &cat, true);
     assert_eq!(
         (text(&ui, 11104), w.units.buildings[&7].price),
@@ -152,7 +153,7 @@ fn the_buttons_and_the_typed_text_set_the_admission_and_the_grandstand_price() {
 
 #[test]
 fn never_turns_the_controls_off_but_the_frequency_and_another_row_turns_them_on() {
-    let (mut w, cat, mut ui, mut p, _) = open("panel-never");
+    let (mut w, cat, mut ui, mut p, _, _) = open("panel-never");
     w.units.ai_ticks = 40;
     p.choose_frequency(&mut ui, &mut w, &cat, 0);
     assert_eq!(
@@ -197,18 +198,18 @@ fn shows_cfg_gives_the_three_intervals_and_a_missing_key_keeps_its_own() {
 
 #[test]
 fn the_species_drop_down_selects_a_species_and_a_missing_row_selects_none() {
-    let (mut w, cat, mut ui, mut p, _) = open("panel-choice");
-    p.choose_species(&mut ui, &mut w, &cat, -1);
+    let (mut w, cat, mut ui, mut p, _, vfs) = open("panel-choice");
+    p.choose_species(&mut ui, &mut w, &cat, &vfs, -1);
     assert_eq!(
         (p.species, text(&ui, 11123), on(&ui, 11123)),
         (None, "".into(), false)
     );
     assert_eq!(text(&ui, 11104), "$0.00");
-    p.choose_species(&mut ui, &mut w, &cat, 0);
+    p.choose_species(&mut ui, &mut w, &cat, &vfs, 0);
     assert_eq!((p.species, text(&ui, 11123)), (Some(SEAL), "Seal".into()));
     // A species that leaves the show leaves the list: the refresh empties the panel.
     info_mut(&mut w).lookup(SEAL, 0).units.clear();
-    p.refresh(&mut ui, &mut w, &cat);
+    p.refresh(&mut ui, &mut w, &cat, &vfs);
     assert_eq!(
         (p.species, text(&ui, 11123), on(&ui, 11108)),
         (None, "".into(), false)
@@ -217,7 +218,7 @@ fn the_species_drop_down_selects_a_species_and_a_missing_row_selects_none() {
 
 #[test]
 fn the_finances_show_the_whole_show_with_averages_over_the_months_in_operation() {
-    let (mut w, cat, mut ui, mut p, _) = open("panel-finances");
+    let (mut w, cat, mut ui, mut p, _, vfs) = open("panel-finances");
     // The record of the show's species (type 0 between shows) is six months old.
     let now = crate::timing::file_time(w.units.now);
     info_mut(&mut w).lookup(0, 0).date = now - 170 * 864_000_000_000;
@@ -226,7 +227,7 @@ fn the_finances_show_the_whole_show_with_averages_over_the_months_in_operation()
     info.attendance = [4, 3, 180];
     info.receipts = [f(10.0), f(2.5), f(1012.0)];
     info.upkeep = [f(30.0), f(0.0), f(120.0)];
-    p.refresh(&mut ui, &mut w, &cat);
+    p.refresh(&mut ui, &mut w, &cat, &vfs);
     let row = |first: i32| (first..first + 4).map(|i| text(&ui, i)).collect::<Vec<_>>();
     assert_eq!(row(11140), ["4", "3", "30", "180"]);
     assert_eq!(row(11144), ["$10.00", "$2.50", "$168.67", "$1,012.00"]);
@@ -239,7 +240,7 @@ fn the_finances_show_the_whole_show_with_averages_over_the_months_in_operation()
     );
     // The record was made by the lookup, and nothing is shown without a species.
     assert!(info_of_show(&w).record(0).is_some());
-    p.choose_species(&mut ui, &mut w, &cat, -1);
+    p.choose_species(&mut ui, &mut w, &cat, &vfs, -1);
     assert!(
         (11140..11156)
             .chain([11173])
@@ -249,8 +250,8 @@ fn the_finances_show_the_whole_show_with_averages_over_the_months_in_operation()
 
 #[test]
 fn no_exhibit_hides_the_window() {
-    let (mut w, cat, mut ui, mut p, _) = open("panel-none");
-    p.set_exhibit(&mut ui, &mut w, &cat, None);
+    let (mut w, cat, mut ui, mut p, _, vfs) = open("panel-none");
+    p.set_exhibit(&mut ui, &mut w, &cat, &vfs, None);
     assert!(!ui.shown(show::LAYOUT));
     assert_eq!((p.species, text(&ui, 11104)), (None, "$0.00".into()));
     assert!(!on(&ui, 11105) && !on(&ui, 11106));
