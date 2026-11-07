@@ -117,9 +117,9 @@ impl App<'_> {
         true
     }
 
-    /// The sound of a unit put down (8.4 point 5): its type's `placesound`, else `place.wav`
-    /// (an egg has none).
-    fn drop_sound(&mut self, id: u32) {
+    /// The sound of a unit placed (unit placing 7.1 item 3) or put down (8.4 point 5): its type's
+    /// `placesound`, else `place.wav` (an egg has none).
+    pub(super) fn drop_sound(&mut self, id: u32) {
         if !self.type_sound(id, "placesound") {
             self.ui_sounds.push("place");
         }
