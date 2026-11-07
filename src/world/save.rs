@@ -116,7 +116,8 @@ impl World {
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
     /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
     /// gets the record of a new one, a guest's record takes the live guest's fields, a guest
-    /// building's record takes its live users and figures (zoo format 6.9), and a staff member's
+    /// building's record takes its live users and figures (zoo format 6.9; a toy keeps its own record),
+    /// and a staff member's
     /// record takes its live state.
     pub(crate) fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         // A save writes the install language, whatever the file loaded said (localisation 10).
