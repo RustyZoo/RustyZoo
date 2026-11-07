@@ -1017,8 +1017,8 @@ fn the_attractions_count_in_the_sites_a_guest_must_have_seen_before_it_forgets()
 fn a_ride_seen_counts_as_unseen_while_the_guest_holds_a_return_building() {
     // The ride is the only site left unseen; with a return building the pen is a site again, so
     // the draw is over two and the second is the ride, where a returning guest finds no slot
-    // (guest buildings 12.2 point 11): no task.
-    for (returning, n, v, want) in [(None, 1, 0, (101, 0)), (Some(7), 2, 1, (0, 0))] {
+    // (guest buildings 12.2 point 11): it recovers from the water (task 0x83).
+    for (returning, n, v, want) in [(None, 1, 0, (101, 0)), (Some(7), 2, 1, (131, 0))] {
         let mut w = visit_with(50, &[("building", "ride", 50, (7, 3))]);
         let ride = w.tile_index(7, 3).unwrap();
         if let Some(Part::Guest(g)) = w.units.get_mut(1).map(|u| &mut u.part) {

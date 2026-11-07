@@ -2075,8 +2075,8 @@ fn ripples_come_with_the_water_and_go_with_the_level_and_the_purity() {
         let mut scene = tank_scene(0, 5, level, Vec::new());
         let before = scene.objects.len();
         let added = add_ripples(&mut scene, &[look], 16);
-        assert_eq!(scene.objects.len(), before + added);
-        added
+        assert_eq!(scene.objects.len(), before + added.len());
+        added.len()
     };
     // One for each of the eight walls on the edges of the four tiles, at any level above 0.
     assert_eq!(ripples(0, look(None)), 0);
@@ -2085,7 +2085,12 @@ fn ripples_come_with_the_water_and_go_with_the_level_and_the_purity() {
     // Not on water below the murky purity, and none for a tank without a look.
     assert_eq!(ripples(3, look(Some(([220, 230, 240], 200)))), 0);
     let mut scene = tank_scene(0, 5, 3, Vec::new());
-    assert_eq!(add_ripples(&mut scene, &[], 16), 0);
+    assert!(add_ripples(&mut scene, &[], 16).is_empty());
+    // Each is against its own wall: the eight walls of the scene, each once.
+    let mut scene = tank_scene(0, 5, 3, Vec::new());
+    let mut walls = add_ripples(&mut scene, &[look(None)], 16);
+    walls.sort_unstable();
+    assert_eq!(walls, (0..8).collect::<Vec<_>>());
 }
 
 fn position(items: &[Item], wanted: impl Fn(&Item) -> bool) -> usize {

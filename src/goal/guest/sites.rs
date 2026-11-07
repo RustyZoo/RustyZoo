@@ -2,7 +2,6 @@
 //! walk to scenery it picks ends in [`super::scenery`].
 
 use super::super::{Cx, HABITAT, SCENERY, SITE};
-use super::building::CROWDED;
 use crate::exhibit::GROUNDS;
 use crate::guest::gawk::{self, Judged};
 use crate::guest::view;
@@ -34,15 +33,9 @@ impl Cx<'_, '_> {
         else {
             return false;
         };
-        if !self.head_for(id, "grandstand") {
-            // No open slot (a full stand is thought crowded) or no path to one: the goal is reset
-            // and the guest stands (guest buildings 6.2 point 2).
-            if self.full(id) {
-                self.think(CROWDED, Some(id));
-            }
-            self.reset();
-            self.unit.goal.wandered = true;
-        }
+        // No open slot (a full stand is thought crowded) or no path to one: the goal is cleared
+        // and the guest stands (guest buildings 6.2 point 2).
+        self.head_for(id, "grandstand");
         true
     }
 

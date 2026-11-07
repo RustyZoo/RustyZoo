@@ -682,7 +682,10 @@ fn manta_meal(keys: &str, seed: u32, delay: usize) -> Meal {
 #[test]
 fn a_keep_moving_swimmer_on_the_neighbour_edge_is_carried_past_and_keeps_its_food_task() {
     let tile = |x: usize, y: usize| y * 12 + x;
-    let m = manta_meal("cKeepMoving=1\n", 1, 60);
+    // A seed whose swim reaches that edge in the step it needs; the ripples of the walls draw
+    // from the same generator, so a change to their draws needs another seed.
+    const SEED: u32 = 3;
+    let m = manta_meal("cKeepMoving=1\n", SEED, 60);
     // The food task is set on the neighbour (4, 2), 63 of 64 along its southern edge, still moving.
     let set = m.set.expect("the food task was set");
     assert_eq!(
@@ -694,6 +697,6 @@ fn a_keep_moving_swimmer_on_the_neighbour_edge_is_carried_past_and_keeps_its_foo
     assert!(!m.ate);
     // The same hunger without the key: it eats on the neighbour; with it, but earlier in the
     // walk, too.
-    assert!(manta_meal("cKeepMoving=0\n", 1, 60).ate);
-    assert!(manta_meal("cKeepMoving=1\n", 1, 0).ate);
+    assert!(manta_meal("cKeepMoving=0\n", SEED, 60).ate);
+    assert!(manta_meal("cKeepMoving=1\n", SEED, 0).ate);
 }

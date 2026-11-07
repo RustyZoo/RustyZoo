@@ -185,6 +185,11 @@ pub(crate) fn bubble_key(id: u32) -> u32 {
     id | 1 << 31
 }
 
+/// The key of the clock of the ripples against the tank wall `id` in [`Extra::idle`].
+pub(crate) fn ripple_key(id: u32) -> u32 {
+    id | 1 << 30
+}
+
 /// The frames of the idle animations by entity id; always equal to another, see [`Extra::idle`].
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Frames(pub HashMap<u32, u32>);
