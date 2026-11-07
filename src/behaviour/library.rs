@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use super::{Call, Data, Heard, Number, Row, Timing};
 use crate::anim::AnimSet;
 use crate::config::Config;
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::sprite::Sprite;
 use crate::timing::ini_whole;
 use crate::vfs::Vfs;
@@ -94,6 +94,12 @@ impl Data for Library<'_> {
     fn unit_class(&self, key: &str) -> Option<i32> {
         let file = Config::parse(&self.vfs.read("ztunit.ai").ok()?).ok()?;
         ini_whole(&file, "Characteristics/Integers", key)
+    }
+
+    fn set_files(&self, ty: &EntityType) -> usize {
+        let member = ty.base_animation().and_then(|a| a.member);
+        let set = member.and_then(|m| AnimSet::load(self.vfs, &m).ok());
+        set.map_or(0, |s| s.files.len())
     }
 
     fn sound(&self, unit: &Entity, key: &str) -> Option<Heard> {

@@ -1,7 +1,7 @@
-//! The looped animations of the fixed objects and the fences (sprite drawing 3.6 and 6.2):
-//! scenery, buildings and the like play the animation they rest on forward in a loop, one clock
-//! each, from the step after the entity appears; the bubbles of a tank filter have a clock of their
-//! own (tank staff 7.7). A loop that ends drops the time left over, so it takes a little more than
+//! The looped animations of the fixed objects, the fences and the flights (sprite drawing 3.6 and
+//! 6.2, ambients 5.1): scenery, buildings, flying creatures and the like play the animation they
+//! rest on forward in a loop, one clock each, from the step after the entity appears; the bubbles
+//! of a tank filter have a clock of their own (tank staff 7.7). A loop that ends drops the time left over, so it takes a little more than
 //! `count x delay`. When a guest comes into an empty building its base loop becomes `used` once the
 //! pass of `idle` in progress ends, and `idle` never comes back; a dead building shows `idledead`
 //! at once, and alive again `idle`, both from frame 0; a building of random use queues `used` once
@@ -295,7 +295,7 @@ impl Idles {
         for e in &world.zoo.entities {
             let Some(c) = &e.common else { continue };
             let kind = Kind::of_class(&e.class);
-            if !matches!(kind, Kind::Fixed | Kind::Edge) {
+            if !matches!(kind, Kind::Fixed | Kind::Edge | Kind::Flight) {
                 continue;
             }
             fixed += 1;
