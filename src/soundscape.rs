@@ -178,7 +178,7 @@ impl Soundscape {
         let read = |name: &str| match vfs.read(name) {
             Ok(bytes) => Some(bytes),
             Err(why) => {
-                eprintln!("rustyzoo: warning: {name}: {why}; no ambient sounds from it");
+                eprintln!("rustyzoo: warning: {name}: {why}; no sounds from it");
                 None
             }
         };
