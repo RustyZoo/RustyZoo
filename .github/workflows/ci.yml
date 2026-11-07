@@ -124,7 +124,13 @@ jobs:
       # Self-hosted: the image has the SDL dependencies, and /cache keeps cargo, rustup and sccache.
       - &toolchain
         name: Install the Rust toolchain from rust-toolchain.toml
-        run: rustup toolchain install --profile minimal
+        # Self-hosted: jobs share /cache/rustup, so concurrent installs are serialised.
+        run: |
+          lock=()
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && command -v flock >/dev/null; then
+            lock=(flock /cache/rustup.lock)
+          fi
+          "${lock[@]}" rustup toolchain install --profile minimal
 
       # Every cargo command of the leg then builds, tests and runs for the target (SDL builds
       # the same way as on the 64-bit leg).
