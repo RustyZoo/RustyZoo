@@ -780,6 +780,7 @@ impl Sim {
         }
         unit::gate::forget(world);
         self.idles.advance(step);
+        self.use_sounds(world);
         for event in std::mem::take(&mut world.units.posts) {
             self.events.post(event);
         }
