@@ -148,7 +148,11 @@ pub(crate) fn duty(
                 RAKING
             }),
             (goal::CAPTURE, j) => {
-                let id = if j == CRATE { CONTAINING } else { TRANQUILIZING };
+                let id = if j == CRATE {
+                    CONTAINING
+                } else {
+                    TRANQUILIZING
+                };
                 animal(captured(unit)).map(|a| (id, Some(a.name)))
             }
             (_, j) if TANK.contains(&j) => plain(CLEANING_TANK),
@@ -318,7 +322,9 @@ impl Panel {
             let Part::Animal(a) = &u.part else {
                 return None;
             };
-            let name = world.find(id).and_then(|e| world.zoo.entities[e].common.as_ref());
+            let name = world
+                .find(id)
+                .and_then(|e| world.zoo.entities[e].common.as_ref());
             Some(Seen {
                 egg: a.egg,
                 name: name.map_or(String::new(), |c| c.name.clone()),
