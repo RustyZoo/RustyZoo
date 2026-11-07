@@ -222,6 +222,8 @@ fn an_empty_script_gets_the_default_script_once_for_a_record_the_editor_has_not_
     r.close();
     r.open();
     assert!(r.shown().is_empty() && r.script().1.is_empty());
+    // An empty script takes the species off the schedule.
+    assert!(!info_of_show(&r.w).schedule.contains(&SEAL));
     // The flag of a record with a script that has items is not used.
     assert!(!on(&r.ui, 11108));
 }

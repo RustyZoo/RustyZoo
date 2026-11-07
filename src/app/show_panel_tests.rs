@@ -70,6 +70,7 @@ fn layouts() -> (String, Vec<(String, Vec<u8>)>) {
 fn with_show(name: &str, body: impl FnOnce(&mut Session, u32)) {
     let (mut world, cat) = staged(vec![]);
     let x = tank_mut(&mut world).id;
+    world.zoo.shows.next_script = 2001;
     let (root, files) = layouts();
     let files: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
     with_game_of(name, "", (cat, &root, &files), |s| {
@@ -228,6 +229,32 @@ fn the_trick_lists_and_buttons_reach_the_editor_and_the_window_writes_a_changed_
         // Hiding the window writes it: the script of the seals is empty.
         s.app.interface().unwrap().set_hidden(LAYOUT, true);
         s.app.show_pass(0, false);
+        let game = s.app.game.as_ref().unwrap();
+        let info = crate::show::info_of(&game.world, x).unwrap();
+        let script = info.record(crate::show::tests::cycle::SEAL).unwrap().script;
+        let found = game
+            .world
+            .zoo
+            .shows
+            .scripts
+            .iter()
+            .find(|sc| sc.id == script);
+        assert!(found.is_some_and(|sc| sc.items.is_empty()));
+    });
+}
+
+#[test]
+fn another_exhibit_on_the_exhibit_panel_writes_the_changed_list_before_the_window_forgets_the_tank()
+{
+    with_show("show-written", |s, x| {
+        open(s, x);
+        s.app.interface().unwrap().select_row(show::SHOWN, Some(0));
+        s.app.show_pressed(show::REMOVE);
+        let other = s.app.game.as_ref().unwrap().world.exhibits().list();
+        let other = other.iter().map(|e| e.id).find(|&id| id != x).unwrap();
+        s.app.game.as_mut().unwrap().panel.current = Some(other);
+        s.app.show_exhibit_set();
+        assert!(!shown(s, LAYOUT));
         let game = s.app.game.as_ref().unwrap();
         let info = crate::show::info_of(&game.world, x).unwrap();
         let script = info.record(crate::show::tests::cycle::SEAL).unwrap().script;
