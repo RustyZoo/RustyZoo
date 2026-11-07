@@ -56,7 +56,8 @@ pub(crate) fn draw(world: &mut World, cat: &Catalogue, at: usize, now: u32, rng:
 }
 
 /// A building of a loaded zoo is first made like a new one (one draw), then takes the stored time
-/// (from version 35; a stored 0 is the AI clock `now`).
+/// (from version 35; a stored 0 is the AI clock `now` held before the file's own was read, which
+/// the creation draws from too).
 pub(crate) fn loaded(world: &mut World, cat: &Catalogue, at: usize, now: u32, rng: &mut Rng) {
     let e = &world.zoo.entities[at];
     if type_of(cat, e).and_then(read).is_none() {
