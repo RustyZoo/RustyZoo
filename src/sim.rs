@@ -174,12 +174,18 @@ pub(crate) struct Sim {
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
     ai_ticks: u32,
+    /// The AI clock held before the file of the game just started set its own: 0 in a fresh
+    /// process, the previous game's clock when a zoo is loaded inside a running game. A stored 0
+    /// in an entity's base word takes this (zoo format 6.4).
+    held_ticks: u32,
     /// The AI tick at which the unreachable list is next emptied; a value of the session, not
     /// of the zoo (simulation 4.3).
     next_clear: u32,
     /// The world clock: whole seconds and the milliseconds left over.
     world_secs: u32,
     world_rem: u32,
+    /// The spawn list of the world (ambients 7).
+    pub(crate) spawns: crate::flight::Spawns,
     /// The slots of the animated water (7.2).
     ripples: ripple::Ripples,
     /// The idle animation clocks of the fixed objects (sprite drawing 6.2).
@@ -225,9 +231,11 @@ impl Sim {
             play_time: 0,
             ai_rem: 0,
             ai_ticks: 0,
+            held_ticks: 0,
             next_clear: 0,
             world_secs: 0,
             world_rem: 0,
+            spawns: Default::default(),
             ripples: ripple::Ripples::default(),
             idles: idle::Idles::default(),
             removals: Vec::new(),
@@ -302,9 +310,11 @@ impl Sim {
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
         self.play_time = clocks.play_time;
+        self.held_ticks = self.ai_ticks;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
+        self.spawns.clear();
         self.ripples.clear();
         self.idles.clear();
         self.bulldozed.clear();
@@ -434,6 +444,23 @@ impl Sim {
         self.scenario = Some(scenario);
     }
 
+    /// The world clock advances by `step` ms, then the ambient creatures whose period passed are
+    /// made (ambients 7 point 2).
+    fn tick_world(&mut self, data: &dyn Data, cat: &Catalogue, world: &mut World, step: u32) {
+        let total = self.world_rem.wrapping_add(step);
+        self.world_rem = total % 1000;
+        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        for ty in self.spawns.due(cat, self.world_secs) {
+            crate::flight::launch(world, cat, ty, data.set_files(ty), &mut self.rng);
+        }
+    }
+
+    /// The scenario's ambients join the spawn list, after its start hook (scenarios 5.2, ambients 7).
+    pub(crate) fn add_scenario_ambients(&mut self) {
+        let ids = self.scenario.as_ref().map_or(&[][..], |s| s.ambients());
+        ids.iter().for_each(|&id| self.spawns.add(id));
+    }
+
     /// A saved game that holds `scenario` opened (scenarios 5.3): its goals read the stored
     /// `words`, `groups` when the file's version is 86 or later.
     pub(crate) fn resume_scenario(&mut self, mut scenario: Scenario, words: &[u32], groups: bool) {
@@ -559,6 +586,13 @@ impl Sim {
     pub(crate) fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
+        // Every entity base word stored as 0 is the AI clock held before the file's own was read
+        // (zoo format 6.4, from version 35).
+        if world.zoo.version >= 35 {
+            for c in (world.zoo.entities.iter_mut()).filter_map(|e| e.common.as_mut()) {
+                c.stamp.get_or_insert(self.held_ticks);
+            }
+        }
         for at in 0..world.zoo.entities.len() {
             if old && world.is_fence(at) {
                 self.heal(world, cat, at);
@@ -567,7 +601,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
-            crate::building::random_use::loaded(world, cat, at, self.ai_ticks, &mut self.rng);
+            crate::building::random_use::loaded(world, cat, at, self.held_ticks, &mut self.rng);
             crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,
@@ -843,9 +877,7 @@ impl Sim {
         crate::building::dead::wet_changed(world, cat, &mut self.rng);
         world.decay_water(step);
         self.water_effects(world, cat, step);
-        let total = self.world_rem.wrapping_add(step);
-        self.world_rem = total % 1000;
-        self.world_secs = self.world_secs.wrapping_add(total / 1000);
+        self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).
         crate::show::listen_world(world, cat, &mut self.events, &mut self.rng);
         // The scenario manager.
