@@ -13,6 +13,13 @@ const FADE_FROM: i32 = 4500;
 const FADE_MS: u32 = 10_000;
 /// The base term of a crowd loop whose `...atten` key is missing.
 const CROWD_ATTEN: i32 = 1500;
+/// The crowd files before the crowd file is read (sound 4.4).
+const CROWD_FILES: [&str; 4] = [
+    "sounds/quiet.wav",
+    "sounds/crowds.wav",
+    "sounds/crowdm.wav",
+    "sounds/crowdl.wav",
+];
 
 /// A loop the shell has to keep: the voice (a new one for every start), the file and the sum of
 /// the base and the fade terms, to which the shell adds the global one (sound 4.1).
@@ -53,7 +60,7 @@ impl Level {
     }
 }
 
-/// A file and its base term; `None` when the file is not named.
+/// A file and its base term; `None` when it does not load.
 type Tune = Option<(String, i32)>;
 
 /// The files of the two loops: one world file, four crowd files by level.
@@ -64,27 +71,35 @@ pub(super) struct Files {
 }
 
 impl Files {
-    /// Reads `[crowdsound]` of the crowd file and `[worldsound]` of the world file. A file that
-    /// is not named plays nothing; a missing `...atten` key is 1,500 for a crowd loop and 0 for
-    /// the world loop, a value that is not a number reads 0.
+    /// Reads `[crowdsound]` of the crowd file and `[worldsound]` of the world file (sound 4.4). A
+    /// crowd level has its default file at 1,500 until its name key replaces the file, and only
+    /// then is its `...atten` key read; the world loop needs its name key (`atten` 0 when missing).
+    /// A number that is not one reads 0. A file that cannot be read has the defaults.
     pub(super) fn parse(crowd: &[u8], world: &[u8]) -> Files {
-        let tune = |config: &Config, section: &str, name: &str, atten: &str, default: i32| {
-            let section = config.section(section)?;
-            let file = name_from_bytes(section.get(name)?);
-            let atten = section
-                .get(atten)
-                .map_or(default, |v| to_int(v).unwrap_or(0));
-            (!file.is_empty()).then_some((file, atten))
-        };
         let crowd = Config::parse(crowd).unwrap_or_default();
         let world = Config::parse(world).unwrap_or_default();
-        Files {
-            world: tune(&world, "worldsound", "name", "atten", 0),
-            crowd: std::array::from_fn(|i| {
-                let (name, atten) = (Level::NAMES[i], Level::ATTEN[i]);
-                tune(&crowd, "crowdsound", name, atten, CROWD_ATTEN)
-            }),
-        }
+        let number = |v: &[u8]| to_int(v).unwrap_or(0);
+        let world = world.section("worldsound").and_then(|s| {
+            let atten = s.get("atten").map_or(0, number);
+            Some((name_from_bytes(s.get("name")?), atten))
+        });
+        let crowd = std::array::from_fn(|i| {
+            let section = crowd.section("crowdsound");
+            let named = section.and_then(|s| Some((s, name_from_bytes(s.get(Level::NAMES[i])?))));
+            Some(match named {
+                Some((s, file)) => (file, s.get(Level::ATTEN[i]).map_or(CROWD_ATTEN, number)),
+                None => (CROWD_FILES[i].to_string(), CROWD_ATTEN),
+            })
+        });
+        Files { world, crowd }
+    }
+
+    /// Drops what does not load: an empty name, or a file `loads` refuses.
+    pub(super) fn loaded(mut self, loads: &dyn Fn(&str) -> bool) -> Files {
+        let keep = |t: Tune| t.filter(|(file, _)| !file.is_empty() && loads(file));
+        self.world = keep(self.world);
+        self.crowd = self.crowd.map(keep);
+        self
     }
 }
 
@@ -101,84 +116,102 @@ struct Playing {
 #[derive(Debug, Default)]
 pub(super) struct Loops {
     files: Files,
-    /// The first update made the world loop.
-    started: bool,
     world: Option<Playing>,
-    /// The crowd's level, and the two slots of its loops: the newest is `slot`.
+    /// The crowd's level, and the two slots of its loops.
     level: Option<Level>,
     crowd: [Option<Playing>; 2],
-    slot: usize,
-    /// Milliseconds of the cross-fade under way.
-    fading: Option<u32>,
+    /// The slot the next loop starts in.
+    toggle: usize,
+    /// The cross-fade under way: milliseconds from 0 to 10,000, and whether it counts up (the new
+    /// loop is in the second slot) or down.
+    fading: Option<(u32, bool)>,
     /// The voices made so far, so that every start has its own.
     serial: u32,
+    /// Log lines of what was made before the first step.
+    pending: Vec<String>,
 }
 
 impl Loops {
+    /// The loops of a game just started: the world loop plays from now (sound 8.1).
     pub(super) fn new(files: Files) -> Loops {
+        let world = files.world.clone().map(|(file, base)| Playing {
+            voice: "world".to_string(),
+            file,
+            base,
+            fade: 0,
+        });
         Loops {
+            pending: (world.iter())
+                .map(|w| format!("soundscape loop world {}", w.file))
+                .collect(),
             files,
+            world,
             ..Loops::default()
         }
     }
 
-    /// One simulation step of `step` ms with `guests` guests: the world loop is made at the first,
-    /// a cross-fade under way advances (and nothing else changes meanwhile), else the crowd moves
-    /// to another level when the guests ask. What happened goes to `log`.
+    /// One simulation step of `step` ms with `guests` guests: a cross-fade under way advances, then,
+    /// when none is, the crowd moves to another level if the guests ask. What happened goes to `log`.
     pub(super) fn update(&mut self, step: u32, guests: i32, log: &mut Vec<String>) {
-        if !self.started {
-            self.started = true;
-            self.world = self.files.world.clone().map(|(file, base)| {
-                log.push(format!("soundscape loop world {file}"));
-                Playing {
-                    voice: "world".to_string(),
-                    file,
-                    base,
-                    fade: 0,
-                }
-            });
+        log.append(&mut self.pending);
+        if let Some((ms, up)) = self.fading {
+            self.cross_fade(ms, up, step.max(1));
         }
-        if let Some(ms) = self.fading {
-            self.cross_fade(ms.saturating_add(step));
-        } else if let Some(level) = Level::next(self.level, guests) {
+        if self.fading.is_none()
+            && let Some(level) = Level::next(self.level, guests)
+        {
             self.change(level, log);
         }
     }
 
-    /// The crowd moves to `level`: its loop starts in the other slot with the whole fade term.
+    /// The crowd moves to `level`. Its loop, if its file loads, starts in the next slot with the
+    /// whole fade term and a cross-fade begins; if not, nothing starts and the old loop plays on.
     fn change(&mut self, level: Level, log: &mut Vec<String>) {
-        let slot = if self.level.is_some() {
-            1 - self.slot
-        } else {
-            0
-        };
+        self.level = Some(level);
         let i = level as usize;
-        self.crowd[slot] = self.files.crowd[i].clone().map(|(file, base)| {
-            log.push(format!("soundscape loop crowd {} {file}", Level::NAMES[i]));
-            self.serial = self.serial.wrapping_add(1);
-            Playing {
-                voice: format!("crowd {}", self.serial),
-                file,
-                base,
-                fade: FADE_FROM,
-            }
+        let Some((file, base)) = self.files.crowd[i].clone() else {
+            return;
+        };
+        log.push(format!("soundscape loop crowd {} {file}", Level::NAMES[i]));
+        self.serial = self.serial.wrapping_add(1);
+        let slot = self.toggle;
+        self.crowd[slot] = Some(Playing {
+            voice: format!("crowd {}", self.serial),
+            file,
+            base,
+            fade: FADE_FROM,
         });
-        (self.level, self.slot, self.fading) = (Some(level), slot, Some(0));
+        self.toggle = 1 - slot;
+        // The first slot counts down from the end, the second up from 0.
+        self.fading = Some(if slot == 0 {
+            (FADE_MS, false)
+        } else {
+            (0, true)
+        });
     }
 
-    /// The cross-fade has lasted `ms`: the new loop's fade goes down to 0 as the old one's goes up
-    /// to 4,500, then the old one is stopped.
-    fn cross_fade(&mut self, ms: u32) {
-        let out = (i64::from(FADE_FROM) * i64::from(ms.min(FADE_MS)) / i64::from(FADE_MS)) as i32;
-        if let Some(old) = &mut self.crowd[1 - self.slot] {
-            old.fade = out;
+    /// The cross-fade is at `ms` and moves by `step`: each slot that plays takes its fade term, the
+    /// first `trunc(p * 4500)`, the second `trunc((1 - p) * 4500)`, with `p = ms * 0.0001` in
+    /// single precision. At the end the loop of the slot that fades out is stopped.
+    fn cross_fade(&mut self, ms: u32, up: bool, step: u32) {
+        let ms = if up {
+            ms.saturating_add(step).min(FADE_MS)
+        } else {
+            ms.saturating_sub(step)
+        };
+        let p = ms as f32 * 0.0001f32;
+        let terms = [
+            (p * FADE_FROM as f32) as i32,
+            ((1.0 - p) * FADE_FROM as f32) as i32,
+        ];
+        for (slot, term) in self.crowd.iter_mut().zip(terms) {
+            if let Some(playing) = slot {
+                playing.fade = term;
+            }
         }
-        if let Some(new) = &mut self.crowd[self.slot] {
-            new.fade = FADE_FROM - out;
-        }
-        self.fading = (ms < FADE_MS).then_some(ms);
+        self.fading = (ms != if up { FADE_MS } else { 0 }).then_some((ms, up));
         if self.fading.is_none() {
-            self.crowd[1 - self.slot] = None;
+            self.crowd[usize::from(!up)] = None;
         }
     }
 
@@ -203,11 +236,15 @@ mod tests {
         medatten=-50\nlarge=l.wav\nlargeatten=x\n";
     const WORLD: &str = "[worldsound]\nname=w.wav\natten=2000\n";
 
-    fn loops() -> Loops {
-        Loops::new(Files::parse(CROWD.as_bytes(), WORLD.as_bytes()))
+    fn loops_of(crowd: &str, world: &str) -> Loops {
+        Loops::new(Files::parse(crowd.as_bytes(), world.as_bytes()).loaded(&|_| true))
     }
 
-    /// The loops after one step per `(ms, guests)`, as `voice terms` pairs.
+    fn loops() -> Loops {
+        loops_of(CROWD, WORLD)
+    }
+
+    /// The log after one step per `(ms, guests)`.
     fn run(l: &mut Loops, steps: &[(u32, i32)]) -> Vec<String> {
         let mut log = Vec::new();
         steps.iter().for_each(|&(ms, n)| l.update(ms, n, &mut log));
@@ -216,6 +253,14 @@ mod tests {
 
     fn terms(l: &Loops) -> Vec<(String, i32)> {
         l.playing().into_iter().map(|p| (p.file, p.terms)).collect()
+    }
+
+    /// The terms of the crowd loops only, by file.
+    fn crowd(l: &Loops) -> Vec<(String, i32)> {
+        (l.playing().into_iter())
+            .filter(|p| p.voice != "world")
+            .map(|p| (p.file, p.terms))
+            .collect()
     }
 
     fn level(guests: &[i32]) -> Option<Level> {
@@ -228,33 +273,53 @@ mod tests {
     fn the_files_are_read_with_their_attenuations_and_the_defaults() {
         let f = Files::parse(CROWD.as_bytes(), WORLD.as_bytes());
         assert_eq!(f.world, Some(("w.wav".to_string(), 2000)));
-        let crowd: Vec<_> = f.crowd.iter().map(|t| t.clone().unwrap().1).collect();
-        // The quiet one has no key: 1,500; the medium one is read from `medatten`; text is 0.
-        assert_eq!(crowd, [1500, 100, -50, 0]);
+        let atten: Vec<_> = f.crowd.iter().map(|t| t.clone().unwrap().1).collect();
+        // The quiet one has no atten key: 1,500; the medium one is read from `medatten`; text is 0.
+        assert_eq!(atten, [1500, 100, -50, 0]);
         // `mediumatten`, as the shipped file spells it, is not read.
         let shipped = CROWD.replace("medatten", "mediumatten");
         let f = Files::parse(shipped.as_bytes(), b"");
-        assert_eq!(f.crowd[2].as_ref().unwrap().1, 1500);
-        // A name that is empty, a missing section or file, or text that is not a file: nothing.
-        for bad in [
-            "",
-            "[worldsound]\nname=\natten=0\n",
-            "[x]\nname=a.wav\n",
-            "\u{0}\u{1}",
-        ] {
-            let f = Files::parse(bad.as_bytes(), bad.as_bytes());
-            assert!(
-                f.world.is_none() && f.crowd.iter().all(Option::is_none),
-                "{bad:?}"
-            );
-        }
-        // An atten key without a name does nothing; a huge value is kept as the integer it makes.
+        assert_eq!(f.crowd[2], Some(("m.wav".to_string(), 1500)));
+        // An atten key without its name key is not read; a huge value is the integer it makes.
         let f = Files::parse(
             b"[crowdsound]\nquietatten=5\n",
             b"[worldsound]\nname=a\natten=99999999999\n",
         );
-        assert!(f.crowd[0].is_none());
+        assert_eq!(f.crowd[0], Some(("sounds/quiet.wav".to_string(), 1500)));
         assert_eq!(f.world.unwrap().1, to_int(b"99999999999").unwrap());
+        // No world name key, no section, no file or text that is not a file: no world loop.
+        for bad in [
+            "",
+            "[worldsound]\natten=5\n",
+            "[x]\nname=a.wav\n",
+            "\u{0}\u{1}",
+        ] {
+            assert!(Files::parse(b"", bad.as_bytes()).world.is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_crowd_level_without_a_name_key_plays_its_default_file() {
+        // No file, no section, or a level without its key: the default file at 1,500.
+        let default = [
+            "sounds/quiet.wav",
+            "sounds/crowds.wav",
+            "sounds/crowdm.wav",
+            "sounds/crowdl.wav",
+        ];
+        for text in ["", "[x]\n", "[crowdsound]\nsmall=s.wav\n"] {
+            let f = Files::parse(text.as_bytes(), b"").loaded(&|_| true);
+            let want = |i: usize| Some((default[i].to_string(), 1500));
+            assert_eq!(f.crowd[0], want(0), "{text:?}");
+            assert_eq!(f.crowd[2], want(2), "{text:?}");
+            assert_eq!(f.crowd[3], want(3), "{text:?}");
+        }
+        let mut l = loops_of("", "");
+        run(&mut l, &[(0, 0)]);
+        assert_eq!(crowd(&l), [("sounds/quiet.wav".to_string(), 6000)]);
+        // A file that is not there plays nothing.
+        let none = Files::parse(b"", b"").loaded(&|f| f != "sounds/quiet.wav");
+        assert!(none.crowd[0].is_none() && none.crowd[1].is_some());
     }
 
     #[test]
@@ -289,18 +354,21 @@ mod tests {
     }
 
     #[test]
-    fn the_world_loop_plays_from_the_first_step_with_its_base_term() {
+    fn the_world_loop_is_there_from_the_creation_and_logged_at_the_first_step() {
         let mut l = loops();
+        assert_eq!(terms(&l), [("w.wav".to_string(), 2000)]);
         let log = run(&mut l, &[(0, 0)]);
         assert_eq!(log[0], "soundscape loop world w.wav");
-        assert_eq!(terms(&l)[0], ("w.wav".to_string(), 2000));
         // Once: later steps neither log it again nor change it.
         assert_eq!(run(&mut l, &[(66, 0)]), Vec::<String>::new());
-        // No world file, no loop; before any step there is none either.
-        let mut none = Loops::new(Files::parse(CROWD.as_bytes(), b""));
-        assert!(none.playing().is_empty());
-        run(&mut none, &[(1, 0)]);
-        assert_eq!(none.playing().len(), 1);
+        assert_eq!(terms(&l)[0], ("w.wav".to_string(), 2000));
+        // No world file, no loop.
+        assert!(loops_of(CROWD, "").playing().is_empty());
+        assert!(
+            Loops::new(Files::parse(b"", WORLD.as_bytes()).loaded(&|_| false))
+                .playing()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -308,74 +376,117 @@ mod tests {
         let mut l = loops();
         let log = run(&mut l, &[(66, 0)]);
         assert_eq!(log[1], "soundscape loop crowd quiet q.wav");
-        assert_eq!(terms(&l)[1], ("q.wav".to_string(), 1500 + 4500));
-        // Half way: the proportion is truncated.
+        // The change sets no fade: the loop starts at 4,500 with its base term 1,500.
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 6000)]);
         run(&mut l, &[(5000, 0)]);
-        assert_eq!(terms(&l)[1], ("q.wav".to_string(), 1500 + 2250));
-        run(&mut l, &[(3, 0)]);
-        assert_eq!(terms(&l)[1].1, 1500 + 4500 - 2251);
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500 + 2250)]);
         // The end of it, however long the step: no fade left.
         run(&mut l, &[(u32::MAX, 0)]);
-        assert_eq!(terms(&l)[1], ("q.wav".to_string(), 1500));
-        // A step of 0 ms and one of the exact length.
-        let mut l = loops();
-        run(&mut l, &[(0, 0), (0, 0)]);
-        assert_eq!(terms(&l)[1].1, 6000);
-        run(&mut l, &[(10_000, 0)]);
-        assert_eq!(terms(&l)[1].1, 1500);
-    }
-
-    #[test]
-    fn a_change_cross_fades_in_the_other_slot_and_no_change_starts_meanwhile() {
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500)]);
+        // The exact length.
         let mut l = loops();
         run(&mut l, &[(0, 0), (10_000, 0)]);
-        // 21 guests: small starts at 4,500 + 100, quiet goes up from 1,500.
-        let log = run(&mut l, &[(0, 21)]);
-        assert_eq!(log, ["soundscape loop crowd small s.wav"]);
-        assert_eq!(
-            terms(&l),
-            [
-                ("w.wav".into(), 2000),
-                ("q.wav".into(), 1500),
-                ("s.wav".into(), 4600)
-            ]
-        );
-        run(&mut l, &[(4000, 21)]);
-        // Quiet: 4,500 * 0.4 = 1,800 more; small: 1,800 less (4,500 - 1,800 + 100).
-        assert_eq!(
-            terms(&l)[1..],
-            [("q.wav".into(), 3300), ("s.wav".into(), 2800)]
-        );
-        // 200 guests wanting medium and large change nothing until the fade is over.
-        assert!(run(&mut l, &[(1000, 200), (1000, 200), (3999, 200)]).is_empty());
-        let log = run(&mut l, &[(1, 200)]);
-        assert!(log.is_empty());
-        assert_eq!(terms(&l)[1..], [("s.wav".into(), 100)]);
-        // The next update moves on one level; the voices of the two starts differ.
-        let voice = |l: &Loops| {
-            l.playing()
-                .iter()
-                .map(|p| p.voice.clone())
-                .collect::<Vec<_>>()
-        };
-        let before = voice(&l);
-        let log = run(&mut l, &[(0, 200)]);
-        assert_eq!(log, ["soundscape loop crowd medium m.wav"]);
-        let after = voice(&l);
-        // One more voice, new; the old ones go on.
-        assert_eq!(after.len(), 3, "{before:?} {after:?}");
-        assert!(before.iter().all(|v| after.contains(v)), "{after:?}");
+        assert_eq!(crowd(&l)[0].1, 1500);
     }
 
     #[test]
-    fn a_level_without_a_file_is_silent_and_fades_the_old_loop_out() {
-        let mut l = Loops::new(Files::parse(b"[crowdsound]\nquiet=q.wav\n", b""));
-        run(&mut l, &[(0, 0), (10_000, 0), (0, 50)]);
-        assert_eq!(terms(&l), [("q.wav".into(), 1500)]);
-        run(&mut l, &[(5000, 50)]);
-        assert_eq!(terms(&l), [("q.wav".into(), 1500 + 2250)]);
-        run(&mut l, &[(5000, 50)]);
-        assert!(terms(&l).is_empty());
+    fn the_cross_fade_terms_follow_the_single_precision_chain_of_each_slot() {
+        let mut l = loops();
+        run(&mut l, &[(0, 0)]);
+        // The first change is in the first slot and counts down from 10,000: 3 ms in, p = 0.9997.
+        run(&mut l, &[(3, 0)]);
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500 + 4498)]);
+        run(&mut l, &[(9997, 0)]);
+        // The second change is in the second slot and counts up from 0.
+        run(&mut l, &[(0, 21)]);
+        assert_eq!(
+            crowd(&l),
+            [
+                ("q.wav".to_string(), 1500),
+                ("s.wav".to_string(), 100 + 4500)
+            ]
+        );
+        run(&mut l, &[(3, 21)]);
+        // Not 4,500 less the old one: the new loop is at 4,498 and the old at 1.
+        assert_eq!(
+            crowd(&l),
+            [
+                ("q.wav".to_string(), 1501),
+                ("s.wav".to_string(), 100 + 4498)
+            ]
+        );
+        run(&mut l, &[(4997, 21)]);
+        assert_eq!(
+            crowd(&l),
+            [
+                ("q.wav".to_string(), 1500 + 2250),
+                ("s.wav".to_string(), 100 + 2250)
+            ]
+        );
+        run(&mut l, &[(5000, 21)]);
+        assert_eq!(crowd(&l), [("s.wav".to_string(), 100)]);
+    }
+
+    #[test]
+    fn a_step_of_0_ms_advances_a_cross_fade_by_1_ms() {
+        let mut l = loops();
+        run(&mut l, &[(0, 0), (0, 0)]);
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500 + 4499)]);
+        // 10,000 steps of nothing end it; it never sticks.
+        let mut l = loops();
+        run(&mut l, &[(0, 0)]);
+        run(&mut l, &vec![(0, 0); 10_000]);
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500)]);
+    }
+
+    #[test]
+    fn a_change_can_start_in_the_step_that_ends_a_cross_fade() {
+        let mut l = loops();
+        run(&mut l, &[(0, 0)]);
+        // The step that ends the first fade starts the small loop in the second slot.
+        let log = run(&mut l, &[(10_000, 21)]);
+        assert_eq!(log, ["soundscape loop crowd small s.wav"]);
+        assert_eq!(
+            crowd(&l),
+            [("q.wav".to_string(), 1500), ("s.wav".to_string(), 4600)]
+        );
+        // No change starts meanwhile: 200 guests wait for the end of the fade.
+        assert!(run(&mut l, &[(1000, 200), (8999, 200)]).is_empty());
+        let log = run(&mut l, &[(1, 200)]);
+        assert_eq!(log, ["soundscape loop crowd medium m.wav"]);
+        // The voices are new for every start, the old ones go on.
+        let voices: Vec<_> = l.playing().into_iter().map(|p| p.voice).collect();
+        assert_eq!(voices.len(), 3, "{voices:?}");
+        assert_eq!(
+            voices
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn a_crowd_file_that_does_not_load_starts_no_cross_fade() {
+        // The small and the medium files are not there; the quiet one is.
+        let files = Files::parse(CROWD.as_bytes(), b"").loaded(&|f| f == "q.wav" || f == "l.wav");
+        let mut l = Loops::new(files);
+        run(&mut l, &[(0, 0), (10_000, 0)]);
+        // Small does not load: the quiet loop plays on, at its fade, with no cross-fade.
+        let log = run(&mut l, &[(0, 21)]);
+        assert!(log.is_empty());
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500)]);
+        assert!(l.fading.is_none());
+        run(&mut l, &[(5000, 21)]);
+        assert_eq!(crowd(&l), [("q.wav".to_string(), 1500)]);
+        // The level did change: the next one up is medium from small (86), not small from quiet.
+        assert_eq!(l.level, Some(Level::Small));
+        run(&mut l, &[(0, 86)]);
+        assert_eq!(l.level, Some(Level::Medium));
+        // A level that loads later takes the slot the failed ones left (`largeatten` is text: 0).
+        run(&mut l, &[(0, 161)]);
+        assert_eq!(crowd(&l)[1], ("l.wav".to_string(), 4500));
+        assert_eq!(l.crowd[1].as_ref().map(|p| p.file.as_str()), Some("l.wav"));
         // A crowd with no file at all never logs or plays, whatever the steps.
         let mut l = Loops::new(Files::default());
         assert!(run(&mut l, &[(0, 0), (u32::MAX, i32::MAX), (7, i32::MIN)]).is_empty());

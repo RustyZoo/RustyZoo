@@ -106,7 +106,7 @@ fn chance_and_pick_reduce_as_the_original_does() {
 
 #[test]
 fn a_game_with_a_soundscape_logs_its_points_and_draws_and_a_new_game_has_none() {
-    let own = || Soundscape::from_files(&|_| None, None);
+    let own = || Soundscape::from_files(&|_| None, &|_| true, None);
     // From one seed, the state and the lines after a step of a game set up by `setup`.
     let run = |setup: &dyn Fn(&mut Sim)| {
         let (mut s, mut w) = (sim(""), world(0));

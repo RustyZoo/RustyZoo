@@ -17,7 +17,7 @@ pub use loops::SceneLoop;
 /// The file of each group when the scenario names none (sound 8.1).
 const CROWD_FILE: &str = "crowdsnd.cfg";
 const WORLD_FILE: &str = "worldsnd.cfg";
-/// The files of the loops: the crowd's, and the world's when the scenario names none (sound 4.4).
+/// The files of the loops when the scenario names none (sound 4.4).
 const CROWD_LOOPS: &str = "crowd.cfg";
 const WORLD_LOOP: &str = "worldlp.cfg";
 /// The level the world group plays at (sound 8.1).
@@ -148,9 +148,11 @@ impl Soundscape {
     }
 
     /// The soundscape of a game whose scenario file is `scenario` (a saved game without one, or a
-    /// bare map, has none): the files `[start]` names, else the default ones, read through `read`.
+    /// bare map, has none): the files `[start]` names, else the default ones, read through `read`;
+    /// a loop's sound file is there when `loads` says so.
     pub(crate) fn from_files(
         read: &dyn Fn(&str) -> Option<Vec<u8>>,
+        loads: &dyn Fn(&str) -> bool,
         scenario: Option<&str>,
     ) -> Soundscape {
         let start = scenario.and_then(read).and_then(|b| Config::parse(&b).ok());
@@ -165,10 +167,10 @@ impl Soundscape {
             ambients(named("worldAmbients", WORLD_FILE)),
         );
         let (crowd, world) = (
-            file(CROWD_LOOPS.to_string()),
+            file(named("crowdConfig", CROWD_LOOPS)),
             file(named("worldConfig", WORLD_LOOP)),
         );
-        scape.loops = Loops::new(Files::parse(&crowd, &world));
+        scape.loops = Loops::new(Files::parse(&crowd, &world).loaded(loads));
         scape
     }
 
@@ -182,7 +184,7 @@ impl Soundscape {
                 None
             }
         };
-        Soundscape::from_files(&read, scenario)
+        Soundscape::from_files(&read, &|name| vfs.contains(name), scenario)
     }
 
     /// One simulation step of `step` ms with `guests` guests: the crowd's point then the world's
@@ -527,40 +529,93 @@ mod tests {
             })
         };
         let key = |s: &Soundscape| s.world.group(50).unwrap().sounds[0].0.clone();
-        assert_eq!(key(&Soundscape::from_files(&files, Some("s.scn"))), "z.wav");
-        assert_eq!(key(&Soundscape::from_files(&files, None)), "a.wav");
-        // A scenario that cannot be read, or has no `[start]`, leaves the defaults.
         assert_eq!(
-            key(&Soundscape::from_files(&files, Some("missing.scn"))),
+            key(&Soundscape::from_files(&files, &|_| true, Some("s.scn"))),
+            "z.wav"
+        );
+        assert_eq!(
+            key(&Soundscape::from_files(&files, &|_| true, None)),
             "a.wav"
         );
-        // The loops: the scenario's world file, else `worldlp.cfg`; `crowd.cfg` always.
-        let loops = |scenario: Option<&str>| {
-            let files = |name: &str| -> Option<Vec<u8>> {
-                Some(match name {
-                    "s.scn" => b"[start]\nworldConfig=w.cfg\n".to_vec(),
-                    "w.cfg" => b"[worldsound]\nname=scn.wav\natten=7\n".to_vec(),
-                    "worldlp.cfg" => b"[worldsound]\nname=def.wav\n".to_vec(),
-                    "crowd.cfg" => b"[crowdsound]\nquiet=q.wav\n".to_vec(),
-                    _ => return None,
-                })
-            };
-            let mut s = Soundscape::from_files(&files, scenario);
-            s.update(0, 0, &mut seeded(1), &mut Vec::new());
-            s.loops()
-                .into_iter()
-                .map(|l| (l.file, l.terms))
-                .collect::<Vec<_>>()
-        };
-        let crowd = ("q.wav".to_string(), 6000);
+        // A scenario that cannot be read, or has no `[start]`, leaves the defaults.
         assert_eq!(
-            loops(Some("s.scn")),
-            [("scn.wav".to_string(), 7), crowd.clone()]
+            key(&Soundscape::from_files(
+                &files,
+                &|_| true,
+                Some("missing.scn")
+            )),
+            "a.wav"
         );
-        assert_eq!(loops(None), [("def.wav".to_string(), 0), crowd]);
-        assert!(Soundscape::from_files(&|_| None, None).loops().is_empty());
         // A named file that is missing is a group without sounds, not a failure.
-        let none = Soundscape::from_files(&|_| None, Some("s.scn"));
+        let none = Soundscape::from_files(&|_| None, &|_| true, Some("s.scn"));
         assert_eq!(none.world.group(50), None);
+    }
+
+    /// The loops of a soundscape made from these files, after the first step.
+    fn loops_of(
+        files: &dyn Fn(&str) -> Option<Vec<u8>>,
+        scenario: Option<&str>,
+    ) -> Vec<(String, i32)> {
+        let mut s = Soundscape::from_files(files, &|_| true, scenario);
+        s.update(0, 0, &mut seeded(1), &mut Vec::new());
+        s.loops().into_iter().map(|l| (l.file, l.terms)).collect()
+    }
+
+    fn scenario_files(name: &str) -> Option<Vec<u8>> {
+        Some(match name {
+            "s.scn" => b"[start]\nworldConfig=w.cfg\ncrowdConfig=c.cfg\n".to_vec(),
+            "w.cfg" => b"[worldsound]\nname=scn.wav\natten=7\n".to_vec(),
+            "c.cfg" => b"[crowdsound]\nquiet=scn-q.wav\nquietatten=9\n".to_vec(),
+            "worldlp.cfg" => b"[worldsound]\nname=def.wav\n".to_vec(),
+            "crowd.cfg" => b"[crowdsound]\nquiet=q.wav\n".to_vec(),
+            _ => return None,
+        })
+    }
+
+    #[test]
+    fn the_crowd_loops_come_from_the_scenario_crowd_config() {
+        // The scenario's files; `worldlp.cfg` and `crowd.cfg` when it names none or there is none.
+        let want = |world: (&str, i32), crowd: (&str, i32)| {
+            vec![
+                (world.0.to_string(), world.1),
+                (crowd.0.to_string(), crowd.1),
+            ]
+        };
+        assert_eq!(
+            loops_of(&scenario_files, Some("s.scn")),
+            want(("scn.wav", 7), ("scn-q.wav", 4509))
+        );
+        assert_eq!(
+            loops_of(&scenario_files, None),
+            want(("def.wav", 0), ("q.wav", 6000))
+        );
+        assert_eq!(
+            loops_of(&scenario_files, Some("missing.scn")),
+            want(("def.wav", 0), ("q.wav", 6000))
+        );
+        // A crowd file that is missing leaves the default files.
+        let no_crowd = |n: &str| (n != "c.cfg").then(|| scenario_files(n)).flatten();
+        assert_eq!(
+            loops_of(&no_crowd, Some("s.scn"))[1],
+            ("sounds/quiet.wav".to_string(), 6000)
+        );
+    }
+
+    #[test]
+    fn the_world_loop_plays_from_the_creation_of_the_soundscape() {
+        let s = Soundscape::from_files(&scenario_files, &|_| true, None);
+        assert_eq!(s.loops().len(), 1);
+        assert_eq!(s.loops()[0].terms, 0);
+        // A file that does not load is no loop; none at all is none.
+        let s = Soundscape::from_files(&scenario_files, &|f| f != "def.wav", None);
+        assert!(s.loops().is_empty());
+        assert!(
+            Soundscape::from_files(&|_| None, &|_| true, None)
+                .loops()
+                .is_empty()
+        );
+        // A soundscape of a game, paused: never updated, the loop is asked for.
+        let mut s = Soundscape::from_files(&scenario_files, &|_| true, None);
+        assert_eq!(s.take_shots().len() + s.loops().len(), 1);
     }
 }

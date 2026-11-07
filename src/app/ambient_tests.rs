@@ -14,7 +14,8 @@ fn a_one_shot_is_placed_at_its_offset_from_the_centre_of_the_view() {
         (Catalogue::default(), &[]),
         |app, _| {
             let read = |name: &str| (name == "worldsnd.cfg").then(|| WORLD.to_vec());
-            app.sim.set_soundscape(Soundscape::from_files(&read, None));
+            app.sim
+                .set_soundscape(Soundscape::from_files(&read, &|_| true, None));
             let mut now = 0;
             let mut sounds = Vec::new();
             while sounds.is_empty() && now < 20_000 {
@@ -46,7 +47,8 @@ fn each_entry_of_a_group_is_its_own_voice() {
         (Catalogue::default(), &[]),
         |app, _| {
             let read = |name: &str| (name == "worldsnd.cfg").then(|| twice.to_vec());
-            app.sim.set_soundscape(Soundscape::from_files(&read, None));
+            app.sim
+                .set_soundscape(Soundscape::from_files(&read, &|_| true, None));
             let mut voices = std::collections::BTreeSet::new();
             let mut now = 0;
             while voices.len() < 2 && now < 600_000 {
@@ -78,9 +80,12 @@ fn the_world_loop_and_the_crowd_loop_are_asked_for_from_the_first_pass() {
         (Catalogue::default(), &[]),
         |app, _| {
             assert!(app.scene_loops().is_empty());
-            app.sim.set_soundscape(Soundscape::from_files(&files, None));
+            app.sim
+                .set_soundscape(Soundscape::from_files(&files, &|_| true, None));
             let mut now = 0;
-            while app.scene_loops().is_empty() && now < 2000 {
+            // The world loop is there from the start of the game, the crowd loop from the first step.
+            assert_eq!(app.scene_loops().len(), 1);
+            while app.scene_loops().len() < 2 && now < 2000 {
                 now += 66;
                 app.pass(now, &[]);
             }
