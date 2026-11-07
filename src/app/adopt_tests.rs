@@ -28,8 +28,9 @@ impl UiStrings for Texts {
 }
 
 fn animal(subtype: &str, cost: u32) -> EntityType {
-    let ini =
-        format!("[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost={cost}\n");
+    let ini = format!(
+        "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost={cost}\n[Sounds]\nplacesound=zplace\nplacesound=1500\n"
+    );
     EntityType {
         class: "animals",
         type_name: b"zebra".to_vec(),
@@ -373,5 +374,25 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
             game.placing.made.is_some(),
             "the hire made the next pending staff member"
         );
+    });
+}
+
+#[test]
+fn an_adoption_plays_the_place_sound_of_its_type_and_a_hire_place_wav() {
+    with_app("app-adopt-sound", |app| {
+        app.game.as_mut().unwrap().build.hold(2);
+        let camera = app.camera().unwrap().clone();
+        let heard = |app: &App| {
+            let sounds = app.unit_sounds().iter();
+            let all = sounds.map(|u| (u.id, u.file.clone(), u.base));
+            (all.collect::<Vec<_>>(), app.sounds().contains(&"place"))
+        };
+        click(app, 10, point(&camera, 20 * 64 + 10, 20 * 64 + 10));
+        let want = (101, "animals/zebra/zplace.wav".to_string(), 1500);
+        assert_eq!(heard(app), (vec![want], false));
+        // The keeper has none: `place.wav` alone.
+        app.game.as_mut().unwrap().build.hold(3);
+        click(app, 20, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
+        assert_eq!(heard(app), (vec![], true));
     });
 }

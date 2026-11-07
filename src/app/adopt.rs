@@ -75,7 +75,6 @@ impl App<'_> {
                     p.tile.0,
                     p.tile.1,
                 ));
-                self.ui_sounds.push("place");
                 self.money_events
                     .push(format!("book {} {}", place::unit::category(ty), p.price));
                 // A hire makes the new pending staff member of the same item, draws the sex,
@@ -91,6 +90,7 @@ impl App<'_> {
                     }
                     self.make_pending();
                 }
+                self.drop_sound(id);
             }
             Outcome::Refused(message) => {
                 self.ui_sounds.push("noplace");
