@@ -913,7 +913,9 @@ fn an_undone_placing_leaves_the_need_order() {
 #[test]
 fn a_placed_fence_is_not_in_the_need_order() {
     let mut world = World::new(zoo(8, 8, (0, 0)), shape);
-    let id = world.add(entity("fences", 96, 127, 4), Some(FENCE)).unwrap();
+    let id = world
+        .add(entity("fences", 96, 127, 4), Some(FENCE))
+        .unwrap();
     crate::show::added(&mut world, &crate::entity::Catalogue::default(), id);
     assert!(world.added.is_empty());
 }
