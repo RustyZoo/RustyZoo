@@ -1474,9 +1474,10 @@ fn a_saved_game_opens_as_it_was_saved() {
         let Ok(bytes) = vfs.read(member) else {
             continue; // the saved game is in the English install only
         };
-        let run = start(&bytes, false);
+        let mut run = start(&bytes, false);
         let saved = run.save().unwrap_or_else(|e| panic!("{member}: {e}"));
-        let back = start(&saved, true);
+        let mut back = start(&saved, true);
+        let twice = start(&back.save().unwrap(), true);
         let (a, b) = (&run.world.zoo, &back.world.zoo);
         assert!(a.tiles == b.tiles, "{member}: tiles");
         // The entities as the save writes them: a load clamps the life and the mate delay
@@ -1513,7 +1514,6 @@ fn a_saved_game_opens_as_it_was_saved() {
             "{member}: exhibits"
         );
         // Saving the opened game again changes none of that.
-        let twice = start(&back.save().unwrap(), true);
         assert!(
             same(&twice.world.zoo.entities, &b.entities, true),
             "{member}: second save"

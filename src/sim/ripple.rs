@@ -49,6 +49,17 @@ impl Ripples {
 }
 
 impl Sim {
+    /// A save empties every slot and deletes its effect (tank staff 9): the ripples go at once and
+    /// the slots rest 4 s. Nothing marks an exhibit for a new rating.
+    pub(crate) fn save_started(&mut self, world: &mut World) {
+        for (age, effect) in &mut self.ripples.slots {
+            *age = 0;
+            if let Some(id) = effect.take() {
+                world.unrecorded(|w| w.remove(id));
+            }
+        }
+    }
+
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.
     pub(super) fn water_effects(&mut self, world: &mut World, cat: &Catalogue, step: u32) {
         if !self.ai.animated_water {

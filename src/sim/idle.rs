@@ -11,7 +11,8 @@
 //!
 //! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
 //! food object, a trash can and a dung pile the one their state chooses: a change of state starts
-//! it again at frame 0. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
+//! it again at frame 0. The ripples against the walls of a tank (map drawing 9.7.8) start at a
+//! random time of 0 to 1999 ms when the tank is set up. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
 //! reads the frames without staging the map again (`Staged::reframe`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -23,7 +24,7 @@ use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
 use crate::render::fence_name;
 use crate::render::order::Kind;
-use crate::render::{bubble_key, rest_name};
+use crate::render::{bubble_key, rest_name, ripple_key};
 use crate::world::World;
 use crate::zoo::Entity;
 
@@ -143,6 +144,17 @@ impl Clock {
     }
 }
 
+/// A type of `objects`/`other` by its subtype, as the data asks for its animations.
+fn other(subtype: &str) -> Entity {
+    Entity {
+        class: "objects".into(),
+        type_name: "other".into(),
+        subtype: subtype.into(),
+        body_size: None,
+        common: None,
+    }
+}
+
 /// The animation a fence piece that is not a gate shows, as the state of its clock: it changes
 /// with its life and the slope under it (sprite drawing 3.6).
 fn fence_state(world: &World, cat: &Catalogue, e: &Entity) -> Option<(String, i32)> {
@@ -170,6 +182,8 @@ fn fence_clock(world: &World, cat: &Catalogue, data: &dyn Data, e: &Entity, star
 pub(crate) struct Idles {
     fixed: BTreeMap<u32, Clock>,
     bubbles: BTreeMap<u32, (u32, Clock)>,
+    /// The ripples against the walls of each tank with water, by exhibit id: a clock per wall piece.
+    ripples: BTreeMap<u32, Vec<(u32, Clock)>>,
     /// The start times drawn for fence pieces outside the entity loop, taken by the next
     /// [`Idles::register`].
     pub(super) starts: BTreeMap<u32, u32>,
@@ -185,6 +199,7 @@ impl Idles {
     pub(crate) fn clear(&mut self) {
         self.fixed.clear();
         self.bubbles.clear();
+        self.ripples.clear();
         self.starts.clear();
         self.later.clear();
         self.heard.clear();
@@ -208,7 +223,11 @@ impl Idles {
         let animated = self.fixed.iter().filter(|(_, c)| c.timing.count > 1);
         let bubbles = (self.bubbles.iter()).map(|(&id, (_, c))| (bubble_key(id), c));
         let bubbles = bubbles.filter(|(_, c)| c.timing.count > 1);
-        let all = animated.map(|(&id, c)| (id, c)).chain(bubbles);
+        let walls = (self.ripples.values().flatten()).map(|(id, c)| (ripple_key(*id), c));
+        let all = animated
+            .map(|(&id, c)| (id, c))
+            .chain(bubbles)
+            .chain(walls.filter(|(_, c)| c.timing.count > 1));
         all.map(|(key, c)| (key, c.frame)).collect()
     }
 
@@ -335,6 +354,7 @@ impl Idles {
         }
         self.starts.clear();
         self.register_bubbles(world, data);
+        self.register_ripples(world, data, rng);
     }
 
     /// A fence piece's wear step ran at `at` in the entity loop (placing 7.4): its picture is
@@ -380,14 +400,7 @@ impl Idles {
         if shown.is_empty() {
             return;
         }
-        let ty = |name: &str| Entity {
-            class: "objects".into(),
-            type_name: "other".into(),
-            subtype: name.into(),
-            body_size: None,
-            common: None,
-        };
-        let timing = data.timing(&ty("tankbub1"), "idle");
+        let timing = data.timing(&other("tankbub1"), "idle");
         for (id, made) in shown {
             if self.bubbles.get(&id).is_none_or(|b| b.0 != made) {
                 self.bubbles.insert(id, (made, Clock::new(timing, None)));
@@ -395,10 +408,33 @@ impl Idles {
         }
     }
 
+    /// The ripples against the walls of the tanks (map drawing 9.7.8): a tank with clean water
+    /// gets them when it is set up, which is when it is first seen or its walls change, each at a
+    /// random time of 0 to 1999 ms. They go with the water.
+    fn register_ripples(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
+        let tanks = world.rippled_tanks();
+        self.ripples.retain(|id, _| tanks.iter().any(|t| t.0 == *id));
+        let timing = data.timing(&other("tankripl"), "idle");
+        for (id, walls) in tanks {
+            let known = self.ripples.get(&id);
+            if known.is_some_and(|k| k.iter().map(|w| w.0).eq(walls.iter().copied())) {
+                continue;
+            }
+            let set = walls.into_iter().map(|wall| {
+                let mut clock = Clock::new(timing, None);
+                clock.t = rng.pick(2000);
+                (wall, clock)
+            });
+            let set = set.collect();
+            self.ripples.insert(id, set);
+        }
+    }
+
     /// The end of the entity pass: every clock advances by `step`.
     pub(crate) fn advance(&mut self, step: u32) {
         self.fixed.values_mut().for_each(|c| c.advance(step));
         (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
+        (self.ripples.values_mut().flatten()).for_each(|r| r.1.advance(step));
         for (id, c) in &mut self.fixed {
             self.heard.extend(c.begun.take().map(|h| (*id, h)));
         }

@@ -544,7 +544,8 @@ impl Run {
     }
 
     /// The file of the zoo as it is now (see [`Zoo::write`]).
-    pub fn save(&self) -> Result<Vec<u8>, String> {
+    pub fn save(&mut self) -> Result<Vec<u8>, String> {
+        self.sim.save_started(&mut self.world);
         let mut zoo = self.world.saved(crate::zoo::knows(&self.cat));
         zoo.clocks = self.sim.clocks();
         self.world.finish_save(&mut zoo, &self.cat);
