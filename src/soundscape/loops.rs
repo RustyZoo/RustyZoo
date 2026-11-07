@@ -341,10 +341,10 @@ mod tests {
             ]
         );
         run(&mut l, &[(4000, 21)]);
-        // Quiet: 4,500 * 0.4 = 1,800 more; small: 2,700 less.
+        // Quiet: 4,500 * 0.4 = 1,800 more; small: 1,800 less (4,500 - 1,800 + 100).
         assert_eq!(
             terms(&l)[1..],
-            [("q.wav".into(), 3300), ("s.wav".into(), 1900)]
+            [("q.wav".into(), 3300), ("s.wav".into(), 2800)]
         );
         // 200 guests wanting medium and large change nothing until the fade is over.
         assert!(run(&mut l, &[(1000, 200), (1000, 200), (3999, 200)]).is_empty());
@@ -362,10 +362,9 @@ mod tests {
         let log = run(&mut l, &[(0, 200)]);
         assert_eq!(log, ["soundscape loop crowd medium m.wav"]);
         let after = voice(&l);
-        assert!(
-            !before.contains(&after[2]) && after[1] == before[1],
-            "{before:?} {after:?}"
-        );
+        // One more voice, new; the old ones go on.
+        assert_eq!(after.len(), 3, "{before:?} {after:?}");
+        assert!(before.iter().all(|v| after.contains(v)), "{after:?}");
     }
 
     #[test]

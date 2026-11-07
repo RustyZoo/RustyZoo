@@ -534,6 +534,31 @@ mod tests {
             key(&Soundscape::from_files(&files, Some("missing.scn"))),
             "a.wav"
         );
+        // The loops: the scenario's world file, else `worldlp.cfg`; `crowd.cfg` always.
+        let loops = |scenario: Option<&str>| {
+            let files = |name: &str| -> Option<Vec<u8>> {
+                Some(match name {
+                    "s.scn" => b"[start]\nworldConfig=w.cfg\n".to_vec(),
+                    "w.cfg" => b"[worldsound]\nname=scn.wav\natten=7\n".to_vec(),
+                    "worldlp.cfg" => b"[worldsound]\nname=def.wav\n".to_vec(),
+                    "crowd.cfg" => b"[crowdsound]\nquiet=q.wav\n".to_vec(),
+                    _ => return None,
+                })
+            };
+            let mut s = Soundscape::from_files(&files, scenario);
+            s.update(0, 0, &mut seeded(1), &mut Vec::new());
+            s.loops()
+                .into_iter()
+                .map(|l| (l.file, l.terms))
+                .collect::<Vec<_>>()
+        };
+        let crowd = ("q.wav".to_string(), 6000);
+        assert_eq!(
+            loops(Some("s.scn")),
+            [("scn.wav".to_string(), 7), crowd.clone()]
+        );
+        assert_eq!(loops(None), [("def.wav".to_string(), 0), crowd]);
+        assert!(Soundscape::from_files(&|_| None, None).loops().is_empty());
         // A named file that is missing is a group without sounds, not a failure.
         let none = Soundscape::from_files(&|_| None, Some("s.scn"));
         assert_eq!(none.world.group(50), None);

@@ -62,3 +62,40 @@ fn each_entry_of_a_group_is_its_own_voice() {
         },
     );
 }
+
+#[test]
+fn the_world_loop_and_the_crowd_loop_are_asked_for_from_the_first_pass() {
+    let files = |name: &str| -> Option<Vec<u8>> {
+        Some(match name {
+            "worldlp.cfg" => b"[worldsound]\nname=sounds/forest.wav\natten=2000\n".to_vec(),
+            "crowd.cfg" => b"[crowdsound]\nquiet=sounds/crowds.wav\n".to_vec(),
+            _ => return None,
+        })
+    };
+    with_world(
+        "scene_loops",
+        (false, false),
+        (Catalogue::default(), &[]),
+        |app, _| {
+            assert!(app.scene_loops().is_empty());
+            app.sim.set_soundscape(Soundscape::from_files(&files, None));
+            let mut now = 0;
+            while app.scene_loops().is_empty() && now < 2000 {
+                now += 66;
+                app.pass(now, &[]);
+            }
+            let loops: Vec<_> = (app.scene_loops().into_iter())
+                .map(|l| (l.file, l.terms))
+                .collect();
+            // No guests: the quiet loop, at its base term and the whole fade term.
+            let want = [("sounds/forest.wav", 2000), ("sounds/crowds.wav", 6000)];
+            assert_eq!(loops, want.map(|(f, t)| (f.to_string(), t)));
+            // Paused, the fade does not advance.
+            app.pass(now + 10_000, &[Command::Pause]);
+            assert_eq!(app.scene_loops()[1].terms, 6000);
+            // A game without a soundscape has no loops.
+            app.sim.start_game(16, Default::default());
+            assert!(app.scene_loops().is_empty());
+        },
+    );
+}
