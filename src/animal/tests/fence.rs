@@ -294,3 +294,33 @@ fn the_exterior_counts_as_the_grounds_for_the_fence_test_probe() {
     let k = keys_with(|k| k.fence_offset = 1);
     assert_eq!(start(&mut w, &mut unit, &k, &data()), (2, true));
 }
+
+#[test]
+fn the_water_switch_comes_before_the_fence_test_in_one_tick() {
+    use crate::unit::testing::amphibious_world_wired;
+    // A land animal at (9, 3) with a wire on its east side; the water check switches it to the
+    // tank mode in the same tick as the zap draw succeeds: the test, started last, keeps its set
+    // and the walk the switch started is stopped (animals 4.2: water check before zap check).
+    let mut w = amphibious_world_wired(2, &[(1, "polar", (9, 3))]);
+    let at = w.find(1).unwrap();
+    let mut unit = w.units.get(1).unwrap().clone();
+    unit.part = Part::Animal(Animal::default());
+    let out = Out {
+        terrain: Some((2, Some(0))),
+        fence: true,
+        ..Out::default()
+    };
+    let (cat, events, mut removals) = (Catalogue::default(), crate::sim::Events::default(), vec![]);
+    let mut rng = Rng::default();
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    crate::animal::escape::after(&mut unit, &mut w, &mut ctx, at, &data(), (&out, &keys()));
+    assert_eq!(animal_of(&unit).terrain, 2);
+    assert_eq!(unit.runner.top(), Some(TEST));
+    assert!(unit.path.is_empty(), "the switch's walk was cut by the test");
+}
