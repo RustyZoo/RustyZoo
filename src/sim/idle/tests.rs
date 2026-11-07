@@ -1,5 +1,5 @@
 use super::*;
-use crate::unit::testing::{centre, entity, world_with};
+use crate::unit::testing::{centre, entity, tank_world, world_with};
 
 fn clock(count: u32, delay: u32) -> Clock {
     Clock::new(Some(Timing { count, delay }), None)
@@ -649,4 +649,98 @@ fn a_random_use_sound_starts_with_the_used_sequence() {
     assert_eq!(run(Some(heard()), 0, false), []);
     assert_eq!(run(None, 2, false), []);
     assert_eq!(run(Some(heard()), 2, true), [], "the dead switch drops it");
+}
+
+/// The tank of `tank_world` with its water at `level` and `purity`.
+fn watered(level: u32, purity: u32) -> World {
+    let mut world = tank_world(4, level, &[]);
+    let id = world.exhibits().list()[0].id;
+    let tank = world
+        .exhibits_mut()
+        .get_mut(id)
+        .unwrap()
+        .tank
+        .as_mut()
+        .unwrap();
+    tank.purity = purity;
+    world
+}
+
+/// The ripples against the walls of a tank with clean water start at random times of 0 to 1999 ms,
+/// one draw a wall in id order, when the tank is set up; a tank already set up draws nothing more,
+/// and one that loses its water or its clean purity loses them and sets them up again later.
+#[test]
+fn the_wall_ripples_start_at_random_times_when_the_tank_is_set_up() {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let (mut rng, mut idles) = (Rng::default(), Idles::default());
+    let world = watered(3, 90);
+    let walls = world.rippled_tanks()[0].1.clone();
+    assert!(walls.len() > 10, "{walls:?}");
+    idles.register(&world, &Catalogue::default(), &data, &mut rng);
+    let mut expect = Rng::default();
+    let starts: Vec<u32> = walls.iter().map(|_| expect.pick(2000)).collect();
+    assert_eq!(rng.state(), expect.state());
+    let set = &idles.ripples[&world.exhibits().list()[0].id];
+    assert_eq!(set.iter().map(|w| w.1.t).collect::<Vec<_>>(), starts);
+    // Their frames are given under the key of the wall.
+    idles.advance(67);
+    let frames = idles.frames();
+    // (The ids of the helper's walls are not all different.)
+    assert_eq!(frames.len(), walls.iter().collect::<HashSet<_>>().len());
+    assert!(walls.iter().all(|&w| frames.contains_key(&ripple_key(w))));
+    assert!(frames.values().any(|&f| f != frames[&ripple_key(walls[0])]));
+    idles.register(&world, &Catalogue::default(), &data, &mut rng);
+    assert_eq!(rng.state(), expect.state());
+    // No water, murky water, or a purity that is 0: none, and no draw.
+    for (level, purity) in [(0, 90), (3, 0), (3, 59), (0, 0)] {
+        let dry = watered(level, purity);
+        idles.register(&dry, &Catalogue::default(), &data, &mut rng);
+        assert!(
+            idles.ripples.is_empty() && idles.frames().is_empty(),
+            "{level} {purity}"
+        );
+        assert_eq!(rng.state(), expect.state());
+    }
+    // The water comes back with a level above 0 at any height, and sets them up again.
+    idles.register(
+        &watered(u32::MAX, u32::MAX),
+        &Catalogue::default(),
+        &data,
+        &mut rng,
+    );
+    walls.iter().for_each(|_| _ = expect.pick(2000));
+    assert_eq!(rng.state(), expect.state());
+    assert_eq!(idles.ripples.len(), 1);
+}
+
+/// A ripple whose animation is missing or still has no frame to give, and a game starting anew
+/// has no clock.
+#[test]
+fn a_wall_ripple_without_an_animation_shows_no_frame_and_a_new_game_clears_it() {
+    let world = watered(3, 90);
+    for data in [
+        Fixed(None, vec![]),
+        Fixed(
+            Some(Timing {
+                count: 1,
+                delay: 100,
+            }),
+            vec![],
+        ),
+        Fixed(Some(Timing { count: 0, delay: 0 }), vec![]),
+    ] {
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&world, &Catalogue::default(), &data, &mut rng);
+        idles.advance(10_000);
+        assert!(idles.frames().is_empty());
+        assert_eq!(idles.ripples.len(), 1);
+        idles.clear();
+        assert!(idles.ripples.is_empty());
+    }
 }

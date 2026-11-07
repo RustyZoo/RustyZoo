@@ -2086,6 +2086,11 @@ fn ripples_come_with_the_water_and_go_with_the_level_and_the_purity() {
     assert_eq!(ripples(3, look(Some(([220, 230, 240], 200)))), 0);
     let mut scene = tank_scene(0, 5, 3, Vec::new());
     assert!(add_ripples(&mut scene, &[], 16).is_empty());
+    // Each is against its own wall: the eight walls of the scene, each once.
+    let mut scene = tank_scene(0, 5, 3, Vec::new());
+    let mut walls = add_ripples(&mut scene, &[look(None)], 16);
+    walls.sort_unstable();
+    assert_eq!(walls, (0..8).collect::<Vec<_>>());
 }
 
 fn position(items: &[Item], wanted: impl Fn(&Item) -> bool) -> usize {

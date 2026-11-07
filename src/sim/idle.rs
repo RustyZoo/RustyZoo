@@ -413,7 +413,8 @@ impl Idles {
     /// random time of 0 to 1999 ms. They go with the water.
     fn register_ripples(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
         let tanks = world.rippled_tanks();
-        self.ripples.retain(|id, _| tanks.iter().any(|t| t.0 == *id));
+        self.ripples
+            .retain(|id, _| tanks.iter().any(|t| t.0 == *id));
         let timing = data.timing(&other("tankripl"), "idle");
         for (id, walls) in tanks {
             let known = self.ripples.get(&id);

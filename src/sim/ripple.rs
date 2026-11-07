@@ -279,6 +279,27 @@ mod tests {
         assert!(waves(&world.saved(|_| true)).is_empty());
     }
 
+    /// A save empties every slot and deletes its ripple at once; the slots then rest 4 s.
+    #[test]
+    fn a_save_empties_the_live_slots() {
+        let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
+        let mut sim = sim("");
+        sim.ripples.wet = 1;
+        sim.scan(&mut world, &cat);
+        sim.ripples.slots.iter_mut().for_each(|s| s.0 = 1234);
+        assert_eq!(ripples(&world).len(), 1);
+        sim.save_started(&mut world);
+        assert!(ripples(&world).is_empty());
+        assert!(sim.ripples.slots.iter().all(|s| *s == (0, None)));
+        assert!(sim.removals.is_empty());
+        // No slot is free for 4 s: the next scan places nothing.
+        sim.scan(&mut world, &cat);
+        assert!(ripples(&world).is_empty());
+        // A save with nothing to empty changes nothing but the ages.
+        sim.save_started(&mut world);
+        assert!(sim.ripples.slots.iter().all(|s| *s == (0, None)));
+    }
+
     #[test]
     fn a_run_puts_a_few_ripples_on_a_lake() {
         let (cat, mut world) = (catalogue(), lake((20, 20), |_, _| true));
