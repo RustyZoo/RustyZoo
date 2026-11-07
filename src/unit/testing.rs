@@ -161,7 +161,7 @@ pub(crate) fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> Wor
     World::new(zoo, shape)
 }
 
-/// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
+/// A type made of a walk: the set `bWalk` of one move call, the sets `bZoo` and `bTestFence` of a call that never ends, the animations `idle`, `walk`, `trot`,
 /// `run`, `swim`, `climb` (3 frames) and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
 pub(crate) struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
@@ -202,7 +202,7 @@ impl crate::behaviour::Data for Walker {
     fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
         match name {
             "bWalk" => Some(&self.0),
-            "bZoo" => Some(&self.1),
+            "bZoo" | "bTestFence" => Some(&self.1),
             _ => None,
         }
     }
@@ -358,8 +358,8 @@ pub(crate) fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -
     amphibious_world_with(land, animals, (false, false))
 }
 
-/// [`amphibious_world`] whose land exhibit holds an electrified wire, life 5, on the east side of
-/// its tile (9, 3).
+/// [`amphibious_world`] whose land exhibit holds an electrified wire, life 5, on the north side of
+/// its tile (6, 2).
 pub(crate) fn amphibious_world_wired(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
     amphibious_world_with(land, animals, (false, true))
 }
@@ -472,21 +472,21 @@ fn amphibious_world_with(
     for t in 0..4 {
         pieces.push(piece("tankwall", (2 + t, 2), 0));
         pieces.push(piece("tankwall", (2 + t, 4), 4));
-        pieces.push(piece("fences", (6 + t, 2), 0));
+        let mut north = piece("fences", (6 + t, 2), 0);
+        if wire && t == 0 {
+            north.type_name = "wire".into();
+            north.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+                life: 5,
+                ..Default::default()
+            });
+        }
+        pieces.push(north);
         pieces.push(piece("fences", (6 + t, 4), 4));
     }
     for t in 0..3 {
         pieces.push(piece("tankwall", (2, 2 + t), 6));
         pieces.push(piece("tankwall", (5, 2 + t), 2));
-        let mut east = piece("fences", (9, 2 + t), 2);
-        if wire && t == 1 {
-            east.type_name = "wire".into();
-            east.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
-                life: 5,
-                ..Default::default()
-            });
-        }
-        pieces.push(east);
+        pieces.push(piece("fences", (9, 2 + t), 2));
         if west {
             pieces.push(far(piece("fences", (0, 2 + t), 6)));
         }
