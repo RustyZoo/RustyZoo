@@ -52,7 +52,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 ## Dependencies
 
-Add a dependency only when the code uses it, and justify it in the pull request.
+Add a dependency only when the code uses it, and justify it in the pull request. `cargo deny check` (config in `deny.toml`) checks licences, sources and duplicate versions; CI runs it on every pull request, and the RustSec advisories weekly.
 
 ## Code rules
 

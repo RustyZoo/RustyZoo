@@ -102,6 +102,16 @@ impl Data for Library<'_> {
         set.map_or(0, |s| s.files.len())
     }
 
+    fn read(&self, name: &str) -> Option<Vec<u8>> {
+        match self.vfs.read(name) {
+            Ok(bytes) => Some(bytes),
+            Err(why) => {
+                eprintln!("rustyzoo: warning: {name}: {why}; no sounds from it");
+                None
+            }
+        }
+    }
+
     fn sound(&self, unit: &Entity, key: &str) -> Option<Heard> {
         let ty = &self.catalogue.types[self.at(unit)?];
         let values = ty.config.as_deref()?.section("Sounds")?.get_all(key);

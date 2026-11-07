@@ -51,7 +51,7 @@ use crate::guest;
 use crate::money::{self, Money};
 use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
-use crate::soundscape::{SceneLoop, Shot, Soundscape};
+use crate::soundscape::{Calls, SceneLoop, Shot, Soundscape};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -174,6 +174,10 @@ pub(crate) struct Sim {
     /// The AI clock: the milliseconds left over and the whole AI ticks.
     ai_rem: u32,
     ai_ticks: u32,
+    /// The AI clock held before the file of the game just started set its own: 0 in a fresh
+    /// process, the previous game's clock when a zoo is loaded inside a running game. A stored 0
+    /// in an entity's base word takes this (zoo format 6.4).
+    held_ticks: u32,
     /// The AI tick at which the unreachable list is next emptied; a value of the session, not
     /// of the zoo (simulation 4.3).
     next_clear: u32,
@@ -202,6 +206,8 @@ pub(crate) struct Sim {
     arrived: bool,
     /// The ambient sounds of the game being played, if it has them (sound 8.1).
     soundscape: Option<Soundscape>,
+    /// The calls of the ambient creatures: the groups outlive a game (ambients 6.4 point 4).
+    calls: Calls,
     /// The computer's (month, day) in UTC; a test sets another (cheats 6.1 point 2).
     pub(crate) real_day: fn() -> (u32, u32),
     /// The sex of the staff the Hire panel lists: drawn at the start of the program, after the
@@ -227,6 +233,7 @@ impl Sim {
             play_time: 0,
             ai_rem: 0,
             ai_ticks: 0,
+            held_ticks: 0,
             next_clear: 0,
             world_secs: 0,
             world_rem: 0,
@@ -241,6 +248,7 @@ impl Sim {
             research_done: Vec::new(),
             arrived: false,
             soundscape: None,
+            calls: Calls::default(),
             real_day: crate::timing::utc_day,
             hire_male: false,
         };
@@ -305,6 +313,7 @@ impl Sim {
         self.calendar = Calendar::at(clocks.calendar);
         self.total = 0;
         self.play_time = clocks.play_time;
+        self.held_ticks = self.ai_ticks;
         (self.ai_rem, self.ai_ticks) = (clocks.ai_rem, clocks.ai_ticks);
         (self.world_rem, self.world_secs) = (clocks.world_rem, clocks.world_secs);
         self.removals.clear();
@@ -330,9 +339,9 @@ impl Sim {
 
     /// The ambient one-shots the steps since the last call asked for.
     pub(crate) fn take_shots(&mut self) -> Vec<Shot> {
-        self.soundscape
-            .as_mut()
-            .map_or_else(Vec::new, Soundscape::take_shots)
+        let mut shots = (self.soundscape.as_mut()).map_or_else(Vec::new, Soundscape::take_shots);
+        shots.extend(self.calls.take());
+        shots
     }
 
     /// The loops of the soundscape playing now (sound 8.1).
@@ -580,6 +589,13 @@ impl Sim {
     pub(crate) fn load(&mut self, world: &mut World, cat: &Catalogue) {
         let (date, reset) = (self.calendar.date(), self.ai.guest_reset_interval);
         let old = world.zoo.version < 55;
+        // Every entity base word stored as 0 is the AI clock held before the file's own was read
+        // (zoo format 6.4, from version 35).
+        if world.zoo.version >= 35 {
+            for c in (world.zoo.entities.iter_mut()).filter_map(|e| e.common.as_mut()) {
+                c.stamp.get_or_insert(self.held_ticks);
+            }
+        }
         for at in 0..world.zoo.entities.len() {
             if old && world.is_fence(at) {
                 self.heal(world, cat, at);
@@ -588,7 +604,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
-            crate::building::random_use::loaded(world, cat, at, self.ai_ticks, &mut self.rng);
+            crate::building::random_use::loaded(world, cat, at, self.held_ticks, &mut self.rng);
             crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,
@@ -795,6 +811,8 @@ impl Sim {
                 self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
+                let calls = &mut self.calls;
+                crate::flight::call(calls, world, cat, data, at, step, &mut self.rng);
                 crate::show::advance_portals(world, data, at, step);
                 update(world, at, step);
                 // A grandstand reads the events of its show (shows 6.3).

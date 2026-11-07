@@ -311,7 +311,7 @@ fn draining_the_tank_of_a_show_aborts_it_at_the_next_step() {
     let sent: Vec<u16> = heard(&events).iter().map(|e| e.0).collect();
     assert_eq!(sent, [event::ABORTED, event::ENDED]);
     assert_eq!(info_of_show(&w).next, 10 + 90);
-    // A tank with no show info posts nothing.
+    // A tank with no show info posts it for show 0 (30.4 point 5), which no info reads.
     let (mut w, ..) = staged(vec![item(0, 3, 5)]);
     let other = w
         .exhibits()
@@ -321,7 +321,8 @@ fn draining_the_tank_of_a_show_aborts_it_at_the_next_step() {
         .find(|&x| x != tank)
         .unwrap();
     w.drain(other);
-    assert!(posted(&w).is_empty());
+    let sent: Vec<_> = w.units.posts.iter().map(|e| (e.kind, e.target)).collect();
+    assert_eq!(sent, [(event::ABORT, 0)]);
 }
 
 #[test]
@@ -415,4 +416,18 @@ fn removing_a_fence_of_a_show_tank_empties_its_grandstands_and_aborts_nothing() 
             .iter()
             .all(|e| e.0 != event::ABORTED && e.0 != event::ENDED)
     );
+}
+
+#[test]
+fn removing_an_exhibit_with_no_show_info_posts_the_abort_for_show_0() {
+    // Shows 30.4 point 1 and O22: the post is made for every removal, target 0 with no info, and
+    // no grandstand is emptied.
+    let (mut w, cat) = staged(vec![item(0, 3, 5)]);
+    seat(&mut w);
+    w.zoo.shows.infos[0] = None;
+    assert!(w.remove(502));
+    crate::show::units::settle(&mut w, &cat);
+    let sent: Vec<_> = w.units.posts.iter().map(|e| (e.kind, e.target)).collect();
+    assert_eq!(sent, [(event::ABORT, 0)]);
+    assert_eq!(w.units.buildings[&7].users.len(), 2);
 }

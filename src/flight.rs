@@ -7,16 +7,20 @@
 //! the permanent witch add entries, and the world manager makes a creature for each entry whose
 //! type has a period that has passed.
 //!
-//! Not done yet: the group sound of the witch and the birds, and the shadow over the water of a
-//! tank.
+//! Every move of a creature plays the call its type names (`cSoundName`, ambients 6.4); a creature
+//! added with no name gets its type's text alone (ambients 3.3).
+//!
+//! Not done yet: the shadow over the water of a tank.
 
 use std::collections::BTreeMap;
 
+use crate::behaviour::Data;
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
 use crate::render::order::{STEP, ground_height};
 use crate::render::shape_of;
 use crate::sim::Rng;
+use crate::soundscape::Calls;
 use crate::world::World;
 use crate::zoo::{Common, Entity, Flight};
 
@@ -49,6 +53,15 @@ fn frequency(ty: &EntityType) -> i32 {
         .and_then(|s| s.get("cFrequency"))
         .and_then(to_int)
         .unwrap_or(0)
+}
+
+/// `cSoundName` of the type: the file of its call, empty (no call) by default.
+fn sound_name(ty: &EntityType) -> String {
+    let section = ty.config.as_deref();
+    let section = section.and_then(|c| c.section("Characteristics/Strings"));
+    section
+        .and_then(|s| s.get("cSoundName"))
+        .map_or_else(String::new, crate::vfs::name_from_bytes)
 }
 
 /// The spawn list of the world (ambients 7): for each entry the type's name id and the world second
@@ -145,6 +158,7 @@ pub(crate) fn launch(
             y: ty_ * 64,
             z: ground_height(&world.zoo.tiles[tile], 0, 0),
             rotation: FACING[side][choice],
+            name: crate::place::unit::named(world, ty),
             flight: Some(Flight {
                 speed: speed(ty),
                 acc: 0,
@@ -198,6 +212,31 @@ pub(crate) fn advance(world: &mut World, at: usize, step: u32, removals: &mut Ve
     if !on_map {
         removals.push(id);
     }
+}
+
+/// The call of the creature at position `at` of the entity list after its move (ambients 6.4): its
+/// group plays at the creature's map position with the step `step`, whatever the move made of the
+/// creature. A creature without speed, or any other entity, is silent.
+pub(crate) fn call(
+    calls: &mut Calls,
+    world: &World,
+    cat: &Catalogue,
+    data: &dyn Data,
+    at: usize,
+    step: u32,
+    rng: &mut Rng,
+) {
+    let e = &world.zoo.entities[at];
+    let Some(c) = e.common.as_ref().filter(|_| e.class == "ambient") else {
+        return;
+    };
+    if c.flight.is_none_or(|f| f.speed == 0) {
+        return;
+    }
+    let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
+        return;
+    };
+    calls.play(&sound_name(ty), &|n| data.read(n), (c.x, c.y), step, rng);
 }
 
 #[cfg(test)]
@@ -550,5 +589,212 @@ mod tests {
             advance(&mut w, at, 1000, &mut removals);
         }
         assert!(removals.is_empty());
+    }
+
+    /// A type of the ambient class with the given strings section and a name text, and its catalogue.
+    fn typed(strings: &str) -> (Catalogue, EntityType) {
+        let config = format!(
+            "[Characteristics/Integers]\ncNameID=5083\ncSpeed=100\n[Characteristics/Strings]\n{strings}"
+        );
+        let ty = || EntityType {
+            class: "ambient",
+            type_name: b"sleigh".to_vec(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(Arc::new(Config::parse(config.as_bytes()).unwrap())),
+            name_id: 5083,
+            footprint: [1, 1, 1],
+            height: 0,
+        };
+        let mut cat = Catalogue::default();
+        cat.push(ty());
+        (cat, ty())
+    }
+
+    /// The name of a creature made while the type text is `text` (none: the interface gave no text).
+    fn launched_name(text: Option<&str>) -> (String, Rng) {
+        let (cat, ty) = kind("");
+        let mut w = world((5, 4), |_, _| {});
+        w.units.names = text.map(|t| (5083, t.to_string())).into_iter().collect();
+        let mut r = rng(3);
+        launch(&mut w, &cat, &ty, 5, &mut r).unwrap();
+        (w.zoo.entities[0].common.as_ref().unwrap().name.clone(), r)
+    }
+
+    #[test]
+    fn a_new_creature_is_named_by_its_type_text_alone() {
+        for (text, want) in [
+            (Some("Sleigh"), "Sleigh"),
+            (Some(" Sleigh "), " Sleigh "),
+            (Some("Sleigh 7!"), "Sleigh 7!"),
+            (Some("."), "."),
+            (Some(""), ""),
+            (Some(" \t"), ""),
+            (None, ""),
+        ] {
+            let (name, r) = launched_name(text);
+            assert_eq!(name, want, "{text:?}");
+            // No draw for the name: the three of the start only.
+            assert_eq!(r, after(3, 3));
+        }
+    }
+
+    fn after(seed: u32, n: usize) -> Rng {
+        let mut r = rng(seed);
+        (0..n).for_each(|_| _ = r.rand());
+        r
+    }
+
+    #[test]
+    fn a_creature_takes_no_number_and_no_counter_whatever_its_flag_says() {
+        let (cat, ty) = kind("cUseNumbersInName=1\n");
+        let mut w = world((5, 4), |_, _| {});
+        w.units.names = [(5083, "Sleigh".to_string())].into();
+        for _ in 0..2 {
+            launch(&mut w, &cat, &ty, 5, &mut rng(1)).unwrap();
+        }
+        let names: Vec<_> = (w.zoo.entities.iter())
+            .map(|e| e.common.as_ref().unwrap().name.clone())
+            .collect();
+        assert_eq!(names, ["Sleigh", "Sleigh"]);
+        assert!(w.zoo.names.is_empty());
+    }
+
+    /// What the data holds: the files of the call, by name.
+    struct Files(&'static [(&'static str, &'static str)]);
+
+    impl Data for Files {
+        fn set(&self, _: &Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+            None
+        }
+        fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
+            &[]
+        }
+        fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
+            None
+        }
+        fn number(&self, _: &Entity, _: &crate::behaviour::Number) -> i32 {
+            0
+        }
+        fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
+            None
+        }
+        fn read(&self, name: &str) -> Option<Vec<u8>> {
+            let found = self.0.iter().find(|(n, _)| *n == name);
+            found.map(|(_, text)| text.as_bytes().to_vec())
+        }
+    }
+
+    const HAWK: Files = Files(&[(
+        "hawk.cfg",
+        "[ambientlevels]\ngroup = happy\nvalue = -100\nvalue = 100\n[happy]\nchance = 1\nsound = hawk1.wav\nprob = 100\n",
+    )]);
+
+    /// Moves the creature `steps` times by `step` ms, calling after each move.
+    fn flown(
+        w: &mut World,
+        cat: &Catalogue,
+        data: &Files,
+        calls: &mut Calls,
+        rng: &mut Rng,
+        step: u32,
+    ) {
+        advance(w, 0, step, &mut Vec::new());
+        call(calls, w, cat, data, 0, step, rng);
+    }
+
+    #[test]
+    fn each_move_plays_the_group_of_the_type_at_the_map_position() {
+        let (cat, _) = typed("cSoundName=hawk.cfg\n");
+        let mut w = flying((100, 200), 4, 1000);
+        w.zoo.entities[0].type_name = "sleigh".into();
+        let (mut calls, mut r) = (Calls::default(), rng(5));
+        // 1000 ms joins the clock: not above a second, no draw.
+        flown(&mut w, &cat, &HAWK, &mut calls, &mut r, 1000);
+        assert_eq!(r, rng(5));
+        assert!(calls.take().is_empty());
+        // 1 ms more: above it, one draw for the chance (1 in 1) and one for the sound.
+        flown(&mut w, &cat, &HAWK, &mut calls, &mut r, 1);
+        assert_eq!(r, after(5, 2));
+        let shots = calls.take();
+        assert_eq!(shots.len(), 1);
+        // The place is the position after the move, in map units, not a view offset.
+        assert_eq!(
+            (shots[0].file.as_str(), shots[0].at),
+            ("hawk1.wav", Some((100, 201 + 1000)))
+        );
+        assert_eq!(shots[0].voice, "ambient 0 hawk1.wav");
+    }
+
+    #[test]
+    fn creatures_of_a_type_share_one_clock_and_one_voice() {
+        let (cat, _) = typed("cSoundName=hawk.cfg\n");
+        let mut a = flying((0, 0), 4, 1000);
+        let mut b = flying((64, 64), 4, 1000);
+        let (mut calls, mut r) = (Calls::default(), rng(5));
+        // Two creatures of 600 ms each pass a second together: the second one's move rolls.
+        flown(&mut a, &cat, &HAWK, &mut calls, &mut r, 600);
+        assert!(calls.take().is_empty());
+        flown(&mut b, &cat, &HAWK, &mut calls, &mut r, 600);
+        let shots = calls.take();
+        assert_eq!(shots.len(), 1);
+        assert_eq!(shots[0].at, Some((64, 64 + 600)));
+    }
+
+    #[test]
+    fn a_type_without_a_sound_name_or_a_creature_without_speed_is_silent_and_draws_nothing() {
+        let (cat, _) = typed("");
+        let mut w = flying((0, 0), 4, 1000);
+        let (mut calls, mut r) = (Calls::default(), rng(5));
+        for _ in 0..3 {
+            flown(&mut w, &cat, &HAWK, &mut calls, &mut r, 5000);
+        }
+        assert_eq!(r, rng(5));
+        let (cat, _) = typed("cSoundName=hawk.cfg\n");
+        let mut w = flying((0, 0), 4, 0);
+        flown(&mut w, &cat, &HAWK, &mut calls, &mut r, 5000);
+        assert_eq!(r, rng(5));
+        // A name whose file is missing has no group; a huge step wraps without a panic.
+        let (cat, _) = typed("cSoundName=none.cfg\n");
+        let mut w = flying((0, 0), 4, 1000);
+        for step in [u32::MAX, 0, u32::MAX] {
+            flown(&mut w, &cat, &HAWK, &mut calls, &mut r, step);
+        }
+        assert!(calls.take().is_empty());
+    }
+
+    #[test]
+    fn another_entity_does_not_call() {
+        let (cat, _) = typed("cSoundName=hawk.cfg\n");
+        let mut w = flying((0, 0), 4, 1000);
+        w.zoo.entities[0].class = "keeper".into();
+        let (mut calls, mut r) = (Calls::default(), rng(5));
+        call(&mut calls, &w, &cat, &HAWK, 0, 5000, &mut r);
+        assert_eq!(r, rng(5));
+    }
+
+    #[test]
+    fn the_world_step_calls_for_each_creature_and_the_draws_move_the_stream() {
+        let run = |strings: &str| {
+            let (cat, _) = typed(strings);
+            let (mut sim, mut w) = (Sim::new(b""), flying((0, 0), 4, 100));
+            sim.set_seed(9);
+            for _ in 0..2 {
+                sim.step_with(&HAWK, &cat, &mut w, 600, |_, _, _| {});
+            }
+            (sim.take_shots(), sim.rng)
+        };
+        let (plain, silent) = run("");
+        let (shots, rng) = run("cSoundName=hawk.cfg\n");
+        assert!(plain.is_empty());
+        // The second move rolled: the chance, then the sound; the creature stands at (0, 120).
+        assert_eq!(shots.len(), 1);
+        assert_eq!(
+            (shots[0].file.as_str(), shots[0].at),
+            ("hawk1.wav", Some((0, 120)))
+        );
+        let mut moved = silent;
+        (0..2).for_each(|_| _ = moved.rand());
+        assert_eq!(rng, moved);
     }
 }

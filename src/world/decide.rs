@@ -96,20 +96,18 @@ impl World {
     }
 
     /// The show info of an exhibit of `old`, which is gone, is deleted (31.5 point 1); the show
-    /// lists are told, for the grandstands that faced it (shows 30.4 point 1).
+    /// lists are told, for the abort event and the grandstands that faced it (shows 30.4 point 1);
+    /// an exhibit with no info is told as show 0, which no grandstand faces.
     pub(super) fn unmake_gone(&mut self, old: &Exhibits, id: u32) {
-        let Some(n) = self.info_slot_in(old, id) else {
-            return;
-        };
-        if let Some(info) = self.zoo.shows.infos[n].take() {
-            let tiles = (0..self.zoo.tiles.len())
+        let info = (self.info_slot_in(old, id)).and_then(|n| self.zoo.shows.infos[n].take());
+        let tiles = match info {
+            Some(_) => (0..self.zoo.tiles.len())
                 .filter(|&t| old.region(t) == Some(id))
-                .collect();
-            self.show_moves.push(Move::Gone {
-                show: info.id,
-                tiles,
-            });
-        }
+                .collect(),
+            None => Vec::new(),
+        };
+        let show = info.map_or(0, |i| i.id);
+        self.show_moves.push(Move::Gone { show, tiles });
     }
 
     /// The walls of tank `id` that are recorded: the tank walls on the slots of its own tiles

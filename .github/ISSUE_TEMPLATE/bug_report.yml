@@ -1,0 +1,68 @@
+name: Bug report
+description: Something does not work or differs from the original game
+labels: [bug]
+body:
+  - type: checkboxes
+    id: no-game-files
+    attributes:
+      label: No original game files
+      description: The project cannot accept anything from the original game.
+      options:
+        - label: I attach no original game file (no .ztd, .dll, .exe, music or other file from the game install). A saved game is attached only if I made it myself.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: RustyZoo version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: edition
+    attributes:
+      label: Game edition and language
+      description: For example Complete Collection in English, or the Marine Mania trial.
+    validations:
+      required: true
+  - type: textarea
+    id: install
+    attributes:
+      label: How the game data was installed
+      description: Installed from a disc, the Complete Collection, an official trial, copied from another computer, and so on.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What the original game does, if you know.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or console output
+      description: Remove personal paths first.
+      render: shell

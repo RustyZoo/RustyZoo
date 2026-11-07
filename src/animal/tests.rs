@@ -2004,6 +2004,37 @@ fn eating_takes_a_bite_per_tick_and_two_on_a_hunger_check_tick() {
     assert!(!a.eating && out.meal.stop && a.fed == 777 && out.meal.bites == 0);
 }
 
+/// Animals needs 5.3 point 7: a bite that leaves food queues another `bEat`, except for a species
+/// that keeps moving.
+#[test]
+fn a_keep_moving_animal_queues_no_second_eat() {
+    let meal = Meal {
+        left: 50,
+        has_set: true,
+        in_set: true,
+        ..Meal::default()
+    };
+    for (keep, queued) in [
+        (1, false),
+        (0, true),
+        (-1, true),
+        (2, true),
+        (i32::MAX, true),
+    ] {
+        let k = Keys {
+            keep_moving: keep,
+            ..hungry_zebra()
+        };
+        let (mut a, mut m) = (animal(), meal.clone());
+        food::eat(&mut a, &k, &mut m);
+        assert_eq!(
+            (m.queue, m.random, a.eating),
+            (queued, !queued, queued),
+            "{keep}"
+        );
+    }
+}
+
 #[test]
 fn eating_starts_the_eat_set_and_stops_on_no_food_water_or_a_bite_of_zero() {
     let k = hungry_zebra();
@@ -2327,6 +2358,11 @@ fn the_walk_to_keeper_food_ends_on_the_pile_or_on_a_neighbour_where_the_animal_e
 /// The path of zebra 500 and the target of its walk to the pile at tile (3, 2) when the walk
 /// starts, with the extra zebra keys `keys`, for each seed from 1 to 39.
 fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
+    walks_of(keys, (500, (3, 2)))
+}
+
+/// [`walks_to_the_pile`] for zebra `id` and the pile at the tile `pile`.
+fn walks_of(keys: &str, (id, pile): (u32, (i32, i32))) -> Vec<(Vec<usize>, usize)> {
     use crate::sim::drive::{Command, Run};
     let mut found = vec![];
     for seed in 1..40 {
@@ -2339,15 +2375,18 @@ fn walks_to_the_pile(keys: &str) -> Vec<(Vec<usize>, usize)> {
         );
         let data = Eats::new();
         step_log(&mut run, &data);
-        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+        let Part::Animal(a) = &mut run.world.units.get_mut(id).unwrap().part else {
             panic!("not an animal");
         };
         (a.hunger, a.counters[HUNGER]) = (60, 0);
-        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        assert!(run.apply(&Command::Food(pile.0, pile.1, "herbchow".into(), Some(45))));
         for _ in 0..40 * 15 {
             let log = step_log(&mut run, &data);
-            if log.iter().any(|l| l == "unit set 500 bFindKeeperFood") {
-                let unit = run.world.units.get(500).unwrap();
+            if log
+                .iter()
+                .any(|l| l == &format!("unit set {id} bFindKeeperFood"))
+            {
+                let unit = run.world.units.get(id).unwrap();
                 let target = unit.goal.record.target.tile.unwrap();
                 found.push((unit.path.clone(), target));
                 break;
@@ -2376,6 +2415,27 @@ fn a_keep_moving_animal_goes_on_over_the_pile_and_one_step_past_it() {
     assert!(beside > 0);
 }
 
+/// A pile in the corner of its pen: the step past it is fenced off or off the map, so the path
+/// of a keep-moving animal gets the pile appended and nothing after it.
+#[test]
+fn a_keep_moving_animal_gets_no_point_past_a_pile_whose_far_side_is_blocked() {
+    let width = usize::try_from(SIZE).unwrap();
+    // (3, 1) in the first pen has the north and east fences behind it; (7, 1) in the second pen
+    // is in the corner on the east edge of the map.
+    for (animal, pile) in [(500, (3, 1)), (510, (7, 1))] {
+        let tile = usize::try_from(pile.1).unwrap() * width + usize::try_from(pile.0).unwrap();
+        let walks = walks_of("cKeepMoving=1\n", (animal, pile));
+        assert!(walks.iter().any(|(_, target)| *target != tile), "{pile:?}");
+        for (path, target) in walks {
+            let n = path.len();
+            assert_eq!(path.last(), Some(&tile), "{pile:?}: {path:?}");
+            if target != tile {
+                assert_eq!(path[n - 2], target, "{pile:?}: {path:?}");
+            }
+        }
+    }
+}
+
 #[test]
 fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
     let width = usize::try_from(SIZE).unwrap();
@@ -2393,6 +2453,70 @@ fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
             .iter()
             .all(|(p, t)| p.last() == Some(t))
     );
+}
+
+/// The eating flag and the task of zebra 500 in the step of its first bite, with the extra zebra
+/// keys `keys`, for each seed from 1 to 9.
+fn first_bites(keys: &str) -> Vec<(bool, u8, u8)> {
+    use crate::sim::drive::{Command, Run};
+    let mut found = vec![];
+    for seed in 1..10 {
+        let mut run = Run::new(
+            (b"", b""),
+            (feeding_of(keys), Class::default()),
+            pens(),
+            Default::default(),
+            seed,
+        );
+        let data = Eats::new();
+        step_log(&mut run, &data);
+        let Part::Animal(a) = &mut run.world.units.get_mut(500).unwrap().part else {
+            panic!("not an animal");
+        };
+        (a.hunger, a.counters[HUNGER]) = (60, 0);
+        assert!(run.apply(&Command::Food(3, 2, "herbchow".into(), Some(45))));
+        for _ in 0..40 * 15 {
+            if step_log(&mut run, &data)
+                .iter()
+                .any(|l| l.starts_with("animal eat 500"))
+            {
+                let unit = run.world.units.get(500).unwrap();
+                let Part::Animal(a) = &unit.part else {
+                    panic!("not an animal");
+                };
+                found.push((a.eating, unit.goal.record.task, unit.goal.record.mode));
+                break;
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn a_keep_moving_animal_takes_the_random_walk_when_it_eats_and_sets_no_eating_flag() {
+    let keep = first_bites("cKeepMoving=1\n");
+    assert_eq!(keep.len(), 9);
+    assert!(
+        keep.iter().all(|&b| b == (false, crate::goal::RANDOM, 0)),
+        "{keep:?}"
+    );
+    // Any other value eats the usual way: the flag is up and the food task goes on.
+    let huge = format!("cKeepMoving={}\n", i32::MAX);
+    for keys in [
+        "",
+        "cKeepMoving=0\n",
+        "cKeepMoving=-1\n",
+        "cKeepMoving=2\n",
+        &huge,
+    ] {
+        let usual = first_bites(keys);
+        assert_eq!(usual.len(), 9, "{keys}");
+        let food = crate::goal::KEEPER_FOOD;
+        assert!(
+            usual.iter().all(|&b| (b.0, b.1) == (true, food)),
+            "{keys}: {usual:?}"
+        );
+    }
 }
 
 #[test]

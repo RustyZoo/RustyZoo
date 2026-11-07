@@ -234,6 +234,11 @@ fn habitat_of(world: &World, id: u16) -> Option<usize> {
     (world.zoo.shows.infos.iter()).position(|i| i.as_ref().is_some_and(|i| i.id == id))
 }
 
+/// The show info whose show id is `id`.
+pub(crate) fn info_by_id(world: &World, id: u16) -> Option<&ShowInfo> {
+    world.zoo.shows.info(habitat_of(world, id)?)
+}
+
 /// The exhibit of the show info whose show id is `id`.
 pub(crate) fn exhibit_of(world: &World, id: u16) -> Option<u32> {
     tank_of(world, habitat_of(world, id)?)
@@ -322,17 +327,17 @@ pub(crate) fn empty_grandstands_for(world: &mut World, cat: &Catalogue, unit: &m
     }
 }
 
-/// The drain of tank `exhibit` (shows 30.4 point 3) posts the abort event of its show info, which
-/// reads it at the next step.
+/// The drain of tank `exhibit` (shows 30.4 points 3 and 5) posts the abort event, whatever the
+/// tank was: its show info reads it at the next step; a tank with no info posts it for show 0,
+/// which no info reads.
 pub(crate) fn drained(world: &mut World, exhibit: u32) {
-    if let Some(id) = info_of(world, exhibit).map(|i| i.id).filter(|&i| i != 0) {
-        post_abort(world, id);
-    }
+    post_abort(world, info_of(world, exhibit).map_or(0, |i| i.id));
 }
 
-/// The exhibit of show `show`, whose info is already deleted, is gone and held `tiles` (shows 30.4
-/// point 1): the abort event is posted, but its info is gone when it comes, so nobody reads it
-/// (O22); the grandstands that faced the exhibit lose their users. The show is not aborted.
+/// The exhibit of show `show` is gone and held `tiles` (shows 30.4 point 1): the abort event is
+/// posted for every removal, for show 0 when the exhibit had no info; a show's info is already
+/// deleted when it comes, so nobody reads it (O22). The grandstands that faced the exhibit lose
+/// their users (none for a removal with no info). The show is not aborted.
 pub(crate) fn exhibit_gone(world: &mut World, cat: &Catalogue, show: u16, tiles: &[usize]) {
     post_abort(world, show);
     empty_facing(world, cat, &|t| tiles.contains(&t));
