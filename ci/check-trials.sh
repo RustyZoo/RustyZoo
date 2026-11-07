@@ -1398,11 +1398,11 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 1, 3, 4, 5, 6 and 7), and
+# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 2, 3, 4 and 7), and
 # its hatching waits for a keeper to heal the egg (an untended egg is below its hit points when its time
 # is up). Two checks:
 # - a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it;
-# - Sentinel: seed 5: the step of the first clutch, the number of eggs, and the step of the first hatching.
+# - Sentinel: seed 2: the step of the first clutch, the number of eggs, and the step of the first hatching.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id> [print]: reads $seed
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
@@ -1411,7 +1411,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@4876;eggs:3;hatch@5510" "seed=5 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
+check expansion-trial "egg@1721;eggs:3;hatch@2352" "seed=2 egg_clutch maps/scn19.zoo 51757 51758 53931 print"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

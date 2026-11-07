@@ -345,7 +345,7 @@ fn a_show_event_reaches_the_guests_two_steps_after_the_step_it_was_posted_in() {
     w.units.buildings.get_mut(&7).unwrap().fill = 1;
     let mut sim = crate::sim::Sim::new(b"");
     sim.set_seed(1);
-    sim.post(shown(0x2715, 1001, 80, 100));
+    sim.events.post(shown(0x2715, 1001, 80, 100));
     let guest_events = |sim: &crate::sim::Sim| {
         let both = sim.events.buffers();
         both.iter()

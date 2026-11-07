@@ -88,7 +88,7 @@ impl Hooks for Standard<'_> {
         movement::step(unit, world, ctx.step, at);
         movement::reanimate(unit, world, self.data, at);
         if let Some(new) = movement::here(world, at).filter(|&t| Some(t) != before) {
-            crate::animal::escape::entered(unit, world, ctx.cat, new);
+            crate::animal::escape::entered(unit, world, ctx, new);
             crate::animal::escape::trample(unit, world, ctx, new);
         }
         self.force(unit, world, at);

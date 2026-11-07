@@ -238,22 +238,46 @@ impl World {
             .collect()
     }
 
-    /// The `fences_break` cheat (cheats 4.2 C): every piece that wears is brought to its last
-    /// life and given a step longer than any countdown, so it breaks as a worn piece does (lines
-    /// and events as [`World::wear`]). A piece already broken stays so.
-    pub(crate) fn break_fences(&mut self, cat: &Catalogue, lines: &mut Vec<String>) -> Vec<Event> {
-        let mut events = Vec::new();
-        for at in 0..self.zoo.entities.len() {
-            if !self.wears(cat, at) {
-                continue;
-            }
-            let fence = (self.zoo.entities[at].common.as_mut()).and_then(|c| c.fence.as_mut());
-            if let Some(f) = fence.filter(|f| f.life > 1) {
-                f.life = 1;
-            }
-            events.extend(self.wear(cat, at, u32::MAX, lines));
+    /// Breaks the piece at `at` outside the wear step (an animal breaking out, the break cheat):
+    /// brought to its last life and given a step longer than any countdown, it breaks as a worn
+    /// piece does (lines and events as [`World::wear`]). Whether it broke just now: a piece that
+    /// wears and was not broken.
+    pub(crate) fn break_piece(
+        &mut self,
+        cat: &Catalogue,
+        at: usize,
+        lines: &mut Vec<String>,
+        events: &mut Vec<Event>,
+    ) -> bool {
+        if !self.wears(cat, at) {
+            return false;
         }
-        events
+        let fence = (self.zoo.entities[at].common.as_mut()).and_then(|c| c.fence.as_mut());
+        let alive = fence.is_some_and(|f| {
+            f.life = f.life.min(1);
+            f.life >= 1
+        });
+        events.extend(self.wear(cat, at, u32::MAX, lines));
+        alive
+    }
+
+    /// The `fences_break` cheat (cheats 4.2 C): every piece that wears is broken with
+    /// [`World::break_piece`]. A piece already broken stays so. Returns the events, and the id of
+    /// each piece that broke just now.
+    pub(crate) fn break_fences(
+        &mut self,
+        cat: &Catalogue,
+        lines: &mut Vec<String>,
+    ) -> (Vec<Event>, Vec<u32>) {
+        let (mut events, mut broke) = (Vec::new(), Vec::new());
+        for at in 0..self.zoo.entities.len() {
+            if self.break_piece(cat, at, lines, &mut events)
+                && let Some(c) = &self.zoo.entities[at].common
+            {
+                broke.push(c.id);
+            }
+        }
+        (events, broke)
     }
 
     /// The events a zoo just loaded posts for its fence pieces (placing 7.4 "The events"), in
