@@ -66,6 +66,18 @@ fn shape(e: &Entity) -> Option<Shape> {
             rubbleable: false,
             tank: TankKind::NONE,
         }),
+        "path" => Some(Shape {
+            kind: Kind::Path,
+            footprint: (2, 2),
+            fence: false,
+            wall: false,
+            gate: false,
+            gated: false,
+            walkable: (true, true),
+            forms: None,
+            rubbleable: false,
+            tank: TankKind::NONE,
+        }),
         _ => None,
     }
 }
