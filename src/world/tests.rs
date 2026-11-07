@@ -160,7 +160,8 @@ fn a_loaded_zoo_builds_its_areas_with_every_tile_inside_the_zoo() {
         .into_iter()
         .chain([(5, 1, 6), (5, 2, 6), (6, 1, 2), (6, 2, 2)])
     {
-        zoo.entities.push(entity("plain", x * 64 + 32, y * 64 + 32, d));
+        zoo.entities
+            .push(entity("plain", x * 64 + 32, y * 64 + 32, d));
     }
     for x in [3, 7] {
         zoo.entities.push(entity("path", x * 64 + 32, 96, 0));
