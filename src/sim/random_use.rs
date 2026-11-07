@@ -17,14 +17,12 @@ impl Sim {
         at: usize,
     ) {
         let now = self.ai_ticks;
-        if let Some(times) = crate::building::random_use::due(world, cat, at, now, &mut self.rng)
-            && self.idles.queue_used(world, at, times, data)
-        {
-            // The use sound starts at the building; the shell keeps it if it still plays.
+        if let Some(times) = crate::building::random_use::due(world, cat, at, now, &mut self.rng) {
+            // Each queued sequence carries the use sound and starts it when it begins.
             let e = &world.zoo.entities[at];
             let id = e.common.as_ref().map_or(0, |c| c.id);
             let heard = type_of(cat, e).and_then(|t| crate::building::random_use::sound(t, id));
-            world.units.push_sound(id, heard);
+            self.idles.queue_used(world, at, times, heard, data);
         }
     }
 
@@ -93,7 +91,7 @@ mod tests {
             let (mut rng, mut idles) = (Rng::default(), Idles::default());
             idles.register(&world(0), &Catalogue::default(), data, &mut rng);
             let w = world(users);
-            idles.queue_used(&w, 0, times, data);
+            idles.queue_used(&w, 0, times, None, data);
             let mut seen = Vec::new();
             for _ in 0..12 {
                 // The pass of `idle` (4 frames) runs to its end first.
@@ -147,7 +145,7 @@ mod tests {
         idles.register(&w, &Catalogue::default(), &Building, &mut rng);
         // Three steps into the 4 frames of `idle`; the fourth ends the pass.
         (0..3).for_each(|_| idles.advance(100));
-        idles.queue_used(&w, 0, 1, &Building);
+        idles.queue_used(&w, 0, 1, None, &Building);
         idles.advance(100);
         assert_eq!(
             idles.looks().get(&1),
@@ -169,7 +167,7 @@ mod tests {
             let (mut rng, mut idles) = (Rng::default(), Idles::default());
             let (before, after) = (hut(!dead), hut(dead));
             idles.register(&before, &Catalogue::default(), &Building, &mut rng);
-            idles.queue_used(&before, 0, 2, &Building);
+            idles.queue_used(&before, 0, 2, None, &Building);
             idles.advance(10);
             idles.register(&after, &Catalogue::default(), &Building, &mut rng);
             let want = dead.then_some(&"idledead");
@@ -182,7 +180,7 @@ mod tests {
         }
     }
 
-    /// A random use that queues `used` also asks for the type's `[UseSound]` at the building, with
+    /// A random use that queues `used` also carries the type's `[UseSound]` to the building, with
     /// its attenuation as the base; no sound without a name, without `used` or before the time,
     /// and the sound draws nothing.
     #[test]
@@ -207,7 +205,14 @@ mod tests {
                 spent.rand();
             }
             assert_eq!(sim.rng.state(), spent.state(), "{sound}");
-            w.units.take_sounds()
+            // The sound starts with the `used` sequence, not at the check.
+            assert!(sim.idles.take_heard().is_empty(), "{sound}");
+            let mut heard = Vec::new();
+            for _ in 0..12 {
+                sim.idles.advance(100);
+                heard.extend(sim.idles.take_heard());
+            }
+            heard
         };
         let sound = |base: i32| {
             let heard = crate::behaviour::Heard {

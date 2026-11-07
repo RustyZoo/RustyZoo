@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::Rng;
-use crate::behaviour::{Data, Timing};
+use crate::behaviour::{Data, Heard, Timing};
 use crate::building::Live;
 use crate::entity::Catalogue;
 use crate::place::bulldozer::type_of;
@@ -47,6 +47,10 @@ struct Clock {
     /// A one-shot queued behind the base loop (`explode` of a rubble piece): it starts when the
     /// sequence playing ends, then the base loop takes over for good.
     queued: Option<(&'static str, Timing, u32)>,
+    /// The use sound the queued `used` sequences carry (guest buildings 10.1 point 2.4), and the one
+    /// of the sequence that just became the playing one, for the building to start.
+    sound: Option<Heard>,
+    begun: Option<Heard>,
 }
 
 impl Clock {
@@ -63,6 +67,8 @@ impl Clock {
             users: 0,
             dead: false,
             queued: None,
+            sound: None,
+            begun: None,
         }
     }
 
@@ -98,6 +104,11 @@ impl Clock {
         if let Some((name, timing, times)) = self.queued.take() {
             (self.name, self.timing) = (name, timing);
             self.queued = (times > 1).then_some((name, timing, times - 1));
+            // The sequence carries the sound: it starts with it, once.
+            self.begun = self.sound.clone();
+            if self.queued.is_none() {
+                self.sound = None;
+            }
         } else {
             self.base = self.next.take().unwrap_or(self.base);
             (self.name, self.timing) = self.base;
@@ -116,6 +127,7 @@ impl Clock {
             if let Some(timing) = data.timing(e, name) {
                 // The switch clears the player, a queued `used` included.
                 (self.base, self.next, self.queued) = ((name, timing), None, None);
+                self.sound = None;
                 self.restart();
             }
         }
@@ -160,7 +172,9 @@ pub(crate) struct Idles {
     bubbles: BTreeMap<u32, (u32, Clock)>,
     /// The `used` queued by the check of this step (entity id, timing, times): it joins the queue
     /// after the clocks advance, so it cannot start before the next step.
-    later: Vec<(u32, Timing, u32)>,
+    later: Vec<(u32, Timing, u32, Option<Heard>)>,
+    /// The use sounds of the sequences that began in this step (entity id).
+    heard: Vec<(u32, Heard)>,
 }
 
 impl Idles {
@@ -169,6 +183,12 @@ impl Idles {
         self.fixed.clear();
         self.bubbles.clear();
         self.later.clear();
+        self.heard.clear();
+    }
+
+    /// The use sounds the `used` sequences that began since the last call start at their building.
+    pub(crate) fn take_heard(&mut self) -> Vec<(u32, Heard)> {
+        std::mem::take(&mut self.heard)
     }
 
     /// The frame of each animated clock, for the picture: an entity under its id, the bubbles of a
@@ -204,21 +224,22 @@ impl Idles {
     /// Queues `used` `times` times behind the base loop of the building at `at`, as the rubble's
     /// `explode`; the base is not changed (guest buildings 10.1 point 2.4). It joins the queue
     /// when the clocks advance at the end of the step: the original advances the animation before
-    /// the check. A building with no clock or no `used` plays nothing and gives `false`.
+    /// the check. Each sequence carries the use sound `heard`, started when it begins. A building
+    /// with no clock or no `used` plays nothing.
     pub(crate) fn queue_used(
         &mut self,
         world: &World,
         at: usize,
         times: u32,
+        heard: Option<Heard>,
         data: &dyn Data,
-    ) -> bool {
+    ) {
         let e = &world.zoo.entities[at];
         let id = e.common.as_ref().map_or(0, |c| c.id);
         let timing = data
             .timing(e, "used")
             .filter(|_| self.fixed.contains_key(&id));
-        self.later.extend(timing.map(|t| (id, t, times)));
-        timing.is_some()
+        self.later.extend(timing.map(|t| (id, t, times, heard)));
     }
 
     /// The start of a step: the entities that are new get a clock at frame 0, which advances by
@@ -363,8 +384,14 @@ impl Idles {
     pub(crate) fn advance(&mut self, step: u32) {
         self.fixed.values_mut().for_each(|c| c.advance(step));
         (self.bubbles.values_mut()).for_each(|b| b.1.advance(step));
-        for (id, t, times) in self.later.drain(..) {
+        for (id, c) in &mut self.fixed {
+            self.heard.extend(c.begun.take().map(|h| (*id, h)));
+        }
+        for (id, t, times, heard) in self.later.drain(..) {
             if let Some(c) = self.fixed.get_mut(&id) {
+                if times > 0 {
+                    c.sound = heard.or(c.sound.take());
+                }
                 // A play that comes while another is queued adds to it.
                 let waiting = c.queued.filter(|q| q.0 == "used").map_or(0, |q| q.2);
                 let times = times.saturating_add(waiting);
@@ -960,5 +987,52 @@ pub(crate) mod tests {
             // A delay of 0 never ends; the others are back on `idle`.
             assert_eq!(exploding(&idles).len(), usize::from(explode.delay == 0));
         }
+    }
+
+    /// The use sound a random use carries starts with each queued `used` sequence when it becomes
+    /// the playing one, not at the check; a queue cut by the dead switch never plays it, and a use
+    /// with no sound starts none.
+    #[test]
+    fn a_random_use_sound_starts_with_the_used_sequence() {
+        let world = |dead: bool| {
+            let mut w = world_with((4, 4), |zoo| {
+                zoo.entities
+                    .push(entity("building", "hut", 1, centre((0, 0)), 0));
+            });
+            let live = Live {
+                dead,
+                ..Default::default()
+            };
+            w.units.buildings.insert(1, live);
+            w
+        };
+        let heard = || Heard {
+            file: "use.wav".into(),
+            base: 7,
+            voice: "building/1/UseSound".into(),
+        };
+        // (step the sound began, `used` shown at that step) for a run of 14 steps of 100 ms.
+        let run = |sound: Option<Heard>, times: u32, cut: bool| {
+            let (mut rng, mut idles) = (Rng::default(), Idles::default());
+            idles.register(&world(false), &Catalogue::default(), &Building, &mut rng);
+            idles.queue_used(&world(false), 0, times, sound, &Building);
+            let mut began = Vec::new();
+            for step in 0..14 {
+                if cut && step == 2 {
+                    idles.register(&world(true), &Catalogue::default(), &Building, &mut rng);
+                }
+                idles.advance(100);
+                let shown = idles.looks().get(&1) == Some(&"used");
+                began.extend(idles.take_heard().into_iter().map(|h| (step, shown, h)));
+            }
+            began
+        };
+        // The `idle` pass of 400 ms ends at step 3; each `used` pass of 200 ms starts a sound.
+        let at = |step| (step, true, (1, heard()));
+        assert_eq!(run(Some(heard()), 2, false), [at(3), at(5)]);
+        assert_eq!(run(Some(heard()), 1, false), [at(3)]);
+        assert_eq!(run(Some(heard()), 0, false), []);
+        assert_eq!(run(None, 2, false), []);
+        assert_eq!(run(Some(heard()), 2, true), [], "the dead switch drops it");
     }
 }
