@@ -4,6 +4,7 @@
 use super::Sim;
 use crate::behaviour::Data;
 use crate::entity::Catalogue;
+use crate::place::bulldozer::type_of;
 use crate::world::World;
 
 impl Sim {
@@ -17,7 +18,18 @@ impl Sim {
     ) {
         let now = self.ai_ticks;
         if let Some(times) = crate::building::random_use::due(world, cat, at, now, &mut self.rng) {
-            self.idles.queue_used(world, at, times, data);
+            // Each queued sequence carries the use sound and starts it when it begins.
+            let e = &world.zoo.entities[at];
+            let id = e.common.as_ref().map_or(0, |c| c.id);
+            let heard = type_of(cat, e).and_then(|t| crate::building::random_use::sound(t, id));
+            self.idles.queue_used(world, at, times, heard, data);
+        }
+    }
+
+    /// The use sounds of the `used` sequences that began this step start at their buildings.
+    pub(super) fn use_sounds(&mut self, world: &mut World) {
+        for (id, heard) in self.idles.take_heard() {
+            world.units.push_sound(id, Some(heard));
         }
     }
 
@@ -56,6 +68,7 @@ impl Sim {
 mod tests {
     use super::super::idle::Idles;
     use super::super::idle::tests::{Building, Fixed};
+    use super::Sim;
     use crate::behaviour::{Data, Timing};
     use crate::entity::Catalogue;
     use crate::sim::rng::Rng;
@@ -85,7 +98,7 @@ mod tests {
             let (mut rng, mut idles) = (Rng::default(), Idles::default());
             idles.register(&world(0), &Catalogue::default(), data, &mut rng);
             let w = world(users);
-            idles.queue_used(&w, 0, times, data);
+            idles.queue_used(&w, 0, times, None, data);
             let mut seen = Vec::new();
             for _ in 0..12 {
                 // The pass of `idle` (4 frames) runs to its end first.
@@ -139,7 +152,7 @@ mod tests {
         idles.register(&w, &Catalogue::default(), &Building, &mut rng);
         // Three steps into the 4 frames of `idle`; the fourth ends the pass.
         (0..3).for_each(|_| idles.advance(100));
-        idles.queue_used(&w, 0, 1, &Building);
+        idles.queue_used(&w, 0, 1, None, &Building);
         idles.advance(100);
         assert_eq!(
             idles.looks().get(&1),
@@ -161,7 +174,7 @@ mod tests {
             let (mut rng, mut idles) = (Rng::default(), Idles::default());
             let (before, after) = (hut(!dead), hut(dead));
             idles.register(&before, &Catalogue::default(), &Building, &mut rng);
-            idles.queue_used(&before, 0, 2, &Building);
+            idles.queue_used(&before, 0, 2, None, &Building);
             idles.advance(10);
             idles.register(&after, &Catalogue::default(), &Building, &mut rng);
             let want = dead.then_some(&"idledead");
@@ -172,5 +185,86 @@ mod tests {
                 assert_ne!(idles.looks().get(&1), Some(&"used"));
             }
         }
+    }
+
+    /// A random use that queues `used` also carries the type's `[UseSound]` to the building, with
+    /// its attenuation as the base; no sound without a name, without `used` or before the time,
+    /// and the sound draws nothing.
+    #[test]
+    fn a_random_use_starts_the_use_sound() {
+        let ini = |sound: &str| {
+            format!(
+                "[Characteristics/Integers]\ncRandomUse=1\ncMinUsePeriod=20\ncMaxUsePeriod=60\n{sound}"
+            )
+        };
+        let run = |sound: &str, now: u32, data: &dyn Data| {
+            let mut cat = Catalogue::default();
+            cat.push(crate::fixtures::ty("building", "hut", "", &ini(sound)));
+            let mut sim = Sim::new(b"");
+            let mut w = hut(false);
+            w.zoo.entities[0].common.as_mut().unwrap().stamp = Some(10);
+            sim.ai_ticks = now;
+            sim.idles.register(&w, &cat, data, &mut sim.rng);
+            let mut spent = sim.rng.clone();
+            sim.random_use(&mut w, &cat, data, 0);
+            // The redraw of the time is the one draw, and only when it fired.
+            if now > 10 {
+                spent.rand();
+            }
+            assert_eq!(sim.rng.state(), spent.state(), "{sound}");
+            // The sound starts with the `used` sequence, not at the check.
+            assert!(sim.idles.take_heard().is_empty(), "{sound}");
+            let mut heard = Vec::new();
+            for _ in 0..12 {
+                sim.idles.advance(100);
+                heard.extend(sim.idles.take_heard());
+            }
+            heard
+        };
+        let sound = |base: i32| {
+            let heard = crate::behaviour::Heard {
+                file: "scenery/building/hut.wav".into(),
+                base,
+                voice: "building/1/UseSound".into(),
+            };
+            vec![(1, heard)]
+        };
+        let named = "[UseSound]\nloops=1\nname=scenery/building/hut.wav\n";
+        assert_eq!(
+            run(&format!("{named}attenuation=1300"), 11, &Building),
+            sound(1300)
+        );
+        assert_eq!(
+            run(&format!("{named}attenuation=-5"), 11, &Building),
+            sound(-5)
+        );
+        assert_eq!(
+            run(&format!("{named}attenuation=0x7FFFFFFF"), 11, &Building),
+            sound(i32::MAX)
+        );
+        assert_eq!(
+            run(&format!("{named}attenuation=zz"), 11, &Building),
+            sound(0)
+        );
+        assert_eq!(run(named, 11, &Building), sound(0), "no attenuation");
+        // Equal to the time does not fire; no name, an empty name or no section: no sound.
+        let at = format!("{named}attenuation=1");
+        assert_eq!(run(&at, 10, &Building), vec![]);
+        for none in [
+            "",
+            "[UseSound]\nattenuation=5",
+            "[UseSound]\nname=\nattenuation=5",
+        ] {
+            assert_eq!(run(none, 11, &Building), vec![], "{none}");
+        }
+        // A type with no `used` animation does nothing.
+        let no_used = Fixed(
+            Some(Timing {
+                count: 4,
+                delay: 100,
+            }),
+            vec![],
+        );
+        assert_eq!(run(&at, 11, &no_used), vec![]);
     }
 }

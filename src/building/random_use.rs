@@ -1,8 +1,10 @@
 //! The random use of a building type (guest buildings 10.1 point 2): `cRandomUse` 1 queues the
 //! `used` animation when the AI clock passes a time kept as the entity base word (the one the
 //! file saves), `cMinUsePeriod` plus a draw below `cMaxUsePeriod - cMinUsePeriod` ahead of it.
-//! The use sound is not modelled yet.
+//! A random use also starts the type's use sound at the building (guest buildings 10.2).
 
+use crate::behaviour::Heard;
+use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
 use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
@@ -67,6 +69,18 @@ pub(crate) fn loaded(world: &mut World, cat: &Catalogue, at: usize, now: u32, rn
     {
         c.stamp = Some(stored.unwrap_or(now));
     }
+}
+
+/// The use sound of a building type, `[UseSound]` `name` with its `attenuation` as the base term;
+/// none for a type without a name. Its voice is the building's, so one that still plays goes on.
+pub(crate) fn sound(ty: &EntityType, id: u32) -> Option<Heard> {
+    let section = ty.config.as_deref()?.section("UseSound")?;
+    let name = section.get("name").filter(|v| !v.is_empty())?;
+    Some(Heard {
+        file: ty.sound_member(name),
+        base: section.get("attenuation").and_then(to_int).unwrap_or(0),
+        voice: format!("building/{id}/UseSound"),
+    })
 }
 
 /// The check of the building's update: when the AI clock `now` is past its time (strict, both
