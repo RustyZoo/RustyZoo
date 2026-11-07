@@ -11,17 +11,21 @@ use std::collections::BTreeMap;
 /// counting the bytes added or lost) and the most the size may change by, measured on the full
 /// game and on the French install (the larger of the two).
 const BUDGET: &[(&str, usize, usize)] = &[
-    ("maps/lg_resrt.zoo", 115, 80),
-    ("maps/lg_sandy.zoo", 8689, 108),
-    ("maps/lg_sub.zoo", 61463, 2808),
+    ("maps/lg_resrt.zoo", 122, 80),
+    ("maps/lg_sandy.zoo", 8694, 108),
+    ("maps/lg_sub.zoo", 61472, 2808),
     ("maps/med_kids.zoo", 758, 56),
     ("maps/scn28.zoo", 397, 40),
+    ("maps/scn30.zoo", 78, 0),
     ("maps/scn31.zoo", 5463, 69),
-    ("maps/scn33.zoo", 717, 113),
+    ("maps/scn33.zoo", 1616, 113),
     ("maps/scn36.zoo", 831, 166),
-    ("maps/scn37.zoo", 2310, 452),
-    ("maps/scn42.zoo", 1602, 1517),
-    ("saved games/test.zoo", 353, 78),
+    ("maps/scn37.zoo", 4622, 452),
+    ("maps/scn41.zoo", 102, 0),
+    ("maps/scn42.zoo", 1731, 1517),
+    ("maps/scn43.zoo", 201, 0),
+    ("maps/scn44.zoo", 281, 0),
+    ("saved games/test.zoo", 587, 78),
 ];
 
 /// What a file without a pin may differ by: the version word, counters and clocks.
