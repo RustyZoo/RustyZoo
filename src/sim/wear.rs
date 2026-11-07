@@ -30,16 +30,38 @@ impl Sim {
         }
     }
 
-    /// Makes the fence piece at `at` healthy and draws its wear interval (placing 7.4); a line
-    /// tells of a piece that wears.
+    /// Makes the fence piece at `at` healthy and draws its wear interval, and, for a piece that is
+    /// not a gate, its start time right after (sprite drawing 3.6 item 5); a line tells of a
+    /// piece that wears.
     pub(super) fn heal(&mut self, world: &mut World, cat: &Catalogue, at: usize) {
         let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
             return;
         };
-        if let Some(interval) = world.heal(cat, id, &mut || self.rng.rand())
-            && world.wears(cat, at)
-        {
-            self.lines.push(format!("fence {id} healthy {interval}"));
+        if let Some(interval) = world.heal(cat, id, &mut || self.rng.rand()) {
+            self.draw_start(world, id);
+            if world.wears(cat, at) {
+                self.lines.push(format!("fence {id} healthy {interval}"));
+            }
+        }
+    }
+
+    /// The piece `id` was made healthy: when it is not a gate it draws its start time, which its
+    /// animation takes at the next register.
+    pub(crate) fn draw_start(&mut self, world: &World, id: u32) {
+        let gate = (world.find(id)).is_none_or(|e| world.zoo.entities[e].subtype.starts_with('g'));
+        if !gate {
+            self.idles.start_next(id, self.rng.pick(2000));
+        }
+    }
+
+    /// The break cheat (cheats 4.2 C): every piece that wears breaks and draws two start times at
+    /// its place (sprite drawing 3.6 item 4).
+    pub(crate) fn break_fences(&mut self, world: &mut World, cat: &Catalogue) {
+        let (events, broke) = world.break_fences(cat, &mut self.lines);
+        events.into_iter().for_each(|e| self.events.post(e));
+        for id in broke {
+            let start = (0..2).map(|_| self.rng.pick(2000)).last().unwrap_or(0);
+            self.idles.start_next(id, start);
         }
     }
 

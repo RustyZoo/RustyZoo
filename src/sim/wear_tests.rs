@@ -608,7 +608,7 @@ fn broken(subtype: &str, keys: &str, life: i32) -> (World, Vec<String>, Vec<u16>
     });
     let mut lines = Vec::new();
     let events = w.break_fences(&types(keys), &mut lines);
-    (w, lines, events.iter().map(|e| e.kind).collect())
+    (w, lines, events.0.iter().map(|e| e.kind).collect())
 }
 
 #[test]
@@ -645,5 +645,5 @@ fn the_break_cheat_spares_what_never_wears() {
     }
     // No piece at all.
     let mut w = world_with((4, 4), |_| {});
-    assert!(w.break_fences(&types(WEARING), &mut Vec::new()).is_empty());
+    assert!(w.break_fences(&types(WEARING), &mut Vec::new()).0.is_empty());
 }

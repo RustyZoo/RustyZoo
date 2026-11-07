@@ -760,9 +760,21 @@ fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk
         }
         let piece = w.edge(tile_of(&w, (4, 3)), 2).unwrap();
         let mut seen = Vec::new();
+        let (mut rng, events, mut removals) = (
+            crate::sim::Rng::default(),
+            crate::sim::Events::default(),
+            Vec::new(),
+        );
+        let mut ctx = crate::unit::Ctx {
+            rng: &mut rng,
+            events: &events,
+            removals: &mut removals,
+            step: 67,
+            cat: &cat,
+        };
         for p in [(4, 3), (5, 3), (6, 3)] {
             let t = tile_of(&w, p);
-            crate::animal::escape::entered(&mut unit, &mut w, &cat, t);
+            crate::animal::escape::entered(&mut unit, &mut w, &mut ctx, t);
             let life = w.zoo.entities[piece]
                 .common
                 .as_ref()

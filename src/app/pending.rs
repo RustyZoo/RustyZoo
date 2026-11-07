@@ -298,6 +298,8 @@ impl App<'_> {
                     }
                     // A piece that keeps its id only takes the new type.
                     if old == Some(id) {
+                        // The morph made the piece healthy: its start time follows its interval.
+                        self.sim.draw_start(&game.world, id);
                         self.lines
                             .world
                             .push(format!("retype {name} {tile} id {id}"));
