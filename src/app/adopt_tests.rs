@@ -28,8 +28,9 @@ impl UiStrings for Texts {
 }
 
 fn animal(subtype: &str, cost: u32) -> EntityType {
-    let ini =
-        format!("[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost={cost}\n[Sounds]\nplacesound=zplace\nplacesound=1500\n");
+    let ini = format!(
+        "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost={cost}\n[Sounds]\nplacesound=zplace\nplacesound=1500\n"
+    );
     EntityType {
         class: "animals",
         type_name: b"zebra".to_vec(),

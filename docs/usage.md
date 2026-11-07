@@ -180,7 +180,7 @@ the undo button (id 1075, grey until something can be undone) and the Backspace 
 the Adopt panel (the left bar button 1000, layout 3): the Animals tab lists each species once as the sex of the Male and Female buttons.
 
 - the animal chosen follows the pointer, green where it may stand (inside an exhibit, on land unless it swims) and red elsewhere with its message (`tool message 10108` on the grounds, 10569 on water, 10554, 10553, 10560 or 10562 over a tank, the first row of the tank check that applies; an underwater species or a guest is put at the water of the tank under the pointer)
-- a click adopts it: `world add animals/TYPE/SUBTYPE X,Y id N name=NAME` with a number from a counter per type name, the price booked as animal purchase, and the animal joins the units (`unit add`)
+- a click adopts it: `world add animals/TYPE/SUBTYPE X,Y id N name=NAME` with a number from a counter per type name, the price booked as animal purchase, and the animal joins the units (`unit add`); an adoption or a hire plays the type's `placesound`, else `sounds/place.wav`
 - the bulldozer on an animal asks for the sale and refunds its sell price
 
 `rustyzoo run maps/default.zoo --headless --passes 46 --clock 20 --script panel.txt`
