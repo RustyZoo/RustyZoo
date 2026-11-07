@@ -183,6 +183,10 @@ pub struct World {
     /// The animals that came onto the map or left it, and the show-neighbour links made or dropped,
     /// that the show lists have not seen yet (shows 20; not saved, not hashed).
     show_moves: Vec<crate::show::Move>,
+    /// The buildings and scenery pieces that were added to the map or removed from it, as (class,
+    /// type name, subtype, added), that the show panel has not seen yet (information panels 19.9.9;
+    /// not saved, not hashed).
+    toys: Vec<(String, String, String, bool)>,
     /// A saved zoo is being read: a portal flag that changes keeps the open byte (shows 31.3 point 7).
     reading: bool,
     /// The sprite players of the portal walls, by the id of the piece (shows 32.6; not saved).
@@ -233,6 +237,7 @@ impl World {
             language,
             research: Default::default(),
             show_moves: Vec::new(),
+            toys: Vec::new(),
             reading: true,
             portal_players: Default::default(),
         };
@@ -532,6 +537,26 @@ impl World {
             },
         };
         self.show_moves.push(m);
+    }
+
+    /// Notes that the building or scenery piece at position `at` is added to the map or about to
+    /// leave it; any other entity is no news.
+    pub(crate) fn toy_moved(&mut self, at: usize, added: bool) {
+        let e = &self.zoo.entities[at];
+        if matches!(e.class.as_str(), "building" | "objects") {
+            let note = (
+                e.class.clone(),
+                e.type_name.clone(),
+                e.subtype.clone(),
+                added,
+            );
+            self.toys.push(note);
+        }
+    }
+
+    /// The toys added and removed that the show panel has not seen yet.
+    pub(crate) fn take_toys(&mut self) -> Vec<(String, String, String, bool)> {
+        std::mem::take(&mut self.toys)
     }
 
     /// The moves the show lists have not seen yet.

@@ -25,6 +25,7 @@ use crate::zoo::{Item, ShowInfo};
 pub mod admission;
 mod audience;
 mod cycle;
+pub(crate) mod edit;
 mod keeper;
 mod performer;
 pub(crate) mod portals;
@@ -81,6 +82,9 @@ pub struct Params {
     pub trick: [i32; 3],
     /// The tricks a show should have, at least and at most.
     pub ideal: [i32; 2],
+    /// The most tricks the show panel's editor lets a show hold (`[show] maxLength`, 0: no limit;
+    /// information panels 19.9.6).
+    pub length: i32,
     /// The percent of a show at or below which it is bad, at or above which it is good and great.
     pub show: [i32; 3],
     /// The complexity a default script adds up to before it offers the food trick (shows 19.2).
@@ -104,6 +108,7 @@ impl Default for Params {
         Params {
             trick: [0, 3, 6],
             ideal: [6, 6],
+            length: 0,
             show: [25, 50, 75],
             threshold: 5,
             admission: 0.0,
@@ -146,6 +151,7 @@ impl Params {
                 number("trickSatisfactionThresholds", trick[i], found.trick[i])
             }),
             ideal: std::array::from_fn(|i| number("show", ideal[i], found.ideal[i])),
+            length: number("show", "maxLength", found.length),
             show: std::array::from_fn(|i| {
                 number("showSatisfactionThresholds", show[i], found.show[i])
             }),

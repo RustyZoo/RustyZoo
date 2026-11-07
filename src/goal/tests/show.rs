@@ -276,6 +276,7 @@ fn an_animal_that_finds_no_portal_aborts_the_show_and_says_it_has_trouble() {
             attendance: [0; 3],
             date: 0,
             units: vec![1],
+            default_flag: true,
         });
         with_orca(&mut w, |cx| {
             cx.set_task(GO_TO_SHOW, 1, 0, None);

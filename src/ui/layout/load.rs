@@ -228,6 +228,7 @@ impl Tree {
             color_as_icon: false,
             volatile: true,
             update_while_paused: true,
+            shown: 0,
         };
         if !layout {
             let (animation, normal) = match s.get_all("animation") {
@@ -290,11 +291,10 @@ impl Tree {
                 back_color: color(s, "backcolor").unwrap_or(look.back_color),
                 highlight_color: color(s, "highlightcolor").unwrap_or(look.highlight_color),
                 icon_first: flag("iconfirst", false),
-                icon: None,
-                icon_file: None,
                 color_as_icon: flag("colorasicon", false),
                 volatile: flag("volatile", true),
                 update_while_paused: flag("updateWhilePaused", true),
+                ..look
             };
         }
         let index = self.elements.len();

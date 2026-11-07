@@ -46,6 +46,7 @@ impl World {
         self.record(Action::Placed { id, price: 0.0 });
         self.filter_added(self.zoo.entities.len() - 1);
         self.show_moved(self.zoo.entities.len() - 1, true);
+        self.toy_moved(self.zoo.entities.len() - 1, true);
         Some(id)
     }
 
@@ -113,6 +114,7 @@ impl World {
         };
         if !self.is_carried(id) {
             self.show_moved(at, false);
+            self.toy_moved(at, false);
         }
         // A fence piece removed sets the escape check flag on both sides (habitat rating 5.8).
         if fence {

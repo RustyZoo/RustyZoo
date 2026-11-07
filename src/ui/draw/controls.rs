@@ -115,7 +115,11 @@ impl Painter {
                     .flatten()
                     .unwrap_or(e.look.fore_color),
             };
-            if let Some(icon) = row.icon
+            let icon = match row.disabled {
+                true => row.grayed_icon.or(row.icon),
+                false => row.icon,
+            };
+            if let Some(icon) = icon
                 && let Some(cut) = self.cut(pictures, icon, 0, 0)
             {
                 // An animation is anchored half its width from the left of the column and at the

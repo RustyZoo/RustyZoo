@@ -7,7 +7,7 @@ use crate::show::cycle::abort;
 use crate::sim::{Event, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::zoo::{Item, ItemState, Script, TypeRecord};
 
-pub(super) const SEAL: u32 = 5400;
+pub(crate) const SEAL: u32 = 5400;
 
 /// An item for seals of trick type `marker` (0 behaviour, 3 food).
 pub(super) fn item(marker: u32, satisfaction: i32, current: i32) -> Item {
@@ -40,6 +40,7 @@ pub(super) fn record(key: u32, script: u16, units: &[u32]) -> TypeRecord {
         attendance: [0; 3],
         date: 0,
         units: units.to_vec(),
+        default_flag: true,
     }
 }
 
@@ -49,7 +50,11 @@ pub(crate) fn staged(items: Vec<Item>) -> (World, Catalogue) {
     let (mut w, mut cat) = crowded();
     cat.push(EntityType {
         name_id: SEAL as i32,
-        ..kind("animals", "seal", "[tricks]\ntrick=a\n")
+        ..kind(
+            "animals",
+            "seal",
+            "[tricks]\ntrick=a\n[tricks/a]\nid=11200\ntype=0\ndefaultavailable=1\n",
+        )
     });
     for (id, class, name) in [
         (21, "animals", "seal"),

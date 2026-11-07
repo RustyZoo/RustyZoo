@@ -6,6 +6,7 @@ mod audience;
 mod call;
 pub(crate) mod cycle;
 mod data;
+mod editor;
 mod empty;
 mod lookups;
 mod panel;
