@@ -225,7 +225,7 @@ fn needs_part(g: &mut Guest, k: &Keys, wandered: bool, skip: bool, rng: &mut Rng
 }
 
 /// The trash check (6.8): every guest pays for it, unless it is on its way to a trash can; one
-/// that holds litter and has no target is to look for a can.
+/// that holds litter and is not heading for a need building looks for a can.
 fn trash(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), out: &mut Out) {
     if skip {
         return;
@@ -234,7 +234,7 @@ fn trash(g: &mut Guest, k: &Keys, (wandered, skip): (bool, bool), out: &mut Out)
     if fired && g.need != Some("trash") {
         g.pending[HAPPINESS] = g.pending[HAPPINESS].saturating_add(k.trash);
     }
-    out.trash = (fired || wandered) && g.items[4].is_some() && g.building == 0 && !g.stand;
+    out.trash = (fired || wandered) && g.items[4].is_some() && !g.stand;
 }
 
 /// The gift check (6.9), the viewing and surroundings countdowns, and the unused one.

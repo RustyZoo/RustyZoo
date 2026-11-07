@@ -16,6 +16,7 @@ use crate::world::World;
 mod after;
 mod placed;
 mod ride;
+mod shortcut;
 
 const STAND: &str = "[Characteristics/Integers]\ncCommerce=1\ncCapacity=2\ncTimeInside=3\n\
     [Characteristics/Floats]\ncDefaultCost=2\ncPriceFactor=3\n[Sells]\nhotdog\n\
