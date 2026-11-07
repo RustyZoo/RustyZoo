@@ -62,7 +62,12 @@ fn shape(e: &Entity) -> Option<Shape> {
             rubbleable: kind == "tree",
             ..thing(Class::Fixed, (1, 1), false, false)
         }),
-        ("bush" | "rubble", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        ("bush", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        // Rubble whose type says `cRubbleable` 1: the walk-through test must not read it.
+        ("rubble", _) => Some(Shape {
+            rubbleable: true,
+            ..thing(Class::Fixed, (1, 1), false, false)
+        }),
         // Scenery a rampage turns to rubble (`tree`) and scenery it spares (`stone`).
         ("scenery", kind) => Some(Shape {
             rubbleable: kind == "tree",
