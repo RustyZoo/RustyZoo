@@ -136,6 +136,22 @@ fn a_click_on_the_gate_of_an_exhibit_selects_it_and_the_ground_clears_the_select
 }
 
 #[test]
+fn a_helicopter_clicked_shows_the_staff_panel() {
+    with_game("panels", "", |s| {
+        let keeper = s.add(12, 19 * 64 + 32, 20 * 64 + 32, 0);
+        let game = s.app.game.as_mut().unwrap();
+        game.world.units.get_mut(keeper).unwrap().kind = crate::unit::Kind::Heli;
+        s.pass(&[]);
+        s.click(s.at(19, 20, 32, 32));
+        s.pass(&[]);
+        let game = s.app.game.as_ref().unwrap();
+        assert_eq!(game.selected, Some(keeper));
+        let ui = s.app.ui.as_ref().unwrap();
+        assert!(ui.shown(crate::panel::staff::LAYOUT));
+    });
+}
+
+#[test]
 fn one_selection_gives_the_panel_and_the_marker_to_the_unit_clicked_or_listed() {
     with_game("panels", "", |s| {
         for side in [0, 2, 4, 6] {

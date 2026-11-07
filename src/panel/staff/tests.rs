@@ -10,7 +10,7 @@ fn unit(kind: Kind, task: u8, job: u8, tile: Option<usize>, job_target: u32) -> 
 }
 
 /// The text of a unit: tile 1 is in the exhibit "Pen", tile 2 on the grounds, any other has none;
-/// entity 7 is an egg, 8 an animal called "Rex", anything else no animal; show 5 is "Tank".
+/// entity 7 is an egg, 8 an animal called "Rex", anything else no animal; show 5 is "Orca".
 fn text(u: &Unit, type_id: i32) -> Option<(i32, Option<String>)> {
     let at = |t: Option<usize>| match t {
         Some(1) => Place::Exhibit("Pen".into()),
@@ -24,7 +24,7 @@ fn text(u: &Unit, type_id: i32) -> Option<(i32, Option<String>)> {
         }),
         _ => None,
     };
-    let show = |id: u16| (id == 5).then(|| "Tank".to_string());
+    let show = |id: u16| (id == 5).then(|| "Orca".to_string());
     duty(u, type_id, at, animal, show)
 }
 
@@ -91,13 +91,13 @@ fn a_captures_text_names_the_animal_and_the_crate_changes_it() {
 }
 
 #[test]
-fn a_conducting_keeper_names_his_show_or_the_unknown_one() {
+fn a_conducting_keeper_names_the_species_of_the_scheduled_type() {
     let conduct = |job, show| {
         let mut u = unit(Kind::Keeper, 0x6e, job, None, 0);
         u.show = show;
         text(&u, 9552)
     };
-    assert_eq!(conduct(19, 5), Some((10326, Some("Tank".into()))));
+    assert_eq!(conduct(19, 5), Some((10326, Some("Orca".into()))));
     assert_eq!(conduct(19, 0), Some((10325, None)), "no show");
     assert_eq!(conduct(19, 6), Some((10325, None)), "a gone show");
     assert_eq!(conduct(19, u16::MAX), Some((10325, None)));
@@ -106,6 +106,50 @@ fn a_conducting_keeper_names_his_show_or_the_unknown_one() {
     let mut u = unit(Kind::Keeper, 1, 19, None, 0);
     u.show = 5;
     assert_eq!(text(&u, 9552), Some((10304, None)));
+}
+
+#[test]
+fn the_scheduled_species_is_the_type_of_the_schedule_entry_of_the_show() {
+    use crate::entity::Catalogue;
+    use crate::unit::testing::world;
+    use crate::zoo::{Show, ShowInfo};
+    let mut cat = Catalogue::default();
+    for name_id in [0, 4000, 4001] {
+        let mut ty = crate::panel::follow::tests::catalogue("animals", "orca")
+            .types
+            .remove(0);
+        ty.name_id = name_id;
+        cat.push(ty);
+    }
+    let mut w = world((4, 4), |_, _| {});
+    let info = |id, index, schedule: Vec<u32>| ShowInfo {
+        frequency: 90,
+        index,
+        schedule,
+        records: Vec::new(),
+        events: Vec::new(),
+        next: 0,
+        id,
+        upkeep: [0; 3],
+        receipts: [0; 3],
+        attendance: [0; 3],
+        show: Show::default(),
+    };
+    w.zoo.shows.infos = vec![
+        Some(info(5, 1, vec![4000, 4001])),
+        None,
+        Some(info(6, 0, Vec::new())),
+        Some(info(7, 5, vec![4000])),
+        Some(info(8, 0, vec![4002])),
+        Some(info(9, 0, vec![0])),
+    ];
+    assert_eq!(scheduled(&w, &cat, 5), Some(4001));
+    assert_eq!(scheduled(&w, &cat, 6), None, "an empty schedule");
+    assert_eq!(scheduled(&w, &cat, 7), None, "an index past the schedule");
+    assert_eq!(scheduled(&w, &cat, 8), None, "no type of that id");
+    assert_eq!(scheduled(&w, &cat, 9), None, "the id 0");
+    assert_eq!(scheduled(&w, &cat, 4), None, "no such show");
+    assert_eq!(scheduled(&w, &cat, u16::MAX), None);
 }
 
 #[test]

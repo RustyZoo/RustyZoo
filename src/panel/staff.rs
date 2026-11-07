@@ -121,7 +121,7 @@ pub(crate) struct Seen {
 
 /// The job text of a staff member (staff 9, 7.11.1 point 9): the string and the name that goes in
 /// its `%s`; `None` for an empty text. `at` gives the place of a tile, `animal` what an entity is
-/// when it is an animal, `show` the name of the show with an id, when there is one.
+/// when it is an animal, `show` the name of the show with an id, when there is one (staff 9: the species scheduled in it).
 pub(crate) fn duty(
     unit: &Unit,
     type_id: i32,
@@ -186,6 +186,16 @@ pub(crate) fn duty(
         },
         _ => None,
     }
+}
+
+/// The name id of the species scheduled in the show with id `show` (staff 9, job 19): the type
+/// that `schedule[index]` of its show info names, none when there is no info, no entry or no such
+/// type.
+fn scheduled(world: &World, cat: &Catalogue, show: u16) -> Option<i32> {
+    let info = show::info_by_id(world, show)?;
+    let key = *info.schedule.get(info.index as usize)?;
+    let ty = cat.types.iter().find(|t| t.name_id as u32 == key)?;
+    (key > 0).then_some(ty.name_id)
 }
 
 /// The animal a staff member has taken as his capture job, 0 for none.
@@ -330,10 +340,7 @@ impl Panel {
                 name: name.map_or(String::new(), |c| c.name.clone()),
             })
         };
-        let show = |id: u16| {
-            let x = crate::show::exhibit_of(world, id)?;
-            Some(world.exhibits().get(x)?.name.clone())
-        };
+        let show = |id: u16| scheduled(world, cat, id).map(|name_id| ui.string(name_id));
         let text = duty(unit, ty.map_or(0, |t| t.name_id), place, animal, show).map_or(
             String::new(),
             |(s, name)| {

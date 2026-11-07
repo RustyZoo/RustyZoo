@@ -63,7 +63,12 @@ impl App<'_> {
         let show = match want.and_then(|id| world.units.get(id)) {
             Some(u) if u.kind == Kind::Animal => Show::Animal(u.id),
             Some(u) if u.kind == Kind::Guest => Show::Guest(u.id),
-            Some(u) if matches!(u.kind, Kind::Keeper | Kind::Worker | Kind::Guide) => {
+            Some(u)
+                if matches!(
+                    u.kind,
+                    Kind::Keeper | Kind::Worker | Kind::Guide | Kind::Heli
+                ) =>
+            {
                 Show::Staff(u.id)
             }
             Some(_) => Show::Nothing,
