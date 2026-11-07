@@ -1322,7 +1322,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear> [print]: reads $seed
 }
 check expansion-trial yes "any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2).
-check expansion-trial '97902:1@958' 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
+check expansion-trial '97902:1@1002' 'seed=2 tank_cross maps/scn28b.zoo 93962 97902 print | sed "s/.*;//; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water

@@ -270,13 +270,18 @@ impl<'a> MapRenderer<'a> {
             idle: None,
             look: None,
         };
-        // The game puts a ripple on the clean water against every active wall of a tank.
+        // The game puts a ripple on the clean water against every active wall of a tank, each
+        // playing its own clock.
         let ripple = catalogue.find("objects", b"other", b"tankripl");
-        for ty in ripple.iter().flat_map(|&ty| {
-            let n = add_ripples(scene, looks, tiles);
-            std::iter::repeat_n(ty, n)
+        for (ty, wall) in ripple.iter().flat_map(|&ty| {
+            let walls = add_ripples(scene, looks, tiles);
+            walls.into_iter().map(move |w| (ty, w))
         }) {
-            objects.metas.push(transient(ty, None));
+            let key = objects.owners.get(wall).copied().flatten();
+            let key = key.map(|hit| ripple_key(hit.id));
+            let mut meta = transient(ty, key);
+            meta.idle = key.map(|k| extra.idle.0.get(&k).copied().unwrap_or(0));
+            objects.metas.push(meta);
         }
         // So is the column of bubbles a filter's cycle leaves on the tank side of its wall.
         for (ty, tile, id, obj) in bubbles(scene, zoo, catalogue, extra) {
@@ -521,10 +526,10 @@ pub(super) fn bubbles<'a>(
 }
 
 /// Adds a ripple, a transient object at the surface, against every active wall of every tank that
-/// holds clean water (map drawing 9.7.8); the number added. They are made at each staging, so
-/// they come and go with the level and the purity.
-pub(super) fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize) -> usize {
-    let mut added = 0;
+/// holds clean water (map drawing 9.7.8); the wall object of each. They are made at each staging,
+/// so they come and go with the level and the purity.
+pub(super) fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize) -> Vec<usize> {
+    let mut added = Vec::new();
     for (k, (tank, look)) in scene.tanks.clone().iter().zip(looks).enumerate() {
         if tank.level == 0 || !look.is_clean() {
             continue;
@@ -534,11 +539,11 @@ pub(super) fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize)
             .collect();
         for t in inside {
             for d in [0, 2, 4, 6] {
-                let wall = scene
+                let w = scene
                     .edge_object(t, d)
-                    .filter(|&w| scene.wall_tank(w) == Some(k))
-                    .map(|w| scene.objects[w]);
-                let Some(wall) = wall else { continue };
+                    .filter(|&w| scene.wall_tank(w) == Some(k));
+                let Some(w) = w else { continue };
+                let wall = scene.objects[w];
                 let z = scene.surface(t).unwrap_or(0);
                 let ripple = Object {
                     kind: Kind::Unit,
@@ -549,7 +554,7 @@ pub(super) fn add_ripples(scene: &mut Scene, looks: &[tank::Look], tiles: usize)
                     ..wall
                 };
                 scene.add_transient(t, ripple);
-                added += 1;
+                added.push(w);
             }
         }
     }

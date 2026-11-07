@@ -358,6 +358,25 @@ impl World {
         found
     }
 
+    /// The tanks that show ripples against their walls (map drawing 9.7.8): some water and a clean
+    /// purity. Each with the ids of the tank walls held in an edge slot of a tile of the tank, the
+    /// tiles in list order and the slots 0, 2, 4, 6: one ripple each, whose tank the wall is
+    /// does not matter.
+    pub(crate) fn rippled_tanks(&self) -> Vec<(u32, Vec<u32>)> {
+        let murky = i64::from(self.tank_config.murky);
+        let clean = |t: &Tank| t.level > 0 && t.height > 0 && i64::from(t.purity) >= murky;
+        (self.exhibits.list().iter())
+            .filter(|e| e.tank.as_ref().is_some_and(clean))
+            .map(|e| {
+                let slots = e.order.iter().flat_map(|&t| [0, 2, 4, 6].map(|d| (t, d)));
+                let walls = slots.filter_map(|(t, d)| self.edge(t, d));
+                let walls = walls.filter(|&p| self.shape(p).is_some_and(|s| s.tank.wall));
+                let ids = walls.filter_map(|p| self.zoo.entities[p].common.as_ref().map(|c| c.id));
+                (e.id, ids.collect())
+            })
+            .collect()
+    }
+
     /// The tile outside the first pair of the boundary of exhibit `id`, where an animal or a
     /// staff member that has to leave is put.
     pub(crate) fn outside(&self, id: u32) -> Option<usize> {
