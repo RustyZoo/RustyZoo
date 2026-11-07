@@ -2217,3 +2217,156 @@ fn a_user_of_a_type_that_stays_outside_is_seated_all_the_same() {
         assert_eq!(seats[0].place, fresh.pick(3) as usize, "{key}");
     }
 }
+
+/// Guest 1 with the need `need` and the building target 7, the stand, in the step `step`.
+fn serve_step(cat: &Catalogue, w: &mut World, need: &'static str, step: u8) {
+    with_cx(cat, w, |cx| {
+        if let Some(g) = cx.guest() {
+            (g.need, g.building) = (Some(need), 7);
+        }
+        match step {
+            0 => cx.building_arrived(),
+            _ => cx.entrance_arrived(),
+        }
+    });
+}
+
+#[test]
+fn a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
+    let cat = types();
+    for (full, step) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
+        let mut w = zoo();
+        if full {
+            let users = vec![(2, 0, 0), (3, 0, 0)];
+            w.units.buildings.insert(
+                7,
+                Live {
+                    users,
+                    ..Default::default()
+                },
+            );
+        }
+        // The stand sells food; the guest came for the bathroom.
+        serve_step(&cat, &mut w, "bathroom", step);
+        let u = w.units.get(1).unwrap();
+        assert!(w.units.thoughts.of(1).is_empty(), "{full} {step}");
+        assert_eq!(
+            (guest(&w).building, u.goal.wandered),
+            (0, true),
+            "{full} {step}"
+        );
+        assert_eq!(task(&w), 0, "{full} {step}");
+        assert!(guest(&w).seen.is_empty(), "{full} {step}");
+    }
+}
+
+/// The stand 7 with `users` of its two seats taken, of a capacity `capacity`.
+fn crowded_stand(users: usize, capacity: u32) -> (Catalogue, World) {
+    let cat = types_with(&STAND.replace(
+        "cCapacity=2\ncTime",
+        &format!("cCapacity={capacity}\ncTime"),
+    ));
+    let mut w = zoo();
+    let users = (0..users as u32).map(|u| (u + 2, 0, 0)).collect();
+    w.units.buildings.insert(
+        7,
+        Live {
+            users,
+            ..Default::default()
+        },
+    );
+    (cat, w)
+}
+
+/// The walk start of guest 1 to building `b` for food, with a target tile on the record or not:
+/// whether it started, the thoughts, the task and the wandered flag.
+fn failed_start(cat: &Catalogue, w: &mut World, b: u32, tile: bool) -> (bool, Vec<i32>, u8, bool) {
+    let started = with_cx(cat, w, |cx| {
+        let own = cx.tile();
+        cx.unit
+            .goal
+            .record
+            .target
+            .set_tile(cx.world, own.filter(|_| tile));
+        cx.head_for(b, "food")
+    });
+    let thoughts = w.units.thoughts.of(1).iter().map(|t| t.text).collect();
+    (
+        started,
+        thoughts,
+        task(w),
+        w.units.get(1).unwrap().goal.wandered,
+    )
+}
+
+#[test]
+fn a_failed_walk_start_thinks_crowded_only_at_full_capacity() {
+    // Two users of a capacity of two; two users of a capacity of three, with the slot full all the
+    // same (no thought); a building that is gone (no slot at all).
+    let cases = [(2, 2, 7, true), (2, 3, 7, false), (0, 2, 99, false)];
+    for (users, capacity, b, thinks) in cases {
+        let (cat, mut w) = crowded_stand(users, capacity);
+        let (started, thoughts, task, wandered) = failed_start(&cat, &mut w, b, true);
+        assert!(!started && task == 0 && wandered, "{users} {capacity} {b}");
+        assert_eq!(thoughts == [10243], thinks, "{users} {capacity} {b}");
+        assert_eq!((guest(&w).need, guest(&w).building), (None, 0));
+    }
+}
+
+#[test]
+fn a_failed_walk_start_thinks_crowded_only_with_a_record_target_tile() {
+    for tile in [true, false] {
+        let (cat, mut w) = crowded_stand(2, 2);
+        let (_, thoughts, task, wandered) = failed_start(&cat, &mut w, 7, tile);
+        assert_eq!(thoughts == [10243], tile);
+        assert!(task == 0 && wandered, "{tile}");
+    }
+}
+
+#[test]
+fn a_returning_guest_whose_walk_start_fails_recovers_from_water() {
+    for shortcut in [false, true] {
+        let (cat, mut w) = crowded_stand(0, 2);
+        w.units.buildings.insert(
+            99,
+            Live {
+                members: vec![1, 5],
+                ..Default::default()
+            },
+        );
+        let (started, record) = with_cx(&cat, &mut w, |cx| {
+            cx.guest().unwrap().returning = Some(7);
+            let started = cx.head_for_at(99, "food", shortcut);
+            (started, (cx.record().task, cx.record().mode))
+        });
+        let wandered = w.units.get(1).unwrap().goal.wandered;
+        let members = w.units.buildings[&99].members.clone();
+        // The energy seek and the first trash search reset the goal as any other guest.
+        match shortcut {
+            false => assert_eq!(
+                (started, record, wandered, members),
+                (true, (crate::goal::RECOVER, 1), false, vec![5])
+            ),
+            true => assert_eq!(
+                (started, record, wandered, members),
+                (false, (0, 0), true, vec![1, 5])
+            ),
+        }
+    }
+}
+
+#[test]
+fn entering_a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
+    // The stand has no room, so the old complete would have thought it crowded.
+    let (cat, mut w) = crowded_stand(2, 2);
+    with_cx(&cat, &mut w, |cx| {
+        if let Some(g) = cx.guest() {
+            (g.need, g.building) = (Some("bathroom"), 7);
+        }
+        cx.set_task(ENTER_BUILDING, 0, 7, None);
+        cx.enter_arrived();
+    });
+    assert!(w.units.thoughts.of(1).is_empty());
+    assert!(guest(&w).seen.is_empty() && guest(&w).building == 0);
+    assert!(task(&w) == 0 && w.units.get(1).unwrap().goal.wandered);
+}

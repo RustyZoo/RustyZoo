@@ -62,7 +62,7 @@ impl Cx<'_, '_> {
         self.think(HAS_LITTER, None);
         let radius = i64::from(k.search_radius);
         let found = self.nearest("trash", radius, false);
-        if !found.is_ok_and(|b| self.head_for(b, "trash")) {
+        if !found.is_ok_and(|b| self.head_for_at(b, "trash", true)) {
             self.reset();
             self.unit.goal.wandered = true;
         }
