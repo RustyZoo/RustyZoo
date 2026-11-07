@@ -61,7 +61,7 @@ impl Sim {
         }
     }
 
-    /// The break cheat (cheats 4.2 C): every piece that wears breaks and draws two start times at
+    /// The break cheat (cheats 4.2 C): every piece that can deteriorate breaks and draws two start times at
     /// its place (sprite drawing 3.6 item 4).
     pub(crate) fn break_fences(&mut self, world: &mut World, cat: &Catalogue) {
         let (events, broke) = world.break_fences(cat, &mut self.lines);
@@ -73,10 +73,10 @@ impl Sim {
     }
 
     /// The repair cheat (placing 7.4): every fence piece that is broken or at or below its type's
-    /// decayed life is made healthy.
+    /// decayed life is made healthy, with no wear test.
     pub(crate) fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
         for at in 0..world.zoo.entities.len() {
-            if world.decayed(cat, at) {
+            if world.repairable(cat, at) {
                 self.heal(world, cat, at);
             }
         }

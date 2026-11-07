@@ -740,7 +740,10 @@ fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk
         subtype: Vec::new(),
         file: None,
         config: Some(std::sync::Arc::new(
-            crate::config::Config::parse(b"[Characteristics/Integers]\ncStrength=5\n").unwrap(),
+            crate::config::Config::parse(
+                b"[HabitatFence]\n[Characteristics/Integers]\ncStrength=5\n",
+            )
+            .unwrap(),
         )),
         name_id: 0,
         footprint: [1, 1, 1],
@@ -809,8 +812,8 @@ fn a_bash_breaks_the_fence_once_the_animal_leaves_the_crossing_tile_and_the_walk
         [(None, 1, 0, 5), (None, 1, 1, 0), (None, 1, 1, 0)],
         "broken on the tile across, once"
     );
-    // Broken, and at its decayed life 0 too.
-    assert_eq!(posts, 2, "the broken piece's events");
+    // One event 10034: the decayed life comes from the wear step only.
+    assert_eq!(posts, 1, "the broken piece's event");
     // A jumper that does not bash leaves the fence whole and runs on.
     let (seen, posts, (mended, _), rng) = steps(1, 0);
     assert!(mended.is_empty() && rng.state() == crate::sim::Rng::default().state());

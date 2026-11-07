@@ -156,7 +156,7 @@ fn break_line(world: &mut World, ctx: &mut Ctx, (a, b): ([i32; 2], [i32; 2]), t:
     let mut lines = Vec::new();
     for p in [world.edge(t, back), behind].into_iter().flatten() {
         let mut events = Vec::new();
-        if world.break_piece(ctx.cat, p, &mut lines, &mut events) {
+        if world.break_piece(ctx.cat, p, &mut lines, &mut events) && world.loops(p) {
             let start = (0..2).map(|_| ctx.rng.pick(2000)).last().unwrap_or(0);
             let id = world.zoo.entities[p].common.as_ref().map(|c| c.id);
             world.units.mended.extend(id.map(|id| (id, start)));
