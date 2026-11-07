@@ -837,6 +837,21 @@ fn the_objectives_list_holds_the_timer_and_the_goals_that_have_a_text_and_are_no
 }
 
 #[test]
+fn the_ambients_section_lists_its_types_in_order_and_a_bad_id_reads_as_zero() {
+    let list = |text| build(text, &[]).ambients().to_vec();
+    assert_eq!(
+        list("[ambients]\nid=5053\nid=5052\nid=5053\n"),
+        [5053, 5052, 5053]
+    );
+    assert_eq!(
+        list("[ambients]\nid=-1\nid=x\nid=2147483647\n"),
+        [-1, 0, i32::MAX]
+    );
+    assert_eq!(list("[ambients]\n"), [] as [i32; 0]);
+    assert_eq!(list("[goals]\ngoal=a\n"), [] as [i32; 0]);
+}
+
+#[test]
 fn the_scenario_ends_once_and_a_win_brings_its_unlocks() {
     let text = "[completion]\nunlock=7\nunlock=-3\n[goals]\ngoal=a\n\
         [a]\nrulea=99\narga=1\nvalue=1\n";

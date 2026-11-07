@@ -639,10 +639,12 @@ impl Scenario {
             unlocks: unlock.iter().filter_map(|v| to_int(v)).collect(),
             told: false,
             goals,
-            ambients: (main.section("ambients").map_or(&[][..], |s| s.get_all("id")))
-                .iter()
-                .filter_map(|v| to_int(v))
-                .collect(),
+            ambients: (main
+                .section("ambients")
+                .map_or(&[][..], |s| s.get_all("id")))
+            .iter()
+            .filter_map(|v| to_int(v))
+            .collect(),
             start: listed("start"),
             resume: listed("resume"),
             gathered: 0,
