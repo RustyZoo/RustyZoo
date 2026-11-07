@@ -546,6 +546,8 @@ pub(crate) struct Scenario {
     goals: Vec<Goal>,
     /// The state each goal of the list reports, kept in step with the goals for rule 9.
     reported: Vec<u8>,
+    /// `[ambients] id`: the name ids of the ambient types the zoo gets (ambients 7 point 1).
+    ambients: Vec<i32>,
     /// The sections `[start] triggers` names, fired at the start, and those of `[resume]`, fired
     /// at a load of a saved game.
     start: Vec<(String, Trigger)>,
@@ -637,6 +639,12 @@ impl Scenario {
             unlocks: unlock.iter().filter_map(|v| to_int(v)).collect(),
             told: false,
             goals,
+            ambients: (main
+                .section("ambients")
+                .map_or(&[][..], |s| s.get_all("id")))
+            .iter()
+            .filter_map(|v| to_int(v))
+            .collect(),
             start: listed("start"),
             resume: listed("resume"),
             gathered: 0,
@@ -746,6 +754,11 @@ impl Scenario {
                 Vec::new()
             },
         })
+    }
+
+    /// The ambient types the scenario's set-up adds to the spawn list, in the order listed.
+    pub(crate) fn ambients(&self) -> &[i32] {
+        &self.ambients
     }
 
     /// The start triggers fire, in the order listed.

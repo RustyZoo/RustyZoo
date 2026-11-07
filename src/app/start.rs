@@ -177,6 +177,7 @@ impl App<'_> {
             // The start hook follows the resume triggers; a saved game without a scenario block,
             // with an empty or a failed one does not run it (cheats 6.3 point 2, 6.4 points 5 to 7).
             self.game_started();
+            self.sim.add_scenario_ambients();
         }
         // The lookup of the recorded rewards follows the open's triggers (entity types 10.4).
         self.look_up_unlocks();
@@ -347,6 +348,7 @@ impl App<'_> {
             // The start hook follows the start triggers and the research tree (cheats 6.3 point 2);
             // the ini rewards come after it.
             self.game_started();
+            self.sim.add_scenario_ambients();
             self.scenario_rewards();
             self.look_up_unlocks();
         }

@@ -240,6 +240,8 @@ pub(crate) const HOLIDAY_TREE: i32 = 7077;
 pub(crate) const JACK_O_LANTERN: i32 = 7078;
 pub(crate) const SNOWMAN: i32 = 7079;
 pub(crate) const YELLOW_BRICK: i32 = 9111;
+/// The name id of the witch's ambient type.
+pub(crate) const WITCH: i32 = 5084;
 
 /// A flying object a date hook launches (cheats 6), by the name id of its ambient type. The launch
 /// is told in the log (`sim fly ID [COUNT]`) and makes the flight ([`crate::flight`]).
@@ -254,12 +256,12 @@ pub(crate) enum Fly {
 
 impl Fly {
     /// The name id of the ambient type the launch creates; none for the permanent witch, which only
-    /// sets the period of the witch's spawn list (ambients 7.4, not made yet).
+    /// sets the period of the witch's spawn list (ambients 7.4).
     pub(crate) fn type_id(self) -> Option<i32> {
         match self {
             Fly::Biplane => Some(5082),
             Fly::Sleigh => Some(5083),
-            Fly::Witch => Some(5084),
+            Fly::Witch => Some(WITCH),
             Fly::PermanentWitch => None,
         }
     }

@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target, parse_call, split_call};
+use crate::entity::EntityType;
 use crate::sim::Rng;
 use crate::zoo::{Behaviour as Saved, Entity};
 
@@ -49,6 +50,11 @@ pub trait Data {
     /// all units (pathfinding 6.5); `None` when the file or the key is missing.
     fn unit_class(&self, _key: &str) -> Option<i32> {
         None
+    }
+    /// The number of sprite files of the base animation set of an ambient type; 0 when it has
+    /// none or it does not load (ambients 3.2).
+    fn set_files(&self, _ty: &EntityType) -> usize {
+        0
     }
 }
 

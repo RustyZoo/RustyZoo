@@ -556,6 +556,46 @@ fn the_permanent_witch_makes_no_flight() {
     });
 }
 
+/// The types the spawn list makes a creature of at world second `clock`.
+fn spawned(app: &mut App, clock: u32) -> Vec<i32> {
+    let due = app.sim.spawns.due(app.renderer.catalogue(), clock);
+    due.iter().map(|t| t.name_id).collect()
+}
+
+#[test]
+fn the_permanent_witch_adds_the_witch_to_the_spawn_list_with_a_period_of_30_seconds() {
+    fly("cFrequency=0\n", |app| {
+        app.sim.real_day = real_halloween;
+        app.game_started();
+        assert!(spawned(app, 29).is_empty());
+        assert_eq!(spawned(app, 30), [5084]);
+        assert!(spawned(app, 59).is_empty());
+        assert_eq!(spawned(app, 60), [5084]);
+        // Only the first start of the run adds it.
+        app.game_started();
+        assert!(spawned(app, 90).len() <= 1);
+    });
+}
+
+#[test]
+fn a_launch_adds_its_type_to_the_spawn_list_each_time_but_a_missing_type_none() {
+    fly("cFrequency=20\n", |app| {
+        today(app, 10, 31);
+        app.guest_created();
+        app.guest_created();
+        assert_eq!(spawned(app, 20), [5084, 5084]);
+        // A new game (`today` starts one) empties the list.
+        today(app, 12, 25);
+        app.guest_created();
+        assert_eq!(spawned(app, 40), [5083]);
+    });
+    run(|app, _| {
+        today(app, 12, 25);
+        app.guest_created();
+        assert!(spawned(app, 1000).is_empty());
+    });
+}
+
 #[test]
 fn a_type_that_is_missing_makes_no_flight_and_no_loop_and_a_line_says_so() {
     run(|app, _| {

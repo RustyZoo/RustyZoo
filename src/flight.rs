@@ -3,8 +3,14 @@
 //! inwards, and flies in a straight line at the height it started at until its tile is off the map;
 //! the next step's removal pass then destroys it.
 //!
-//! Not done yet: the spawn list (periodic birds, the permanent witch), the animation of the
-//! frames, the group sound of the witch and the birds, and the shadow over the water of a tank.
+//! The world keeps a spawn list ([`Spawns`], ambients 7): the launches, the scenario's ambients and
+//! the permanent witch add entries, and the world manager makes a creature for each entry whose
+//! type has a period that has passed.
+//!
+//! Not done yet: the group sound of the witch and the birds, and the shadow over the water of a
+//! tank.
+
+use std::collections::BTreeMap;
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -32,6 +38,73 @@ fn speed(ty: &EntityType) -> u32 {
         .and_then(|s| s.get("cSpeed"))
         .and_then(to_int)
         .map_or(0, |n| n as u32)
+}
+
+/// `cFrequency` of the type: the seconds between two spawns, 0 (never) by default; read as the
+/// signed number it is (ambients 2 point 1, 7 point 2).
+fn frequency(ty: &EntityType) -> i32 {
+    let section = ty.config.as_deref();
+    let section = section.and_then(|c| c.section("Characteristics/Integers"));
+    section
+        .and_then(|s| s.get("cFrequency"))
+        .and_then(to_int)
+        .unwrap_or(0)
+}
+
+/// The spawn list of the world (ambients 7): for each entry the type's name id and the world second
+/// of its last spawn. It is not saved and a game end empties it; the periods set by [`Spawns::period`]
+/// belong to the types, so they outlive a game.
+#[derive(Debug, Default)]
+pub(crate) struct Spawns {
+    list: Vec<(i32, u32)>,
+    periods: BTreeMap<i32, i32>,
+}
+
+impl Spawns {
+    /// A game ends: the list is empty.
+    pub(crate) fn clear(&mut self) {
+        self.list.clear();
+    }
+
+    /// Adds an entry for the type `id` with last spawn 0, even for a type already listed.
+    pub(crate) fn add(&mut self, id: i32) {
+        self.list.push((id, 0));
+    }
+
+    /// The name ids of the entries, in list order.
+    #[cfg(test)]
+    pub(crate) fn ids(&self) -> Vec<i32> {
+        self.list.iter().map(|e| e.0).collect()
+    }
+
+    /// The type `id` spawns every `seconds` from now on, whatever its file says (the permanent
+    /// witch, ambients 7 point 4).
+    pub(crate) fn period(&mut self, id: i32, seconds: i32) {
+        self.periods.insert(id, seconds);
+    }
+
+    /// The types to make a creature of at the end of a world step whose clock reads `clock` whole
+    /// seconds, in list order: the entries whose period is not 0 and is at most the seconds since
+    /// their last spawn (signed); their last spawn becomes `clock`. An entry whose type the
+    /// catalogue lacks never spawns.
+    pub(crate) fn due<'c>(&mut self, cat: &'c Catalogue, clock: u32) -> Vec<&'c EntityType> {
+        let mut out = Vec::new();
+        for (id, last) in &mut self.list {
+            let Some(ty) = ambient(cat, *id) else {
+                continue;
+            };
+            let every = self
+                .periods
+                .get(id)
+                .copied()
+                .unwrap_or_else(|| frequency(ty));
+            if every != 0 && every <= clock.wrapping_sub(*last) as i32 {
+                *last = clock;
+                out.push(ty);
+            }
+        }
+        out
+    }
 }
 
 /// Creates one creature of the ambient type `ty` and adds it to the world (ambients 3.2, 3.3):
@@ -131,6 +204,7 @@ pub(crate) fn advance(world: &mut World, at: usize, step: u32, removals: &mut Ve
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::sim::Sim;
     use crate::unit::testing::world;
     use std::sync::Arc;
 
@@ -182,6 +256,126 @@ mod tests {
                 }),
             })
         })
+    }
+
+    /// The type ids of a list of due types.
+    fn ids(due: &[&EntityType]) -> Vec<i32> {
+        due.iter().map(|t| t.name_id).collect()
+    }
+
+    #[test]
+    fn an_entry_spawns_once_its_period_has_passed_and_again_a_period_later() {
+        let (cat, _) = kind("cFrequency=20\n");
+        let mut spawns = Spawns::default();
+        spawns.add(5083);
+        assert!(spawns.due(&cat, 19).is_empty());
+        assert_eq!(ids(&spawns.due(&cat, 20)), [5083]);
+        assert!(spawns.due(&cat, 20).is_empty(), "last spawn is now");
+        assert!(spawns.due(&cat, 39).is_empty());
+        assert_eq!(ids(&spawns.due(&cat, 40)), [5083]);
+        // A step that jumps over several periods spawns once.
+        assert_eq!(ids(&spawns.due(&cat, 500)), [5083]);
+    }
+
+    #[test]
+    fn an_entry_listed_twice_spawns_twice() {
+        let (cat, _) = kind("cFrequency=5\n");
+        let mut spawns = Spawns::default();
+        spawns.add(5083);
+        spawns.add(5083);
+        assert_eq!(ids(&spawns.due(&cat, 5)), [5083, 5083]);
+    }
+
+    #[test]
+    fn a_period_of_zero_or_a_missing_key_never_spawns() {
+        for ini in ["cFrequency=0\n", "", "cFrequency=x\n"] {
+            let (cat, _) = kind(ini);
+            let mut spawns = Spawns::default();
+            spawns.add(5083);
+            assert!(spawns.due(&cat, 100_000).is_empty(), "{ini:?}");
+        }
+    }
+
+    #[test]
+    fn a_negative_period_spawns_at_every_check_and_a_huge_one_never() {
+        let (cat, _) = kind("cFrequency=-3\n");
+        let mut spawns = Spawns::default();
+        spawns.add(5083);
+        for clock in [0, 1, 2] {
+            assert_eq!(spawns.due(&cat, clock).len(), 1, "clock {clock}");
+        }
+        let (cat, _) = kind("cFrequency=2147483647\n");
+        let mut spawns = Spawns::default();
+        spawns.add(5083);
+        assert!(spawns.due(&cat, i32::MAX as u32 - 1).is_empty());
+        assert_eq!(spawns.due(&cat, i32::MAX as u32).len(), 1);
+    }
+
+    #[test]
+    fn a_clock_behind_the_last_spawn_is_a_negative_age() {
+        let (cat, _) = kind("cFrequency=5\n");
+        let mut spawns = Spawns::default();
+        spawns.add(5083);
+        spawns.due(&cat, 100);
+        // A clock that went back (a load) waits until the age is a period again.
+        assert!(spawns.due(&cat, 50).is_empty());
+        assert!(spawns.due(&cat, u32::MAX).is_empty());
+    }
+
+    #[test]
+    fn an_entry_of_a_type_the_catalogue_lacks_never_spawns() {
+        let (cat, _) = kind("cFrequency=1\n");
+        let mut spawns = Spawns::default();
+        spawns.add(9999);
+        assert!(spawns.due(&cat, 100).is_empty());
+    }
+
+    #[test]
+    fn a_set_period_replaces_the_files_and_outlives_a_game_end() {
+        let (cat, _) = kind("cFrequency=0\n");
+        let mut spawns = Spawns::default();
+        spawns.period(5083, 30);
+        spawns.add(5083);
+        assert!(spawns.due(&cat, 29).is_empty());
+        assert_eq!(spawns.due(&cat, 30).len(), 1);
+        spawns.clear();
+        assert!(spawns.due(&cat, 1000).is_empty(), "the list is empty");
+        spawns.add(5083);
+        assert_eq!(spawns.due(&cat, 1000).len(), 1, "the period stayed");
+    }
+
+    #[test]
+    fn the_world_step_makes_a_creature_for_each_due_entry_with_three_draws() {
+        let (cat, _) = kind("cFrequency=2\n");
+        let step = |sim: &mut Sim, w: &mut World| _ = sim.step_in(w, &cat, 1000, |_, _, _| {});
+        let (mut sim, mut plain) = (Sim::new(b""), Sim::new(b""));
+        let (mut w, mut other) = (world((5, 4), |_, _| {}), world((5, 4), |_, _| {}));
+        sim.set_seed(5);
+        plain.set_seed(5);
+        sim.spawns.add(5083);
+        step(&mut sim, &mut w);
+        step(&mut plain, &mut other);
+        assert!(w.zoo.entities.is_empty(), "1 s");
+        step(&mut sim, &mut w);
+        step(&mut plain, &mut other);
+        assert_eq!(w.zoo.entities.len(), 1, "2 s");
+        assert!(other.zoo.entities.is_empty());
+        // The creature's three draws come at the end of the step.
+        (0..3).for_each(|_| _ = plain.rng.rand());
+        assert_eq!(sim.rng, plain.rng);
+        (0..4).for_each(|_| step(&mut sim, &mut w));
+        assert_eq!(w.zoo.entities.len(), 3, "6 s: one more at 4 s and at 6 s");
+    }
+
+    #[test]
+    fn a_game_start_empties_the_list() {
+        let (cat, _) = kind("cFrequency=1\n");
+        let mut sim = Sim::new(b"");
+        sim.spawns.add(5083);
+        sim.start_game(0, Default::default());
+        let mut w = world((5, 4), |_, _| {});
+        sim.step_in(&mut w, &cat, 5000, |_, _, _| {});
+        assert!(w.zoo.entities.is_empty());
     }
 
     #[test]
