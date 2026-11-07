@@ -405,3 +405,47 @@ fn a_tank_wall_never_breaks_and_the_ground_reads_the_fences_of_a_world() {
         "a see-through fence that is not a tank wall never blocks"
     );
 }
+
+/// The tiles of each area of every exhibit of a world, in list order.
+fn grouped(world: &World) -> Vec<Vec<Vec<usize>>> {
+    let list = world.exhibits().list();
+    let groups = |e: &crate::exhibit::Exhibit| e.areas.iter().map(|a| a.tiles.clone()).collect();
+    list.iter().map(groups).collect()
+}
+
+/// The same entities added one by one to a world with none, as in play.
+fn played(zoo: &Zoo) -> World {
+    let mut empty = zoo.clone();
+    empty.entities.truncate(1);
+    let mut world = World::new(empty, shape);
+    for e in zoo.entities.iter().skip(1) {
+        world.add(e.clone(), shape(e));
+    }
+    world
+}
+
+#[test]
+fn the_areas_of_a_loaded_zoo_follow_the_order_of_the_file() {
+    // A pen on rows 4 to 6 and a path of six tiles two rows above it, laid from east to west.
+    let row = |entities: &mut Vec<Entity>| {
+        entities.extend((0..6).rev().map(|x| entity("path", x, 2, 0)));
+    };
+    for fences_first in [true, false] {
+        let mut z = zoo(&[]);
+        let fences = square(1, 4, 6, 6).into_iter();
+        let fences: Vec<_> = fences.map(|(x, y, d)| entity("fences", x, y, d)).collect();
+        if fences_first {
+            z.entities.extend(fences);
+            row(&mut z.entities);
+        } else {
+            row(&mut z.entities);
+            z.entities.extend(fences);
+        }
+        let loaded = World::new(z.clone(), shape);
+        assert_eq!(grouped(&loaded), grouped(&played(&z)), "{fences_first}");
+        if fences_first {
+            // 16 is tile (0, 2): the file lays 5, 4, 3, 2 first.
+            assert_eq!(grouped(&loaded), [vec![vec![21, 20, 19, 18], vec![17, 16]]]);
+        }
+    }
+}
