@@ -554,7 +554,11 @@ fn a_removed_wall_takes_the_tank_away_and_the_cave_goes_dead() {
 fn a_tank_made_validates_the_objects_again() {
     let (mut w, cat, _) = flooded();
     w.take_reshaped();
-    let wall = w.zoo.entities.iter().find(|e| e.common.as_ref().is_some_and(|c| c.id == 100));
+    let wall = w
+        .zoo
+        .entities
+        .iter()
+        .find(|e| e.common.as_ref().is_some_and(|c| c.id == 100));
     let wall = wall.unwrap().clone();
     assert!(w.remove(100));
     w.take_reshaped();
@@ -615,10 +619,20 @@ fn a_tile_turning_water_validates_the_objects_on_it() {
     assert!(w.set_tile(3, 3, t.elevation, t.shape, 1));
     wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
     let live = &w.units.buildings[&7];
-    assert!(live.dead && live.users.is_empty(), "on water: dead, emptied");
+    assert!(
+        live.dead && live.users.is_empty(),
+        "on water: dead, emptied"
+    );
     assert!(w.set_tile(3, 3, t.elevation, t.shape, 0));
     wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
     assert!(!w.units.buildings[&7].dead, "on land again");
+    // The undo of a paint turns the tile the other way.
+    assert!(w.set_tile(3, 3, t.elevation, t.shape, 1));
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    assert!(w.units.buildings[&7].dead);
+    w.undo();
+    wet_changed(&mut w, &cat, &mut crate::sim::Rng::default());
+    assert!(!w.units.buildings[&7].dead, "the paint is undone");
 }
 
 #[test]
