@@ -16,6 +16,8 @@ updates:
       # SDL is built from source: a minor bump (breaking for 0.x) moves the SDL sources, so it is updated by hand.
       - dependency-name: "sdl3*"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # Pinned with `=` on purpose.
+      - dependency-name: encoding_rs
   - package-ecosystem: github-actions
     directory: /
     schedule:
