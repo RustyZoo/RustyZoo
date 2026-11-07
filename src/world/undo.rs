@@ -194,6 +194,7 @@ impl World {
                         let spot = self.spot(at);
                         self.zoo.entities.remove(at);
                         self.shapes.remove(at);
+                        self.added.retain(|&x| x != id);
                         self.changed(Some(Shift::Removed(at)));
                         stale = true;
                         done.steps.push(Step::Removed(spot, price));
@@ -204,6 +205,7 @@ impl World {
                         let spot = self.spot(at);
                         let entity = self.zoo.entities.remove(at);
                         self.shapes.remove(at);
+                        self.added.retain(|&x| x != id);
                         self.changed(Some(Shift::Removed(at)));
                         stale = true;
                         done.steps.push(Step::Copied(spot, Box::new(entity)));

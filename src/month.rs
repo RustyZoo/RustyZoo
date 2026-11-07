@@ -53,7 +53,26 @@ pub(crate) fn upkeep_of(units: &Units, ty: &EntityType, id: u32) -> f32 {
 /// booking per staff member in list order, one for all the buildings, even when it is 0. The log
 /// gets `wages ID AMOUNT` for each member and `upkeep AMOUNT`.
 pub(crate) fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log: &mut Vec<String>) {
+    // The building loop runs first, in the `building` need list's order (shows 9.2); then the wages
+    // in entity-list order (zoo status 9 point 7).
+    let mut stock: Vec<_> = (world.zoo.entities.iter().enumerate())
+        .filter(|(_, e)| type_of(cat, e).is_some_and(is_guest_building))
+        .map(|(at, e)| (e.common.as_ref().map_or(0, |c| c.id), at))
+        .collect();
+    world.in_need_order(&mut stock, |s| s.0);
     let mut total = 0.0_f32;
+    for (id, at) in stock {
+        let Some(ty) = type_of(cat, &world.zoo.entities[at]) else {
+            continue;
+        };
+        let u = upkeep_of(&world.units, ty, id);
+        total += u;
+        // Each building rolls its monthly figures in the same loop (guest buildings 9).
+        let default = world.units.prices.default;
+        (world.units.buildings.entry(id))
+            .or_insert_with(|| Live::new(&Kind::of(ty, default)))
+            .roll(u);
+    }
     for e in &world.zoo.entities {
         let Some(ty) = type_of(cat, e) else { continue };
         if let Some(category) = staff::monthly_wages(ty) {
@@ -63,17 +82,6 @@ pub(crate) fn charge(world: &mut World, cat: &Catalogue, money: &mut Money, log:
                 "wages {} {wage}",
                 e.common.as_ref().map_or(0, |c| c.id)
             ));
-        } else if is_guest_building(ty) {
-            let id = e.common.as_ref().map_or(0, |c| c.id);
-            let u = upkeep_of(&world.units, ty, id);
-            total += u;
-            // Each building rolls its monthly figures in the same loop (guest buildings 9).
-            if let Some(c) = e.common.as_ref() {
-                let default = world.units.prices.default;
-                (world.units.buildings.entry(c.id))
-                    .or_insert_with(|| Live::new(&Kind::of(ty, default)))
-                    .roll(u);
-            }
         }
     }
     money.spend(BUILDING_UPKEEP, total);

@@ -124,6 +124,7 @@ impl World {
         let shape = self.shapes.remove(at);
         if let Some(c) = &entity.common {
             self.filter_view.remove(&c.id);
+            self.added.retain(|&x| x != c.id);
         }
         self.changed(Some(Shift::Removed(at)));
         if fence {
