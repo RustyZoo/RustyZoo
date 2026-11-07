@@ -304,16 +304,13 @@ impl App<'_> {
                 Outcome::Placed(id) => {
                     // A new or replaced fence piece is healthy and draws its wear interval.
                     if fence {
-                        let rng = &mut self.sim.rng;
-                        game.world
-                            .heal(renderer.catalogue(), id, &mut || rng.rand());
+                        game.world.heal(cat, id, &mut || self.sim.rng.rand());
                     }
                     if let Some(kind) = p.paint {
                         self.lines.world.push(format!("paint {x},{y} {kind}"));
                     }
-                    // A piece that keeps its id only takes the new type.
+                    // A piece that keeps its id only takes the new type, healthy: it draws its start.
                     if old == Some(id) {
-                        // The morph made the piece healthy: its start time follows its interval.
                         self.sim.draw_start(&game.world, id);
                         self.lines
                             .world
