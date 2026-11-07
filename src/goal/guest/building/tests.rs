@@ -2217,3 +2217,75 @@ fn a_user_of_a_type_that_stays_outside_is_seated_all_the_same() {
         assert_eq!(seats[0].place, fresh.pick(3) as usize, "{key}");
     }
 }
+
+/// Guest 1 with the need `need` and the building target 7, the stand, in the step `step`.
+fn serve_step(cat: &Catalogue, w: &mut World, need: &'static str, step: u8) {
+    with_cx(cat, w, |cx| {
+        if let Some(g) = cx.guest() {
+            (g.need, g.building) = (Some(need), 7);
+        }
+        match step {
+            0 => cx.building_arrived(),
+            _ => cx.entrance_arrived(),
+        }
+    });
+}
+
+#[test]
+fn a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
+    let cat = types();
+    for (full, step) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
+        let mut w = zoo();
+        if full {
+            let users = vec![(2, 0, 0), (3, 0, 0)];
+            w.units.buildings.insert(
+                7,
+                Live {
+                    users,
+                    ..Default::default()
+                },
+            );
+        }
+        // The stand sells food; the guest came for the bathroom.
+        serve_step(&cat, &mut w, "bathroom", step);
+        let u = w.units.get(1).unwrap();
+        assert!(w.units.thoughts.of(1).is_empty(), "{full} {step}");
+        assert_eq!(
+            (guest(&w).building, u.goal.wandered),
+            (0, true),
+            "{full} {step}"
+        );
+        assert_eq!(task(&w), 0, "{full} {step}");
+        assert!(guest(&w).seen.is_empty(), "{full} {step}");
+    }
+}
+
+#[test]
+fn a_failed_walk_start_thinks_crowded_when_full_clears_the_goal_and_raises_wandered() {
+    let cat = types();
+    for (full, gone) in [(true, false), (false, true)] {
+        let mut w = zoo();
+        let building = if gone { 99 } else { 7 };
+        if full {
+            let users = vec![(2, 0, 0), (3, 0, 0)];
+            w.units.buildings.insert(
+                7,
+                Live {
+                    users,
+                    ..Default::default()
+                },
+            );
+        }
+        w.units.get_mut(1).unwrap().goal.record.task = crate::goal::RANDOM;
+        let started = with_cx(&cat, &mut w, |cx| cx.head_for(building, "food"));
+        let thought: Vec<_> = w.units.thoughts.of(1).iter().map(|t| t.text).collect();
+        assert!(!started, "{full} {gone}");
+        assert_eq!(
+            thought,
+            if full { vec![10243] } else { vec![] },
+            "{full} {gone}"
+        );
+        assert_eq!((task(&w), guest(&w).need, guest(&w).building), (0, None, 0));
+        assert!(w.units.get(1).unwrap().goal.wandered, "{full} {gone}");
+    }
+}
