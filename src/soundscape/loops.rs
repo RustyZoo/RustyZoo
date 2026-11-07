@@ -97,8 +97,8 @@ impl Files {
     /// Drops what does not load: an empty name, or a file `loads` refuses.
     pub(super) fn loaded(mut self, loads: &dyn Fn(&str) -> bool) -> Files {
         let keep = |t: Tune| t.filter(|(file, _)| !file.is_empty() && loads(file));
-        self.world = keep(self.world);
         self.crowd = self.crowd.map(keep);
+        self.world = keep(self.world);
         self
     }
 }
