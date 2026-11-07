@@ -234,6 +234,11 @@ fn habitat_of(world: &World, id: u16) -> Option<usize> {
     (world.zoo.shows.infos.iter()).position(|i| i.as_ref().is_some_and(|i| i.id == id))
 }
 
+/// The show info whose show id is `id`.
+pub(crate) fn info_by_id(world: &World, id: u16) -> Option<&ShowInfo> {
+    world.zoo.shows.info(habitat_of(world, id)?)
+}
+
 /// The exhibit of the show info whose show id is `id`.
 pub(crate) fn exhibit_of(world: &World, id: u16) -> Option<u32> {
     tank_of(world, habitat_of(world, id)?)
