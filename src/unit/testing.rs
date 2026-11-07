@@ -161,7 +161,7 @@ pub(crate) fn world_with((w, h): (i32, i32), edit: impl FnOnce(&mut Zoo)) -> Wor
     World::new(zoo, shape)
 }
 
-/// A type made of a walk: the set `bWalk` of one move call, the set `bZoo` of a call that never ends, the animations `idle`, `walk`, `trot`,
+/// A type made of a walk: the set `bWalk` of one move call, the sets `bZoo` and `bTestFence` of a call that never ends, the animations `idle`, `walk`, `trot`,
 /// `run`, `swim`, `climb` (3 frames) and the tank animations, the rates 20, 46 and 76, and the animation speeds 50 (slow) and 80 (slow, in water).
 pub(crate) struct Walker(Vec<crate::behaviour::Call>, Vec<crate::behaviour::Call>);
 
@@ -202,7 +202,7 @@ impl crate::behaviour::Data for Walker {
     fn set(&self, _: &Entity, name: &str) -> Option<&[crate::behaviour::Call]> {
         match name {
             "bWalk" => Some(&self.0),
-            "bZoo" => Some(&self.1),
+            "bZoo" | "bTestFence" => Some(&self.1),
             _ => None,
         }
     }
@@ -355,13 +355,19 @@ pub(crate) fn rates(number: &crate::behaviour::Number) -> i32 {
 /// with it at 2. The land exhibit's other three sides are exhibit fences; `animals` stand at
 /// the given tiles.
 pub(crate) fn amphibious_world(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
-    amphibious_world_with(land, animals, false)
+    amphibious_world_with(land, animals, (false, false))
+}
+
+/// [`amphibious_world`] whose land exhibit holds an electrified wire, life 5, on the north side of
+/// its tile (6, 2).
+pub(crate) fn amphibious_world_wired(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
+    amphibious_world_with(land, animals, (false, true))
 }
 
 /// [`amphibious_world`] with a second land exhibit of 2 by 3 tiles from (0, 2) on the other side
 /// of the tank (its other three sides are exhibit fences, the tank's left wall is shared).
 pub(crate) fn amphibious_world_between(land: i32, animals: &[(u32, &str, (i32, i32))]) -> World {
-    amphibious_world_with(land, animals, true)
+    amphibious_world_with(land, animals, (true, false))
 }
 
 /// Gives every exhibit a gate, an id no piece has, for what needs a gate (tank fauna 12.3).
@@ -447,7 +453,11 @@ pub(crate) fn show_world2(animals: &[(u32, &str, (i32, i32))]) -> World {
     show_world_of(animals, true)
 }
 
-fn amphibious_world_with(land: i32, animals: &[(u32, &str, (i32, i32))], west: bool) -> World {
+fn amphibious_world_with(
+    land: i32,
+    animals: &[(u32, &str, (i32, i32))],
+    (west, wire): (bool, bool),
+) -> World {
     let piece = |class: &str, (x, y): (i32, i32), d: u32| {
         let side = [(32, 0), (63, 32), (32, 63), (0, 32)][d as usize / 2];
         let id = 1000 + x as u32 * 10 + y as u32 + d;
@@ -462,7 +472,15 @@ fn amphibious_world_with(land: i32, animals: &[(u32, &str, (i32, i32))], west: b
     for t in 0..4 {
         pieces.push(piece("tankwall", (2 + t, 2), 0));
         pieces.push(piece("tankwall", (2 + t, 4), 4));
-        pieces.push(piece("fences", (6 + t, 2), 0));
+        let mut north = piece("fences", (6 + t, 2), 0);
+        if wire && t == 0 {
+            north.type_name = "wire".into();
+            north.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+                life: 5,
+                ..Default::default()
+            });
+        }
+        pieces.push(north);
         pieces.push(piece("fences", (6 + t, 4), 4));
     }
     for t in 0..3 {

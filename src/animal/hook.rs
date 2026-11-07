@@ -458,9 +458,6 @@ pub(crate) fn checks(
     }
     bored_after(unit, world, ctx, at, data, &out);
     escape::after(unit, world, ctx, at, data, (&out, &k));
-    if let Some(change) = out.terrain {
-        tank::switch(unit, world, ctx, at, data, change);
-    }
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));
