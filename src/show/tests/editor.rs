@@ -493,3 +493,24 @@ fn maxlength_of_shows_cfg_is_read_and_a_missing_key_means_no_limit() {
     assert_eq!(Params::read(&Config::parse(b"[show]\n").unwrap()).length, 0);
     assert_eq!(Params::default().length, 0);
 }
+
+#[test]
+fn a_building_added_or_removed_is_noted_for_the_panel_and_an_animal_is_not() {
+    use crate::unit::testing::{centre, entity, world_with};
+    let mut w = world_with((6, 6), |_| {});
+    let mut put = |class: &str, name: &str| w.add(entity(class, name, 0, centre((2, 2)), 0), None);
+    let toy = put("building", "hoop").unwrap();
+    put("animals", "seal").unwrap();
+    let note = |added| {
+        (
+            "building".to_string(),
+            "hoop".to_string(),
+            String::new(),
+            added,
+        )
+    };
+    assert_eq!(w.take_toys(), [note(true)]);
+    assert!(w.remove(toy));
+    assert_eq!(w.take_toys(), [note(false)]);
+    assert!(w.take_toys().is_empty());
+}
