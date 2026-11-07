@@ -51,7 +51,7 @@ use crate::guest;
 use crate::money::{self, Money};
 use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
-use crate::soundscape::{Shot, Soundscape};
+use crate::soundscape::{SceneLoop, Shot, Soundscape};
 use crate::status::zoo::{Say, Settings, Status, Sums};
 use crate::timing::{Calendar, ini_value, ini_whole};
 use crate::unit;
@@ -329,6 +329,11 @@ impl Sim {
         self.soundscape
             .as_mut()
             .map_or_else(Vec::new, Soundscape::take_shots)
+    }
+
+    /// The loops of the soundscape playing now (sound 8.1).
+    pub(crate) fn scene_loops(&self) -> Vec<SceneLoop> {
+        (self.soundscape.as_ref()).map_or_else(Vec::new, Soundscape::loops)
     }
 
     /// The research tree of the game just opened is built (research 7.4): the zoo status counts

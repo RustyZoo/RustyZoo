@@ -1,17 +1,25 @@
 //! The ambient one-shots of a game (sound 8.1): every simulation step draws a random point near
 //! the centre of the view for each of the two groups, the crowd's voices and the world's birds, and
-//! once per second of steps each group rolls whether it plays one sound there. The loops of the
-//! soundscape are not made yet.
+//! once per second of steps each group rolls whether it plays one sound there. The world loop and
+//! the crowd loop are in [`loops`].
+
+mod loops;
 
 use std::collections::BTreeMap;
 
 use crate::config::{Config, to_int};
 use crate::sim::Rng;
 use crate::vfs::{Vfs, name_from_bytes};
+use loops::{Files, Loops};
+
+pub use loops::SceneLoop;
 
 /// The file of each group when the scenario names none (sound 8.1).
 const CROWD_FILE: &str = "crowdsnd.cfg";
 const WORLD_FILE: &str = "worldsnd.cfg";
+/// The files of the loops: the crowd's, and the world's when the scenario names none (sound 4.4).
+const CROWD_LOOPS: &str = "crowd.cfg";
+const WORLD_LOOP: &str = "worldlp.cfg";
 /// The level the world group plays at (sound 8.1).
 const WORLD_LEVEL: i32 = 50;
 /// The group accumulates this many milliseconds of steps per roll.
@@ -122,6 +130,7 @@ pub(crate) struct Soundscape {
     /// files (sound 8.1 point 4).
     clocks: BTreeMap<Vec<String>, u32>,
     shots: Vec<Shot>,
+    loops: Loops,
 }
 
 impl Soundscape {
@@ -150,10 +159,17 @@ impl Soundscape {
             name.map_or_else(|| default.to_string(), name_from_bytes)
         };
         let ambients = |name: String| Ambients::parse(&read(&name).unwrap_or_default());
-        Soundscape::new(
+        let file = |name: String| read(&name).unwrap_or_default();
+        let mut scape = Soundscape::new(
             ambients(named("crowdAmbients", CROWD_FILE)),
             ambients(named("worldAmbients", WORLD_FILE)),
-        )
+        );
+        let (crowd, world) = (
+            file(CROWD_LOOPS.to_string()),
+            file(named("worldConfig", WORLD_LOOP)),
+        );
+        scape.loops = Loops::new(Files::parse(&crowd, &world));
+        scape
     }
 
     /// [`Soundscape::from_files`] on the files of `vfs`; a file that cannot be read is a warning
@@ -187,7 +203,9 @@ impl Soundscape {
             world,
             clocks,
             shots,
+            loops,
         } = self;
+        loops.update(step, guests, log);
         let plays = [
             ("crowd", crowd.group(crowd_level(guests)), points[0]),
             ("world", world.group(WORLD_LEVEL), points[1]),
@@ -224,6 +242,11 @@ impl Soundscape {
                 None => log.push(format!("soundscape {name} roll {draw} none")),
             }
         }
+    }
+
+    /// The loops playing now (sound 8.1).
+    pub(crate) fn loops(&self) -> Vec<SceneLoop> {
+        self.loops.playing()
     }
 
     /// The one-shots the steps since the last call asked for.

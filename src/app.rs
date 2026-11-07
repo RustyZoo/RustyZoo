@@ -38,6 +38,7 @@ use crate::render::{
 };
 use crate::scenario::Scenario;
 use crate::sim::Sim;
+pub use crate::soundscape::SceneLoop;
 use crate::soundscape::Soundscape;
 use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
@@ -858,6 +859,12 @@ impl<'a> App<'a> {
     /// each, starts it, moves it and stops it (sound 4.2, 8.2).
     pub fn loop_sounds(&self) -> &[UnitSound] {
         &self.loop_sounds
+    }
+
+    /// The loops of the soundscape, the world's and the crowd's (sound 8.1): the shell keeps one
+    /// voice for each, tries to start it once, and follows its volume.
+    pub fn scene_loops(&self) -> Vec<SceneLoop> {
+        self.sim.scene_loops()
     }
 
     /// The sounds the interface, the placing of objects and the animals' reactions to a change

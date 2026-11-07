@@ -6,7 +6,9 @@
 use rustyzoo::app::App;
 use rustyzoo::config::Config;
 use rustyzoo::intro::{Intro, attenuation};
-use rustyzoo::music::{LoopTurn, Music, START_LIMIT, global_term, loop_turn, vehicle_turn};
+use rustyzoo::music::{
+    LoopTurn, Music, START_LIMIT, global_term, loop_turn, scene_turn, vehicle_turn,
+};
 use rustyzoo::timing::ini_whole;
 use rustyzoo::vfs::Vfs;
 
@@ -28,6 +30,10 @@ pub struct Sound {
     units: HashMap<String, Voice>,
     /// The loop each tank filter plays, by voice, with its file (sound 8.2).
     loops: HashMap<String, (String, Voice)>,
+    /// The soundscape's loops by voice, each with the sum last set, and the voices that were
+    /// tried (sound 8.1): a loop is tried at its start only.
+    scape: HashMap<String, (Voice, i32)>,
+    scape_tried: HashSet<String>,
     /// The files of loops that could not be played, which are not tried again.
     failed: HashSet<String>,
     /// The vehicle loops an update looked at (ambients 6.2).
@@ -94,6 +100,8 @@ impl Sound {
             clicks: HashMap::new(),
             units: HashMap::new(),
             loops: HashMap::new(),
+            scape: HashMap::new(),
+            scape_tried: HashSet::new(),
             failed: HashSet::new(),
             tried: HashSet::new(),
             click_sum: global_term(ini),
@@ -114,7 +122,8 @@ impl Sound {
         let voices = (self.music.iter())
             .chain(self.clicks.values())
             .chain(self.units.values())
-            .chain(self.loops.values().map(|(_, voice)| voice));
+            .chain(self.loops.values().map(|(_, voice)| voice))
+            .chain(self.scape.values().map(|(voice, _)| voice));
         for voice in voices {
             if let Err(e) = voice.mute(paused) {
                 eprintln!("rustyzoo: a sound cannot be muted: {e}");
@@ -297,6 +306,47 @@ impl Sound {
                     self.loops.remove(&s.voice);
                 }
                 LoopTurn::Idle => {}
+            }
+        }
+    }
+
+    /// Keeps the world loop and the crowd loop (sound 8.1): a loop that is no longer asked for is
+    /// stopped; one is tried once, at its start, which needs `S = G + B + F` not over 6,000 (so
+    /// the crowd loop never starts with the slider below 100, the original's bug); one that plays
+    /// takes the sum of the model when it changes. A file that cannot be read or decoded is a
+    /// warning.
+    pub fn scene(&mut self, vfs: &Vfs, app: &App) {
+        let wanted = app.scene_loops();
+        self.scape
+            .retain(|key, _| wanted.iter().any(|s| s.voice == *key));
+        self.scape_tried
+            .retain(|key| wanted.iter().any(|s| s.voice == *key));
+        let Some(audio) = &self.audio else { return };
+        for s in wanted {
+            let sum = self.click_sum.saturating_add(s.terms);
+            let tried = self.scape_tried.contains(&s.voice);
+            match scene_turn(tried, self.scape.contains_key(&s.voice), sum) {
+                LoopTurn::Start => {
+                    self.scape_tried.insert(s.voice.clone());
+                    match (audio.load(vfs, &s.file))
+                        .and_then(|wave| audio.play(wave, sum, true, false))
+                    {
+                        Ok(voice) => self.scape.extend(voice.map(|v| (s.voice, (v, sum)))),
+                        Err(e) => eprintln!("rustyzoo: {e}"),
+                    }
+                }
+                // A paused game does not change the sum, and a set volume would end the muting.
+                LoopTurn::Refresh => {
+                    if let Some((voice, last)) = self.scape.get_mut(&s.voice)
+                        && *last != sum
+                    {
+                        *last = sum;
+                        if let Err(e) = voice.set_sum(sum) {
+                            eprintln!("rustyzoo: {}: {e}", s.file);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
