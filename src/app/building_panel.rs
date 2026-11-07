@@ -93,10 +93,8 @@ impl App<'_> {
         };
         let bytes = ui.text(field).unwrap_or_default();
         let at = game.building.selected.and_then(|id| game.world.find(id));
-        if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_mut())
-            && super::exhibits::visible(&bytes)
-        {
-            c.name = bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect();
+        if let Some(at) = at {
+            game.world.rename_entity(at, &bytes);
         }
         game.building.reselect();
     }

@@ -77,14 +77,29 @@ impl Error for StringsError {}
 /// other language is Windows-1252. Bytes that the code page lacks become U+FFFD.
 pub fn decode_text(language: u32, data: &[u8]) -> String {
     let data = &data[..data.iter().position(|&b| b == 0).unwrap_or(data.len())];
-    let encoding = match language {
-        1041 => encoding_rs::SHIFT_JIS,
-        2052 | 4100 => encoding_rs::GBK,
-        1042 => encoding_rs::EUC_KR,
-        1028 | 3076 | 5124 => encoding_rs::BIG5,
-        _ => return data.iter().map(|&b| from_cp1252(b)).collect(),
-    };
-    encoding.decode_without_bom_handling(data).0.into_owned()
+    match encoding(language) {
+        Some(encoding) => encoding.decode_without_bom_handling(data).0.into_owned(),
+        None => data.iter().map(|&b| from_cp1252(b)).collect(),
+    }
+}
+
+/// The bytes of `text` in the code page of `language`: the inverse of [`decode_text`].
+pub(crate) fn encode_text(language: u32, text: &str) -> Vec<u8> {
+    match encoding(language) {
+        Some(encoding) => encoding.encode(text).0.into_owned(),
+        None => crate::text::to_cp1252(text),
+    }
+}
+
+/// The double-byte code page of `language`, `None` for the Windows-1252 ones.
+fn encoding(language: u32) -> Option<&'static encoding_rs::Encoding> {
+    match language {
+        1041 => Some(encoding_rs::SHIFT_JIS),
+        2052 | 4100 => Some(encoding_rs::GBK),
+        1042 => Some(encoding_rs::EUC_KR),
+        1028 | 3076 | 5124 => Some(encoding_rs::BIG5),
+        _ => None,
+    }
 }
 
 /// One library: its file name, its non-empty strings and its `TEXT` entries by upper-case name.

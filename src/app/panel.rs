@@ -276,10 +276,8 @@ impl App<'_> {
         };
         let at = game.animal.selected.and_then(|id| game.world.find(id));
         let bytes = ui.text(animal::NAME).unwrap_or_default();
-        if let Some(c) = at.and_then(|at| game.world.zoo.entities[at].common.as_mut())
-            && exhibits::visible(&bytes)
-        {
-            c.name = bytes.iter().map(|&b| from_cp1252(b)).collect();
+        if let Some(at) = at {
+            game.world.rename_entity(at, &bytes);
         }
         game.animal.reselect();
     }
@@ -294,7 +292,7 @@ impl App<'_> {
         let bytes = ui.text(NAME).unwrap_or_default();
         game.panel.clock.force = true;
         game.show.clock.force = true;
-        if exhibits::visible(&bytes) {
+        if crate::text::visible(game.world.language_number(), &bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
             self.lines.exhibit.push(format!("name {id} {text:?}"));
             game.world.rename(id, text.clone());

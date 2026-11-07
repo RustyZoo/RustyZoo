@@ -473,13 +473,25 @@ fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i
     (tank.show && plain(t, "cShow") != Some(1.0)).then_some(NOT_FOR_SHOWS)
 }
 
+/// The name of a new entity of the type, `text` being the type's name: [`numbered`], kept only
+/// when it holds a visible character (ambients 3.3), else empty. Every name made at an add goes
+/// through here.
+pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
+    let name = numbered(world, ty, text);
+    let language = world.language_number();
+    match crate::text::visible(language, &crate::strings::encode_text(language, &name)) {
+        true => name,
+        false => String::new(),
+    }
+}
+
 /// The default name of a new entity of the type, `text` being the type's name: with
 /// `cUseNumbersInName` (on by default for a unit, a helicopter, a building and a tank filter, off
 /// for anything else) a space and the next number of the counter of its key, started at 1 (unit
 /// placing 7.2). The key is the type name for a unit (`giraffe`, not the text) and the subtype for
 /// a building or a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble, ambient
 /// animals and food the bare text whatever the flag says.
-pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
+fn numbered(world: &mut World, ty: &EntityType, text: &str) -> String {
     let bare = matches!(
         ty.class,
         "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient" | "food"
@@ -498,16 +510,11 @@ pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
 }
 
 /// The name of a new entity of the type from the type's name text (`world.units.names`): empty
-/// when the interface gave none. An ambient's text is kept only when it holds a visible character
-/// (ambients 3.3).
+/// when the interface gave none.
 pub(crate) fn named(world: &mut World, ty: &EntityType) -> String {
-    let Some(text) = world.units.names.get(&ty.name_id).cloned() else {
-        return String::new();
-    };
-    let shown = text.chars().any(|c| !c.is_whitespace() && !c.is_control());
-    match ty.class == "ambient" && !shown {
-        true => String::new(),
-        false => name(world, ty, &text),
+    match world.units.names.get(&ty.name_id).cloned() {
+        Some(text) => name(world, ty, &text),
+        None => String::new(),
     }
 }
 
