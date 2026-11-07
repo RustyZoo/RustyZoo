@@ -116,7 +116,8 @@ impl World {
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
     /// read with (or the record of a new one, save games 11.3), a guest or a building made in play
     /// gets the record of a new one, a guest's record takes the live guest's fields, a guest
-    /// building's record takes its live users and figures (zoo format 6.9), and a staff member's
+    /// building's record takes its live users and figures (zoo format 6.9; a toy keeps its own record),
+    /// and a staff member's
     /// record takes its live state.
     pub(crate) fn finish_save(&self, zoo: &mut Zoo, cat: &Catalogue) {
         // A save writes the install language, whatever the file loaded said (localisation 10).
@@ -130,6 +131,9 @@ impl World {
                 e.common = None;
                 continue;
             }
+            // A toy's live state is its dead state only: its record stays (11.1.1).
+            let live_building =
+                (self.units.buildings.get(&c.id)).filter(|_| !crate::building::dead::is_toy(ty));
             match e.class.as_str() {
                 "animals" => {
                     let k = animal::Keys::of(ty, &self.units.class).researched(ty, &self.research);
@@ -173,7 +177,7 @@ impl World {
                             .get_or_insert_with(|| fresh::building_new(kind.price, now));
                     }
                     // The users, figures and price it has now (zoo format 6.9).
-                    if let Some(live) = self.units.buildings.get(&c.id) {
+                    if let Some(live) = live_building {
                         let trash = kind.satisfies("trash");
                         c.building = (c.building.take()).map(|b| live.record(b, trash));
                     }
@@ -181,17 +185,14 @@ impl World {
                 _ => {}
             }
             // The "show soon" flag of a grandstand is the live one (shows 3.5).
-            if let (Some(b), Some(live)) = (c.building.as_mut(), self.units.buildings.get(&c.id)) {
+            if let (Some(b), Some(live)) = (c.building.as_mut(), live_building) {
                 let default = self.units.prices.default;
                 if Kind::of(ty, default).satisfies("grandstand") {
                     b.fill = live.fill;
                 }
             }
             // The current upgrade of a building is the live one (research 6.3).
-            if let (Some(b), true) = (
-                c.building.as_mut(),
-                self.units.buildings.contains_key(&c.id),
-            ) {
+            if let (Some(b), true) = (c.building.as_mut(), live_building.is_some()) {
                 b.upgrade = self.units.upgrade_index.get(&c.id).copied().unwrap_or(0);
             }
             if matches!(

@@ -371,6 +371,7 @@ impl World {
             lost, split_kept, ..
         } = plan;
         self.exhibits = std::mem::take(&mut built.next);
+        self.reshaped = true;
         self.resize_areas(&built.resized);
         self.edits += 1;
         let mut changed = self.retank(quiet);

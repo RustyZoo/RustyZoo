@@ -605,6 +605,12 @@ impl<'a> App<'a> {
             self.lines.menu = std::mem::take(&mut self.menu_events);
             return None;
         }
+        // A zoom validates the objects again (guest buildings 11.1.1).
+        if let Some(game) = &mut self.game
+            && game.camera.take_zoomed()
+        {
+            crate::building::dead::revalidate(&mut game.world, self.renderer.catalogue());
+        }
         self.fired = self.timers.pass(now, self.timers.speed.factor());
         if self.fired.draw {
             self.drawn_at = self.look();

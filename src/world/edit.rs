@@ -298,6 +298,7 @@ impl World {
         (tile.elevation, tile.shape, tile.terrain) = (elevation, shape, terrain);
         if *tile != old {
             self.stir_tile(t);
+            self.reshaped = true;
         }
         if (old.elevation, old.shape) != (elevation, shape) {
             self.reheight(t);

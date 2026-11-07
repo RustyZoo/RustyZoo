@@ -457,8 +457,12 @@ impl World {
                     (true, None) => {
                         e.tank = Some(Tank::default());
                         changed.push(id);
+                        self.reshaped = true;
                     }
-                    (false, _) => e.tank = None,
+                    (false, Some(_)) => {
+                        e.tank = None;
+                        self.reshaped = true;
+                    }
                     _ => {}
                 }
             }
