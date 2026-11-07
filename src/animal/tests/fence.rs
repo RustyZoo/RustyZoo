@@ -328,7 +328,7 @@ fn the_water_switch_comes_before_the_fence_test_in_one_tick() {
         &mut ctx,
         at,
         &crate::unit::testing::Walker::new("fWalk(0,0)"),
-        (&out, &keys()),
+        (&out, &keys(), 0),
     );
     assert_eq!(animal_of(&unit).terrain, 2);
     assert_eq!(unit.runner.top(), Some(TEST));
@@ -337,4 +337,43 @@ fn the_water_switch_comes_before_the_fence_test_in_one_tick() {
         crate::goal::RANDOM,
         "the test's stop came after the switch's send"
     );
+}
+
+#[test]
+fn the_predator_dispatch_comes_before_the_water_switch_in_one_tick() {
+    use crate::unit::testing::amphibious_world_wired;
+    // No threat in sight, the animal read the avoid task before the check: the dispatch resets
+    // its goal (animals 11.7), and the switch's send, which comes after it, keeps its walk.
+    let mut w = amphibious_world_wired(2, &[(1, "polar", (6, 2))]);
+    crate::unit::testing::still_water(&mut w);
+    let u = w.units.get_mut(1).unwrap();
+    (u.typed, u.started, u.mover.swims) = (true, true, true);
+    let at = w.find(1).unwrap();
+    let mut unit = w.units.get(1).unwrap().clone();
+    unit.part = Part::Animal(Animal::default());
+    unit.goal.record.task = crate::goal::AVOID;
+    let out = Out {
+        terrain: Some((2, Some(0))),
+        fired: true,
+        ..Out::default()
+    };
+    let (cat, events, mut removals) = (Catalogue::default(), crate::sim::Events::default(), vec![]);
+    let mut rng = Rng::default();
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    crate::animal::escape::after(
+        &mut unit,
+        &mut w,
+        &mut ctx,
+        at,
+        &crate::unit::testing::Walker::new("fWalk(0,0)"),
+        (&out, &keys(), crate::goal::AVOID),
+    );
+    assert_eq!(animal_of(&unit).terrain, 2);
+    assert_eq!(unit.goal.record.task, crate::goal::RANDOM);
 }
