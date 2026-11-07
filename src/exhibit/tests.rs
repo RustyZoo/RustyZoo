@@ -1140,6 +1140,7 @@ mod rating;
 mod show;
 mod tank;
 mod viewing;
+mod abort;
 mod water;
 
 /// The name and the gate piece of the exhibit on tile (`x`, `y`).
