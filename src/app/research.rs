@@ -90,6 +90,11 @@ impl App<'_> {
                 crate::animal::lengthen(&mut game.world, &life);
                 // The open staff panel shows the new training (6.4).
                 game.staff.clock.force = true;
+                if d.effect == 6 {
+                    let species = u32::try_from(d.target).ok();
+                    game.show
+                        .update_available(ui, &game.world, cat, vfs, species);
+                }
             }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
             dialog(ui, vfs, Message::new(&to_cp1252(&text), kinds::PLAIN));
@@ -187,6 +192,11 @@ impl App<'_> {
             let mut log = Vec::new();
             game.build.refill(!flags.is_empty(), ui, vfs, cat, &mut log);
             log.into_iter().for_each(|line| self.sim.note(line));
+            for d in done.iter().filter(|d| d.effect == 6) {
+                let species = u32::try_from(d.target).ok();
+                game.show
+                    .update_available(ui, &game.world, cat, vfs, species);
+            }
         }
     }
 

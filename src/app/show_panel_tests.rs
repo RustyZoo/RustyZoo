@@ -7,6 +7,7 @@ use super::bulldozer_tests::{ROOT, Session, with_game_of};
 use crate::panel::show::{self, FINANCES_TAB, LAYOUT, SCRIPT_TAB};
 use crate::panel::{animal, exhibit, guest, research, staff};
 use crate::show::tests::cycle::{staged, tank_mut};
+use crate::ui::layout::Kind;
 
 /// The menu panels that hide the window (building, buying, hiring, research, options, developer),
 /// the zoo status panels, and the exhibit, animal, guest and staff panels.
@@ -68,8 +69,19 @@ fn layouts() -> (String, Vec<(String, Vec<u8>)>) {
 /// A game on the staged world of the show tests, whose show tank is returned, with its window
 /// hidden and the panel unopened.
 fn with_show(name: &str, body: impl FnOnce(&mut Session, u32)) {
-    let (mut world, cat) = staged(vec![]);
+    with_staged(name, |_, _| {}, body);
+}
+
+/// [`with_show`] on a staged world and catalogue that `stage` changed first.
+fn with_staged(
+    name: &str,
+    stage: impl FnOnce(&mut crate::world::World, &mut crate::entity::Catalogue),
+    body: impl FnOnce(&mut Session, u32),
+) {
+    let (mut world, mut cat) = staged(vec![]);
+    stage(&mut world, &mut cat);
     let x = tank_mut(&mut world).id;
+    world.zoo.shows.next_script = 2001;
     let (root, files) = layouts();
     let files: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
     with_game_of(name, "", (cat, &root, &files), |s| {
@@ -203,5 +215,111 @@ fn a_show_info_that_is_gone_closes_the_window() {
         s.app.show_pass(0, false);
         assert!(!shown(s, LAYOUT));
         assert_eq!(s.app.game.as_ref().unwrap().show.exhibit, None);
+    });
+}
+
+#[test]
+fn the_trick_lists_and_buttons_reach_the_editor_and_the_window_writes_a_changed_list_when_it_hides()
+{
+    use crate::ui::interface::Action;
+    with_show("show-tricks", |s, x| {
+        open(s, x);
+        let (list, remove) = (show::SHOWN, show::REMOVE);
+        let rows = |s: &mut Session| s.app.interface().unwrap().selected_row(list);
+        // The select action of the show list turns the remove button on.
+        s.app.interface().unwrap().select_row(list, Some(0));
+        assert!(!s.app.interface().unwrap().press_button(remove));
+        s.app.ui_actions.push(Action::Row(list, 0));
+        s.app.acts();
+        // The button runs the editor: the row goes, and the list is a change not written yet.
+        assert!(s.app.interface().unwrap().press_button(remove));
+        s.app.acts();
+        assert_eq!(rows(s), None);
+        let lines = s.app.lines.panel.join("\n");
+        assert!(lines.contains("show [] benefit 0"), "{lines}");
+        // Hiding the window writes it: the script of the seals is empty.
+        s.app.interface().unwrap().set_hidden(LAYOUT, true);
+        s.app.show_pass(0, false);
+        let game = s.app.game.as_ref().unwrap();
+        let info = crate::show::info_of(&game.world, x).unwrap();
+        let script = info.record(crate::show::tests::cycle::SEAL).unwrap().script;
+        let found = game
+            .world
+            .zoo
+            .shows
+            .scripts
+            .iter()
+            .find(|sc| sc.id == script);
+        assert!(found.is_some_and(|sc| sc.items.is_empty()));
+    });
+}
+
+#[test]
+fn another_exhibit_on_the_exhibit_panel_writes_the_changed_list_before_the_window_forgets_the_tank()
+{
+    with_show("show-written", |s, x| {
+        open(s, x);
+        s.app.interface().unwrap().select_row(show::SHOWN, Some(0));
+        s.app.show_pressed(show::REMOVE);
+        let other = s.app.game.as_ref().unwrap().world.exhibits().list();
+        let other = other.iter().map(|e| e.id).find(|&id| id != x).unwrap();
+        s.app.game.as_mut().unwrap().panel.current = Some(other);
+        s.app.show_exhibit_set();
+        assert!(!shown(s, LAYOUT));
+        let game = s.app.game.as_ref().unwrap();
+        let info = crate::show::info_of(&game.world, x).unwrap();
+        let script = info.record(crate::show::tests::cycle::SEAL).unwrap().script;
+        let found = game
+            .world
+            .zoo
+            .shows
+            .scripts
+            .iter()
+            .find(|sc| sc.id == script);
+        assert!(found.is_some_and(|sc| sc.items.is_empty()));
+    });
+}
+
+#[test]
+fn a_row_click_on_a_show_tank_with_a_gate_fills_the_trick_lists_twice() {
+    use crate::show::trick::tricks;
+    let tail = |defaultavailable: u8| {
+        format!(
+            "[tricks]\ntrick=a\n[tricks/a]\nid=11200\ntype=0\ndefaultavailable={defaultavailable}\n"
+        )
+    };
+    let stage = |w: &mut crate::world::World, cat: &mut crate::entity::Catalogue| {
+        let id = crate::show::tests::cycle::SEAL as i32;
+        let seal = cat.types.iter_mut().find(|t| t.name_id == id).unwrap();
+        let config =
+            |t: u8| std::sync::Arc::new(crate::config::Config::parse(tail(t).as_bytes()).unwrap());
+        seal.config = Some(config(1));
+        // The saved script holds the trick, saved available, and one that is not listed.
+        let mut items = tricks(seal);
+        items.push(crate::zoo::Item {
+            id: 11999,
+            ..items[0].clone()
+        });
+        w.zoo.shows.scripts[0].items = items;
+        // The type's own copy of the trick is not available: the second fill drops it.
+        seal.config = Some(config(0));
+        // A wall piece of the tank is its gate.
+        let x = crate::show::tests::cycle::tank_mut(w).id;
+        w.set_gate(x, 500);
+    };
+    with_staged("show-twice", stage, |s, x| {
+        s.app.interface().unwrap().show(exhibit::LAYOUT);
+        s.pass(&[]);
+        let game = s.app.game.as_ref().unwrap();
+        let row = (0..9)
+            .find(|&r| game.panel.exhibit_of(r) == Some(x))
+            .unwrap();
+        s.app.panel_row(row as i32);
+        let ui = s.app.interface().unwrap();
+        let list = ui.tree.find(show::SHOWN).unwrap();
+        let Kind::ListBox(l) = &ui.tree.elements[list].kind else {
+            panic!("a list box");
+        };
+        assert!(l.rows.rows.is_empty(), "the second fill dropped the trick");
     });
 }

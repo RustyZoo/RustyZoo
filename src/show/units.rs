@@ -10,7 +10,7 @@ use super::trick::{default_items, performs};
 use crate::entity::{Catalogue, EntityType};
 use crate::timing::file_time;
 use crate::world::World;
-use crate::zoo::{Item, Script, TypeRecord};
+use crate::zoo::{Item, TypeRecord};
 
 /// What happened to the show lists, as the world tells it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -179,40 +179,8 @@ fn record(world: &mut World, n: usize, key: u32) -> &mut TypeRecord {
 /// takes it; while the show runs the record only holds it as pending. A script with items puts
 /// the species on the schedule.
 fn add_script(world: &mut World, n: usize, key: u32, items: Vec<Item>) {
-    let (admission, date) = (world.units.show.admission, file_time(world.units.now));
-    let shows = &mut world.zoo.shows;
-    let id = shows.next_script;
-    shows.next_script = id.wrapping_add(1);
-    let listed = !items.is_empty();
-    shows.scripts.push(Script {
-        id,
-        marker: u32::MAX,
-        kind: key,
-        items,
-    });
-    let info = shows.infos[n].as_mut().expect("a show info");
-    let scheduled = (info.schedule.get(info.index as usize))
-        .and_then(|s| info.records.iter().find(|r| r.key == *s))
-        .map_or(0, |r| r.script);
-    let started = info.show.running && info.show.script == scheduled;
-    let at = match info.records.binary_search_by_key(&key, |r| r.key) {
-        Ok(at) => at,
-        Err(at) => {
-            let mut new = TypeRecord::new(key, u16::MAX, date);
-            new.admission = admission.to_bits();
-            info.records.insert(at, new);
-            at
-        }
-    };
-    match started {
-        true => info.records[at].pending = id,
-        false => {
-            info.records[at].script = id;
-            if listed && !info.schedule.contains(&key) {
-                info.schedule.push(key);
-            }
-        }
-    }
+    let id = super::edit::new_script(world, key, items);
+    super::edit::add_script(world, n, key, id);
 }
 
 #[cfg(test)]

@@ -234,6 +234,9 @@ pub(crate) struct TypeRecord {
     /// The ids of the units that take part, in joining order (shows 3.2, 20). Not saved: the units
     /// join again when they are put on the map.
     pub units: Vec<u32>,
+    /// The editor may still make the default script for this record (information panels 19.9.2
+    /// point 7): up at a creation and a load, not saved; only the editor clears it.
+    pub default_flag: bool,
 }
 
 /// The running part of a show info (shows 3.3).
@@ -474,6 +477,7 @@ impl TypeRecord {
             attendance: [0; 3],
             date,
             units: Vec::new(),
+            default_flag: true,
         }
     }
 

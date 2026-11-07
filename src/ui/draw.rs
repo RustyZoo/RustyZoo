@@ -768,7 +768,12 @@ fn current(e: &Element, set: usize) -> Option<(Picture, usize)> {
             .flatten()
             .map(|p| (p, set));
     }
-    if let Some(first) = e.look.animation.first() {
+    if let Some(first) = e
+        .look
+        .animation
+        .get(e.look.shown)
+        .or(e.look.animation.first())
+    {
         return first.map(|p| (p, set));
     }
     let image = match &e.kind {

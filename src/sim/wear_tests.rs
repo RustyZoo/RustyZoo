@@ -8,9 +8,9 @@ use crate::money::Money;
 use crate::unit::testing::{entity, world_with};
 use crate::world::{Decay, World};
 
-/// A fence type `iron` with the given characteristics under its plain section.
+/// A fence type `iron` that can deteriorate, with the given characteristics.
 fn types(keys: &str) -> Catalogue {
-    types_with("", keys)
+    types_with("[HabitatFence]\n", keys)
 }
 
 /// The same with more `sections` (text of other blocks) before the characteristics.
@@ -630,19 +630,72 @@ fn the_break_cheat_breaks_every_piece_that_wears_and_tells_the_workers() {
     }
 }
 
+/// The break cheat on a piece of a type with these `sections` and `keys` and this `life`; whether
+/// it broke, with the event kinds.
+fn breaks(sections: &str, keys: &str, subtype: &str, life: i32) -> (bool, Vec<u16>) {
+    let mut w = world(subtype);
+    w.zoo.entities[0].common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+        strength: 50,
+        life,
+        timers: [5, 6],
+        portal: false,
+        open: false,
+    });
+    let events = w
+        .break_fences(&types_with(sections, keys), &mut Vec::new())
+        .0;
+    let f = w.zoo.entities[0].common.as_ref().unwrap().fence.unwrap();
+    (f.life == 0, events.iter().map(|e| e.kind).collect())
+}
+
 #[test]
-fn the_break_cheat_spares_what_never_wears() {
-    for (subtype, keys) in [
-        ("g", WEARING),
-        ("f", "cStrength=500\ncLife=3"),
-        ("f", "cLife=3"),
-        ("f", &format!("{WEARING}\ncIndestructible=1")),
+fn the_break_cheat_takes_what_can_deteriorate_with_the_break_routines_own_test() {
+    let fence = "[HabitatFence]\n";
+    let tank = "[HabitatFence]\n[TankFence]\n";
+    let wall = "[HabitatFence]\n[Member]\nzoogate\n";
+    let sturdy = format!("{WEARING}\ncIndestructible=1");
+    // Never broken: no habitat block, a tank fence, a zoo gate, an indestructible type, a life of 500.
+    for (sections, keys, life) in [
+        ("", WEARING, 3),
+        (tank, WEARING, 3),
+        (wall, WEARING, 3),
+        (fence, sturdy.as_str(), 3),
+        (fence, WEARING, 500),
     ] {
-        let (w, lines, kinds) = broken(subtype, keys, 3);
-        let f = w.zoo.entities[0].common.as_ref().unwrap().fence.unwrap();
-        assert_eq!((f.life, f.strength), (3, 50), "{keys}");
-        assert!(lines.is_empty() && kinds.is_empty(), "{keys}");
+        assert_eq!(
+            breaks(sections, keys, "f", life),
+            (false, vec![]),
+            "{sections}{life}"
+        );
     }
+    // Broken, with one event: a gate of an exhibit fence, a strength of 500, no `cStrength` at all.
+    for (keys, subtype) in [
+        (WEARING, "g"),
+        ("cStrength=500\ncLife=3", "f"),
+        ("cLife=3", "f"),
+    ] {
+        assert_eq!(
+            breaks(fence, keys, subtype, 3),
+            (true, vec![10034]),
+            "{keys}"
+        );
+    }
+    // A piece outside the zoo breaks too.
+    let mut w = world_with((4, 4), |zoo| {
+        let mut piece = entity("fences", "iron", 7, (64 * 100, 64), 0);
+        piece.subtype = "f".into();
+        zoo.entities.push(piece);
+    });
+    w.zoo.entities[0].common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+        strength: 50,
+        life: 3,
+        timers: [5, 6],
+        portal: false,
+        open: false,
+    });
+    let cat = types(WEARING);
+    assert!(!w.wears(&cat, 0));
+    assert_eq!(w.break_fences(&cat, &mut Vec::new()).0.len(), 1);
     // No piece at all.
     let mut w = world_with((4, 4), |_| {});
     assert!(
@@ -729,7 +782,7 @@ fn the_break_cheat_draws_two_starts_for_each_piece_that_breaks_at_its_place() {
         .life = 0;
     let before = run.sim.rng.clone();
     run.sim.break_fences(&mut run.world, &cat);
-    // Piece 7 breaks (two draws); the gate wears never, and the broken piece 9 stays as it is.
+    // Piece 7 breaks (two draws); the gate breaks too and draws nothing; the broken piece 9 stays.
     assert_eq!(run.sim.rng.state(), after(&before, 2).state());
     assert_eq!(run.sim.idles.starts[&7], after(&before, 1).pick(2000));
     assert_eq!(run.sim.idles.starts.len(), 1);
@@ -737,4 +790,56 @@ fn the_break_cheat_draws_two_starts_for_each_piece_that_breaks_at_its_place() {
     let after_first = run.sim.rng.clone();
     run.sim.break_fences(&mut run.world, &cat);
     assert_eq!(run.sim.rng.state(), after_first.state());
+}
+
+#[test]
+fn a_loaded_piece_with_life_below_1_draws_two_starts_in_list_order() {
+    let cat = types(WEARING);
+    // Pieces 7 (broken), 8 (healthy), 9 (a broken gate: no start), 10 (broken).
+    let mut run = drawn(&["f", "f", "g", "f"]);
+    for at in [0, 2, 3] {
+        let life = [-1, 3, 0, i32::MIN][at];
+        let c = run.world.zoo.entities[at].common.as_mut().unwrap();
+        c.fence.as_mut().unwrap().life = life;
+    }
+    let before = run.sim.rng.clone();
+    run.sim.fences_loaded(&run.world, &cat);
+    assert_eq!(run.sim.rng.state(), after(&before, 4).state());
+    assert_eq!(run.sim.idles.starts[&7], after(&before, 1).pick(2000));
+    assert_eq!(run.sim.idles.starts[&10], after(&before, 3).pick(2000));
+    assert_eq!(run.sim.idles.starts.len(), 2);
+    // A type that cannot deteriorate, and a life that is not below 1, draw nothing.
+    let none = types_with("", WEARING);
+    let before = run.sim.rng.clone();
+    run.sim.fences_loaded(&run.world, &none);
+    assert_eq!(run.sim.rng.state(), before.state());
+    let c = run.world.zoo.entities[0].common.as_mut().unwrap();
+    c.fence.as_mut().unwrap().life = i32::MAX;
+    let c = run.world.zoo.entities[3].common.as_mut().unwrap();
+    c.fence.as_mut().unwrap().life = 1;
+    run.sim.fences_loaded(&run.world, &cat);
+    assert_eq!(run.sim.rng.state(), before.state());
+}
+
+#[test]
+fn the_repair_cheat_applies_no_wear_test() {
+    // A broken gate and a broken piece of strength 500 are made healthy; a gate draws its interval only.
+    let cat = types("cStrength=500\ncLife=3\ncDecayedLife=2");
+    let mut run = drawn(&["g", "f"]);
+    for at in 0..2 {
+        let c = run.world.zoo.entities[at].common.as_mut().unwrap();
+        c.fence.as_mut().unwrap().life = 0;
+    }
+    let before = run.sim.rng.clone();
+    run.sim.repair_fences(&mut run.world, &cat);
+    for at in 0..2 {
+        let f = run.world.zoo.entities[at]
+            .common
+            .as_ref()
+            .unwrap()
+            .fence
+            .unwrap();
+        assert_eq!((f.strength, f.life), (500, 3), "{at}");
+    }
+    assert_eq!(run.sim.rng.state(), after(&before, 3).state());
 }

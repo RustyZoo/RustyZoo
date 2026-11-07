@@ -856,12 +856,23 @@ fn a_picture_is_put_into_a_picture_element_which_takes_its_size_and_none_hides_i
 
 #[test]
 fn an_image_set_draws_the_picture_the_game_chooses() {
-    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+    chosen_picture("UIImageSet", "widgets-imageset");
+}
+
+#[test]
+fn an_image_with_animations_draws_the_one_the_game_chooses() {
+    chosen_picture("UIImage", "widgets-image-choice");
+}
+
+fn chosen_picture(kind: &str, name: &str) {
+    let root = format!(
+        "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
-        [b]\ntype=UIImageSet\nid=62\nx=2\ny=3\ndx=5\ndy=3\ntransparent=0\n\
-        [c]\ntype=UIText\nid=61\nx=0\ny=40\ndx=10\ndy=10\n";
+        [b]\ntype={kind}\nid=62\nx=2\ny=3\ndx=5\ndy=3\ntransparent=0\n\
+        [c]\ntype=UIText\nid=61\nx=0\ny=40\ndx=10\ndy=10\n"
+    );
     let install = Install::new(
-        "widgets-imageset",
+        name,
         &[
             ("ui/root.lyt", root.as_bytes().to_vec()),
             ("ui/red.tga", solid(5, 3, [255, 0, 0])),

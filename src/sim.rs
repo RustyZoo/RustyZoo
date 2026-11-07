@@ -534,6 +534,11 @@ impl Sim {
         for event in events {
             self.events.post(event);
         }
+        // The pieces broken again at load draw their two start times, in list order.
+        for id in world.loaded_breaks(cat) {
+            let start = (0..2).map(|_| self.rng.pick(2000)).last().unwrap_or(0);
+            self.idles.start_next(id, start);
+        }
     }
 
     /// A new game (not a saved one) has just been set up: with `fences` (the map file's

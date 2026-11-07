@@ -94,7 +94,7 @@ pub(crate) fn default_items(
     tank: u32,
     ty: &EntityType,
 ) -> Option<Vec<Item>> {
-    let list = tricks(ty);
+    let list = super::edit::own_items(world, ty);
     if list.is_empty() {
         return None;
     }
@@ -116,7 +116,13 @@ pub(crate) fn default_items(
 
 /// Whether the default script takes trick `t` of `ty` for the show tank `tank`: available (by its
 /// file or by research) and visible, the water deep enough, and its toy standing in the tank.
-fn available(world: &World, cat: &Catalogue, tank: u32, ty: &EntityType, t: &Item) -> bool {
+pub(crate) fn available(
+    world: &World,
+    cat: &Catalogue,
+    tank: u32,
+    ty: &EntityType,
+    t: &Item,
+) -> bool {
     let research = world
         .research
         .trick_available(ty, i32::from(t.id), t.available != 0);

@@ -439,6 +439,9 @@ pub struct Units {
     pub(crate) prices: crate::building::Prices,
     /// The numbers of `shows.cfg` (shows 3.1).
     pub show: crate::show::Params,
+    /// The satisfactions the show panel's editor left in the tricks of each type (information
+    /// panels 19.9.8), by the type's name, subtype and the trick id; not saved.
+    pub(crate) trick_current: std::collections::BTreeMap<crate::show::edit::Current, i32>,
     /// The upgrades of the building types, filled by the research programs (research 6.3).
     pub(crate) upgrades: crate::building::upgrade::Upgrades,
     /// The index of the upgrade each building uses in its type's list, by building id; a building
@@ -513,6 +516,7 @@ impl Default for Units {
             buildings: Default::default(),
             prices: Default::default(),
             show: Default::default(),
+            trick_current: Default::default(),
             upgrades: Default::default(),
             upgrade_index: Default::default(),
             concessions: Vec::new(),
