@@ -377,7 +377,7 @@ fn a_rampaging_animal_also_walks_through_buildings_and_food_but_rubble_is_for_ra
     assert!(!enters(&rubble, animal(false, false)));
     assert!(
         !enters(&rubble, animal(true, false)),
-        "rubble is not rubbleable"
+        "rubble answers by cRampageChance only, not cRubbleable"
     );
 }
 
