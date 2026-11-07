@@ -19,6 +19,9 @@ impl Strings for Words {
             5400 => "Seal",
             5401 | 5402 => "Orca",
             9552 => "Specialist",
+            11201 => "Hoop",
+            11202 => "Tail",
+            11203 => "Ball",
             11192 => "Never",
             11193 => "Infrequent",
             11194 => "Frequent",
@@ -34,7 +37,7 @@ impl Strings for Words {
 }
 
 /// The window with the elements the panel writes, all of one size.
-fn window(name: &str) -> (Interface, Vfs) {
+pub(super) fn window(name: &str) -> (Interface, Vfs) {
     let one =
         |kind: &str, id: i32| format!("[e{id}]\ntype={kind}\nid={id}\nx=0\ny=0\ndx=60\ndy=20\n");
     let texts = [11102, 11120, 11173].into_iter().chain(11140..11156);
@@ -45,11 +48,14 @@ fn window(name: &str) -> (Interface, Vfs) {
         + &lists.map(|i| one("UIListBox", i)).concat()
         + &one("UIEditableText", 11104);
     let layout = format!("[LayoutInfo]\nid=41\nx=0\ny=0\ndx=60\ndy=20\n{body}");
-    let root =
-        "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n";
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n\
+        [c]\ntype=UILayout\nlayout=ui/q.lyt\nstate=1\n";
+    // The Show Script tab, hidden until shown.
+    let tab = "[LayoutInfo]\nid=42\nx=0\ny=0\ndx=60\ndy=20\nstate=1\n";
     let files = [
         ("ui/root.lyt", root.as_bytes().to_vec()),
         ("ui/p.lyt", layout.into_bytes()),
+        ("ui/q.lyt", tab.as_bytes().to_vec()),
     ];
     let install = Install::new(name, &files);
     let vfs = Vfs::open(&install.0).unwrap();
@@ -60,11 +66,11 @@ fn window(name: &str) -> (Interface, Vfs) {
     (ui, vfs)
 }
 
-fn text(ui: &Interface, id: i32) -> String {
+pub(super) fn text(ui: &Interface, id: i32) -> String {
     String::from_utf8(ui.text(id).unwrap()).unwrap()
 }
 
-fn on(ui: &Interface, id: i32) -> bool {
+pub(super) fn on(ui: &Interface, id: i32) -> bool {
     ui.tree.elements[ui.tree.find(id).unwrap()].state & DISABLED == 0
 }
 
