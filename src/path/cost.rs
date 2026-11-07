@@ -33,11 +33,14 @@ fn quarters(w: &World, m: &Mover, t: usize, level: Option<i32>) -> [(bool, bool)
     })
 }
 
-/// 4.3 after the common answer: object `e` lets a rampaging animal through when its type has
-/// `cRubbleable` 1, and rubble lets through any animal whose species has `cRampageChance` above 0.
+/// 4.3 after the common answer: an object of a scenery kind lets a rampaging animal through when its
+/// type has `cRubbleable` 1; rubble answers only by the species' `cRampageChance` above 0 (animals
+/// 11.9 points 2 and 3), whatever its own `cRubbleable`.
 pub(crate) fn rubbled(w: &World, m: &Mover, e: usize) -> bool {
-    let rubbleable = w.shape(e).is_some_and(|s| s.rubbleable);
-    m.rampaging && rubbleable || m.rampager && w.zoo.entities[e].class == "rubble"
+    if w.zoo.entities[e].class == "rubble" {
+        return m.rampager;
+    }
+    m.rampaging && w.shape(e).is_some_and(|s| s.rubbleable)
 }
 
 /// Whether level `level` is one the entity `e` on tile `t` blocks (tank fauna 7.3): every level

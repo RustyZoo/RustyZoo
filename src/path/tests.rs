@@ -62,7 +62,12 @@ fn shape(e: &Entity) -> Option<Shape> {
             rubbleable: kind == "tree",
             ..thing(Class::Fixed, (1, 1), false, false)
         }),
-        ("bush" | "rubble", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        ("bush", _) => Some(thing(Class::Fixed, (1, 1), false, false)),
+        // Rubble whose type says `cRubbleable` 1: the walk-through test must not read it.
+        ("rubble", _) => Some(Shape {
+            rubbleable: true,
+            ..thing(Class::Fixed, (1, 1), false, false)
+        }),
         // Scenery a rampage turns to rubble (`tree`) and scenery it spares (`stone`).
         ("scenery", kind) => Some(Shape {
             rubbleable: kind == "tree",
@@ -372,7 +377,7 @@ fn a_rampaging_animal_also_walks_through_buildings_and_food_but_rubble_is_for_ra
     assert!(!enters(&rubble, animal(false, false)));
     assert!(
         !enters(&rubble, animal(true, false)),
-        "rubble is not rubbleable"
+        "rubble answers by cRampageChance only, not cRubbleable"
     );
 }
 
