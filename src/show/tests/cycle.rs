@@ -7,7 +7,7 @@ use crate::show::cycle::abort;
 use crate::sim::{Event, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::zoo::{Item, ItemState, Script, TypeRecord};
 
-pub(super) const SEAL: u32 = 5400;
+pub(crate) const SEAL: u32 = 5400;
 
 /// An item for seals of trick type `marker` (0 behaviour, 3 food).
 pub(super) fn item(marker: u32, satisfaction: i32, current: i32) -> Item {

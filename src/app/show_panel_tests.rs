@@ -205,3 +205,39 @@ fn a_show_info_that_is_gone_closes_the_window() {
         assert_eq!(s.app.game.as_ref().unwrap().show.exhibit, None);
     });
 }
+
+#[test]
+fn the_trick_lists_and_buttons_reach_the_editor_and_the_window_writes_a_changed_list_when_it_hides()
+{
+    use crate::ui::interface::Action;
+    with_show("show-tricks", |s, x| {
+        open(s, x);
+        let (list, remove) = (show::SHOWN, show::REMOVE);
+        let rows = |s: &mut Session| s.app.interface().unwrap().selected_row(list);
+        // The select action of the show list turns the remove button on.
+        s.app.interface().unwrap().select_row(list, Some(0));
+        assert!(!s.app.interface().unwrap().press_button(remove));
+        s.app.ui_actions.push(Action::Row(list, 0));
+        s.app.acts();
+        // The button runs the editor: the row goes, and the list is a change not written yet.
+        assert!(s.app.interface().unwrap().press_button(remove));
+        s.app.acts();
+        assert_eq!(rows(s), None);
+        let lines = s.app.lines.panel.join("\n");
+        assert!(lines.contains("show [] benefit 0"), "{lines}");
+        // Hiding the window writes it: the script of the seals is empty.
+        s.app.interface().unwrap().set_hidden(LAYOUT, true);
+        s.app.show_pass(0, false);
+        let game = s.app.game.as_ref().unwrap();
+        let info = crate::show::info_of(&game.world, x).unwrap();
+        let script = info.record(crate::show::tests::cycle::SEAL).unwrap().script;
+        let found = game
+            .world
+            .zoo
+            .shows
+            .scripts
+            .iter()
+            .find(|sc| sc.id == script);
+        assert!(found.is_some_and(|sc| sc.items.is_empty()));
+    });
+}
