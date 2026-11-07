@@ -531,8 +531,8 @@ pub(crate) fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
             .units
             .buildings
             .insert(id, Live { built: now, ..live });
-        dead::decide(world, ty, id);
     }
+    dead::decide(world, ty, id);
 }
 
 /// Whether a building of this type has figures of its own: a guest building, and the compost,
@@ -684,8 +684,10 @@ pub(crate) fn set_down(
         c.id
     });
     world.put_back(at, entity, shape);
-    if let Some((id, live)) = id.zip(live) {
-        world.units.buildings.insert(id, live);
+    if let Some(id) = id {
+        if let Some(live) = live {
+            world.units.buildings.insert(id, live);
+        }
         dead::decide(world, ty, id);
     }
 }

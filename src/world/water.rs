@@ -100,6 +100,11 @@ impl World {
         std::mem::take(&mut self.wet)
     }
 
+    /// Whether a tank was made or went, or the ground of a tile changed, since the last call.
+    pub(crate) fn take_reshaped(&mut self) -> bool {
+        std::mem::take(&mut self.reshaped)
+    }
+
     /// An animal's dung lowers the purity of the water of tank `id` (animals-needs 8.1).
     pub(crate) fn pollute(&mut self, id: u32, by: u32) {
         let purity = self.tank(id).map_or(0, |t| i64::from(t.purity));
