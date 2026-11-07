@@ -650,3 +650,40 @@ fn a_random_use_sound_starts_with_the_used_sequence() {
     assert_eq!(run(None, 2, false), []);
     assert_eq!(run(Some(heard()), 2, true), [], "the dead switch drops it");
 }
+
+/// A flying creature plays the loop of its picture from the step after it appears, like a fixed
+/// object (ambients 5.1).
+#[test]
+fn a_flying_creature_loops_its_frames() {
+    let world = world_with((4, 4), |zoo| {
+        zoo.entities
+            .push(entity("ambient", "seagull", 7, centre((0, 0)), 4));
+    });
+    let data = Fixed(
+        Some(Timing {
+            count: 3,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let (mut rng, mut idles) = (Rng::default(), Idles::default());
+    let mut frames = Vec::new();
+    for _ in 0..5 {
+        idles.register(&world, &Catalogue::default(), &data, &mut rng);
+        idles.advance(100);
+        frames.push(idles.frames().get(&7).copied());
+    }
+    assert_eq!(frames, [Some(1), Some(2), Some(0), Some(1), Some(2)]);
+    // A one-picture creature has no clock to show.
+    let still = Fixed(
+        Some(Timing {
+            count: 1,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let mut none = Idles::default();
+    none.register(&world, &Catalogue::default(), &still, &mut rng);
+    none.advance(500);
+    assert!(none.frames().is_empty());
+}

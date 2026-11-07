@@ -975,3 +975,14 @@ fn a_saved_game_keeps_the_awards_given_in_play_in_order_and_announces_nothing_on
         },
     );
 }
+
+#[test]
+fn a_scenario_start_adds_its_ambients_to_the_spawn_list_in_the_order_listed() {
+    let scn = b"[duration]\nnummonths=-1\n[ambients]\nid=5053\nid=5052\n[goals]\ngoal=g\n\
+        [g]\nrulea=99\narga=1\nvalue=1\n"
+        .to_vec();
+    with_game("ambients", "", &[("s/amb.scn", scn)], None, |app, _| {
+        play(app, "s/amb.scn");
+        assert_eq!(app.sim.spawns.ids(), [5053, 5052]);
+    });
+}
