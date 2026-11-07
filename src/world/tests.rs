@@ -98,6 +98,11 @@ fn shape(e: &Entity) -> Option<Shape> {
     match e.class.as_str() {
         "fences" => Some(FENCE),
         "gate" => Some(GATE),
+        // A zoo wall that closes no exhibit.
+        "zwall" => Some(Shape {
+            fence: false,
+            ..FENCE
+        }),
         // An exhibit fence that is not the zoo wall.
         "plain" => Some(Shape {
             wall: false,
@@ -138,6 +143,33 @@ fn zoo_tiles(world: &World) -> Vec<(i32, i32)> {
         .filter(|&t| world.in_zoo(t))
         .map(|t| ((t % 8) as i32, (t / 8) as i32))
         .collect()
+}
+
+#[test]
+fn a_loaded_zoo_builds_its_areas_with_every_tile_inside_the_zoo() {
+    // The zoo is columns 5 to 7; a pen on columns 5 and 6, rows 1 and 2, with a path two tiles
+    // from it beyond the wall (tile 11) and one inside (tile 15). The exterior is marked after the
+    // entities are added (habitat rating 10.1), so both join the areas of the pen.
+    let mut zoo = zoo(8, 8, (1, 4));
+    zoo.entities.push(entity("gate", 96, 288, 6));
+    for row in 0..8 {
+        zoo.entities
+            .push(entity("zwall", 4 * 64 + 63, row * 64 + 32, 2));
+    }
+    for (x, y, d) in [(5, 1, 0), (6, 1, 0), (5, 2, 4), (6, 2, 4)]
+        .into_iter()
+        .chain([(5, 1, 6), (5, 2, 6), (6, 1, 2), (6, 2, 2)])
+    {
+        zoo.entities.push(entity("plain", x * 64 + 32, y * 64 + 32, d));
+    }
+    for x in [3, 7] {
+        zoo.entities.push(entity("path", x * 64 + 32, 96, 0));
+    }
+    let world = World::new(zoo, shape);
+    assert!(!world.in_zoo(11) && world.in_zoo(15));
+    let pen = &world.exhibits().list()[0];
+    let tiles: Vec<usize> = pen.areas.iter().flat_map(|a| a.tiles.clone()).collect();
+    assert_eq!(tiles, [11, 15]);
 }
 
 #[test]

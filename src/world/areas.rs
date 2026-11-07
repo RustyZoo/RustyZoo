@@ -25,7 +25,8 @@ impl World {
 
     /// The areas of a loaded zoo (10.1): the entities are added in file order, so the areas are
     /// what the placements and resizes of that sequence leave, not one build of the final map. The
-    /// paths and fence pieces are replayed on a scratch world, and its areas go to the exhibits
+    /// paths and fence pieces are replayed on a scratch world (every tile inside the zoo: the
+    /// exterior is marked after the entities are added), and its areas go to the exhibits
     /// that hold the same tiles.
     pub(super) fn replay_areas(&mut self) {
         let placed = |s: &Shape| s.fence || matches!(s.kind, Kind::Path);
@@ -39,7 +40,6 @@ impl World {
         zoo.habitat_info.clear();
         zoo.tanks.clear();
         let mut scratch = World::with_language(zoo, |_| None, self.language.clone());
-        scratch.in_zoo.clone_from(&self.in_zoo);
         for (e, shape) in self.zoo.entities.iter().zip(&self.shapes) {
             if let Some(s) = shape.filter(placed) {
                 scratch.add(e.clone(), Some(s));
