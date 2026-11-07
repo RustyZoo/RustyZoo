@@ -890,3 +890,30 @@ fn the_walk_along_the_map_edge_ends_when_the_exhibit_holds_the_whole_border() {
     }
     assert!(ended > 0);
 }
+
+#[test]
+fn a_removed_building_leaves_the_need_order() {
+    let mut world = World::new(zoo(8, 8, (0, 0)), shape);
+    let id = world.add(entity("building", 96, 96, 0), None).unwrap();
+    world.note_added(id);
+    assert!(world.remove(id));
+    assert!(!world.added.contains(&id));
+}
+
+#[test]
+fn an_undone_placing_leaves_the_need_order() {
+    let mut world = World::new(zoo(8, 8, (0, 0)), shape);
+    let id = world.add(entity("building", 96, 96, 0), None).unwrap();
+    world.note_added(id);
+    world.undo();
+    assert!(world.find(id).is_none());
+    assert!(!world.added.contains(&id));
+}
+
+#[test]
+fn a_placed_fence_is_not_in_the_need_order() {
+    let mut world = World::new(zoo(8, 8, (0, 0)), shape);
+    let id = world.add(entity("fences", 96, 127, 4), Some(FENCE)).unwrap();
+    crate::show::added(&mut world, &crate::entity::Catalogue::default(), id);
+    assert!(world.added.is_empty());
+}

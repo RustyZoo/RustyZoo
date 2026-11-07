@@ -430,7 +430,9 @@ fn faces_in(world: &World, ground: &Ground, inside: &dyn Fn(usize) -> bool, at: 
 /// The pass for the building `id` just added to the map (placed, set down, put back): it runs only
 /// when the building is a grandstand (shows 4.2); any other building runs none.
 pub(crate) fn added(world: &mut World, cat: &Catalogue, id: u32) {
-    world.note_added(id);
+    if world.find(id).is_some_and(|at| world.zoo.entities[at].class == "building") {
+        world.note_added(id);
+    }
     let default = world.units.prices.default;
     let stand = world.find(id).is_some_and(|at| {
         kind_of(cat, &world.zoo.entities[at], default).is_some_and(|k| k.satisfies("grandstand"))
