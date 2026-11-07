@@ -25,8 +25,10 @@ mod events;
 pub mod hash;
 pub(crate) mod idle;
 mod inspect;
+mod random_use;
 mod ripple;
 mod rng;
+mod status;
 #[cfg(test)]
 mod tests;
 mod wear;
@@ -560,6 +562,7 @@ impl Sim {
             crate::guest::load(world, cat, &mut self.rng, at, date, reset);
             crate::staff::make(world, cat, &mut self.rng, at);
             crate::building::load(world, cat, at);
+            crate::building::random_use::loaded(world, cat, at, self.ai_ticks, &mut self.rng);
             crate::show::loaded(world, cat, at);
         }
         // The units go on with their saved sets; the users come once every guest is made,
@@ -762,9 +765,8 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
-                for mended in std::mem::take(&mut world.units.mended) {
-                    self.idles.start_fence(world, cat, data, mended);
-                }
+                self.start_mended(world, cat, data);
+                self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
                 crate::flight::advance(world, at, step, &mut self.removals);
                 crate::show::advance_portals(world, data, at, step);
@@ -866,67 +868,6 @@ impl Sim {
             water_moved,
             bars,
         }
-    }
-
-    /// The zoo status of a step: the due checks in the original's order, the donation and the
-    /// bars. The generator is seeded again inside the finance check, after the other checks.
-    fn zoo_status(
-        &mut self,
-        world: &mut World,
-        cat: &Catalogue,
-        money: &mut Money,
-        step: u32,
-        month_end: bool,
-    ) -> Option<[i32; 3]> {
-        let due = self.status.due(step, month_end);
-        if due.rating {
-            let sums = Sums::of(world, cat, money.cash, self.research_share());
-            self.status
-                .rating_check(sums, self.calendar.elapsed_ms(), money, &mut self.lines);
-        }
-        if due.message {
-            let (say, log) = (&mut self.messages, &mut self.lines);
-            self.status.message_check(money.cash, say, log);
-        }
-        if due.new_guest {
-            let occupied = guest::occupied(world, cat);
-            // The effective rating: a cheat adds to it (zoo status 8).
-            let bonus = world.units.cheat.rating_points();
-            if let Some(advice) = self.status.new_guest_check(occupied, bonus, &mut self.rng) {
-                let s = &self.status;
-                let arrival = guest::Arrival {
-                    price: s.price,
-                    multiple: s.settings.admission_multiple,
-                    guests: s.sums.guests,
-                    max_guests: self.ai.max_guests,
-                    date: self.calendar.date(),
-                    reset: self.ai.guest_reset_interval,
-                    real_halloween: (self.real_day)() == (10, 31),
-                };
-                if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
-                    self.arrived = true;
-                    if advice {
-                        self.status.advise(&mut self.messages, &mut self.lines);
-                    }
-                }
-            }
-        }
-        if month_end {
-            self.reseed();
-            let date = self.calendar.date();
-            self.lines
-                .push(format!("month {} {}", date.month, date.year));
-            // The endowment goes before the accounts move on, the wages and the upkeep after, in
-            // the new month's column.
-            self.status.endowment(&mut self.rng, money, &mut self.lines);
-            money.month_change();
-            world.exhibits_mut().enter_new_month();
-            crate::show::new_month(world, cat);
-            crate::month::charge(world, cat, money, &mut self.lines);
-        }
-        let (say, log) = (&mut self.messages, &mut self.lines);
-        self.status.donation(&mut self.rng, money, say, log);
-        self.status.bars(step)
     }
 }
 

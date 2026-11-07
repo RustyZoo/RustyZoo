@@ -7,6 +7,13 @@ use crate::entity::Catalogue;
 use crate::world::World;
 
 impl Sim {
+    /// The fence pieces the workers just mended start their animation at the time they drew.
+    pub(super) fn start_mended(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
+        for mended in std::mem::take(&mut world.units.mended) {
+            self.idles.start_fence(world, cat, data, mended);
+        }
+    }
+
     /// The wear step of the fence piece at `at` (placing 7.4), run at its place in the entity
     /// loop: its events are posted; a step that wears chooses the picture again, which draws a
     /// start time for its animation, and a break draws three times (the break sets the picture, its

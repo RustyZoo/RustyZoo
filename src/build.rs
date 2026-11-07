@@ -147,8 +147,9 @@ pub(crate) struct Build {
     october: bool,
     /// The Hire panel lists the male staff (unit placing 4.3).
     hire_male: bool,
-    /// The staff types chosen since the last [`Build::take_made`]: each is a pending staff member
-    /// made (staff 4.2).
+    /// The staff and building types chosen since the last [`Build::take_made`]: each is a pending
+    /// staff member made (staff 4.2) or a pending building (its random use time, guest buildings
+    /// 10.1).
     made: Vec<usize>,
 }
 
@@ -184,8 +185,8 @@ impl Build {
         }
     }
 
-    /// The staff types chosen since the last call, in order: the app creates a pending staff
-    /// member for each.
+    /// The staff and building types chosen since the last call, in order: the app creates a
+    /// pending object for each.
     pub(crate) fn take_made(&mut self) -> Vec<usize> {
         std::mem::take(&mut self.made)
     }
@@ -815,7 +816,7 @@ impl Build {
         self.stop_gate(ui, log);
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
-        if staff::is_staff(ty) {
+        if staff::is_staff(ty) || ty.class == "building" {
             self.made.push(index);
         }
         self.turn = self.step[p];
