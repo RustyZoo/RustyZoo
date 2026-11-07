@@ -13,6 +13,12 @@ fn middle(d: usize) -> (i32, i32) {
     [(32, 0), (63, 32), (32, 63), (0, 32)][d / 2]
 }
 
+/// Whether a tank holds clean water for ripples: some level, some wall height and a purity of at
+/// least `murky` (map drawing 9.7.8).
+pub(super) fn clean(t: &Tank, murky: i32) -> bool {
+    t.level > 0 && t.height > 0 && i64::from(t.purity) >= i64::from(murky)
+}
+
 impl World {
     /// The numbers that make a new tank.
     pub(crate) fn tank_config(&self) -> &TankConfig {
@@ -363,10 +369,9 @@ impl World {
     /// tiles in list order and the slots 0, 2, 4, 6: one ripple each, whose tank the wall is
     /// does not matter.
     pub(crate) fn rippled_tanks(&self) -> Vec<(u32, Vec<u32>)> {
-        let murky = i64::from(self.tank_config.murky);
-        let clean = |t: &Tank| t.level > 0 && t.height > 0 && i64::from(t.purity) >= murky;
+        let murky = self.tank_config.murky;
         (self.exhibits.list().iter())
-            .filter(|e| e.tank.as_ref().is_some_and(clean))
+            .filter(|e| e.tank.as_ref().is_some_and(|t| clean(t, murky)))
             .map(|e| {
                 let slots = e.order.iter().flat_map(|&t| [0, 2, 4, 6].map(|d| (t, d)));
                 let walls = slots.filter_map(|(t, d)| self.edge(t, d));

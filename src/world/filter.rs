@@ -155,6 +155,20 @@ impl World {
             .collect()
     }
 
+    /// A save removes the bubbles of every tank's filter (tank staff 9 point 2): the next cycle
+    /// makes a new set.
+    pub(crate) fn remove_bubbles(&mut self) {
+        let filters: Vec<u32> = self.exhibits.list().iter().filter_map(|e| e.filter).collect();
+        for id in filters {
+            if let Some(v) = self.filter_view.get_mut(&id) {
+                v.bubbles = 0;
+                if !v.off {
+                    self.filter_view.remove(&id);
+                }
+            }
+        }
+    }
+
     /// The filters that show bubbles, each with the count of the sets it has made: a set that is
     /// made anew (its filter had none then) starts its own clock (tank staff 7.7).
     pub(crate) fn filter_bubbles(&self) -> impl Iterator<Item = (u32, u32)> {

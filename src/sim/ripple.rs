@@ -9,6 +9,7 @@
 //! the engine: they count as clear. A ripple never marks an exhibit for a new rating.
 
 use super::Sim;
+use crate::behaviour::Data;
 use crate::entity::Catalogue;
 use crate::render::order::ground_height;
 use crate::render::shape_of;
@@ -51,9 +52,9 @@ impl Ripples {
 impl Sim {
     /// A save (tank staff 9), when `animatedwater` is on: every slot that holds a ripple gets age 0
     /// and no effect, and the ripple is flagged for the next removal pass, as at the expiry; a
-    /// slot without one keeps its age. The world is not touched. The tanks' ripples go and come back at once, which draws
-    /// their start times again at the next register.
-    pub(crate) fn save_started(&mut self, _world: &mut World) {
+    /// slot without one keeps its age. The tanks' ripples go and come back at once, which draws
+    /// their start times again at the next register, and every tank's filter loses its bubbles.
+    pub(crate) fn save_started(&mut self, world: &mut World) {
         if !self.ai.animated_water {
             return;
         }
@@ -64,6 +65,17 @@ impl Sim {
             }
         }
         self.idles.forget_ripples();
+        world.remove_bubbles();
+    }
+
+    /// The tanks that got clean water since the last call set up their ripples at once (map
+    /// drawing 9.7.8 points 3 and 4): called where the change can happen, so the start times come
+    /// at their place among the step's draws.
+    pub(super) fn draw_ripples(&mut self, world: &mut World, data: &dyn Data) {
+        let ids = world.take_ripple_setups();
+        if !ids.is_empty() {
+            self.idles.set_up_ripples(world, data, &mut self.rng, &ids);
+        }
     }
 
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.

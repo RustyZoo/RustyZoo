@@ -47,6 +47,11 @@ impl World {
                 self.units
                     .world_note(format!("water {id} level {level} purity {purity}"));
             }
+            // Clean water with some level, where there was none: the ripples are set up now.
+            if super::tank::clean(&now, config.murky) && !super::tank::clean(&before, config.murky)
+            {
+                self.ripple_setups.push(id);
+            }
             self.events.push(super::Event::Tank(id));
             if (now.level, now.height) != (before.level, before.height) {
                 self.stir(id);
@@ -98,6 +103,12 @@ impl World {
     /// The tanks whose water level or wall height moved since the last call.
     pub(crate) fn take_wet(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.wet)
+    }
+
+    /// The tanks whose water became clean with some level since the last call, in the order it
+    /// happened (map drawing 9.7.8 point 3).
+    pub(crate) fn take_ripple_setups(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.ripple_setups)
     }
 
     /// Whether a tank was made or went, or the ground of a tile changed, since the last call.
