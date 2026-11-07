@@ -2,7 +2,18 @@
 //! animals' messages.
 
 use super::*;
+use crate::soundscape::Shot;
 use crate::ui::interface::Message;
+
+/// Where a one-shot is heard, `listener` being the centre of the map view: a soundscape shot at
+/// its offset from the centre, a creature's call at its map position as it stands, never moved to
+/// the view (the original's bug, ambients 6.4 point 5).
+pub(super) fn shot_at(s: &Shot, listener: (i64, i64)) -> (i64, i64) {
+    s.at.map_or(
+        (listener.0 + i64::from(s.dx), listener.1 + i64::from(s.dy)),
+        |(x, y)| (i64::from(x), i64::from(y)),
+    )
+}
 
 impl App<'_> {
     /// Takes the sounds the units' animations began and places each one: at the unit's position
@@ -29,12 +40,7 @@ impl App<'_> {
         let listener = game.listener();
         (shots.into_iter())
             .map(|s| {
-                // A creature's call is placed by its map position, not moved to the view: the
-                // original's bug (ambients 6.4 point 5).
-                let at = s.at.map_or(
-                    (listener.0 + i64::from(s.dx), listener.1 + i64::from(s.dy)),
-                    |(x, y)| (i64::from(x), i64::from(y)),
-                );
+                let at = shot_at(&s, listener);
                 let (distance, pan) = positional(at, listener);
                 UnitSound {
                     id: 0,

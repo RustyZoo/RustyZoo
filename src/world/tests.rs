@@ -762,6 +762,50 @@ fn a_loaded_numbered_entity_gets_a_numbered_name_on_a_locale_mismatch() {
 }
 
 #[test]
+fn a_loaded_ambient_without_a_name_is_named_by_its_type_text_whatever_the_locale() {
+    let ty = crate::entity::EntityType {
+        class: "ambient",
+        type_name: b"sleigh".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: 5083,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(ty);
+    let names = |locale: u32, stored: &str, text: &str| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = locale;
+        let mut e = typed("ambient", "sleigh", 0, 0, 0);
+        e.common.as_mut().unwrap().name = stored.into();
+        z.entities.push(e);
+        let language = Language {
+            number: 1036,
+            ..Language::shipped()
+        };
+        let mut world = World::with_language(z, |_| None, language);
+        world.units.names = [(5083, text.to_string())].into();
+        world.name_loaded_entities(&cat);
+        world.zoo.entities[0].common.as_ref().unwrap().name.clone()
+    };
+    assert_eq!(
+        names(1036, "", "Sleigh"),
+        "Sleigh",
+        "same language, empty name"
+    );
+    assert_eq!(
+        names(1036, "Mine", "Sleigh"),
+        "Mine",
+        "same language, a name"
+    );
+    assert_eq!(names(1033, "Mine", "Sleigh"), "Sleigh", "other language");
+    assert_eq!(names(1036, "", "  "), "", "no visible character");
+    assert_eq!(names(1036, "", ""), "");
+}
+
+#[test]
 fn the_names_a_load_sets_again_on_the_exhibits_are_given_only_in_the_install_language() {
     let names = |locale: u32, install: u32| {
         let mut z = zoo(4, 4, (0, 0));
