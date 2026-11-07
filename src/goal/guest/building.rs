@@ -20,6 +20,7 @@ use crate::zoo::Entity;
 
 mod litter;
 mod ride;
+mod shortcut;
 
 pub(in crate::goal) use ride::Ride;
 pub(crate) use ride::rides_loaded;
@@ -110,7 +111,7 @@ impl Cx<'_, '_> {
         let Some(k) = crate::guest::keys(self.world, self.ctx.cat, self.at) else {
             return;
         };
-        if self.guest().is_none_or(|g| g.building != 0) {
+        if self.guest().is_none() || self.heads_for_need() {
             return;
         }
         let energy = need == "energy";
@@ -176,7 +177,9 @@ impl Cx<'_, '_> {
         shortcut: bool,
     ) -> bool {
         let tiled = self.record().target.tile.is_some();
+        let mut prior = None;
         if let Some(g) = self.guest() {
+            prior = g.need;
             (g.need, g.building) = (Some(need), b);
         }
         if self.set_out(b) {
@@ -191,7 +194,10 @@ impl Cx<'_, '_> {
                 self.recover_from_water(b);
                 return true;
             }
-            self.clear_goal();
+            // Goals 12.2.1: the energy seek and the first trash search end in the shortcut.
+            if !(shortcut && self.sit_or_trash(prior)) {
+                self.clear_goal();
+            }
         }
         self.clear_target();
         false
