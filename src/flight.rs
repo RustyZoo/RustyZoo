@@ -3,8 +3,14 @@
 //! inwards, and flies in a straight line at the height it started at until its tile is off the map;
 //! the next step's removal pass then destroys it.
 //!
-//! Not done yet: the spawn list (periodic birds, the permanent witch), the animation of the
-//! frames, the group sound of the witch and the birds, and the shadow over the water of a tank.
+//! The world keeps a spawn list ([`Spawns`], ambients 7): the launches, the scenario's ambients and
+//! the permanent witch add entries, and the world manager makes a creature for each entry whose
+//! type has a period that has passed.
+//!
+//! Not done yet: the group sound of the witch and the birds, and the shadow over the water of a
+//! tank.
+
+use std::collections::BTreeMap;
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
@@ -32,6 +38,63 @@ fn speed(ty: &EntityType) -> u32 {
         .and_then(|s| s.get("cSpeed"))
         .and_then(to_int)
         .map_or(0, |n| n as u32)
+}
+
+/// `cFrequency` of the type: the seconds between two spawns, 0 (never) by default; read as the
+/// signed number it is (ambients 2 point 1, 7 point 2).
+fn frequency(ty: &EntityType) -> i32 {
+    let section = ty.config.as_deref();
+    let section = section.and_then(|c| c.section("Characteristics/Integers"));
+    section
+        .and_then(|s| s.get("cFrequency"))
+        .and_then(to_int)
+        .unwrap_or(0)
+}
+
+/// The spawn list of the world (ambients 7): for each entry the type's name id and the world second
+/// of its last spawn. It is not saved and a game end empties it; the periods set by [`Spawns::period`]
+/// belong to the types, so they outlive a game.
+#[derive(Debug, Default)]
+pub(crate) struct Spawns {
+    list: Vec<(i32, u32)>,
+    periods: BTreeMap<i32, i32>,
+}
+
+impl Spawns {
+    /// A game ends: the list is empty.
+    pub(crate) fn clear(&mut self) {
+        self.list.clear();
+    }
+
+    /// Adds an entry for the type `id` with last spawn 0, even for a type already listed.
+    pub(crate) fn add(&mut self, id: i32) {
+        self.list.push((id, 0));
+    }
+
+    /// The type `id` spawns every `seconds` from now on, whatever its file says (the permanent
+    /// witch, ambients 7 point 4).
+    pub(crate) fn period(&mut self, id: i32, seconds: i32) {
+        self.periods.insert(id, seconds);
+    }
+
+    /// The types to make a creature of at the end of a world step whose clock reads `clock` whole
+    /// seconds, in list order: the entries whose period is not 0 and is at most the seconds since
+    /// their last spawn (signed); their last spawn becomes `clock`. An entry whose type the
+    /// catalogue lacks never spawns.
+    pub(crate) fn due<'c>(&mut self, cat: &'c Catalogue, clock: u32) -> Vec<&'c EntityType> {
+        let mut out = Vec::new();
+        for (id, last) in &mut self.list {
+            let Some(ty) = ambient(cat, *id) else {
+                continue;
+            };
+            let every = self.periods.get(id).copied().unwrap_or_else(|| frequency(ty));
+            if every != 0 && every <= clock.wrapping_sub(*last) as i32 {
+                *last = clock;
+                out.push(ty);
+            }
+        }
+        out
+    }
 }
 
 /// Creates one creature of the ambient type `ty` and adds it to the world (ambients 3.2, 3.3):
