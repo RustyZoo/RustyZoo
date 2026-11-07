@@ -119,7 +119,7 @@ impl Cx<'_, '_> {
         self.think(want, None);
         let found = self.nearest(need, i64::from(radius), !energy);
         match found {
-            Ok(b) if self.head_for(b, need) => return,
+            Ok(b) if self.head_for_at(b, need, energy) => return,
             // The walk start has cleared the goal and thought what it had to (6.2 point 2).
             Ok(_) if !energy => return,
             Err(Some(b)) => self.think(CROWDED, Some(b)),
@@ -159,23 +159,53 @@ impl Cx<'_, '_> {
 
     /// Guest buildings 6.2: the guest takes building `b` for `need` and sets out for the entrance
     /// of the nearest open slot: task 0x66, or 0x67 for a type with a direct entrance. Whether it
-    /// did. If not, a guest thinks 10243 when the building is full and clears its goal, which
-    /// raises its wandered flag (guest buildings 6.2 point 2, goals 12.2).
+    /// did. If not (guest buildings 6.2 point 2, goals 12.2.1 point 2): a guest thinks 10243 when
+    /// the building is at its capacity and the goal record has a target tile; a returning guest
+    /// recovers from the water and the start counts as done; any other guest clears its goal,
+    /// which raises its wandered flag.
     pub(in crate::goal) fn head_for(&mut self, b: u32, need: &'static str) -> bool {
+        self.head_for_at(b, need, false)
+    }
+
+    /// [`Cx::head_for`]; `shortcut` for the searches that pass 1 to the walk start (the energy
+    /// seek and the first trash search), whose failure is never the water recovery.
+    pub(in crate::goal) fn head_for_at(
+        &mut self,
+        b: u32,
+        need: &'static str,
+        shortcut: bool,
+    ) -> bool {
+        let tiled = self.record().target.tile.is_some();
         if let Some(g) = self.guest() {
             (g.need, g.building) = (Some(need), b);
         }
-        let started = self.set_out(b);
-        if !started {
-            if self.guest().is_some() {
-                if self.full(b) {
-                    self.think(CROWDED, Some(b));
-                }
-                self.clear_goal();
-            }
-            self.clear_target();
+        if self.set_out(b) {
+            return true;
         }
-        started
+        let returning = self.guest().is_some_and(|g| g.returning.is_some());
+        if self.guest().is_some() {
+            if tiled && self.at_capacity(b) {
+                self.think(CROWDED, Some(b));
+            }
+            if returning && !shortcut {
+                self.recover_from_water(b);
+                return true;
+            }
+            self.clear_goal();
+        }
+        self.clear_target();
+        false
+    }
+
+    /// Whether building `id` has a slot and its users have reached `cCapacity` (the crowded test
+    /// of guest buildings 6.2 point 2).
+    fn at_capacity(&self, id: u32) -> bool {
+        let Some((_, kind)) = self.building(id) else {
+            return false;
+        };
+        let live = self.world.units.buildings.get(&id);
+        let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
+        !kind.slots.is_empty() && users >= kind.capacity.max(0) as usize
     }
 
     /// The walk of [`Cx::head_for`] to the entrance of the nearest open slot of building `b`.
@@ -263,16 +293,6 @@ impl Cx<'_, '_> {
         if let (Some(t), Some(g)) = (tile, self.guest()) {
             crate::guest::view::see(g, t);
         }
-    }
-
-    /// Whether building `id` has no open slot for the guest.
-    pub(super) fn full(&mut self, id: u32) -> bool {
-        let Some((e, kind)) = self.building(id) else {
-            return false;
-        };
-        let who = self.species();
-        let live = self.world.units.buildings.get(&id);
-        !building::has_open_slot(self.world, &e, &kind, live, who.as_ref())
     }
 
     /// Whether building `id` exists and satisfies the need being served (goals 11.3: the slot
@@ -398,6 +418,10 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn enter_arrived(&mut self) {
         self.unit.path.clear();
         let (id, slot) = self.target();
+        // A building that no longer serves the need ends the goal only (goals 11.3, 11.3.1).
+        if !self.serves(id) {
+            return self.clear_goal();
+        }
         let set = self.building(id).filter(|(_, k)| self.uses_set(k));
         let started = match set {
             Some((e, _)) if self.may_add(id, slot) => {

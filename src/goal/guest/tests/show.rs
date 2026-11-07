@@ -202,9 +202,10 @@ fn a_grandstand_with_no_open_slot_resets_the_goal_and_raises_the_wandered_flag()
 }
 
 #[test]
-fn a_full_grandstand_found_by_the_rung_makes_the_guest_think_crowded() {
-    assert_eq!(rung(12, &walks()).1.2, [10243]);
-    // With no path the guest thinks nothing, and with room it thinks nothing.
+fn a_full_grandstand_found_by_the_rung_makes_the_guest_think_nothing() {
+    // The rung runs the walk start with no target tile on the record, so the crowded thought
+    // is never made (guest buildings 6.2 point 2, shows 7.1 point 6).
+    assert!(rung(12, &walks()).1.2.is_empty());
     assert!(rung(0, &NoData).1.2.is_empty());
     assert!(rung(11, &walks()).1.2.is_empty());
 }
