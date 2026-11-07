@@ -681,7 +681,11 @@ fn the_wall_ripples_start_at_random_times_when_the_tank_is_set_up() {
     let (mut rng, mut idles) = (Rng::default(), Idles::default());
     let world = watered(3, 90);
     let walls = world.rippled_tanks()[0].1.clone();
-    assert!(walls.len() > 10, "{walls:?}");
+    assert_eq!(
+        walls.len(),
+        14,
+        "one for each wall held by a tile of the tank"
+    );
     idles.register(&world, &Catalogue::default(), &data, &mut rng);
     let mut expect = Rng::default();
     let starts: Vec<u32> = walls.iter().map(|_| expect.pick(2000)).collect();
@@ -742,5 +746,52 @@ fn a_wall_ripple_without_an_animation_shows_no_frame_and_a_new_game_clears_it() 
         assert_eq!(idles.ripples.len(), 1);
         idles.clear();
         assert!(idles.ripples.is_empty());
+    }
+}
+
+/// A wall held by the tile outside a tank gets no ripple, though it stands on the tank's boundary
+/// (map drawing 9.7.8 point 1): only the walls in the edge slots of the tank's tiles count.
+#[test]
+fn a_wall_held_by_the_tile_outside_gets_no_ripple() {
+    use crate::unit::testing::tank_world_with;
+    let outside = entity("tankwall", "iron", 7777, (6 * 64, 2 * 64 + 32), 6);
+    let mut world = tank_world_with(4, 3, &[], vec![outside]);
+    let id = world.exhibits().list()[0].id;
+    world
+        .exhibits_mut()
+        .get_mut(id)
+        .unwrap()
+        .tank
+        .as_mut()
+        .unwrap()
+        .purity = 90;
+    let walls = &world.rippled_tanks()[0].1;
+    assert_eq!(walls.len(), 14);
+    assert!(!walls.contains(&7777));
+}
+
+/// A save takes the ripples of the tanks off and puts them back: every clean tank draws its start
+/// times again (tank staff 9), unless `animatedwater` is off.
+#[test]
+fn a_save_draws_the_wall_ripples_again() {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    for (on, again) in [(true, true), (false, false)] {
+        let mut world = watered(3, 90);
+        let mut sim = crate::sim::Sim::new(b"");
+        sim.ai.animated_water = on;
+        sim.set_seed(1);
+        sim.start_game(0, crate::zoo::Clocks::default());
+        let cat = Catalogue::default();
+        sim.idles.register(&world, &cat, &data, &mut sim.rng);
+        let before = sim.rng.state();
+        sim.save_started(&mut world);
+        sim.idles.register(&world, &cat, &data, &mut sim.rng);
+        assert_eq!(sim.rng.state() != before, again, "animatedwater {on}");
     }
 }

@@ -205,6 +205,12 @@ impl Idles {
         self.heard.clear();
     }
 
+    /// The ripples of the tanks are made again, with new start times, at the next register (a save
+    /// takes them off and puts them back).
+    pub(crate) fn forget_ripples(&mut self) {
+        self.ripples.clear();
+    }
+
     /// The use sounds the `used` sequences that began since the last call start at their building.
     pub(crate) fn take_heard(&mut self) -> Vec<(u32, Heard)> {
         std::mem::take(&mut self.heard)

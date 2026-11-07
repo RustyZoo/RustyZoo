@@ -49,15 +49,21 @@ impl Ripples {
 }
 
 impl Sim {
-    /// A save empties every slot and deletes its effect (tank staff 9): the ripples go at once and
-    /// the slots rest 4 s. Nothing marks an exhibit for a new rating.
-    pub(crate) fn save_started(&mut self, world: &mut World) {
+    /// A save (tank staff 9), when `animatedwater` is on: every slot that holds a ripple gets age 0
+    /// and no effect, and the ripple is flagged for the next removal pass, as at the expiry; a
+    /// slot without one keeps its age. The world is not touched. The tanks' ripples go and come back at once, which draws
+    /// their start times again at the next register.
+    pub(crate) fn save_started(&mut self, _world: &mut World) {
+        if !self.ai.animated_water {
+            return;
+        }
         for (age, effect) in &mut self.ripples.slots {
-            *age = 0;
             if let Some(id) = effect.take() {
-                world.unrecorded(|w| w.remove(id));
+                *age = 0;
+                self.removals.push(id);
             }
         }
+        self.idles.forget_ripples();
     }
 
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.
@@ -279,25 +285,40 @@ mod tests {
         assert!(waves(&world.saved(|_| true)).is_empty());
     }
 
-    /// A save empties every slot and deletes its ripple at once; the slots then rest 4 s.
+    /// A save empties the slot that holds a ripple and flags the ripple, which goes at the next
+    /// removal pass as at the expiry; the other slots keep their age.
     #[test]
-    fn a_save_empties_the_live_slots() {
+    fn a_save_flags_the_live_ripples_and_keeps_the_age_of_the_empty_slots() {
         let (cat, mut world) = (catalogue(), lake((2, 2), |_, _| true));
         let mut sim = sim("");
         sim.ripples.wet = 1;
         sim.scan(&mut world, &cat);
-        sim.ripples.slots.iter_mut().for_each(|s| s.0 = 1234);
-        assert_eq!(ripples(&world).len(), 1);
+        let id = sim.ripples.slots.iter().find_map(|s| s.1).unwrap();
+        sim.ripples
+            .slots
+            .iter_mut()
+            .filter(|s| s.1.is_none())
+            .for_each(|s| s.0 = 1234);
         sim.save_started(&mut world);
-        assert!(ripples(&world).is_empty());
-        assert!(sim.ripples.slots.iter().all(|s| *s == (0, None)));
-        assert!(sim.removals.is_empty());
-        // No slot is free for 4 s: the next scan places nothing.
-        sim.scan(&mut world, &cat);
-        assert!(ripples(&world).is_empty());
-        // A save with nothing to empty changes nothing but the ages.
+        assert_eq!(
+            ripples(&world).len(),
+            1,
+            "on the map until the removal pass"
+        );
+        assert_eq!(sim.removals, [id]);
+        assert!(sim.ripples.slots.iter().all(|s| s.1.is_none()));
+        let aged = |sim: &Sim, age| sim.ripples.slots.iter().filter(|s| s.0 == age).count();
+        assert_eq!((aged(&sim, 0), aged(&sim, 1234)), (1, SLOTS - 1));
+        // Nothing left to empty: nothing changes.
         sim.save_started(&mut world);
-        assert!(sim.ripples.slots.iter().all(|s| *s == (0, None)));
+        assert_eq!(sim.removals, [id]);
+        assert_eq!(aged(&sim, 1234), SLOTS - 1);
+        // With `animatedwater` off a save touches nothing.
+        let mut off = self::sim("animatedwater=0\n");
+        off.ai.animated_water = false;
+        off.ripples.slots[3] = (77, Some(5));
+        off.save_started(&mut world);
+        assert!(off.removals.is_empty() && off.ripples.slots[3] == (77, Some(5)));
     }
 
     #[test]
