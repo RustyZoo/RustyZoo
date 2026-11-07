@@ -2004,6 +2004,37 @@ fn eating_takes_a_bite_per_tick_and_two_on_a_hunger_check_tick() {
     assert!(!a.eating && out.meal.stop && a.fed == 777 && out.meal.bites == 0);
 }
 
+/// Animals needs 5.3 point 7: a bite that leaves food queues another `bEat`, except for a species
+/// that keeps moving.
+#[test]
+fn a_keep_moving_animal_queues_no_second_eat() {
+    let meal = Meal {
+        left: 50,
+        has_set: true,
+        in_set: true,
+        ..Meal::default()
+    };
+    for (keep, queued) in [
+        (1, false),
+        (0, true),
+        (-1, true),
+        (2, true),
+        (i32::MAX, true),
+    ] {
+        let k = Keys {
+            keep_moving: keep,
+            ..hungry_zebra()
+        };
+        let (mut a, mut m) = (animal(), meal.clone());
+        food::eat(&mut a, &k, &mut m);
+        assert_eq!(
+            (m.queue, m.random, a.eating),
+            (queued, !queued, queued),
+            "{keep}"
+        );
+    }
+}
+
 #[test]
 fn eating_starts_the_eat_set_and_stops_on_no_food_water_or_a_bite_of_zero() {
     let k = hungry_zebra();
@@ -2426,7 +2457,7 @@ fn an_animal_that_does_not_keep_moving_ends_its_path_on_the_neighbour() {
 
 /// The eating flag and the task of zebra 500 in the step of its first bite, with the extra zebra
 /// keys `keys`, for each seed from 1 to 9.
-fn first_bites(keys: &str) -> Vec<(bool, u8)> {
+fn first_bites(keys: &str) -> Vec<(bool, u8, u8)> {
     use crate::sim::drive::{Command, Run};
     let mut found = vec![];
     for seed in 1..10 {
@@ -2453,7 +2484,7 @@ fn first_bites(keys: &str) -> Vec<(bool, u8)> {
                 let Part::Animal(a) = &unit.part else {
                     panic!("not an animal");
                 };
-                found.push((a.eating, unit.goal.record.task));
+                found.push((a.eating, unit.goal.record.task, unit.goal.record.mode));
                 break;
             }
         }
@@ -2466,7 +2497,7 @@ fn a_keep_moving_animal_takes_the_random_walk_when_it_eats_and_sets_no_eating_fl
     let keep = first_bites("cKeepMoving=1\n");
     assert_eq!(keep.len(), 9);
     assert!(
-        keep.iter().all(|&b| b == (false, crate::goal::RANDOM)),
+        keep.iter().all(|&b| b == (false, crate::goal::RANDOM, 0)),
         "{keep:?}"
     );
     // Any other value eats the usual way: the flag is up and the food task goes on.
@@ -2480,8 +2511,11 @@ fn a_keep_moving_animal_takes_the_random_walk_when_it_eats_and_sets_no_eating_fl
     ] {
         let usual = first_bites(keys);
         assert_eq!(usual.len(), 9, "{keys}");
-        let food = (true, crate::goal::KEEPER_FOOD);
-        assert!(usual.iter().all(|&b| b == food), "{keys}: {usual:?}");
+        let food = crate::goal::KEEPER_FOOD;
+        assert!(
+            usual.iter().all(|&b| (b.0, b.1) == (true, food)),
+            "{keys}: {usual:?}"
+        );
     }
 }
 

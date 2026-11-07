@@ -381,7 +381,7 @@ pub(crate) fn apply(
             at,
             data,
         };
-        cx.set_task(crate::goal::RANDOM, 1, 0, None);
+        cx.set_task(crate::goal::RANDOM, 0, 0, None);
     }
     if m.stop {
         halt(unit, world, ctx, at, data);
