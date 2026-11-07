@@ -184,10 +184,11 @@ fn the_trash_check_spares_a_guest_on_its_way_to_a_can_and_sends_one_with_litter_
     (g.countdowns[7], g.need) = (0, Some("trash"));
     let out = run(&mut g, &k, false, false, &mut Rng::default());
     assert_eq!((g.pending[HAPPINESS], out.trash), (0, false));
-    // With litter and no target it pays and seeks; with a target or eating standing it only pays.
+    // With litter it pays and seeks; eating standing it only pays. The target is looked up by the
+    // seek itself (goals 12.2.1).
     g.need = None;
     g.items[4] = Some(6310);
-    for (building, stand, seeks) in [(0, false, true), (4, false, false), (0, true, false)] {
+    for (building, stand, seeks) in [(0, false, true), (4, false, true), (0, true, false)] {
         (g.countdowns[7], g.pending[HAPPINESS], g.building, g.stand) = (0, 0, building, stand);
         let out = run(&mut g, &k, false, false, &mut Rng::default());
         assert_eq!((g.pending[HAPPINESS], out.trash), (-10, seeks));
