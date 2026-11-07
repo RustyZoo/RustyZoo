@@ -1057,7 +1057,7 @@ fn a_worker_bags_the_old_dung_of_a_loaded_zoo() {
     let mut g = Game::new("");
     g.calm();
     g.dung((6, 9), "poo", false);
-    g.sim.fences_loaded(&g.w, &g.cat);
+    g.sim.fences_loaded(&mut g.w, &g.cat);
     g.run(400);
     assert_eq!(g.jobs(), ["ZooDoo", "BagDoo", "none"]);
     assert!(!g.w.zoo.entities.iter().any(|e| e.subtype == "poo"));

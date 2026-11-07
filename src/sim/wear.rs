@@ -31,7 +31,12 @@ impl Sim {
             self.events.post(event);
         }
         if let Some(now) = world.fence_life(at).filter(|&l| Some(l) != life) {
-            let draws = if now < 1 { 3 } else { 1 };
+            // Only a piece that broke draws three times.
+            let draws = if now < 1 && world.breakable(cat, at).is_some() {
+                3
+            } else {
+                1
+            };
             let rng = &mut self.rng;
             self.idles.rewind_fence(world, cat, data, rng, (at, draws));
         }

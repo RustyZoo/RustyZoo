@@ -526,7 +526,9 @@ impl Sim {
     /// events the file stored, in one pass in entity list order (guest buildings 4.1): a can above
     /// 12 pieces calls a worker (staff 8.2), a broken or decayed piece (placing 7.4) or filter
     /// asks for a mender, and dung or food on the grounds or in an empty exhibit calls a worker.
-    pub(crate) fn fences_loaded(&mut self, world: &World, cat: &Catalogue) {
+    pub(crate) fn fences_loaded(&mut self, world: &mut World, cat: &Catalogue) {
+        // The pieces broken again at load come first: life 0, the break sound.
+        let broken = world.break_loaded(cat);
         let mut events = crate::building::loaded_events(world);
         events.extend(world.loaded_events(cat));
         events.extend(world.loaded_filter_events(cat));
@@ -544,7 +546,7 @@ impl Sim {
             self.events.post(event);
         }
         // The pieces broken again at load draw their two start times, in list order.
-        for id in world.loaded_breaks(cat) {
+        for id in broken {
             let start = (0..2).map(|_| self.rng.pick(2000)).last().unwrap_or(0);
             self.idles.start_next(id, start);
         }
