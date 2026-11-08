@@ -274,7 +274,7 @@ impl Finder {
     /// The clearing time, the width, the switch and the unreachable list in tile order, as words
     /// for the hash of a run.
     pub(crate) fn state(&self) -> Vec<u64> {
-        let mut list: Vec<_> = self.unreachable.iter().collect();
+        let mut list: Vec<_> = self.unreachable.iter().collect(); // order-free: sorted on the next line
         list.sort();
         let head = [self.clear_at, self.width.map_or(0, |w| w as u64 + 1)];
         let switch = self.switch.map_or(2, u64::from);
