@@ -431,3 +431,33 @@ fn removing_an_exhibit_with_no_show_info_posts_the_abort_for_show_0() {
     assert_eq!(sent, [(event::ABORT, 0)]);
     assert_eq!(w.units.buildings[&7].users.len(), 2);
 }
+
+#[test]
+fn a_rampaging_animal_that_takes_a_grandstand_as_its_target_empties_it() {
+    // 30.3 point 4: a grandstand type that admits animals (a mod's) can be the target; the show
+    // is aborted and the audience put out before the animal arrives.
+    let (mut w, cat, _) = started(vec![item(0, 3, 5)]);
+    seat(&mut w);
+    let seal = w.find(21).unwrap();
+    let c = w.zoo.entities[seal].common.as_mut().unwrap();
+    (c.x, c.y) = (32, 4 * 64 + 32);
+    if let Part::Animal(a) = &mut w.units.get_mut(21).unwrap().part {
+        a.rampaging = true;
+    }
+    let mut unit = w.units.get(21).unwrap().clone();
+    let (events, mut removals) = (crate::sim::Events::default(), Vec::new());
+    let mut rng = Rng::default();
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    let flow = crate::animal::rampage::target(&mut unit, &mut w, &mut ctx, seal, &NoData);
+    assert_eq!(flow, None);
+    // The seal is a performer of the show it aborts: its goal is reset with the others'.
+    assert!(matches!(&unit.part, Part::Animal(a) if a.rampage_target));
+    assert_eq!(show_events(&w), [event::ABORTED, event::ENDED]);
+    assert!(w.units.buildings[&7].users.is_empty());
+}

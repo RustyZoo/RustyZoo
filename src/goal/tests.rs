@@ -25,6 +25,7 @@ mod drown;
 mod heli;
 mod keep;
 mod prey;
+mod rampage;
 mod shelter;
 mod show;
 mod surface;
