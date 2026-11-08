@@ -108,8 +108,8 @@ impl World {
         let (wait, now): (Vec<_>, Vec<_>) =
             (std::mem::take(&mut self.tails).into_iter()).partition(|t| waiting.contains(&t.0));
         self.tails = wait;
-        for (_, tanks) in now {
-            self.draws.extend(tanks.into_iter().map(Draw::Walls));
+        for (_, tanks, again) in now {
+            self.finish_split(&tanks, again);
         }
     }
 
@@ -448,25 +448,43 @@ impl World {
             .iter()
             .filter_map(|t| t.1.map(|_| t.0))
             .collect();
+        // The tank cut is first resized to the side of the piece, whatever the side of its gate:
+        // when it keeps the other side, the two tanks stand on each other's tiles until the new
+        // tank is made, and the set-ups they queue keep the walls they held then.
+        let across = match (&split_kept[..], &cuts[..]) {
+            (&[x], &[y]) if !quiet && built.early.iter().any(|e| e.0 == x) => Some((x, y)),
+            _ => None,
+        };
+        if let Some((x, y)) = across {
+            self.exhibits.swap_tiles(x, y);
+            self.swapped = true;
+        }
         if !quiet {
-            self.draws
-                .extend(split_kept.iter().map(|&x| Draw::Walls(x)));
+            // The tank cut: its walls are brought to its side, then it updates.
+            for &x in split_kept {
+                self.wall_step(x);
+            }
+            for &x in split_kept {
+                self.push_set_up(Draw::Walls(x));
+            }
         }
         for (id, inherited) in std::mem::take(&mut built.tanks) {
             self.make_tank(id, inherited, !quiet);
         }
+        if let Some((x, y)) = across {
+            self.exhibits.swap_tiles(x, y);
+            self.swapped = false;
+        }
         if !quiet && !split_kept.is_empty() {
-            for &id in split_kept {
-                self.rewall(id);
-            }
             let mut changed = self.retank(false);
             changed.extend(split_kept.iter().copied());
             self.floors(&changed);
             self.decide(&changed, true);
-            // The last updates, X then the new tank Y, come after the gate of Y.
+            // The last updates, X then the new tank Y, come after the gate of Y; when the sides
+            // were swapped, the walls are brought inwards again first.
             for &y in &cuts {
                 let tanks = split_kept.iter().copied().chain([y]).collect();
-                self.tails.push((y, tanks));
+                self.tails.push((y, tanks, across.is_some()));
             }
         }
         for &id in &built.regate {
@@ -482,6 +500,15 @@ impl World {
             }
         }
         self.relink();
+    }
+
+    /// The end of a split, after the gate of the new tank: the tanks `tanks` (the tank cut, then the
+    /// new one) bring their walls inwards again when their sides were swapped, then update.
+    pub(super) fn finish_split(&mut self, tanks: &[u32], again: bool) {
+        for &t in tanks.iter().filter(|_| again) {
+            self.wall_step(t);
+        }
+        self.draws.extend(tanks.iter().map(|&t| Draw::Walls(t)));
     }
 
     /// Tells the game where the new exhibits start, and gives a new gate to an exhibit whose gate

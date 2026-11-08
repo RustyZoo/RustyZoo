@@ -14,8 +14,8 @@
 # shared stream.
 # The ray 25039 never eats (issue 1013, which the original has too): it gets the food task on the
 # tile next to the food while still swimming, and is carried past the food.
-#run maps/sm_aqua.zoo --cash 75000 --seed 28 --passes 12700 --clock 200
-#seeds 33 36 3 8 6 1 2 4 5 7
+#run maps/sm_aqua.zoo --cash 75000 --seed 33 --passes 12700 --clock 200
+#seeds 36 3 8 6 1 2 4 5 7
 #exhibit 16,35,21,40
 #months 6
 #unfed 25039 1013
@@ -76,8 +76,8 @@
 # hire panel: a marine specialist, a tour guide, a maintenance worker, one placement each (the
 # kind is chosen before it). A hire draws the sex of the next one, and the list shows only the DRT
 # base when a man is drawn (the staff of the trials are women only), which then stays chosen and
-# hires nobody: the seed 28 draws women for the start and the first two hires.
-# (The seed was 35 before a new tank filled while the game is paused stopped setting up ripples, 14 before the fences drew their start times from the shared stream, and 46 before the soundscape drew its ambient chances at every step, paused ones too, which
+# hires nobody: the seed 33 draws women for the start and the first two hires.
+# (The seed was 28 before the wall step validated the pieces of both slots of every line, 35 before a new tank filled while the game is paused stopped setting up ripples, 14 before the fences drew their start times from the shared stream, and 46 before the soundscape drew its ambient chances at every step, paused ones too, which
 # moved the sex draws of the hires.)
 56 mouse 25 175
 57 down

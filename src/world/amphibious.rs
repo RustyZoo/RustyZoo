@@ -90,6 +90,10 @@ impl World {
     /// 12.2: the links of every exhibit and the connectors, made again; the neighbours of an
     /// exhibit keep the order they became so in.
     pub(super) fn relink(&mut self) {
+        // The links wait for the tanks of a split to stand on their own tiles again.
+        if self.swapped {
+            return;
+        }
         let ids: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
         let mut connectors = Vec::new();
         let mut found = Vec::new();

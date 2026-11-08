@@ -720,6 +720,29 @@ impl Exhibits {
         boundary_of(world, tiles, &|n| self.region(n) == Some(id))
     }
 
+    /// Exhibits `a` and `b` take each other's tiles (their lists, first tiles and counts). Done
+    /// twice it changes nothing.
+    pub(crate) fn swap_tiles(&mut self, a: u32, b: u32) {
+        let (Some(i), Some(j)) = (
+            self.list.iter().position(|e| e.id == a),
+            self.list.iter().position(|e| e.id == b),
+        ) else {
+            return;
+        };
+        for r in &mut self.region {
+            *r = match *r {
+                x if x == a => b,
+                x if x == b => a,
+                x => x,
+            };
+        }
+        let order = std::mem::take(&mut self.list[i].order);
+        let (first, tiles) = (self.list[i].first, self.list[i].tiles);
+        self.list[i].order = std::mem::replace(&mut self.list[j].order, order);
+        self.list[i].first = std::mem::replace(&mut self.list[j].first, first);
+        self.list[i].tiles = std::mem::replace(&mut self.list[j].tiles, tiles);
+    }
+
     /// Gives exhibit `id` a new tile list: the same tiles, filled again.
     pub(crate) fn reorder(&mut self, id: u32, order: Vec<usize>) {
         if let Some(e) = self.get_mut(id) {

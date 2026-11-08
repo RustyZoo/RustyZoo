@@ -314,8 +314,8 @@ impl World {
             self.choose_gate(id, start, placed);
             // The updates a split ends with come after the gate of its new tank.
             if let Some(n) = self.tails.iter().position(|t| t.0 == id) {
-                let (_, tanks) = self.tails.remove(n);
-                self.draws.extend(tanks.into_iter().map(Draw::Walls));
+                let (_, tanks, again) = self.tails.remove(n);
+                self.finish_split(&tanks, again);
             }
             // The last decision of a tank made in play (shows 31.2 step 9).
             if self.tank(id).is_some() {
@@ -369,16 +369,55 @@ impl World {
                 e.rating.first = true;
             }
             let gate = self.exhibits.get(kept).is_some_and(|e| e.gate.is_some());
+            // The walls between the two tanks are listed first.
+            let between = self.walls_between(old, lost, gone);
             if gate {
+                // Its walls are brought inwards (start times) before its water is set.
+                self.wall_step(kept);
                 self.merge_water(kept, a, b);
                 // The tank that stays updates its wall information once (map drawing 9.7.8
                 // point 3.2.5).
                 self.draws.push(Draw::Walls(kept));
             }
+            // Then the walls that stood between the two tanks are deleted, with or without a
+            // gate; their ripples stay (point 3.5).
+            self.draws.extend(between.into_iter().map(Draw::Delete));
             let tiles = a.1 + b.1;
             let merged = self.exhibits.get(kept).and_then(|e| e.tank);
             now.extend(merged.map(|t| (kept, (t, tiles))));
         }
+    }
+
+    /// The ids of the tank walls on the lines between the tiles of the old tank `gone` and those
+    /// of the other old tanks that merged into the same one (`lost` pairs each exhibit that went
+    /// with the one that took it).
+    fn walls_between(&self, old: &Exhibits, lost: &[(u32, u32)], gone: u32) -> Vec<u32> {
+        let root = |mut id: u32| {
+            while let Some(&(_, next)) = lost.iter().find(|l| l.0 == id) {
+                id = next;
+            }
+            id
+        };
+        let group = root(gone);
+        let mut found = Vec::new();
+        for t in (0..self.zoo.tiles.len()).filter(|&t| old.region(t) == Some(gone)) {
+            for d in [0, 2, 4, 6] {
+                let Some(n) = self.neighbour(t, d) else {
+                    continue;
+                };
+                let other = old.region(n).filter(|&r| r != gone && root(r) == group);
+                let lines = [(t, d), (n, (d + 4) % 8)];
+                let walls = lines.iter().filter(|_| other.is_some());
+                for p in walls.filter_map(|&(u, e)| self.edge(u, e)) {
+                    let id = self.zoo.entities[p].common.as_ref().map(|c| c.id);
+                    let wall = self.shapes[p].is_some_and(|s| s.tank.wall);
+                    if let Some(id) = id.filter(|id| wall && !found.contains(id)) {
+                        found.push(id);
+                    }
+                }
+            }
+        }
+        found
     }
 
     /// The tank exhibit that tile `t` belongs to (its number).

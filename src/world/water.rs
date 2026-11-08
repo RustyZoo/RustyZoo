@@ -17,6 +17,14 @@ pub(crate) enum Draw {
     Start(u32),
     /// The fence piece is made healthy: its wear interval, then its start time.
     Heal(u32),
+    /// The fence piece is made healthy without a start time: its wear interval only (a copy of a
+    /// gate, whose constructor draws no start time).
+    Interval(u32),
+    /// A set-up queued while the tanks of a split had each other's tiles: the index in
+    /// [`World::take_over`].
+    Over(usize),
+    /// The wall piece is deleted (a merge's walls between its two tanks, after the update).
+    Delete(u32),
 }
 
 impl World {
@@ -63,7 +71,7 @@ impl World {
             // Clean water with some level, where there was none: the ripples are set up now.
             if super::tank::clean(&now, config.murky) && !super::tank::clean(&before, config.murky)
             {
-                self.draws.push(Draw::Ripples(id));
+                self.push_set_up(Draw::Ripples(id));
             }
             self.events.push(super::Event::Tank(id));
             if (now.level, now.height) != (before.level, before.height) {
@@ -124,6 +132,28 @@ impl World {
         &self.draws
     }
 
+    /// The draws owed written short, for a test: `s7` a start time, `h7` a healthy piece, `i7` its
+    /// interval only, `w3` and `r3` the set-ups of tank 3, a queued one with the number of walls
+    /// it kept (`w3:6`), `d7` a delete.
+    #[cfg(test)]
+    pub(crate) fn drawn(&self) -> Vec<String> {
+        let one = |d: &Draw| match *d {
+            Draw::Ripples(t) => format!("r{t}"),
+            Draw::Walls(t) => format!("w{t}"),
+            Draw::Start(p) => format!("s{p}"),
+            Draw::Heal(p) => format!("h{p}"),
+            Draw::Interval(p) => format!("i{p}"),
+            Draw::Delete(p) => format!("d{p}"),
+            Draw::Over(k) => match &self.overs[k] {
+                Some((t, walls, held)) => {
+                    format!("{}{t}:{}", if *walls { 'w' } else { 'r' }, held.len())
+                }
+                None => "taken".into(),
+            },
+        };
+        self.draws.iter().map(one).collect()
+    }
+
     /// Queues a draw behind the ones owed, for a test.
     #[cfg(test)]
     pub(crate) fn queue_draw(&mut self, draw: Draw) {
@@ -135,14 +165,45 @@ impl World {
     /// so does everything behind it.
     pub(crate) fn next_draw(&mut self, waiting: bool) -> Option<Draw> {
         let first = *self.draws.first()?;
-        let tank = match first {
-            Draw::Ripples(t) | Draw::Walls(t) => Some(t),
-            Draw::Start(_) | Draw::Heal(_) => None,
-        };
-        if waiting && tank.is_some_and(|t| self.stirred.contains(&t)) {
+        if waiting
+            && self
+                .draw_tank(first)
+                .is_some_and(|t| self.stirred.contains(&t))
+        {
             return None;
         }
         Some(self.draws.remove(0))
+    }
+
+    /// The tank a draw sets up the ripples of, if it is a set-up.
+    pub(crate) fn draw_tank(&self, draw: Draw) -> Option<u32> {
+        match draw {
+            Draw::Ripples(t) | Draw::Walls(t) => Some(t),
+            Draw::Over(k) => self.overs.get(k)?.as_ref().map(|o| o.0),
+            _ => None,
+        }
+    }
+
+    /// Queues a ripple set-up. While the tanks of a split have each other's tiles it keeps the
+    /// walls the tank holds now, for the set-up runs after they have gone back.
+    pub(super) fn push_set_up(&mut self, draw: Draw) {
+        let (tank, walls) = match draw {
+            Draw::Ripples(t) => (t, false),
+            Draw::Walls(t) => (t, true),
+            _ => return self.draws.push(draw),
+        };
+        if !self.swapped {
+            return self.draws.push(draw);
+        }
+        let held = self.exhibits.get(tank).map(|e| self.walls_over(&e.order));
+        self.overs
+            .push(Some((tank, walls, held.unwrap_or_default())));
+        self.draws.push(Draw::Over(self.overs.len() - 1));
+    }
+
+    /// The set-up queued as draw `k`: the tank, whether it removes its ripples first, its walls.
+    pub(crate) fn take_over(&mut self, k: usize) -> Option<(u32, bool, Vec<u32>)> {
+        self.overs.get_mut(k)?.take()
     }
 
     /// The tanks stirred up to and including `tank`, in order: their units are reset now.
@@ -172,7 +233,7 @@ impl World {
     /// point 3.2): its ripples are set up again whether or not its walls changed.
     pub(super) fn update_walls(&mut self, t: usize) {
         if let Some(id) = self.tank_at(t) {
-            self.draws.push(Draw::Walls(id));
+            self.push_set_up(Draw::Walls(id));
         }
     }
 
