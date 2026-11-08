@@ -409,3 +409,25 @@ fn the_dispatch_does_not_see_the_bored_steps_afraid() {
         "the dispatch lowers afraid when nothing is in sight"
     );
 }
+
+#[test]
+fn the_bored_step_comes_before_the_water_switch_and_the_fence_test() {
+    // Animals 4.2: the bored check comes before the water check and the zap check, so it sees
+    // the land mode and no fence test started.
+    let out = Out {
+        terrain: Some((2, Some(0))),
+        fence: true,
+        ..Out::default()
+    };
+    let mut seen = None;
+    let (unit, _) = after_tick(&out, 0, crate::goal::RANDOM, |u| {
+        seen = Some((animal_of(u).terrain, u.runner.top() == Some(TEST)));
+    });
+    assert_eq!(seen, Some((0, false)));
+    assert_eq!(
+        animal_of(&unit).terrain,
+        2,
+        "the switch and the test still ran"
+    );
+    assert_eq!(unit.runner.top(), Some(TEST));
+}
