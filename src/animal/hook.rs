@@ -456,9 +456,10 @@ pub(crate) fn checks(
         }
         world.units.tell(format!("{word} {id}"));
     }
-    escape::after(unit, world, ctx, at, data, (&out, task));
-    bored_after(unit, world, ctx, at, data, &out);
-    escape::then(unit, world, ctx, at, data, (&out, &k));
+    let bored = |unit: &mut Unit, world: &mut World, ctx: &mut Ctx| {
+        bored_after(unit, world, ctx, at, data, &out);
+    };
+    escape::after(unit, world, ctx, at, data, (&out, &k, task), bored);
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));

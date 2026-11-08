@@ -295,8 +295,7 @@ fn the_exterior_counts_as_the_grounds_for_the_fence_test_probe() {
     assert_eq!(start(&mut w, &mut unit, &k, &data()), (2, true));
 }
 
-/// The animal 1 of an amphibious world at (6, 2) with the tick's `out`: the escape check's half,
-/// the bored step's `between`, then the rest; `task` is the goal task from before the check.
+/// The animal 1 of an amphibious world at (6, 2) with the tick's `out`, the bored step `between`; `task` is the goal task from before the check.
 fn after_tick(out: &Out, task: u8, live: u8, between: impl FnOnce(&mut Unit)) -> (Unit, World) {
     use crate::unit::testing::amphibious_world_wired;
     let mut w = amphibious_world_wired(2, &[(1, "polar", (6, 2))]);
@@ -317,9 +316,9 @@ fn after_tick(out: &Out, task: u8, live: u8, between: impl FnOnce(&mut Unit)) ->
         cat: &cat,
     };
     let data = crate::unit::testing::Walker::new("fWalk(0,0)");
-    crate::animal::escape::after(&mut unit, &mut w, &mut ctx, at, &data, (out, task));
-    between(&mut unit);
-    crate::animal::escape::then(&mut unit, &mut w, &mut ctx, at, &data, (out, &keys()));
+    let bored = |unit: &mut Unit, _: &mut World, _: &mut Ctx| between(unit);
+    let args = (out, &keys(), task);
+    crate::animal::escape::after(&mut unit, &mut w, &mut ctx, at, &data, args, bored);
     (unit, w)
 }
 

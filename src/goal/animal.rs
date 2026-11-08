@@ -160,6 +160,13 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Animals needs 7.1 step 4: the species has `cKeepMoving` 1 and the task is the random walk or
+    /// keeper food.
+    fn walks_on_food(&self) -> bool {
+        matches!(self.unit.goal.record.task, RANDOM | KEEPER_FOOD)
+            && crate::animal::keys(self.world, self.ctx.cat, self.at).keep_moving == 1
+    }
+
     /// Animals needs 7.1, the "go next to a tile" helper: one draw `rand() % 100` on every call.
     /// With `direct` set, a draw below 50 and the unit not in a tank (unless `tank` says it counts
     /// there too: the chase), the path goes to `to` itself. Otherwise to the first of its four straight neighbours (nearest to the unit first,
@@ -174,8 +181,7 @@ impl Cx<'_, '_> {
         if direct && draw < 50 && (tank || !mover.deep) {
             return self.path_to(to, false);
         }
-        let keeps_moving = matches!(self.unit.goal.record.task, RANDOM | KEEPER_FOOD)
-            && crate::animal::keys(self.world, self.ctx.cat, self.at).keep_moving == 1;
+        let keeps_moving = self.walks_on_food();
         // Each valid neighbour with the tile past `to` when the unit keeps moving and may go there.
         let near: Vec<(usize, Option<usize>)> = {
             let world = &*self.world;
@@ -290,8 +296,9 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 11.8 complete: at the food, an animal that is not eating faces it and takes its first bite
-    /// if some is left there; one whose food is gone resets its goal.
+    /// 11.8 complete: at the food, an animal that is not eating faces it (unless it keeps moving,
+    /// animals needs 7.1 step 4) and takes its first bite if some is left there; one whose food is
+    /// gone resets its goal.
     pub(super) fn keeper_food_complete(&mut self) {
         let Part::Animal(a) = &self.unit.part else {
             return;
@@ -301,7 +308,9 @@ impl Cx<'_, '_> {
         }
         let m = food::meal(self.unit, self.world, self.ctx.cat, self.data, self.at);
         if m.left > 0 {
-            food::face(self.unit, self.world, self.at);
+            if !self.walks_on_food() {
+                food::face(self.unit, self.world, self.at);
+            }
             food::feed(self);
         } else {
             self.reset();
