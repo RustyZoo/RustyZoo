@@ -773,7 +773,7 @@ impl Units {
         }
         if !self.buildings.is_empty() || !self.upgrade_index.is_empty() {
             let ids: std::collections::HashSet<u32> = (entities.iter())
-                .filter(|e| e.class == "building")
+                .filter(|e| matches!(e.class.as_str(), "building" | "objects"))
                 .filter_map(|e| e.common.as_ref().map(|c| c.id))
                 .collect();
             self.buildings.retain(|id, _| ids.contains(id));

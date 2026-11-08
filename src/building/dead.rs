@@ -2,9 +2,9 @@
 //! keys say so for the ground it stands on and the water of the tank under it. It is decided
 //! when the building is placed, put down or loaded, and again each time the water level or the
 //! wall height of its tank moves, a tank is made or goes, the ground of a tile changes and the
-//! view zooms. A building found dead outside a load puts all its users out (a forced leave, 11.1)
-//! and refuses new ones (6.1). The tank toys and show objects carry the keys too and are decided
-//! the same way.
+//! view zooms or turns. A building found dead outside a load puts all its users out (a forced
+//! leave, 11.1) and refuses new ones (6.1). The tank toys and show objects carry the keys too and
+//! are decided the same way, and so do the scenery types with a dead key (no users).
 
 use super::{Kind, Live, leave::push_out};
 use crate::entity::{Catalogue, EntityType};

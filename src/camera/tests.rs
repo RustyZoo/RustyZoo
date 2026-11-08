@@ -88,17 +88,19 @@ fn a_zoom_change_centres_the_tile_too() {
 }
 
 #[test]
-fn only_a_zoom_that_changes_the_value_is_told() {
+fn only_a_zoom_or_a_turn_that_changes_the_value_is_told() {
     let beach = map(75, 75, 0);
     let mut c = camera(0, 0, (1216, 16), 1, BEACH);
-    assert!(!c.take_zoomed(), "a restored zoom is not a change");
+    assert!(!c.take_viewed(), "a restored view is not a change");
     c.rotate(&beach, None, true);
-    assert!(!c.take_zoomed(), "a turn is not a zoom");
+    assert!(c.take_viewed(), "a turn is told");
+    c.rotate(&beach, None, false);
+    assert!(c.take_viewed(), "a turn back too");
     c.zoom(&beach, None, true);
-    assert!(c.take_zoomed());
-    assert!(!c.take_zoomed(), "told once");
+    assert!(c.take_viewed());
+    assert!(!c.take_viewed(), "told once");
     c.zoom(&beach, None, true);
-    assert!(!c.take_zoomed(), "refused at the limit");
+    assert!(!c.take_viewed(), "refused at the limit");
 }
 
 #[test]

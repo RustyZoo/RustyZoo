@@ -299,8 +299,9 @@ impl Idles {
                 continue;
             }
             fixed += 1;
-            // A trash can shows its own pictures.
-            let live = (e.class == "building" && e.subtype != "trshcan")
+            // A trash can shows its own pictures. A scenery object (class `objects`) has a live
+            // state only for its dead state.
+            let live = ((e.class == "building" && e.subtype != "trshcan") || e.class == "objects")
                 .then(|| world.units.buildings.get(&c.id))
                 .flatten();
             if let Some(k) = self.fixed.get_mut(&c.id)
