@@ -115,7 +115,7 @@ impl App<'_> {
 /// The flying objects of a guest created on the game date (cheats 6.2 steps 1 to 3, ambients 3.1),
 /// run by the guest creation of the step: each is told in the log and made, so that it moves in
 /// this very step and its three draws come before those of the entities. The sleigh and the
-/// biplane come back with their loop (flight, file, base term) for the game to hold. A game
+/// biplane add their loop (flight, file, base term) to `vehicles` for the game to hold. A game
 /// without the type makes no flight and says so in the log (ambients 11.1).
 pub(super) fn guest_flights(
     season: &mut Season,
@@ -123,9 +123,9 @@ pub(super) fn guest_flights(
     cat: &Catalogue,
     sim: &mut Sim,
     world: &mut World,
-) -> Vec<(u32, &'static str, i32)> {
+    vehicles: &mut Vec<(u32, &'static str, i32)>,
+) {
     let date = sim.calendar().date();
-    let mut loops = Vec::new();
     for fly in season.flights(date.month, date.day) {
         sim.note(fly.line());
         let Some(id) = fly.type_id() else { continue };
@@ -136,8 +136,7 @@ pub(super) fn guest_flights(
         sim.spawns.add(id);
         let made = flight::launch(world, cat, ty, data.set_files(ty), &mut sim.rng);
         if let (Some(flight), Some((file, base))) = (made, fly.loop_sound()) {
-            loops.push((flight, file, base));
+            vehicles.push((flight, file, base));
         }
     }
-    loops
 }

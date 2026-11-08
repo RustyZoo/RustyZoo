@@ -526,7 +526,15 @@ fn created(app: &mut App) {
     };
     let game = app.game.as_mut().unwrap();
     let season = &mut app.cheats.season;
-    let loops = cheat::guest_flights(season, &data, cat, &mut app.sim, &mut game.world);
+    let mut loops = Vec::new();
+    cheat::guest_flights(
+        season,
+        &data,
+        cat,
+        &mut app.sim,
+        &mut game.world,
+        &mut loops,
+    );
     game.vehicles.extend(loops);
     app.guest_created();
 }
