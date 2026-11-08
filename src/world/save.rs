@@ -195,10 +195,7 @@ impl World {
             if let (Some(b), true) = (c.building.as_mut(), live_building.is_some()) {
                 b.upgrade = self.units.upgrade_index.get(&c.id).copied().unwrap_or(0);
             }
-            if matches!(
-                e.class.as_str(),
-                "keeper" | "maint" | "tour" | "helicopter"
-            ) {
+            if matches!(e.class.as_str(), "keeper" | "maint" | "tour" | "helicopter") {
                 let base = c.staff.take().map_or_else(Default::default, |s| *s);
                 let live = self.units.get(c.id).filter(|u| u.started);
                 c.staff = Some(Box::new(match live.map(|u| &u.part) {
