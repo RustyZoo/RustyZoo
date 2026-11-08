@@ -20,9 +20,11 @@ impl Sim {
         }
     }
 
-    /// The removals asked for since the last pass join the pass.
-    pub(super) fn sparkles_doomed(&mut self, world: &mut World) {
-        self.removals.extend(world.take_doomed());
+    /// The entities to remove in this pass: those asked for, then the sparkles flagged.
+    pub(super) fn removal_pass(&mut self, world: &mut World) -> Vec<u32> {
+        let mut ids = std::mem::take(&mut self.removals);
+        ids.extend(world.take_doomed());
+        ids
     }
 
     /// One attempt (point 4): nothing unless the water has some level and is not murky.

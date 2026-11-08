@@ -801,8 +801,7 @@ impl Sim {
         world.units.finder.tick(u64::from(self.ai_ticks));
         // Each animal's update ages its reactions (animals 10).
         world.units.fade(step);
-        self.sparkles_doomed(world);
-        for id in std::mem::take(&mut self.removals) {
+        for id in self.removal_pass(world) {
             crate::show::removed(world, cat, id);
             world.unrecorded(|w| w.remove(id));
         }

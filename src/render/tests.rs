@@ -2330,6 +2330,32 @@ fn a_tank_is_painted_in_layers_floor_walls_water_contents_front_walls() {
 }
 
 #[test]
+fn a_sparkle_is_painted_once_after_the_water_surface_whatever_its_height() {
+    // One on the floor (a fresh water sparkle) and one at the surface, on the tank tile (1, 1).
+    let sparkle = |z| Object {
+        kind: Kind::Sparkle,
+        z,
+        ..unit_on(1, 1)
+    };
+    for r in 0..4u8 {
+        let scene = tank_scene(r, 3, 2, vec![sparkle(0), sparkle(32)]);
+        let items = paint_order(&scene);
+        let last_surface = items
+            .iter()
+            .rposition(|i| matches!(i, Item::Surface { .. }))
+            .unwrap();
+        for o in [8, 9] {
+            let drawn: Vec<usize> = (items.iter().enumerate())
+                .filter(|(_, i)| **i == Item::Object(o))
+                .map(|(at, _)| at)
+                .collect();
+            assert_eq!(drawn.len(), 1, "rotation {r} object {o}");
+            assert!(last_surface < drawn[0], "after the water surface");
+        }
+    }
+}
+
+#[test]
 fn a_tank_without_water_has_no_surface_and_no_shadows() {
     let scene = tank_scene(0, 3, 0, vec![unit_on(1, 1)]);
     let items = paint_order(&scene);
