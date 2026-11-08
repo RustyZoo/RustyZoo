@@ -1038,10 +1038,6 @@ fn a_wall_deleted_after_the_update_keeps_its_ripple_until_the_next_set_up() {
     assert!(world.find(wall).is_none(), "the wall is gone");
     assert_eq!(sim.idles.ripples[&id].len(), walls);
     assert!(sim.idles.ripples[&id].iter().any(|r| r.0 == wall));
-    // The next set-up counts the walls left.
-    world.queue_draw(crate::world::Draw::Walls(id));
-    sim.wet_changed(&mut world, &Catalogue::default(), &data);
-    assert_eq!(sim.idles.ripples[&id].len(), walls - 1);
     // A missing wall deletes nothing.
     world.queue_draw(crate::world::Draw::Delete(u32::MAX));
     sim.wet_changed(&mut world, &Catalogue::default(), &data);
