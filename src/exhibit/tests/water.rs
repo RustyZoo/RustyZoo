@@ -375,7 +375,7 @@ fn the_pending_gate_over_a_tank_wall_takes_the_height_of_the_tank() {
 }
 
 /// A tank (2..3, 2..3) of a loaded map with this height and level, and things in it.
-fn loaded(height: u32, level: u32, things: &[(&str, i32, i32)]) -> World {
+pub(super) fn loaded(height: u32, level: u32, things: &[(&str, i32, i32)]) -> World {
     let mut z = zoo(&[]);
     z.entities.extend(
         ring("tank", 2, 2, 3, 3)
