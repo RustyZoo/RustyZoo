@@ -18,6 +18,12 @@ fn watered() -> World {
     world
 }
 
+/// The id of the piece on side `d` of tile (`x`, `y`).
+fn piece_at(world: &World, x: usize, y: usize, d: usize) -> u32 {
+    let at = world.edge(y * SIZE as usize + x, d).unwrap();
+    world.zoo.entities[at].common.as_ref().unwrap().id
+}
+
 fn tank_id(world: &World, x: usize) -> u32 {
     world.tank_at(2 * SIZE as usize + x).unwrap()
 }
@@ -32,16 +38,18 @@ fn a_split_updates_x_then_the_new_tank_then_ends_after_the_gate_with_x_and_y() {
     // X keeps the side of its gate; the new tank is on the other side.
     let y = tank_id(&world, 2);
     assert_ne!(x, y);
-    // X, then Y: the level it takes from X, its own update; the last two wait for the gate.
-    use Draw::{Ripples, Walls};
-    assert_eq!(world.draws(), [Walls(x), Ripples(y), Walls(y)]);
+    // X's walls are brought to its side first (the copy of the cut piece, healthy), then X, then
+    // Y: the level it takes from X, its own update; the last two wait for the gate.
+    use Draw::{Heal, Ripples, Walls};
+    let copy = piece_at(&world, 4, 2, 6);
+    assert_eq!(world.draws(), [Heal(copy), Walls(x), Ripples(y), Walls(y)]);
     for new in world.waiting() {
         world.give_gate(new);
     }
     let draws = world.draws();
-    assert_eq!(draws.len(), 6, "{draws:?}");
-    assert!(matches!(draws[3], Walls(t) if t == y || t == x), "the gate");
-    assert_eq!(draws[4..], [Walls(x), Walls(y)]);
+    assert_eq!(draws.len(), 7, "{draws:?}");
+    assert!(matches!(draws[4], Walls(t) if t == y || t == x), "the gate");
+    assert_eq!(draws[5..], [Walls(x), Walls(y)]);
 }
 
 #[test]
@@ -153,4 +161,130 @@ fn a_save_takes_the_bare_mark_off_a_tank_built_filled_while_paused() {
     let mut sim = crate::sim::Sim::new(b"");
     sim.save_started(&mut world);
     assert!(!world.is_bare(id), "still bare after the save");
+}
+
+/// The piece that cuts a tank is on the side of the new tank: the new tank takes a copy, after the
+/// start times of the cut tank (map drawing 9.7.8 point 3.4).
+#[test]
+fn a_split_whose_piece_stands_on_the_cut_tank_copies_it_for_the_new_tank_after_the_cut_one() {
+    let mut world = watered();
+    let x = tank_id(&world, 2);
+    let wall = wall("tank", (4, 2, 6));
+    let shape = tank_shape(&wall);
+    world.add(wall, shape).unwrap();
+    // X keeps the side of its gate, the east.
+    let (y, copy) = (tank_id(&world, 2), piece_at(&world, 3, 2, 2));
+    assert_ne!(x, y);
+    use Draw::{Heal, Ripples, Walls};
+    let draws = world.draws();
+    assert_eq!(draws[..2], [Walls(x), Heal(copy)], "{draws:?}");
+    assert_eq!(draws[2..], [Ripples(y), Walls(y)], "{draws:?}");
+}
+
+/// The walls a new tank brings inwards are validated again: each moved piece draws a start time,
+/// in the order of the tank's boundary, and nothing else is drawn (no water).
+#[test]
+fn the_walls_a_new_tank_brings_inwards_draw_a_start_time_each() {
+    let pieces = [
+        ("tank", (2, 1, 4)),
+        ("tank", (3, 1, 4)),
+        ("tank", (2, 3, 0)),
+        ("tank", (3, 3, 0)),
+        ("tank", (1, 2, 2)),
+    ];
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    let last = wall("tank", (4, 2, 6));
+    let shape = tank_shape(&last);
+    world.add(last, shape).unwrap();
+    let inside = [(2, 2), (3, 2)].map(|(x, y)| y * SIZE as usize + x);
+    let mut moved = Vec::new();
+    for t in inside {
+        for d in [0, 2, 4, 6] {
+            let across = world.neighbour(t, d).unwrap();
+            let piece = world.edge(t, d).filter(|_| !inside.contains(&across));
+            moved.extend(piece.map(|p| world.zoo.entities[p].common.as_ref().unwrap().id));
+        }
+    }
+    let mut starts: Vec<u32> = (world.draws().iter())
+        .map(|d| match d {
+            Draw::Start(id) => *id,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    starts.sort_unstable();
+    moved.sort_unstable();
+    assert_eq!(starts.len(), 6);
+    assert_eq!(starts, moved);
+}
+
+/// A merge deletes the walls that stood between the two tanks after the kept tank's update, not
+/// before: the update still counts them (map drawing 9.7.8 points 3.2.5 and 3.5).
+#[test]
+fn a_merge_deletes_the_walls_between_the_two_tanks_after_the_update() {
+    let mut pieces = ring("tank", 2, 2, 5, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    put_wall(&mut world, last.0, last.1);
+    (0..2).for_each(|_| _ = world.step_water());
+    put_wall(&mut world, "tank", (3, 2, 2));
+    put_wall(&mut world, "tank", (3, 3, 2));
+    assert_eq!(world.exhibits().list().len(), 2);
+    let width = SIZE as usize;
+    // Each tank has its own piece on both lines; the row 2 pair opens first.
+    let (line, copy) = (piece_at(&world, 3, 2, 2), piece_at(&world, 4, 2, 6));
+    let between = [piece_at(&world, 3, 3, 2), piece_at(&world, 4, 3, 6)];
+    while world.next_draw(false).is_some() {}
+    world.remove(line);
+    assert!(world.draws().is_empty(), "the line stays closed");
+    world.remove(copy);
+    let kept = tank_id(&world, 2);
+    assert_eq!(world.exhibits().list().len(), 1);
+    let draws = world.draws();
+    let at = draws.iter().position(|d| *d == Draw::Walls(kept));
+    let at = at.unwrap_or_else(|| panic!("{draws:?}"));
+    let mut gone: Vec<u32> = (draws[at + 1..].iter())
+        .map(|d| match d {
+            Draw::Delete(id) => *id,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    gone.sort_unstable();
+    let mut want = between.to_vec();
+    want.sort_unstable();
+    assert_eq!(gone, want);
+    // Still there when the update runs; the tile edges are free once the deletes run.
+    assert!(world.edge(3 * width + 3, 2).is_some());
+    while let Some(draw) = world.next_draw(false) {
+        if let Draw::Delete(id) = draw {
+            assert!(world.remove_one(id, false));
+        }
+    }
+    assert!(world.edge(3 * width + 3, 2).is_none());
+    assert!(world.edge(3 * width + 4, 6).is_none());
+    assert_eq!(world.exhibits().list().len(), 1);
+}
+
+/// An undo that merges two tanks deletes nothing (not while undoing).
+#[test]
+fn an_undone_removal_that_merges_two_tanks_deletes_no_wall() {
+    let mut pieces = ring("tank", 2, 2, 5, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    put_wall(&mut world, last.0, last.1);
+    put_wall(&mut world, "tank", (3, 2, 2));
+    world.begin();
+    put_wall(&mut world, "tank", (3, 3, 2));
+    assert_eq!(world.exhibits().list().len(), 2);
+    while world.next_draw(false).is_some() {}
+    // Undoing the cut joins the tanks again.
+    assert!(!world.undo().is_empty());
+    assert_eq!(world.exhibits().list().len(), 1);
+    assert!(
+        world.draws().iter().all(|d| !matches!(d, Draw::Delete(_))),
+        "{:?}",
+        world.draws()
+    );
 }

@@ -120,7 +120,9 @@ impl World {
             };
             let piece = match self.tank_at(n).is_some() {
                 // A copy is made healthy: its wear interval, then its start time.
-                true => self.copy_wall(wall, t, d).inspect(|&c| self.draws.push(Draw::Heal(c))),
+                true => self
+                    .copy_wall(wall, t, d)
+                    .inspect(|&c| self.draws.push(Draw::Heal(c))),
                 false => {
                     self.move_wall(wall, t, d);
                     // The moved piece is validated again: a gate draws no start time.
