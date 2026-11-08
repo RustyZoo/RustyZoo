@@ -1076,7 +1076,7 @@ fn a_fence_piece_in_a_tank_reads_the_land_beside_it() {
     let tile = 3 * WIDE + 3;
     let fence = kind("fences", "iron", 0, "");
     let wall = kind("tankwall", "glass", 0, "");
-    let staff = kind("staff", "keeper", 0, "");
+    let staff = kind("keeper", "keeper", 0, "");
     assert!(rating::reads_neighbours(&fence) && rating::reads_neighbours(&wall));
     assert!(!rating::reads_neighbours(&staff));
     let near = rating::reads_neighbours(&fence);
