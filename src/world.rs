@@ -821,17 +821,8 @@ impl World {
 fn index(zoo: &Zoo, shapes: &[Option<Shape>]) -> (Scene, Vec<usize>) {
     let (mut objects, mut owner) = (Vec::new(), Vec::new());
     for (at, (entity, shape)) in zoo.entities.iter().zip(shapes).enumerate() {
-        if let (Some(c), Some(s)) = (&entity.common, shape) {
-            objects.push(Object {
-                kind: s.kind,
-                x: c.x,
-                y: c.y,
-                z: c.z,
-                facing: c.rotation % 8,
-                footprint: s.footprint,
-                late: false,
-                height: 0,
-            });
+        if let Some(object) = scene_object(entity, shape) {
+            objects.push(object);
             owner.push(at);
         }
     }
@@ -843,6 +834,21 @@ fn index(zoo: &Zoo, shapes: &[Option<Shape>]) -> (Scene, Vec<usize>) {
         objects,
     );
     (scene, owner)
+}
+
+/// The scene object of an entity that has a body and a shape.
+fn scene_object(entity: &Entity, shape: &Option<Shape>) -> Option<Object> {
+    let (c, s) = (entity.common.as_ref()?, shape.as_ref()?);
+    Some(Object {
+        kind: s.kind,
+        x: c.x,
+        y: c.y,
+        z: c.z,
+        facing: c.rotation % 8,
+        footprint: s.footprint,
+        late: false,
+        height: 0,
+    })
 }
 
 #[cfg(test)]
