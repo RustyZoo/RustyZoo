@@ -1,7 +1,7 @@
 //! The pictures of tank exhibits (map drawing 9.7, sprite drawing 3.6, 7.5 to 7.8): wall stacks,
 //! glass panes, water, underwater pictures and the shadows of units on the floor.
 
-use super::order::{Glass, ground_height, shadow_point};
+use super::order::{Glass, shadow_point};
 use super::*;
 
 const HALF: Blend = Blend {
@@ -432,7 +432,7 @@ impl MapRenderer<'_> {
             true => shadow_point(scene.rotation, obj.x, obj.y),
             false => (obj.x, obj.y),
         };
-        let Some(t) = scene.tile_at(sx, sy) else {
+        let Some(floor) = scene.shadow_height(sx, sy) else {
             return;
         };
         let Some((anim, view)) = self.current(scene, meta, o) else {
@@ -452,8 +452,6 @@ impl MapRenderer<'_> {
         } else {
             (anim, true)
         };
-        let (tx, ty_) = ((t % scene.width) as i32, (t / scene.width) as i32);
-        let floor = ground_height(&scene.tiles[t], sx - 64 * tx, sy - 64 * ty_);
         let (x, y) = project(scene.rotation, sx, sy, floor);
         let blend = Blend {
             strength: 0.25,

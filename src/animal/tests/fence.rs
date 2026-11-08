@@ -109,7 +109,7 @@ fn a_fence_that_is_not_working_electrified_takes_no_side_and_changes_nothing() {
 #[test]
 fn an_object_in_a_quarter_along_the_side_refuses_it_but_another_quarter_does_not() {
     // Side 2 looks at the quarters 2 and 3 (the east half): a tree at the south-east quarter.
-    let tree = |x, y| thing("scenery", "tree", 30, (2 * 64 + x, 2 * 64 + y), 0);
+    let tree = |x, y| thing("objects", "tree", 30, (2 * 64 + x, 2 * 64 + y), 0);
     let wire = piece("wire", (2, 2), 2, 5);
     let (mut w, mut unit) = map(vec![wire.clone(), tree(48, 48)]);
     assert!(!start(&mut w, &mut unit, &keys(), &data()).1);

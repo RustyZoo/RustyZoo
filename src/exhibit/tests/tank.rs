@@ -1196,3 +1196,27 @@ fn a_destroyed_tank_tells_its_tiles() {
     assert!(world.zoo.tanks.is_empty());
     assert!(world.take_events().contains(&Event::Left(tiles)));
 }
+
+#[test]
+fn a_tank_cut_from_a_land_exhibit_resizes_the_land_exhibit_twice() {
+    // A land pen of 6 x 2 tiles with a path two rows below it. Tank walls close its west half:
+    // the survivor is resized for the split and again as the exhibit across the new tank's start
+    // pair (habitat rating 10.1), so the path tile starts a second area (10.2 point 2).
+    let mut pieces: Vec<Piece> = ring("fences", 1, 1, 6, 2);
+    for p in pieces
+        .iter_mut()
+        .filter(|p| p.1.0 == 1 || p.1.0 <= 3 && p.1.2 != 2)
+    {
+        p.0 = "tank";
+    }
+    let mut world = tanks(&pieces, &[], &[]);
+    let path = entity("path", 5, 4, 0);
+    world.add(path.clone(), tank_shape(&path));
+    put_wall(&mut world, "tank", (3, 1, 2));
+    put_wall(&mut world, "tank", (3, 2, 2));
+    let list = world.exhibits().list();
+    let land = list.iter().find(|e| e.tank.is_none()).unwrap();
+    let tile = 4 * SIZE as usize + 5;
+    let areas: Vec<_> = land.areas.iter().map(|a| a.tiles.clone()).collect();
+    assert_eq!(areas, [vec![tile], vec![tile]]);
+}
