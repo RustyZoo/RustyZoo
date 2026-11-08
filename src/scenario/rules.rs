@@ -375,7 +375,9 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4], gui: &Gui) -> i32 {
 /// counts twice. Without a research tree none is.
 pub(super) fn research(ids: &[i32], env: &Env) -> i32 {
     let tree = env.game.and_then(|g| g.research);
-    let done = ids.iter().filter(|&&id| tree.is_some_and(|t| t.id_complete(id)));
+    let done = ids
+        .iter()
+        .filter(|&&id| tree.is_some_and(|t| t.id_complete(id)));
     done.count() as i32
 }
 
