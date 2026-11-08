@@ -29,6 +29,7 @@ pub(crate) fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Op
             crate::build::number(ty, "walkableByTall") == Some(1.0),
         ),
         forms: (entity.class == "animals").then(|| ty.forms()),
+        // Scenery types are stored under the class `objects`.
         rubbleable: matches!(
             entity.class.as_str(),
             "objects" | "building" | "food" | "filter" | "rubble"
