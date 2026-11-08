@@ -80,7 +80,7 @@ pub(crate) fn shape(e: &Entity) -> Option<Shape> {
         "bush" => Some(thing(Class::Fixed, (1, 1), false)),
         // Scenery a rampage turns to rubble: a `tree` takes a quadrant, a `wide` one a tile, a
         // `stone` is spared.
-        "scenery" | "objects" => Some(Shape {
+        "objects" => Some(Shape {
             rubbleable: e.type_name != "stone",
             ..thing(
                 Class::Fixed,
