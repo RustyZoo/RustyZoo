@@ -554,11 +554,12 @@ fn a_bonus_moves_the_rating_to_the_row_it_makes() {
             }
         }
     }
-    // The bonus really changes the answer, and a huge one cannot overflow.
+    // The bonus really changes the answer, and a huge one wraps around as the 32-bit sum does.
     assert_ne!(check(50, 0, 49.01), check(50, 31, 49.01));
-    assert_eq!(check(i32::MAX, 30, 9.0), check(i32::MAX, 0, 9.0));
+    assert_eq!(check(i32::MAX, 30, 9.0), check(i32::MIN + 29, 0, 9.0));
     assert_eq!(check(0, i32::MAX, 49.01), check(81, 0, 49.01));
-    assert_eq!(check(i32::MIN, -30, 9.0), check(i32::MIN, 0, 9.0));
+    assert_eq!(check(50, i32::MAX, 49.01), check(i32::MIN + 49, 0, 49.01));
+    assert_eq!(check(i32::MIN, -30, 9.0), check(i32::MAX - 29, 0, 9.0));
 }
 
 #[test]

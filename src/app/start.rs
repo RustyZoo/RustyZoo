@@ -128,6 +128,7 @@ impl App<'_> {
             bar: None,
             bars: None,
             finances: Finances::default(),
+            funding: Default::default(),
             awards_page: Awards::default(),
             build: Build::new(installed_expansions(self.renderer.vfs()))
                 .with_selector(expansion_entries(self.renderer.vfs()), stored)
