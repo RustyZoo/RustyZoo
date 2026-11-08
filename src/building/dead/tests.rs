@@ -685,3 +685,24 @@ fn a_dead_toy_keeps_its_saved_record() {
         .unwrap();
     assert_eq!((saved.price, saved.built), (record.price, record.built));
 }
+
+/// A scenery type with a dead key is decided like a building and keeps its state through the
+/// unit sync; the guest building lives of the same table are kept too.
+#[test]
+fn a_scenery_object_on_land_is_dead_and_stays_dead_after_a_sync() {
+    let bush = EntityType {
+        class: "scenery",
+        ..typed("bush", "[Characteristics/Integers]\ncDeadOnLand=1\n")
+    };
+    let mut cat = Catalogue::default();
+    cat.push(bush);
+    let mut w = world_with((8, 8), |zoo| {
+        zoo.entities
+            .push(entity("scenery", "bush", 9, centre((6, 6)), 0));
+    });
+    decide_all(&mut w, &cat);
+    assert!(w.units.buildings[&9].dead, "dead on land");
+    let entities = w.zoo.entities.clone();
+    w.units.sync(&entities);
+    assert!(w.units.buildings[&9].dead, "kept by the sync");
+}

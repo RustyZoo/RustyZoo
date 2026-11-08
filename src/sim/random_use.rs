@@ -187,6 +187,23 @@ mod tests {
         }
     }
 
+    /// A dead scenery object shows `idledead`, as a dead building does (guest buildings 11.1.1).
+    #[test]
+    fn a_dead_scenery_object_shows_idledead() {
+        let mut w = world_with((4, 4), |zoo| {
+            zoo.entities
+                .push(entity("scenery", "bush", 1, centre((0, 0)), 0));
+        });
+        let live = crate::building::Live {
+            dead: true,
+            ..Default::default()
+        };
+        w.units.buildings.insert(1, live);
+        let (mut rng, mut idles) = (Rng::default(), Idles::default());
+        idles.register(&w, &Catalogue::default(), &Building, &mut rng);
+        assert_eq!(idles.looks().get(&1), Some(&"idledead"));
+    }
+
     /// A random use that queues `used` also carries the type's `[UseSound]` to the building, with
     /// its attenuation as the base; no sound without a name, without `used` or before the time,
     /// and the sound draws nothing.
