@@ -1134,7 +1134,10 @@ fn one_draw_in_fifteen_sends_a_guest_on_the_footprint_of_a_building_out_of_it() 
     assert_eq!(task_at((2, 6)), 0);
     assert_eq!(task_at((5, 5)), 0);
     assert_eq!(task_at((5, 3)), EXIT_BUILDING);
-    assert_eq!((guest(&w).building, guest(&w).slot), (9, 0));
+    assert_eq!(
+        (guest(&w).building, guest(&w).slot),
+        (9, crate::guest::NO_SLOT)
+    );
     let r = &w.units.get(1).unwrap().goal.record;
     assert_eq!((r.mode, r.target.id, r.target.tile), (1, 9, None));
 }
@@ -2109,6 +2112,52 @@ fn a_full_building_is_crowded_at_every_step_before_the_price_is_looked_at() {
     }
 }
 
+#[test]
+fn a_guest_with_no_slot_only_clears_its_goal_at_the_completes_even_at_a_full_building() {
+    use crate::guest::NO_SLOT;
+    for step in 0..4 {
+        let cat = types();
+        let mut w = zoo();
+        let live = Live {
+            users: vec![(2, 0, 0), (3, 0, 0)],
+            ..Default::default()
+        };
+        w.units.buildings.insert(7, live);
+        with_cx(&cat, &mut w, |cx| {
+            if let Some(g) = cx.guest() {
+                (g.need, g.building, g.slot) = (Some("food"), 7, NO_SLOT);
+            }
+            match step {
+                0 => cx.building_arrived(),
+                1 => cx.entrance_arrived(),
+                2 => cx.enter_arrived(),
+                _ => {
+                    cx.set_task(ENTER_BUILDING, 0, 7, None);
+                    hit(cx);
+                    cx.enter_check_done();
+                }
+            }
+        });
+        // No thought, no note, and the goal ends; the check done's plain reset leaves wandered.
+        assert!(w.units.thoughts.of(1).is_empty(), "{step}");
+        assert_eq!(guest(&w).building, 0, "{step}");
+        assert_eq!(guest(&w).slot, NO_SLOT, "{step}");
+        assert_eq!(task(&w), 0, "{step}");
+        assert_eq!(w.units.get(1).unwrap().goal.wandered, step < 3, "{step}");
+    }
+}
+
+#[test]
+fn a_guest_goal_reset_forgets_the_slot() {
+    use crate::guest::NO_SLOT;
+    let (cat, mut w) = (types(), zoo());
+    with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().slot = 1;
+        cx.reset();
+    });
+    assert_eq!(guest(&w).slot, NO_SLOT);
+}
+
 /// A grandstand of three draw places, visible inside.
 const GRANDSTAND: &str = "[Characteristics/Integers]\ncCapacity=3\ncUserStaysOutside=0\n\
     cUserUsesExit=1\n[Satisfies]\nbuilding\ngrandstand\n[slots]\nname=slot\n[slot]\nslotpos=0\n\
@@ -2370,4 +2419,25 @@ fn entering_a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
     assert!(w.units.thoughts.of(1).is_empty());
     assert!(guest(&w).seen.is_empty() && guest(&w).building == 0);
     assert!(task(&w) == 0 && w.units.get(1).unwrap().goal.wandered);
+}
+
+#[test]
+fn a_leave_complete_with_no_slot_leaves_the_building_untouched() {
+    use crate::guest::NO_SLOT;
+    let (cat, mut w) = (types(), zoo());
+    w.units.buildings.insert(
+        7,
+        Live {
+            users: vec![(1, 0, 0)],
+            ..Default::default()
+        },
+    );
+    with_cx(&cat, &mut w, |cx| {
+        if let Some(g) = cx.guest() {
+            (g.need, g.building, g.slot) = (Some("food"), 7, NO_SLOT);
+        }
+        cx.set_task(EXIT_BUILDING, 1, 7, None);
+        cx.exit_done();
+    });
+    assert_eq!(w.units.buildings[&7].users.len(), 1);
 }
