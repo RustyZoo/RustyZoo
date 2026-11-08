@@ -56,6 +56,21 @@ pub(super) struct Ground {
 }
 
 impl Ground {
+    /// The ground of a map. A hostile elevation must not overflow the height, so it is clamped.
+    pub(super) fn of(width: u32, height: u32, tiles: &[Tile]) -> Ground {
+        Ground {
+            width,
+            height,
+            tiles: tiles
+                .iter()
+                .map(|t| Tile {
+                    elevation: t.elevation.clamp(-(1 << 24), 1 << 24),
+                    ..*t
+                })
+                .collect(),
+        }
+    }
+
     /// The tile at the tile coordinates, if it is on the map.
     pub(super) fn tile(&self, x: i32, y: i32) -> Option<&Tile> {
         let (x, y) = (u32::try_from(x).ok()?, u32::try_from(y).ok()?);
@@ -295,18 +310,7 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
     }
 
     r.mark("tiles");
-    r.ground = Some(Rc::new(Ground {
-        width,
-        height,
-        // A hostile elevation must not overflow the height.
-        tiles: tiles
-            .iter()
-            .map(|t| Tile {
-                elevation: t.elevation.clamp(-(1 << 24), 1 << 24),
-                ..*t
-            })
-            .collect(),
-    }));
+    r.ground = Some(Rc::new(Ground::of(width, height, &tiles)));
 
     *section = "entities";
     let min_record = if v >= 70 { 16 } else { 12 };
@@ -362,18 +366,19 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
     let (body_size, common) = if r.v >= 70 {
         let size = r.u32()?;
         let data = r.take(size as usize)?;
-        let mut body = Reader::new(data, r.v);
-        body.ground = r.ground.clone();
-        // A body that does not decode to exactly its size is skipped, like an unknown class.
-        let common = match body::decode(&mut body, class) {
-            Ok(Some(mut common)) if body.data.is_empty() && size > 0 => {
-                common.raw = Raw {
-                    body: data.to_vec(),
-                    spans: body.spans,
-                };
-                Some(common)
-            }
-            _ => None,
+        // A record of the parent class `staff` is read with the layout of its type's class, which
+        // `Zoo::checked` knows: the bytes wait for it (zoo format 6.2 points 1 and 2).
+        let common = if class == b"staff" && size > 0 {
+            let raw = Raw {
+                body: data.to_vec(),
+                spans: Spans::default(),
+            };
+            Some(Common {
+                raw,
+                ..Common::default()
+            })
+        } else {
+            sized(data, r.v, r.ground.clone(), class)
         };
         (Some(size), common)
     } else {
@@ -408,6 +413,33 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
         body_size,
         common,
     })
+}
+
+/// Decodes a body that has its stored size. A body that does not decode to exactly its size is
+/// skipped, like an unknown class.
+fn sized(data: &[u8], v: u32, ground: Option<Rc<Ground>>, class: &[u8]) -> Option<Common> {
+    let mut body = Reader::new(data, v);
+    body.ground = ground;
+    match body::decode(&mut body, class) {
+        Ok(Some(mut common)) if body.data.is_empty() && !data.is_empty() => {
+            common.raw = Raw {
+                body: data.to_vec(),
+                spans: body.spans,
+            };
+            Some(common)
+        }
+        _ => None,
+    }
+}
+
+/// Reads a record of a parent class again with the layout of the class of its type
+/// (zoo format 6.2 point 2), once `Zoo::checked` has found that type.
+pub(super) fn reread(zoo: &mut Zoo, at: usize, class: &'static str) {
+    let ground = Rc::new(Ground::of(zoo.width, zoo.height, &zoo.tiles));
+    let e = &mut zoo.entities[at];
+    let data = e.common.take().map(|c| c.raw.body).unwrap_or_default();
+    e.class = class.into();
+    e.common = sized(&data, zoo.version, Some(ground), class.as_bytes());
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.

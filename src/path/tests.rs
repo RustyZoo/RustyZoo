@@ -69,7 +69,7 @@ fn shape(e: &Entity) -> Option<Shape> {
             ..thing(Class::Fixed, (1, 1), false, false)
         }),
         // Scenery a rampage turns to rubble (`tree`) and scenery it spares (`stone`).
-        ("scenery", kind) => Some(Shape {
+        ("objects", kind) => Some(Shape {
             rubbleable: kind == "tree",
             ..thing(Class::Fixed, (1, 1), false, false)
         }),
@@ -327,7 +327,7 @@ fn a_rampaging_animal_walks_through_the_scenery_that_turns_to_rubble() {
     let full = |kind: &str| {
         world(|_, e| {
             for (x, y) in [(16, 16), (48, 16), (16, 48), (48, 48)] {
-                e.push(entity_at("scenery", kind, "", (5 * 64 + x, 5 * 64 + y), 0));
+                e.push(entity_at("objects", kind, "", (5 * 64 + x, 5 * 64 + y), 0));
             }
         })
     };

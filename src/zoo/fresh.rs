@@ -55,7 +55,7 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
             let record = c.guest.as_deref().copied();
             pre.bytes(&guest(None, &record.unwrap_or(guest_new(40, now)))?);
         }
-        "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
+        "keeper" | "maint" | "tour" | "helicopter" => {
             let new = StaffRecord::default();
             super::staff::write(
                 &mut pre,
