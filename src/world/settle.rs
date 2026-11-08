@@ -347,11 +347,14 @@ impl World {
             let Some(j) = (0..plan.parts.len()).find(|&j| plan.winner[j] == Some(x)) else {
                 continue;
             };
-            if plan.morphed.contains_key(&i) || !holds(i, a) || !holds(j, b) || holds(j, a) {
+            if !holds(i, a) || !holds(j, b) || holds(j, a) {
                 continue;
             }
             built.early.push((x, exhibit::fill(self, a)));
-            built.early.push((new, exhibit::fill(self, b)));
+            // A new part that becomes a tank is made by the morph, resized by its constructor only.
+            if plan.kinds[i].is_none() {
+                built.early.push((new, exhibit::fill(self, b)));
+            }
             let at = |built: &Built, id: u32| built.resized.iter().position(|&r| r == id);
             if let (Some(p), Some(q)) = (at(built, x), at(built, new))
                 && q < p

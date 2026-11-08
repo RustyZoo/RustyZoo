@@ -1220,3 +1220,37 @@ fn a_tank_cut_from_a_land_exhibit_resizes_the_land_exhibit_twice() {
     let areas: Vec<_> = land.areas.iter().map(|a| a.tiles.clone()).collect();
     assert_eq!(areas, [vec![tile], vec![tile]]);
 }
+
+#[test]
+fn a_tank_cut_from_a_land_exhibit_with_its_gate_across_is_resized_once_and_the_land_exhibit_three_times()
+ {
+    // The land survivor: the split, its second resize and the morph; the tank: its constructor.
+    // (habitat rating 10.1)
+    let mut z = zoo(&[]);
+    for (class, (x, y, d)) in ring("fences", 1, 1, 6, 2) {
+        let tank = x == 1 || x <= 3 && d != 2;
+        let mut e = wall(if tank { "tank" } else { class }, (x, y, d));
+        if (x, y, d) == (6, 1, 2) {
+            e.subtype = "g".into();
+        }
+        z.entities.push(e);
+    }
+    unique(&mut z);
+    let gate = z.entities.iter().position(|e| e.subtype == "g").unwrap() as u32 + 1;
+    z.entities.push(entity("path", 5, 4, 0));
+    unique(&mut z);
+    let mut world = World::new(z, tank_shape);
+    world.set_tank_config(CONFIG);
+    let id = world.exhibits().list()[0].id;
+    world.set_gate(id, gate);
+    world.begin();
+    put_wall(&mut world, "tank", (3, 1, 2));
+    put_wall(&mut world, "tank", (3, 2, 2));
+    let t = 4 * SIZE as usize + 5;
+    let count = |tank: bool| {
+        let list = world.exhibits().list();
+        let e = list.iter().find(|e| e.tank.is_some() == tank).unwrap();
+        e.areas.iter().filter(|a| a.tiles == [t]).count()
+    };
+    assert_eq!((count(false), count(true)), (3, 1));
+}
