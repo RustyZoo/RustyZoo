@@ -542,7 +542,8 @@ fn created(app: &mut App) {
         &mut loops,
     );
     game.vehicles.extend(loops);
-    app.guest_created();
+    let trio = game.world.units.cheat.lions_tigers_bears;
+    app.guest_created(trio);
 }
 
 /// The ambient creatures of the game: type name, speed.
