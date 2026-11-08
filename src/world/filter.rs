@@ -158,18 +158,23 @@ impl World {
     /// A save removes the bubbles of every tank's filter (tank staff 9 point 2): the next cycle
     /// makes a new set.
     pub(crate) fn remove_bubbles(&mut self) {
-        let filters: Vec<u32> = self
-            .exhibits
-            .list()
-            .iter()
+        let filters: Vec<u32> = (self.exhibits.list().iter())
             .filter_map(|e| e.filter)
             .collect();
-        for id in filters {
-            if let Some(v) = self.filter_view.get_mut(&id) {
-                v.bubbles = 0;
-                if !v.off {
-                    self.filter_view.remove(&id);
-                }
+        filters.into_iter().for_each(|id| self.clear_bubbles(id));
+    }
+
+    /// The same for the filter of tank `tank` alone.
+    pub(crate) fn remove_bubbles_of(&mut self, tank: u32) {
+        let filter = self.exhibits.get(tank).and_then(|e| e.filter);
+        filter.into_iter().for_each(|id| self.clear_bubbles(id));
+    }
+
+    fn clear_bubbles(&mut self, id: u32) {
+        if let Some(v) = self.filter_view.get_mut(&id) {
+            v.bubbles = 0;
+            if !v.off {
+                self.filter_view.remove(&id);
             }
         }
     }

@@ -761,7 +761,7 @@ impl Sim {
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
-        self.draw_ripples(world, data);
+        self.draw_ripples(world, cat, data);
         self.idles.register(world, cat, data, &mut self.rng);
         let made = world.units.take_exploded();
         self.idles.queue_explode(world, &made, data);
@@ -828,7 +828,7 @@ impl Sim {
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
                 // A keeper's cleaning or a dung may have made the water clean.
-                self.draw_ripples(world, data);
+                self.draw_ripples(world, cat, data);
                 self.start_mended(world, cat, data);
                 self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
@@ -899,7 +899,7 @@ impl Sim {
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
         self.wet_changed(world, cat, data);
         world.decay_water(step);
-        self.draw_ripples(world, data);
+        self.draw_ripples(world, cat, data);
         self.water_effects(world, cat, step);
         self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).

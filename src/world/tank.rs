@@ -2,7 +2,7 @@
 //! side, the water values, the objects a tank refuses, the split of a tank and what the player
 //! answers when something has to go.
 
-use super::{Action, Event, Undone, World};
+use super::{Action, Draw, Event, Undone, World};
 use crate::exhibit::{EXTERIOR, GROUNDS, Tank, TankConfig};
 use crate::render::order::{Kind, ground_height};
 use crate::terrain::shape::LIMIT;
@@ -280,6 +280,7 @@ impl World {
     /// does not allow: the player is asked first when something stands in it. Not while an undo
     /// is replayed or a map is read, which keep the ground and the walls as they are.
     pub(super) fn make_tank(&mut self, id: u32, inherited: Option<Tank>, physical: bool) {
+        let owed = self.draws.len();
         if physical {
             match inherited {
                 // A part cut off a tank keeps its level.
@@ -297,10 +298,26 @@ impl World {
             self.decide(&changed, true);
         }
         self.fill_values(id, inherited);
+        // The part cut off a tank updates its wall information once its water values are set
+        // (map drawing 9.7.8 point 3.4); a new tank draws nothing (its level is 0).
+        if physical && inherited.is_some() {
+            self.draws.push(Draw::Walls(id));
+        }
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();
         // Nothing to ask about: the tank is filled again, whatever the file says (3.10).
         if physical && inherited.is_none() && !asks {
             self.fill(id);
+        }
+        // A new tank filled at once (the game is paused) sets no ripples up: its purity is not
+        // written yet when the level is (map drawing 9.7.8 open point a).
+        if physical && inherited.is_none() {
+            let made = self.draws.split_off(owed);
+            let before = made.len();
+            self.draws
+                .extend(made.into_iter().filter(|&d| d != Draw::Ripples(id)));
+            if self.draws.len() - owed != before {
+                self.bare.push(id);
+            }
         }
         let event = match asks {
             true => Event::Objects(id),
