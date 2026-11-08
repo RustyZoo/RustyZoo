@@ -280,7 +280,7 @@ impl Run {
             ..class
         };
         sim.load(&mut world, &cat);
-        sim.fences_loaded(&world, &cat);
+        sim.fences_loaded(&mut world, &cat);
         match fences {
             Some(fences) => sim.new_game(&mut world, &cat, &mut money, fences),
             None => sim.loaded(&world, &cat, &mut money),

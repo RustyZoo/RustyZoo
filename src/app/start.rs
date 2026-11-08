@@ -91,7 +91,8 @@ impl App<'_> {
         };
         world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
         self.sim.load(&mut world, self.renderer.catalogue());
-        self.sim.fences_loaded(&world, self.renderer.catalogue());
+        self.sim
+            .fences_loaded(&mut world, self.renderer.catalogue());
         world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         world.units.show = crate::show::Params::load(self.renderer.vfs());
         let exhibits = world.exhibits().list().len();
