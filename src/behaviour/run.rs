@@ -503,11 +503,6 @@ impl Runner {
         self.moving.take()
     }
 
-    /// Whether the move call taken is an `fTargetBuilding`, once.
-    pub(crate) fn take_rampage(&mut self) -> bool {
-        std::mem::take(&mut self.rampage)
-    }
-
     /// Whether a face-the-food call ran since the last time, once.
     pub(crate) fn take_face(&mut self) -> bool {
         std::mem::take(&mut self.face)
@@ -860,13 +855,7 @@ impl Runner {
             // The call is the unit's, like a move: the target choice, then a fast move (animals
             // 11.11 point 4).
             Op::TargetBuilding => {
-                let own = Gait::Own {
-                    anim: "run".into(),
-                    speed: Number::Characteristic("cFastRate".into()),
-                    percent: Number::Int(100),
-                    sound: None,
-                };
-                (self.moving, self.rampage) = (Some((own, Target::Keep, false)), true);
+                (self.moving, self.rampage) = (Some(takes::charge()), true);
                 return true;
             }
             Op::FaceFood => {
