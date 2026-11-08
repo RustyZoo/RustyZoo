@@ -404,6 +404,10 @@ impl Cx<'_, '_> {
         let Some(t) = self.inside_tile(id) else {
             return self.clear_goal();
         };
+        // The step from the unit's tile towards it must be open (goals 11.3.2 point 8).
+        if !self.first_step_open(t) {
+            return self.clear_goal();
+        }
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
         self.unit.through_building = true;
         if !(self.path_to(t, false) && self.return_walk(false, false)) {

@@ -72,3 +72,23 @@ impl Cx<'_, '_> {
         self.world.tile_index(x, y)
     }
 }
+
+impl Cx<'_, '_> {
+    /// Goals 11.3.2 point 8: whether the unit's edge cost of the step from its own tile in the
+    /// direction of the tile `to` (the signs of the tile difference, 8 directions) is below 20; the
+    /// same tile costs nothing.
+    pub(super) fn first_step_open(&self, to: usize) -> bool {
+        let Some(here) = self.tile() else {
+            return false;
+        };
+        let w = self.world.zoo.width as usize;
+        let sign = |a: usize, b: usize| b.cmp(&a) as i32;
+        let want = (sign(here % w, to % w), sign(here / w, to / w));
+        // The map direction (0: y-1, clockwise) of the signs; none for the same tile.
+        let Some(d) = crate::render::order::STEP.iter().position(|&s| s == want) else {
+            return true;
+        };
+        let mover = crate::unit::movement::mover(self.unit, self.world, self.at, here);
+        crate::path::edge(self.world, &mover, here, d) < crate::path::MAX
+    }
+}

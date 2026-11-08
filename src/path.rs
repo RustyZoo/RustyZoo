@@ -16,7 +16,7 @@ mod search;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use cost::{SLOT, in_reach, step, terrain};
+pub(crate) use cost::{SLOT, edge, in_reach, step, terrain};
 use search::open_deep;
 pub(crate) use search::search;
 
