@@ -311,7 +311,6 @@ impl App<'_> {
                     }
                     // A piece that keeps its id only takes the new type, healthy: it draws its start.
                     if old == Some(id) {
-                        self.sim.draw_start(&game.world, id);
                         let (sim, r) = (&mut self.sim, &self.renderer);
                         exhibits::retyped(sim, &mut game.world, (r, &self.timings), id);
                         self.lines

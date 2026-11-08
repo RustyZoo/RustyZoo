@@ -60,14 +60,15 @@ pub(super) fn run_draws(
     sim.wet_changed(world, renderer.catalogue(), &data);
 }
 
-/// A fence piece took the same type again: an active tank wall updates its tank's wall
-/// information and draws its start time again, at once.
+/// A fence piece took the same type again and is healthy: it draws its start time, and an active
+/// tank wall updates its tank's wall information and draws its start time again, at once.
 pub(super) fn retyped(
     sim: &mut crate::sim::Sim,
     world: &mut World,
     (renderer, timings): (&MapRenderer, &Timings),
     id: u32,
 ) {
+    sim.draw_start(world, id);
     if world.retyped_wall(id) {
         run_draws(sim, world, renderer, timings);
     }
