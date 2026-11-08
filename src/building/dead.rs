@@ -99,6 +99,17 @@ pub(crate) fn decide_all(world: &mut World, cat: &Catalogue) {
 /// units of a tank whose water, base level, walls or ground changed get the AI reset of their
 /// kind (guest buildings 12.2 point 22).
 pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue, rng: &mut crate::sim::Rng) {
+    wet_changed_then(world, cat, rng, |_, _, _| {});
+}
+
+/// [`wet_changed`], calling `then` with each stirred tank right after its units were reset (the
+/// ripples of a tank that got water are set up there, map drawing 9.7.8 point 4).
+pub(crate) fn wet_changed_then(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut crate::sim::Rng,
+    mut then: impl FnMut(&mut World, &mut crate::sim::Rng, u32),
+) {
     for tank in world.take_wet() {
         tank_changed(world, cat, tank);
     }
@@ -107,6 +118,7 @@ pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue, rng: &mut crate::s
     }
     for tank in world.take_stirred() {
         crate::goal::stir_units(world, cat, rng, tank);
+        then(world, rng, tank);
     }
 }
 
