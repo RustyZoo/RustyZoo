@@ -38,6 +38,9 @@ struct Built {
     kept_ids: HashSet<u32>,
     /// The exhibits the original resizes: the ones made and the ones whose region changed.
     resized: Vec<u32>,
+    /// The resizes a split makes before those: when the survivor keeps the side across the piece,
+    /// each exhibit is first resized over the side it does not keep (habitat rating 10.1).
+    early: Vec<(u32, Vec<usize>)>,
 }
 
 /// What a split gives: where each part comes from, the land exhibits cut, the tanks that kept a part.
@@ -327,7 +330,47 @@ impl World {
             }
         }
         built.next.list_mut().sort_by_key(|e| e.id);
+        self.split_twice(plan, hint, &mut built);
         built
+    }
+
+    /// A split whose survivor keeps the side across the piece resizes both exhibits twice, the
+    /// survivor first each time (habitat rating 10.1): the survivor over the piece's side, the
+    /// new exhibit over the side across, then both over the side they keep.
+    fn split_twice(&self, plan: &Plan, hint: Option<(usize, usize)>, built: &mut Built) {
+        let Some((a, b)) = hint.and_then(|(a, d)| Some((a, self.neighbour(a, d)?))) else {
+            return;
+        };
+        let holds = |i: usize, t: usize| plan.parts[i].tiles.contains(&t);
+        for i in 0..plan.parts.len() {
+            let Some(&x) = plan.split_from.get(&i) else {
+                continue;
+            };
+            let new = plan.parts[i]
+                .tiles
+                .first()
+                .and_then(|&t| built.next.region(t));
+            let Some(new) = new.filter(|n| built.fresh.contains(n)) else {
+                continue;
+            };
+            let Some(j) = (0..plan.parts.len()).find(|&j| plan.winner[j] == Some(x)) else {
+                continue;
+            };
+            if !holds(i, a) || !holds(j, b) || holds(j, a) {
+                continue;
+            }
+            built.early.push((x, exhibit::fill(self, a)));
+            // A new part that becomes a tank is made by the morph, resized by its constructor only.
+            if plan.kinds[i].is_none() {
+                built.early.push((new, exhibit::fill(self, b)));
+            }
+            let at = |built: &Built, id: u32| built.resized.iter().position(|&r| r == id);
+            if let (Some(p), Some(q)) = (at(built, x), at(built, new))
+                && q < p
+            {
+                built.resized.swap(p, q);
+            }
+        }
     }
 
     /// The exhibits that are gone: their gate is a fence again, and the events say where they went.
@@ -385,7 +428,7 @@ impl World {
         } = plan;
         self.exhibits = std::mem::take(&mut built.next);
         self.reshaped = true;
-        self.resize_areas(&built.resized);
+        self.resize_areas(&built.early, &built.resized);
         self.edits += 1;
         let mut changed = self.retank(quiet);
         if !quiet {

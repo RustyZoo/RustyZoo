@@ -60,14 +60,17 @@ pub struct Plan {
 impl Plan {
     /// Reads exhibit `id` of a world.
     pub fn of(world: &World, id: u32) -> Plan {
+        let order = (world.exhibits().get(id)).map_or_else(Vec::new, |e| e.order.clone());
+        Plan::over(world, order)
+    }
+
+    /// The map as the grouping reads it for an exhibit holding the tiles `order`.
+    pub(crate) fn over(world: &World, order: Vec<usize>) -> Plan {
         let tiles = world.zoo.tiles.len();
         let mut plan = Plan {
             width: world.zoo.width as usize,
             height: world.zoo.height as usize,
-            order: world
-                .exhibits()
-                .get(id)
-                .map_or_else(Vec::new, |e| e.order.clone()),
+            order,
             inside: vec![false; tiles],
             fenced: vec![false; tiles],
             path: (0..tiles).map(|t| world.path(t).is_some()).collect(),
