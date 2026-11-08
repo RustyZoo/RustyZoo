@@ -2787,6 +2787,50 @@ fn a_new_animal_takes_the_creation_values_of_the_counters_it_does_not_draw() {
 }
 
 #[test]
+fn an_animal_slot_is_loaded_and_saved_as_the_unit_byte_and_a_reset_keeps_it() {
+    use crate::guest::NO_SLOT;
+    let cat = zebras();
+    let slot_of = |world: &World| {
+        let mut zoo = world.saved(|_| true);
+        world.finish_save(&mut zoo, &cat);
+        let c = zoo.entities.iter().filter_map(|e| e.common.as_ref());
+        c.filter(|c| c.id == 500)
+            .find_map(|c| c.unit.as_ref().map(|u| u.slot))
+    };
+    let live = |world: &mut World| match &mut world.units.get_mut(500).unwrap().part {
+        crate::unit::Part::Animal(a) => a.slot,
+        _ => panic!("an animal"),
+    };
+    // A made animal holds none; the loaded byte is kept, whatever it is.
+    for byte in [0, 3, 255] {
+        let mut world = pens();
+        let at = world.find(500).unwrap();
+        let mut block = crate::zoo::fresh::unit_new(None);
+        block.slot = byte;
+        world.zoo.entities[at].common.as_mut().unwrap().unit = Some(Box::new(block));
+        let mut sim = Sim::new(b"");
+        sim.set_seed(1);
+        sim.start_game(64, Clocks::default());
+        sim.load(&mut world, &cat);
+        assert_eq!(live(&mut world), usize::from(byte));
+        // Started, the animal writes its live slot; a reset leaves it.
+        world.units.get_mut(500).unwrap().started = true;
+        assert_eq!(slot_of(&world), Some(byte));
+        if let crate::unit::Part::Animal(a) = &mut world.units.get_mut(500).unwrap().part {
+            a.slot = 2;
+        }
+        assert_eq!(slot_of(&world), Some(2));
+        let u = world.units.get_mut(500).unwrap();
+        crate::goal::stop_use(u);
+        assert_eq!(slot_of(&world), Some(2));
+    }
+    assert_eq!(
+        Animal::create(&keys(), &Class::default(), "m", &mut Rng::default()).slot,
+        NO_SLOT
+    );
+}
+
+#[test]
 fn a_saved_unit_holds_its_live_goal_and_job() {
     let cat = zebras();
     let mut world = pens();

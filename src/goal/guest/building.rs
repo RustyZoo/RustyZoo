@@ -227,29 +227,35 @@ impl Cx<'_, '_> {
         let Some((slot, p)) = self.open_slot(b) else {
             return false;
         };
+        // The slot is written before the step test and the walk start, so a failed start keeps it
+        // (goals 11.3.1 point 2).
+        if let Some((_, s, e)) = self.aim() {
+            (*s, *e) = (slot, p);
+        }
         let Some(t) = self.tile_at(p) else {
             return false;
         };
         if Some(t) != self.tile() && !self.return_walk(true, false) {
             return false;
         }
-        if let Some((_, s, e)) = self.aim() {
-            (*s, *e) = (slot, p);
-        }
         self.set_task(if kind.direct { ENTRANCE } else { GO }, 0, b, Some(t));
         true
     }
 
-    /// The unit has no building target and a guest serves no need; the slot is forgotten (slot 0,
-    /// for a guest no slot, goals 11.3.1 point 2).
+    /// The unit has no building target and a guest serves no need; a guest forgets its slot (goals
+    /// 11.3.1 point 2), an animal keeps its slot.
     /// An animal keeps the need byte it has (shows 32.1 point 2).
     pub(in crate::goal) fn clear_target(&mut self) {
         if let Some(g) = self.guest() {
             g.need = None;
         }
-        let none = if self.guest().is_some() { NO_SLOT } else { 0 };
+        // An animal's reset does not write the slot (goals 11.3.1 point 2).
+        let guest = self.guest().is_some();
         if let Some((b, s, _)) = self.aim() {
-            (*b, *s) = (0, none);
+            *b = 0;
+            if guest {
+                *s = NO_SLOT;
+            }
         }
     }
 
