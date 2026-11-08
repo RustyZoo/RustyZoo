@@ -115,7 +115,8 @@ pub(crate) enum Cheat {
         guests: [u8; 3],
         buildings: [u8; 2],
     },
-    /// `guests_flee_birds`: every guest decides to leave (the birds are skipped, cheats 10 O3).
+    /// `guests_flee_birds`: every guest decides to leave, and 15 crows and 15 seagulls come
+    /// ([`BIRDS`]).
     GuestsLeave,
     /// `fences_break`: every fence piece that can deteriorate breaks.
     FencesBreak,
@@ -242,6 +243,9 @@ pub(crate) const SNOWMAN: i32 = 7079;
 pub(crate) const YELLOW_BRICK: i32 = 9111;
 /// The name id of the witch's ambient type.
 pub(crate) const WITCH: i32 = 5084;
+/// The name ids of the crow and the seagull; `guests_flee_birds` adds 15 spawn entries of each, a
+/// crow then a seagull, each followed by one creature (cheats 4.2, ambients 7 point 1).
+pub(crate) const BIRDS: [i32; 2] = [5052, 5053];
 
 /// A flying object a date hook launches (cheats 6), by the name id of its ambient type. The launch
 /// is told in the log (`sim fly ID [COUNT]`) and makes the flight ([`crate::flight`]).

@@ -2,7 +2,7 @@
 
 use super::developer_tests::with_world;
 use super::*;
-use crate::cheat::{HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK};
+use crate::cheat::{Cheat, HOLIDAY_TREE, JACK_O_LANTERN, SNOWMAN, YELLOW_BRICK};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::render::tests::{cache_install_with, frame_file, tile_with};
@@ -487,10 +487,16 @@ fn a_start_on_the_real_31_october_leaves_the_staff_colours() {
     });
 }
 
-/// The three ambient types of the hooks, with the integers `ini` for each.
+/// The ambient types of the hooks and of the birds cheat, with the integers `ini` for each.
 fn flights(ini: &str) -> Catalogue {
     let mut cat = items();
-    for (id, name) in [(5082, "biplane"), (5083, "sleigh"), (5084, "witch")] {
+    for (id, name) in [
+        (5082, "biplane"),
+        (5083, "sleigh"),
+        (5084, "witch"),
+        (5052, "crow"),
+        (5053, "seagull"),
+    ] {
         cat.push(EntityType {
             class: "ambient",
             type_name: name.into(),
@@ -670,5 +676,41 @@ fn a_flight_leaves_the_map_and_takes_its_loop_with_it() {
         }
         assert!(creatures(app).is_empty(), "and left the map");
         assert!(app.loop_sounds_placed().is_empty());
+    });
+}
+
+#[test]
+fn the_birds_cheat_adds_15_crow_and_seagull_entries_each_with_a_creature_and_90_draws() {
+    fly("cSpeed=50\ncFrequency=20\n", |app| {
+        let mut expected = app.sim.rng.clone();
+        (0..90).for_each(|_| _ = expected.rand());
+        app.guest_cheat(Cheat::GuestsLeave);
+        let names: Vec<_> = creatures(app).into_iter().map(|c| c.0).collect();
+        let pairs = ["crow", "seagull"].repeat(15);
+        assert_eq!(names, pairs, "a crow then a seagull, 15 times");
+        assert_eq!(app.sim.rng, expected, "three draws for each of the 30");
+        assert_eq!(spawned(app, 19), [] as [i32; 0]);
+        assert_eq!(spawned(app, 20), [5052, 5053].repeat(15));
+    });
+}
+
+#[test]
+fn the_birds_cheat_without_the_types_adds_entries_but_draws_nothing_and_makes_no_bird() {
+    run(|app, _| {
+        let before = app.sim.rng.clone();
+        app.guest_cheat(Cheat::GuestsLeave);
+        assert_eq!(app.sim.rng, before);
+        assert!(creatures(app).is_empty());
+        assert!(spawned(app, 1000).is_empty());
+    });
+}
+
+#[test]
+fn an_ordinary_game_draws_nothing_for_the_birds() {
+    fly("cSpeed=50\ncFrequency=20\n", |app| {
+        today(app, 12, 25);
+        app.guest_created();
+        assert_eq!(creatures(app).len(), 1, "the sleigh alone");
+        assert_eq!(spawned(app, 20), [5083]);
     });
 }

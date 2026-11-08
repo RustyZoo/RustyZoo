@@ -3,7 +3,7 @@
 
 use super::App;
 use super::cheat_guest::palette_set;
-use crate::cheat::{Cheat, Fly, Named, Subject, WITCH};
+use crate::cheat::{BIRDS, Cheat, Fly, Named, Subject, WITCH};
 use crate::flight;
 use crate::text::from_cp1252;
 
@@ -74,21 +74,38 @@ impl App<'_> {
     }
 
     /// Makes the flight of a launch (ambients 3.1) and, for the sleigh and the biplane, holds its
-    /// loop. A game without the type makes no flight and says so in the log (ambients 11.1).
+    /// loop.
     fn launch(&mut self, fly: Fly) {
-        let (cat, Some(id)) = (self.renderer.catalogue(), fly.type_id()) else {
-            return;
-        };
+        let Some(id) = fly.type_id() else { return };
+        let made = self.spawn(id);
+        if let (Some(flight), Some((file, base))) = (made, fly.loop_sound())
+            && let Some(game) = &mut self.game
+        {
+            game.vehicles.push((flight, file, base));
+        }
+    }
+
+    /// Adds an entry of the type `id` to the spawn list and makes one creature of it. A game
+    /// without the type makes no flight and says so in the log (ambients 11.1).
+    fn spawn(&mut self, id: i32) -> Option<u32> {
+        let cat = self.renderer.catalogue();
+        self.sim.spawns.add(id);
         let Some(ty) = flight::ambient(cat, id) else {
             self.sim.note(format!("flight {id} missing"));
-            return;
+            return None;
         };
-        self.sim.spawns.add(id);
         let files = self.renderer.set_files(ty);
-        let Some(game) = &mut self.game else { return };
-        let made = flight::launch(&mut game.world, cat, ty, files, &mut self.sim.rng);
-        if let (Some(flight), Some((file, base))) = (made, fly.loop_sound()) {
-            game.vehicles.push((flight, file, base));
+        let game = self.game.as_mut()?;
+        flight::launch(&mut game.world, cat, ty, files, &mut self.sim.rng)
+    }
+
+    /// The birds of `guests_flee_birds` (cheats 4.2): 15 times a crow then a seagull, each as an
+    /// entry of the spawn list and one creature.
+    pub(super) fn birds(&mut self) {
+        for _ in 0..15 {
+            for id in BIRDS {
+                self.spawn(id);
+            }
         }
     }
 
