@@ -289,18 +289,17 @@ impl World {
     /// A loaded zoo whose stored locale is not the install language keeps no entity name either:
     /// each entity is named like a new one (type text in the install language, numbered by the
     /// counters of a new world in file order), then the file's counters are put back
-    /// (localisation 10, zoo format 2 rule 5). A loaded ambient with an empty name is named so in
-    /// any case (ambients 3.3). Needs the type names of `units.names`, so it runs once the
+    /// (localisation 10, zoo format 2 rule 5). A loaded entity of any class with an empty
+    /// name is named so in any case (ambients 3.3, localisation 10). Needs the type names of `units.names`, so it runs once the
     /// interface gave them.
     pub(crate) fn name_loaded_entities(&mut self, cat: &Catalogue) {
         let same = self.zoo.locale == self.language.number;
         let kept = std::mem::take(&mut self.zoo.names);
         let mut entities = std::mem::take(&mut self.zoo.entities);
         for e in &mut entities {
-            // The names of the file stay, but an ambient with none is named as it is added
+            // The names of the file stay, but an entity with none is named as it is added
             // (ambients 3.3 point 2).
-            let blank =
-                e.class == "ambient" && e.common.as_ref().is_some_and(|c| c.name.is_empty());
+            let blank = e.common.as_ref().is_some_and(|c| c.name.is_empty());
             if same && !blank {
                 continue;
             }
@@ -314,6 +313,22 @@ impl World {
         }
         self.zoo.entities = entities;
         self.zoo.names = kept;
+    }
+
+    /// Sets the name of the entity at `at` from the bytes the player typed: kept only when it holds
+    /// a visible character (ambients 3.3), else the old name stays.
+    pub(crate) fn rename_entity(&mut self, at: usize, bytes: &[u8]) {
+        if !crate::text::visible(self.language.number, bytes) {
+            return;
+        }
+        if let Some(c) = self.zoo.entities[at].common.as_mut() {
+            c.name = bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect();
+        }
+    }
+
+    /// The install language number.
+    pub(crate) fn language_number(&self) -> u32 {
+        self.language.number
     }
 
     /// The regions of the map (exhibits and money 3.1).

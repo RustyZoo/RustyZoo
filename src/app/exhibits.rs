@@ -44,11 +44,6 @@ fn name_limit(ini: &[u8]) -> i32 {
         .unwrap_or(NAME_LIMIT)
 }
 
-/// Whether a name holds a letter, digit or punctuation mark (exhibits and money 3.6).
-pub(super) fn visible(bytes: &[u8]) -> bool {
-    bytes.iter().any(u8::is_ascii_graphic)
-}
-
 impl App<'_> {
     /// Tells what happened to the exhibits since the last call: one `exhibit` line each (`new 1
     /// "Exhibit 1" tiles 9 gate none`, `split 1 tiles 6`, `removed 1`, `merged 2 into 3 tiles 12`,
@@ -310,7 +305,7 @@ impl App<'_> {
         let id = game.naming.queue.remove(0);
         let bytes = ui.text(NAME_FIELD).unwrap_or_default();
         let mut hooked = None;
-        if visible(&bytes) {
+        if crate::text::visible(game.world.language_number(), &bytes) {
             let text: String = bytes.iter().map(|&b| from_cp1252(b)).collect();
             self.lines.exhibit.push(format!("name {id} {text:?}"));
             game.world.rename(id, text.clone());
@@ -331,17 +326,7 @@ impl App<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{name_limit, visible};
-
-    #[test]
-    fn a_name_needs_a_visible_ascii_character() {
-        assert!(visible(b"Lion"));
-        assert!(visible(b"  7 "));
-        assert!(visible(b"-"));
-        assert!(!visible(b""), "empty");
-        assert!(!visible(b"   "), "spaces");
-        assert!(!visible(b"\t\xa0\xe9"), "controls and bytes above 127");
-    }
+    use super::name_limit;
 
     #[test]
     fn the_name_limit_is_the_ini_value_or_the_built_in_one() {
