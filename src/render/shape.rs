@@ -29,9 +29,10 @@ pub(crate) fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Op
             crate::build::number(ty, "walkableByTall") == Some(1.0),
         ),
         forms: (entity.class == "animals").then(|| ty.forms()),
+        // Scenery types are stored under the class `objects`.
         rubbleable: matches!(
             entity.class.as_str(),
-            "scenery" | "building" | "food" | "filter" | "rubble"
+            "objects" | "building" | "food" | "filter" | "rubble"
         ) && crate::build::number(ty, "cRubbleable").unwrap_or(1.0) == 1.0,
     })
 }
@@ -71,8 +72,8 @@ mod tests {
     }
 
     #[test]
-    fn scenery_buildings_food_filters_and_rubble_are_rubbleable_when_the_key_is_1_or_absent() {
-        for class in ["scenery", "building", "food", "filter", "rubble"] {
+    fn objects_buildings_food_filters_and_rubble_are_rubbleable_when_the_key_is_1_or_absent() {
+        for class in ["objects", "building", "food", "filter", "rubble"] {
             let rubbleable = |ini| shape(class, ini).is_some_and(|s| s.rubbleable);
             assert!(rubbleable(""), "{class} by default");
             assert!(rubbleable("cRubbleable=1\n"), "{class}");

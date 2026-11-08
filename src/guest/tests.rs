@@ -338,6 +338,50 @@ fn a_loaded_guest_takes_its_items_flags_and_guide() {
 }
 
 #[test]
+fn a_guest_slot_is_loaded_and_saved_as_the_unit_byte_and_ff_is_none() {
+    use crate::guest::NO_SLOT;
+    // A created guest has none; a loaded one takes the byte, whatever it is; a record with no
+    // unit block has none.
+    let ty = man();
+    let made = Guest::create(&Keys::of(&ty), &ty, &[], date(5, 6), 0, &mut seeded(1));
+    assert_eq!(made.slot, NO_SLOT);
+    for (byte, want) in [
+        (None, NO_SLOT),
+        (Some(0), 0),
+        (Some(7), 7),
+        (Some(255), NO_SLOT),
+    ] {
+        let (mut world, cat, id) = stored(RECORD);
+        let at = world.find(id).unwrap();
+        let c = world.zoo.entities[at].common.as_mut().unwrap();
+        c.unit = byte.map(|b| {
+            let mut u = crate::zoo::fresh::unit_new(Some(1));
+            u.slot = b;
+            Box::new(u)
+        });
+        load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+        assert_eq!(guest_of(&world, id).slot, want, "{byte:?}");
+        // The started guest writes its live slot back; a slot above a byte is none.
+        world.units.get_mut(id).unwrap().started = true;
+        for (live, saved) in [(want, byte.unwrap_or(255)), (3, 3), (1 << 20, 255)] {
+            if let Part::Guest(g) = &mut world.units.get_mut(id).unwrap().part {
+                g.slot = live;
+            }
+            let mut zoo = world.saved(|_| true);
+            world.finish_save(&mut zoo, &cat);
+            let block = zoo.entities[at]
+                .common
+                .as_ref()
+                .unwrap()
+                .unit
+                .clone()
+                .unwrap();
+            assert_eq!(block.slot, saved, "{byte:?} {live}");
+        }
+    }
+}
+
+#[test]
 fn a_loaded_guest_holds_a_return_building_when_the_low_bits_of_its_word_are_set() {
     // 0 and the recovering bit alone: none; a name id, the extremes and a changed building.
     for (ret, want) in [

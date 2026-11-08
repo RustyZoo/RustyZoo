@@ -50,9 +50,7 @@ impl Kind {
             "fences" => Kind::Edge,
             "tankwall" => Kind::Wall,
             "ambient" => Kind::Flight,
-            "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
-                Kind::Unit
-            }
+            "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter" => Kind::Unit,
             _ => Kind::Fixed,
         }
     }
@@ -281,10 +279,31 @@ impl Scene {
         scene
     }
 
+    /// Adds an object after the others and places it: the scene [`Scene::new`] makes of the longer
+    /// list, without building it again.
+    pub(crate) fn push(&mut self, object: Object) {
+        self.objects.push(object);
+        self.covers.push(0);
+        self.placed.push(false);
+        self.place(self.objects.len() - 1);
+    }
+
     /// The tile index under a world point, if it is on the map.
     pub(crate) fn tile_at(&self, x: i32, y: i32) -> Option<usize> {
         let (tx, ty) = (x.div_euclid(64), y.div_euclid(64));
         self.index(tx, ty)
+    }
+
+    /// The height a shadow at a world point is placed at: the ground of its tile (16 times the
+    /// base elevation plus the slope), never the water level, so over a tank it is the floor
+    /// (ambients 5.3 point 4).
+    pub(crate) fn shadow_height(&self, x: i32, y: i32) -> Option<i32> {
+        let t = self.tile_at(x, y)?;
+        Some(ground_height(
+            &self.tiles[t],
+            x - 64 * (t % self.width) as i32,
+            y - 64 * (t / self.width) as i32,
+        ))
     }
 
     pub(crate) fn index(&self, tx: i32, ty: i32) -> Option<usize> {
@@ -913,11 +932,9 @@ impl Painter<'_> {
         self.state[i] = State::Objects;
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
-        let shadows = self.shadows.get(&self.order[i]).into_iter().flatten();
-        self.out.extend(shadows.map(|&o| Item::Shadow(o)));
         let list = self.tile_entries(i, &|_| true);
         self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
-        self.overlays(i);
+        self.overlays(i, true, true);
     }
 }
 

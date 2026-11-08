@@ -27,14 +27,15 @@ impl World {
     /// what the placements and resizes of that sequence leave, not one build of the final map. The
     /// paths and fence pieces are replayed on a scratch world (every tile inside the zoo: the
     /// exterior is marked after the entities are added), and its areas go to the exhibits
-    /// that hold the same tiles.
+    /// that hold the same tiles. A map with no exhibit has no area to replay.
     pub(super) fn replay_areas(&mut self) {
         let placed = |s: &Shape| s.fence || matches!(s.kind, Kind::Path);
-        if !self.shapes.iter().flatten().any(placed) {
+        if self.exhibits.list().is_empty() || !self.shapes.iter().flatten().any(placed) {
             return;
         }
+        let entities = std::mem::take(&mut self.zoo.entities);
         let mut zoo = self.zoo.clone();
-        zoo.entities.clear();
+        self.zoo.entities = entities;
         zoo.habitat_tiles.clear();
         zoo.habitat_gates.clear();
         zoo.habitat_info.clear();
@@ -42,8 +43,7 @@ impl World {
         let mut scratch = World::with_language(zoo, |_| None, self.language.clone());
         for (e, shape) in self.zoo.entities.iter().zip(&self.shapes) {
             if let Some(s) = shape.filter(placed) {
-                scratch.add(e.clone(), Some(s));
-                scratch.events.clear();
+                scratch.place_piece(e.clone(), s);
             }
         }
         let mut found: BTreeMap<u32, u32> = BTreeMap::new();
@@ -76,20 +76,56 @@ impl World {
         self.resize_areas(&missing);
     }
 
+    /// Adds a path piece or a fence piece to the scratch world of the replay: what [`World::add`]
+    /// does to the map and the exhibits, without what only the play reads (the undo list, the
+    /// ratings, the show and toy lists) and with the scene extended by the one object instead of
+    /// built again.
+    fn place_piece(&mut self, mut entity: Entity, shape: Shape) {
+        let Some(common) = entity.common.as_mut() else {
+            return;
+        };
+        let Some(id) = self.zoo.id_counter.checked_add(1) else {
+            return;
+        };
+        (self.zoo.id_counter, common.id) = (id, id);
+        let at = self.zoo.entities.len();
+        let object = scene_object(&entity, &Some(shape));
+        let tile = object.and_then(|o| self.scene.tile_at(o.x, o.y));
+        let was = tile.is_some_and(|t| self.path(t).is_some());
+        self.zoo.entities.push(entity);
+        self.shapes.push(Some(shape));
+        if let Some(object) = object {
+            self.scene.push(object);
+            self.owner.push(at);
+        }
+        if let Some(t) = tile {
+            self.follow_path(t, was);
+        }
+        if shape.fence {
+            let slot = self.slot_of(at);
+            self.settle(slot, false);
+        }
+        self.events.clear();
+    }
+
+    /// The areas follow the path piece of tile `t`, placed or removed since `was`.
+    pub(super) fn follow_path(&mut self, t: usize, was: bool) {
+        let now = self.path(t).is_some();
+        if now && !was {
+            let near = self.exhibits.near(t, self.zoo.width as usize);
+            let plans = near.into_iter().map(|id| (id, Plan::of(self, id)));
+            let plans = plans.collect();
+            self.exhibits.path_placed(t, plans);
+        } else if was && !now {
+            self.exhibits.path_removed(t);
+        }
+    }
+
     /// The path tiles are now the ones of `before`, but for the ones placed or removed by the
     /// last change: the areas follow.
     pub(super) fn follow_paths(&mut self, before: &[bool]) {
-        let width = self.zoo.width as usize;
         for (t, &was) in before.iter().enumerate() {
-            let now = self.path(t).is_some();
-            if now && !was {
-                let near = self.exhibits.near(t, width);
-                let plans = near.into_iter().map(|id| (id, Plan::of(self, id)));
-                let plans = plans.collect();
-                self.exhibits.path_placed(t, plans);
-            } else if was && !now {
-                self.exhibits.path_removed(t);
-            }
+            self.follow_path(t, was);
         }
     }
 

@@ -195,10 +195,7 @@ impl World {
             if let (Some(b), true) = (c.building.as_mut(), live_building.is_some()) {
                 b.upgrade = self.units.upgrade_index.get(&c.id).copied().unwrap_or(0);
             }
-            if matches!(
-                e.class.as_str(),
-                "staff" | "keeper" | "maint" | "tour" | "helicopter"
-            ) {
+            if matches!(e.class.as_str(), "keeper" | "maint" | "tour" | "helicopter") {
                 let base = c.staff.take().map_or_else(Default::default, |s| *s);
                 let live = self.units.get(c.id).filter(|u| u.started);
                 c.staff = Some(Box::new(match live.map(|u| &u.part) {
@@ -222,7 +219,7 @@ impl World {
             }
             if matches!(
                 e.class.as_str(),
-                "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter"
+                "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter"
             ) {
                 let cost = cat
                     .guest_non_path_cost
@@ -296,6 +293,10 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        // A guest writes its slot byte, 0xff for none (goals 11.3.1 point 2).
+        if let Part::Guest(g) = &u.part {
+            block.slot = u8::try_from(g.slot).unwrap_or(0xff);
+        }
         if let Part::Animal(a) = &u.part {
             // The need being served and the position of the own target tile; the tile is rebuilt
             // at load (shows 32.1 point 3, 32.2 point 6).
