@@ -463,3 +463,37 @@ fn reloaded_id(world: &World, x: i32, y: i32, d: usize) -> u32 {
         .unwrap()
         .id
 }
+
+/// The abort events (kind, target) the load of the world saved from `world` posts, every tank
+/// stored empty, as version `version`; the infos are dropped from the file when `keep` is false.
+fn load_posts(world: &World, version: u32, keep: bool) -> (World, Vec<(u16, u32)>) {
+    let mut zoo = world.saved(|_| true);
+    zoo.version = version;
+    zoo.tanks.iter_mut().for_each(|t| t.level = 0);
+    if !keep {
+        zoo.shows.infos.iter_mut().for_each(|i| *i = None);
+    }
+    let loaded = World::new(zoo, tank_shape);
+    let sent = loaded.units.posts.iter();
+    let sent = sent.map(|e| (e.kind, e.target)).collect();
+    (loaded, sent)
+}
+
+#[test]
+fn the_drains_of_a_load_post_the_id_the_tank_holds_then_before_version_97_and_nothing_after() {
+    // 30.4 point 6: the id is read live, so a show tank with no stored info posts the fresh
+    // info's id (never 0), and a plain tank posts 0; from 97 the event queue load empties them.
+    let world = trio(4, false);
+    let abort = crate::show::event::ABORT;
+    let (loaded, sent) = load_posts(&world, 90, false);
+    let fresh = loaded.zoo.shows.infos.iter().flatten().next().unwrap().id;
+    assert_ne!(fresh, 0);
+    assert_eq!(sent, [(abort, 0), (abort, u32::from(fresh))]);
+    let stored = world.zoo.shows.infos.iter().flatten().next().unwrap().id;
+    let (_, sent) = load_posts(&world, 90, true);
+    assert_eq!(sent, [(abort, 0), (abort, u32::from(stored))]);
+    for keep in [false, true] {
+        assert_eq!(load_posts(&world, 97, keep).1, [], "kept {keep}");
+        assert_eq!(load_posts(&world, 106, keep).1, [], "kept {keep}");
+    }
+}

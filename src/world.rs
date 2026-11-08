@@ -255,9 +255,10 @@ impl World {
         world.exhibits = Exhibits::new(&world);
         world.replay_areas();
         world.load_gates();
-        world.load_tanks();
+        let drained = world.load_tanks();
         world.retank(false);
         world.load_infos();
+        world.post_loaded_drains(drained);
         world.name_loaded();
         world.relink();
         // The loaded animals are placed in file order and join the show lists with the first step

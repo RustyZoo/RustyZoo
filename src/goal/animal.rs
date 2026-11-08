@@ -7,8 +7,10 @@ use crate::behaviour::Target;
 use crate::path;
 use crate::unit::{Part, walk};
 
-/// Task 0x72, keeper food, 0x7a, drink water, and 0x7c, go to the surface for air.
+/// Task 0x72, keeper food, 0x7a, drink water, 0x7b, the rampage's walk to a building (animals
+/// 11.11 point 6), and 0x7c, go to the surface for air.
 pub(crate) const KEEPER_FOOD: u8 = 114;
+pub(crate) const TARGET_BUILDING: u8 = 123;
 pub(crate) const DRINK: u8 = 122;
 pub(crate) const SURFACE: u8 = 124;
 
@@ -84,6 +86,15 @@ impl Cx<'_, '_> {
             self.reset();
         }
         true
+    }
+
+    /// 0x7b complete (animals 11.11 point 6): the animal stands in the building's tile; the building
+    /// target flag goes down and the record is cleared.
+    pub(super) fn target_building_complete(&mut self) {
+        if let Part::Animal(a) = &mut self.unit.part {
+            a.rampage_target = false;
+        }
+        self.set_task(NONE, 0, 0, None);
     }
 
     /// Tank fauna 10.2 start: the animal has to stand on a tank tile.

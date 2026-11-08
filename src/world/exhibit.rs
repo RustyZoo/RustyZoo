@@ -521,7 +521,9 @@ impl World {
     /// and level go through the wall height and level rules, then the tank is filled when it
     /// holds water and drained when it does not (the file keeps no flag, so the level tells), and
     /// goes on moving from there.
-    pub(super) fn load_tanks(&mut self) {
+    /// Returns the tanks that were drained, in record order, for the abort event of their show
+    /// ([`World::post_loaded_drains`]).
+    pub(super) fn load_tanks(&mut self) -> Vec<u32> {
         let records = self.zoo.tanks.clone();
         let mut loaded = Vec::new();
         for r in records {
@@ -546,15 +548,29 @@ impl World {
             }
         }
         let told = self.events.len();
+        let mut drained = Vec::new();
         for (id, height, level) in loaded {
             self.set_height(id, height);
             self.edit_tank(id, |t, c| t.level = level.min(c.top(t.height)));
             match level > 0 {
                 true => _ = self.fill(id),
-                false => _ = self.drain(id),
+                false if self.drain_quietly(id) => drained.push(id),
+                false => {}
             }
         }
         self.events.truncate(told);
+        drained
+    }
+
+    /// The abort events the drains of a load post (shows 30.4 point 6), once the show infos are
+    /// made: a tank posts the id of the info it holds then, 0 without one. From version 97 the
+    /// load of the event queue empties the queue afterwards, so nothing outlives the load.
+    pub(super) fn post_loaded_drains(&mut self, drained: Vec<u32>) {
+        if self.zoo.version < 97 {
+            drained
+                .into_iter()
+                .for_each(|id| crate::show::drained(self, id));
+        }
     }
 
     /// The pair the gate walk and the fill of a new exhibit that replaces the old exhibit `x`
