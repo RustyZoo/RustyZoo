@@ -124,7 +124,8 @@ impl World {
         &self.draws
     }
 
-    /// Queues a draw behind the ones owed.
+    /// Queues a draw behind the ones owed, for a test.
+    #[cfg(test)]
     pub(crate) fn queue_draw(&mut self, draw: Draw) {
         self.draws.push(draw);
     }

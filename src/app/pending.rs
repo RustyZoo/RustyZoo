@@ -312,14 +312,8 @@ impl App<'_> {
                     // A piece that keeps its id only takes the new type, healthy: it draws its start.
                     if old == Some(id) {
                         self.sim.draw_start(&game.world, id);
-                        if fence && game.world.retyped_wall(id) {
-                            exhibits::run_draws(
-                                &mut self.sim,
-                                &mut game.world,
-                                &self.renderer,
-                                &self.timings,
-                            );
-                        }
+                        let (sim, r) = (&mut self.sim, &self.renderer);
+                        exhibits::retyped(sim, &mut game.world, (r, &self.timings), id);
                         self.lines
                             .world
                             .push(format!("retype {name} {tile} id {id}"));

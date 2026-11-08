@@ -60,6 +60,19 @@ pub(super) fn run_draws(
     sim.wet_changed(world, renderer.catalogue(), &data);
 }
 
+/// A fence piece took the same type again: an active tank wall updates its tank's wall
+/// information and draws its start time again, at once.
+pub(super) fn retyped(
+    sim: &mut crate::sim::Sim,
+    world: &mut World,
+    (renderer, timings): (&MapRenderer, &Timings),
+    id: u32,
+) {
+    if world.retyped_wall(id) {
+        run_draws(sim, world, renderer, timings);
+    }
+}
+
 impl App<'_> {
     /// Tells what happened to the exhibits since the last call: one `exhibit` line each (`new 1
     /// "Exhibit 1" tiles 9 gate none`, `split 1 tiles 6`, `removed 1`, `merged 2 into 3 tiles 12`,
