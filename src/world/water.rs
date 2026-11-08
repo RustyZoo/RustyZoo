@@ -106,9 +106,15 @@ impl World {
     }
 
     /// The tanks whose water became clean with some level since the last call, in the order it
-    /// happened (map drawing 9.7.8 point 3).
+    /// happened (map drawing 9.7.8 point 3). A tank whose units wait for their reset (it is
+    /// stirred) stays queued: its ripples come after the reset (see [`World::take_ripple_setup`]).
     pub(crate) fn take_ripple_setups(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.ripple_setups)
+        let stirred = &self.stirred;
+        let (wait, now) = std::mem::take(&mut self.ripple_setups)
+            .into_iter()
+            .partition(|id| stirred.contains(id));
+        self.ripple_setups = wait;
+        now
     }
 
     /// Whether tank `id` was queued for the set-up of its ripples; it is taken off the queue.

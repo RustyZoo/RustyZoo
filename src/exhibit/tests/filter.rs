@@ -861,6 +861,7 @@ fn a_save_removes_the_bubbles_and_the_next_cycle_makes_a_new_set() {
 #[test]
 fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
     let (mut world, ..) = filtered(10, [200_000, 0], KEYS);
+    world.take_stirred();
     world.take_ripple_setups();
     let queued = |w: &mut World| w.take_ripple_setups();
     for (set, want) in [
@@ -895,6 +896,11 @@ fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
     world.set_paused(false);
     world.fill(1);
     world.step_water();
+    assert!(
+        queued(&mut world).is_empty(),
+        "stirred: after the reset of its units"
+    );
+    world.take_stirred();
     assert_eq!(queued(&mut world), [1], "the level rises from 0");
     world.step_water();
     assert!(

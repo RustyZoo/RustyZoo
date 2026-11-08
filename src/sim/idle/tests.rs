@@ -872,34 +872,36 @@ fn the_ripples_of_a_filling_tank_are_set_up_in_the_step_of_the_fill() {
 fn a_filling_tank_resets_its_units_before_it_sets_up_its_ripples() {
     use crate::behaviour::NoData;
     use crate::unit::testing::tank_world_with;
-    let keeper = entity("keeper", "", 7, centre((3, 3)), 0);
-    let mut world = tank_world_with(4, 0, &[], vec![keeper]);
-    let id = world.exhibits().list()[0].id;
-    world
-        .exhibits_mut()
-        .get_mut(id)
-        .unwrap()
-        .tank
-        .as_mut()
-        .unwrap()
-        .purity = 90;
-    world.fill(id);
-    world.take_stirred();
-    world.take_ripple_setups();
-    let (mut sim, cat) = (crate::sim::Sim::new(b""), Catalogue::default());
-    sim.set_seed(1);
-    sim.start_game(0, crate::zoo::Clocks::default());
-    let first = sim.rng.clone();
-    let money = &mut crate::money::Money::default();
-    sim.step_game(&NoData, &cat, &mut world, money, 100, |_, _, _| {});
-    let wait = world.units.get(7).unwrap().wait;
-    let starts: Vec<u32> = sim.idles.ripples[&id].iter().map(|w| w.1.t).collect();
-    assert_eq!(starts.len(), 14);
-    let found = (0..5000).any(|skip| {
-        let mut rng = first.clone();
-        (0..skip).for_each(|_| _ = rng.rand());
-        let reset = 1000 + rng.pick(4000) as i32;
-        reset == wait && starts.iter().all(|&s| rng.pick(2000) == s)
-    });
-    assert!(found, "the reset draws, then the 14 start times follow");
+    // The tank fills with the steps, or at once while paused (as an undo of the player does).
+    for paused in [false, true] {
+        // A keeper stands outside the gate of the tank, whose units are reset too.
+        let keeper = entity("keeper", "", 7, centre((2, 1)), 0);
+        let mut world = tank_world_with(4, 0, &[], vec![keeper]);
+        let id = world.exhibits().list()[0].id;
+        let tank = world.exhibits_mut().get_mut(id).unwrap().tank.as_mut();
+        tank.unwrap().purity = 90;
+        world.take_stirred();
+        world.take_ripple_setups();
+        world.set_paused(paused);
+        assert_eq!(world.fill(id), None);
+        let (mut sim, cat) = (crate::sim::Sim::new(b""), Catalogue::default());
+        sim.set_seed(1);
+        sim.start_game(0, crate::zoo::Clocks::default());
+        let first = sim.rng.clone();
+        let money = &mut crate::money::Money::default();
+        sim.step_game(&NoData, &cat, &mut world, money, 100, |_, _, _| {});
+        let wait = world.units.get(7).unwrap().wait;
+        let starts: Vec<u32> = sim.idles.ripples[&id].iter().map(|w| w.1.t).collect();
+        assert_eq!(starts.len(), 14);
+        let found = (0..5000).any(|skip| {
+            let mut rng = first.clone();
+            (0..skip).for_each(|_| _ = rng.rand());
+            let reset = 1000 + rng.pick(4000) as i32;
+            reset == wait && starts.iter().all(|&s| rng.pick(2000) == s)
+        });
+        assert!(
+            found,
+            "paused {paused}: the reset draws, then the 14 start times"
+        );
+    }
 }
