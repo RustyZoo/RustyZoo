@@ -3297,3 +3297,35 @@ fn a_rubble_piece_draws_explode_only_while_its_look_says_so() {
     assert_eq!(drawn(false), [0]);
     assert_eq!(drawn(true), [2]);
 }
+
+#[test]
+fn a_connector_wall_takes_the_connector_keys_for_its_top_and_single_pieces() {
+    use super::tank::wall_pieces;
+    let names = |e, h, has: &dyn Fn(&str) -> bool| {
+        wall_pieces(e, h, false, has)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
+    let all = |_: &str| true;
+    let none = |_: &str| false;
+    for (e, top, single) in [
+        ("l", "lcrtopsl", "lcrlowsl"),
+        ("r", "rcrtopsl", "rcrlowsl"),
+        ("m", "midtopsl", "midlowsl"),
+        ("lr", "coltopsl", "idlesl"),
+    ] {
+        let tall = names(e, 3, &all);
+        assert_eq!(tall, [format!("b{e}idle"), format!("m{e}idle"), top.into()]);
+        assert_eq!(names(e, 1, &all), [single]);
+        // Not a connector, or a missing key: the plain keys.
+        let plain = [
+            format!("b{e}idle"),
+            format!("m{e}idle"),
+            format!("t{e}idle"),
+        ];
+        assert_eq!(names(e, 3, &none), plain);
+    }
+    assert_eq!(names("l", 1, &none), ["tblidle"]);
+    assert_eq!(names("lr", 1, &none), ["idle"]);
+}

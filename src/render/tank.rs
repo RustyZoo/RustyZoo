@@ -83,6 +83,48 @@ fn ends(scene: &Scene, metas: &[Meta], o: usize) -> &'static str {
     }
 }
 
+/// The pieces of a wall stack of `height` steps with ends `e`, bottom to top, with their step
+/// (sprite drawing 3.6). `has` tells whether the connector key exists for a wall that is one: its
+/// top and single pieces take the connector keys, a missing key keeps the plain one (tank fauna
+/// 12.4).
+pub(super) fn wall_pieces(
+    e: &str,
+    height: i32,
+    portal: bool,
+    has: &dyn Fn(&str) -> bool,
+) -> Vec<(String, i32)> {
+    let x = match e {
+        "l" => "lcr",
+        "r" => "rcr",
+        "m" => "mid",
+        _ => "col",
+    };
+    let pick = |own: String, plain: String| if has(&own) { own } else { plain };
+    let mut pieces = Vec::new();
+    if height == 1 {
+        let own = if e == "lr" {
+            "idlesl".to_string()
+        } else {
+            format!("{x}lowsl")
+        };
+        let plain = if e == "lr" {
+            "idle".to_string()
+        } else {
+            format!("tb{e}idle")
+        };
+        pieces.push((pick(own, plain), 0));
+    } else {
+        pieces.push((format!("b{e}idle"), 0));
+        for step in 1..height - 1 {
+            if !(portal && step >= height - 4) {
+                pieces.push((format!("m{e}idle"), step));
+            }
+        }
+        pieces.push((pick(format!("{x}topsl"), format!("t{e}idle")), height - 1));
+    }
+    pieces
+}
+
 impl MapRenderer<'_> {
     /// The water and glass sets of a tank of this salinity and purity.
     pub(super) fn look(&self, salt: bool, purity: u32) -> Look {
@@ -314,40 +356,19 @@ impl MapRenderer<'_> {
         let (obj, meta) = (scene.objects[o], &metas[o]);
         let e = ends(scene, metas, o);
         let animations = meta.ty.animations();
-        // The connector of a combined exhibit takes its own top and single pieces; a gate does
-        // not, and a type without the key keeps the piece it has (tank fauna 12.4).
         let linked = meta.connector && meta.ty.subtype.first() != Some(&b'g');
-        let connector = |own: String, plain: String| {
-            match linked && animations.iter().any(|a| a.name == own && a.member.is_some()) {
-                true => own,
-                false => plain,
-            }
+        let has = |key: &str| {
+            linked
+                && animations
+                    .iter()
+                    .any(|a| a.name == key && a.member.is_some())
         };
-        let x = match e {
-            "l" => "lcr",
-            "r" => "rcr",
-            "m" => "mid",
-            _ => "col",
-        };
-        let mut pieces: Vec<(String, i32)> = Vec::new();
-        if ladder_only {
+        let mut pieces = if ladder_only {
             // The pending gate has no wall pieces of its own (placing 6.4).
-        } else if height == 1 {
-            let (own, plain) = match e {
-                "lr" => ("idlesl".to_string(), "idle".to_string()),
-                _ => (format!("{x}lowsl"), format!("tb{e}idle")),
-            };
-            pieces.push((connector(own, plain), 0));
+            Vec::new()
         } else {
-            pieces.push((format!("b{e}idle"), 0));
-            for step in 1..height - 1 {
-                if !(meta.portal && step >= height - 4) {
-                    pieces.push((format!("m{e}idle"), step));
-                }
-            }
-            let top = connector(format!("{x}topsl"), format!("t{e}idle"));
-            pieces.push((top, height - 1));
-        }
+            wall_pieces(e, height, meta.portal, &has)
+        };
         if meta.portal {
             pieces.push(("portal".to_string(), height - 1));
         }
