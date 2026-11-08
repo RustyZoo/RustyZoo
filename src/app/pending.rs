@@ -312,12 +312,7 @@ impl App<'_> {
                     // A piece that keeps its id only takes the new type, healthy: it draws its start.
                     if old == Some(id) {
                         self.sim.draw_start(&game.world, id);
-                        // On an active tank wall the tank updates its wall information, then
-                        // the validation of the piece draws its start time once more (map
-                        // drawing 9.7.8 point 3.4).
-                        if fence && game.world.active_wall_tank(id).is_some() {
-                            game.world.update_walls_of(id);
-                            game.world.queue_draw(crate::world::Draw::Start(id));
+                        if fence && game.world.retyped_wall(id) {
                             exhibits::run_draws(
                                 &mut self.sim,
                                 &mut game.world,

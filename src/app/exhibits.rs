@@ -71,7 +71,12 @@ impl App<'_> {
         let events = game.world.take_events();
         // Buildings on a tank whose water or walls moved are validated again (guest buildings
         // 11.1.1), the units of a stirred tank reset, and the draws the edits owe run in order.
-        run_draws(&mut self.sim, &mut game.world, &self.renderer, &self.timings);
+        run_draws(
+            &mut self.sim,
+            &mut game.world,
+            &self.renderer,
+            &self.timings,
+        );
         let world = &game.world;
         let slot = |id: u32| match world.gate_slot(id) {
             Some((t, d)) => format!(

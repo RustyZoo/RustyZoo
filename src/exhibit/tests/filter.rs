@@ -862,8 +862,14 @@ fn a_save_removes_the_bubbles_and_the_next_cycle_makes_a_new_set() {
 fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
     let (mut world, ..) = filtered(10, [200_000, 0], KEYS);
     world.take_stirred();
-    world.take_ripple_setups();
-    let queued = |w: &mut World| w.take_ripple_setups();
+    while world.next_draw(false).is_some() {}
+    let queued = |w: &mut World| {
+        let mut ids = Vec::new();
+        while let Some(crate::world::Draw::Ripples(t)) = w.next_draw(true) {
+            ids.push(t);
+        }
+        ids
+    };
     for (set, want) in [
         (50, false),
         (59, false),

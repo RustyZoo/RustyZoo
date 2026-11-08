@@ -41,12 +41,12 @@ mod undo;
 mod water;
 mod wear;
 pub(crate) use exhibit::Event;
-pub(crate) use water::Draw;
 pub(crate) use filter::{
     Wear, months_since as filter_months_since, placed as placed_filter,
     sell_rate as filter_sell_rate, wear as filter_wear,
 };
 pub(crate) use portal::Portal;
+pub(crate) use water::Draw;
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
 

@@ -118,6 +118,12 @@ impl World {
         std::mem::take(&mut self.wet)
     }
 
+    /// The draws owed, for a test.
+    #[cfg(test)]
+    pub(crate) fn draws(&self) -> &[Draw] {
+        &self.draws
+    }
+
     /// Queues a draw behind the ones owed.
     pub(crate) fn queue_draw(&mut self, draw: Draw) {
         self.draws.push(draw);
@@ -160,6 +166,18 @@ impl World {
         if let Some((t, _)) = tile {
             self.update_walls(t);
         }
+    }
+
+    /// A fence piece bought on a slot that holds one of the same type (it keeps its id): on an
+    /// active tank wall its tank updates its wall information, then the piece's validation
+    /// draws its start time once more (map drawing 9.7.8 point 3.2.2 and 3.4). Whether it did.
+    pub(crate) fn retyped_wall(&mut self, id: u32) -> bool {
+        let active = self.active_wall_tank(id).is_some();
+        if active {
+            self.update_walls_of(id);
+            self.draws.push(Draw::Start(id));
+        }
+        active
     }
 
     /// The tank of the wall piece `id` when the wall is active: a tank wall whose tank has a

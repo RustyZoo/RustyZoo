@@ -843,7 +843,7 @@ fn the_ripples_of_a_filling_tank_are_set_up_in_the_step_of_the_fill() {
         let mut world = watered(0, purity);
         let id = world.exhibits().list()[0].id;
         world.fill(id);
-        world.take_ripple_setups();
+        while world.next_draw(false).is_some() {}
         let (mut sim, cat) = (crate::sim::Sim::new(b""), Catalogue::default());
         sim.set_seed(1);
         sim.start_game(0, crate::zoo::Clocks::default());
@@ -881,7 +881,7 @@ fn a_filling_tank_resets_its_units_before_it_sets_up_its_ripples() {
         let tank = world.exhibits_mut().get_mut(id).unwrap().tank.as_mut();
         tank.unwrap().purity = 90;
         world.take_stirred();
-        world.take_ripple_setups();
+        while world.next_draw(false).is_some() {}
         world.set_paused(paused);
         assert_eq!(world.fill(id), None);
         let (mut sim, cat) = (crate::sim::Sim::new(b""), Catalogue::default());
@@ -904,4 +904,109 @@ fn a_filling_tank_resets_its_units_before_it_sets_up_its_ripples() {
             "paused {paused}: the reset draws, then the 14 start times"
         );
     }
+}
+
+/// A tank with ripples, set up, and the simulation that drew them.
+fn rippled() -> (crate::sim::Sim, World, u32, usize) {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let mut world = watered(3, 90);
+    let id = world.exhibits().list()[0].id;
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(0, crate::zoo::Clocks::default());
+    let cat = Catalogue::default();
+    sim.idles.register(&world, &cat, &data, &mut sim.rng);
+    let walls = world.rippled_tanks()[0].1.len();
+    while world.next_draw(false).is_some() {}
+    (sim, world, id, walls)
+}
+
+/// An update of the wall information sets the ripples up again, whether or not the walls changed:
+/// every wall draws its start time again, in order, and a register that follows draws nothing
+/// more (map drawing 9.7.8 point 3).
+#[test]
+fn a_wall_update_draws_a_start_time_for_every_wall_though_no_wall_changed() {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let (mut sim, mut world, id, walls) = rippled();
+    let cat = Catalogue::default();
+    let mut expect = sim.rng.clone();
+    let starts: Vec<u32> = (0..walls).map(|_| expect.pick(2000)).collect();
+    world.queue_draw(crate::world::Draw::Walls(id));
+    sim.wet_changed(&mut world, &cat, &data);
+    assert_eq!(sim.rng.state(), expect.state());
+    let set: Vec<u32> = sim.idles.ripples[&id].iter().map(|w| w.1.t).collect();
+    assert_eq!(set, starts);
+    sim.idles.register(&world, &cat, &data, &mut sim.rng);
+    assert_eq!(sim.rng.state(), expect.state());
+}
+
+/// With no water or murky water the update draws nothing and the ripples it held go; the walls
+/// changing without an update sets nothing up.
+#[test]
+fn a_wall_update_of_a_dry_or_murky_tank_draws_nothing_and_removes_the_ripples() {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    for (level, purity) in [(0, 90), (3, 0)] {
+        let (mut sim, mut world, id, _) = rippled();
+        let tank = world
+            .exhibits_mut()
+            .get_mut(id)
+            .unwrap()
+            .tank
+            .as_mut()
+            .unwrap();
+        (tank.level, tank.purity) = (level, purity);
+        while world.next_draw(false).is_some() {}
+        let before = sim.rng.state();
+        world.queue_draw(crate::world::Draw::Walls(id));
+        sim.wet_changed(&mut world, &Catalogue::default(), &data);
+        assert_eq!(sim.rng.state(), before, "{level} {purity}");
+        assert!(!sim.idles.ripples.contains_key(&id), "{level} {purity}");
+    }
+}
+
+/// The draws owed run in the order they were queued: a start time, an update, a start time.
+#[test]
+fn the_draws_owed_run_in_order_between_the_resets() {
+    let data = Fixed(
+        Some(Timing {
+            count: 20,
+            delay: 100,
+        }),
+        vec![],
+    );
+    let (mut sim, mut world, id, walls) = rippled();
+    let cat = Catalogue::default();
+    let mut expect = sim.rng.clone();
+    let first = expect.pick(2000);
+    (0..walls).for_each(|_| _ = expect.pick(2000));
+    let last = expect.pick(2000);
+    for draw in [
+        crate::world::Draw::Start(77),
+        crate::world::Draw::Walls(id),
+        crate::world::Draw::Start(78),
+    ] {
+        world.queue_draw(draw);
+    }
+    sim.wet_changed(&mut world, &cat, &data);
+    assert_eq!(sim.rng.state(), expect.state());
+    assert_eq!(sim.idles.starts[&77], first);
+    assert_eq!(sim.idles.starts[&78], last);
 }
