@@ -42,17 +42,29 @@ fn the_set_up_reads_the_levels_in_file_order_at_level_0() {
     let m = shipped();
     let c = m.config().unwrap();
     assert_eq!(c.level, 0);
-    let got: Vec<_> = c.levels.iter().map(|l| (l.name, l.cost, l.benefit)).collect();
+    let got: Vec<_> = c
+        .levels
+        .iter()
+        .map(|l| (l.name, l.cost, l.benefit))
+        .collect();
     assert_eq!(
         got,
-        [(23100, 0.0, 0), (23101, 200.0, 5), (23102, 500.0, 15), (23103, 1000.0, 30)]
+        [
+            (23100, 0.0, 0),
+            (23101, 200.0, 5),
+            (23102, 500.0, 15),
+            (23103, 1000.0, 30)
+        ]
     );
 }
 
 #[test]
 fn a_missing_key_or_section_leaves_0_and_a_duplicate_stays() {
     let level = "[marketing]\nfunding=a\nfunding=ghost\nfunding=a\n[a]\ncost=12.5\nbenefit=zz\n";
-    let files = [("m.cfg", "[marketing]\nmarketing=l.cfg\n"), ("l.cfg", level)];
+    let files = [
+        ("m.cfg", "[marketing]\nmarketing=l.cfg\n"),
+        ("l.cfg", level),
+    ];
     let m = setup("holes", "marketing=m.cfg\n", &files);
     let levels = &m.config().unwrap().levels;
     let a = Level {
@@ -70,8 +82,14 @@ fn a_missing_key_or_section_leaves_0_and_a_duplicate_stays() {
 
 #[test]
 fn no_key_or_an_unreadable_outer_file_makes_no_configuration() {
-    assert_eq!(setup("nokey", "research=x.cfg\n", &[]), Marketing::default());
-    assert_eq!(setup("noouter", "marketing=ghost.cfg\n", &[]), Marketing::default());
+    assert_eq!(
+        setup("nokey", "research=x.cfg\n", &[]),
+        Marketing::default()
+    );
+    assert_eq!(
+        setup("noouter", "marketing=ghost.cfg\n", &[]),
+        Marketing::default()
+    );
     assert_eq!(setup("empty", "marketing=\n", &[]), Marketing::default());
     // Without a configuration nothing is charged and nothing is added to the rating.
     let (mut m, mut cash) = (Marketing::default(), money(100.0));
@@ -168,7 +186,10 @@ fn the_benefit_counts_whether_or_not_the_shares_are_paid() {
     let mut cash = money(0.0);
     m.step(3000, &mut cash);
     assert_eq!((cash.total[MARKETING], m.benefit()), (0.0, 15));
-    assert_eq!((at(0).benefit(), at(1).benefit(), at(3).benefit()), (0, 5, 30));
+    assert_eq!(
+        (at(0).benefit(), at(1).benefit(), at(3).benefit()),
+        (0, 5, 30)
+    );
 }
 
 #[test]
@@ -184,7 +205,10 @@ fn level_0_and_odd_costs_book_as_the_values_say() {
     // A negative cost gives money; an infinite or a not-a-number cost books nothing.
     let make = |cost: &str| {
         let level = format!("[marketing]\nfunding=a\n[a]\ncost={cost}\nbenefit=1\n");
-        let files = [("m.cfg", "[marketing]\nmarketing=l.cfg\n"), ("l.cfg", &level)];
+        let files = [
+            ("m.cfg", "[marketing]\nmarketing=l.cfg\n"),
+            ("l.cfg", &level),
+        ];
         setup("cost", "marketing=m.cfg\n", &files)
     };
     let mut cash = money(10.0);
@@ -213,13 +237,15 @@ fn the_clock_wraps_like_32_bits_and_a_step_of_0_changes_nothing() {
 #[test]
 fn the_buttons_move_one_level_and_stop_at_the_ends() {
     let mut m = shipped();
-    let levels: Vec<_> = [false, true, true, true, true, true, false, false, false, false, false]
-        .into_iter()
-        .map(|up| {
-            m.fund(up);
-            m.saved()
-        })
-        .collect();
+    let levels: Vec<_> = [
+        false, true, true, true, true, true, false, false, false, false, false,
+    ]
+    .into_iter()
+    .map(|up| {
+        m.fund(up);
+        m.saved()
+    })
+    .collect();
     assert_eq!(levels, [0, 1, 2, 3, 3, 3, 2, 1, 0, 0, 0]);
 }
 

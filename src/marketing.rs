@@ -116,7 +116,10 @@ impl Marketing {
     /// without a configuration.
     pub(crate) fn load(&mut self, level: u32) {
         if let Some(c) = &mut self.config {
-            c.level = usize::try_from(level).ok().filter(|&l| l < c.levels.len()).unwrap_or(0);
+            c.level = usize::try_from(level)
+                .ok()
+                .filter(|&l| l < c.levels.len())
+                .unwrap_or(0);
         }
     }
 }
@@ -127,7 +130,9 @@ fn read(vfs: &Vfs, name: &str) -> Option<Config> {
 
 /// The levels the `funding` values of the file name, in order; a missing key or section leaves 0.
 fn levels(file: &Config) -> Vec<Level> {
-    let funding = file.section("marketing").map_or(&[][..], |s| s.get_all("funding"));
+    let funding = file
+        .section("marketing")
+        .map_or(&[][..], |s| s.get_all("funding"));
     funding
         .iter()
         .map(|name| {

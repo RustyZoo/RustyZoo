@@ -959,6 +959,8 @@ mod filter_tests;
 mod show_panel_tests;
 
 #[cfg(test)]
+mod marketing_tests;
+#[cfg(test)]
 mod money_tests;
 
 #[cfg(test)]

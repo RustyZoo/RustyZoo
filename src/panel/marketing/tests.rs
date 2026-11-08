@@ -95,7 +95,12 @@ fn the_text_is_the_name_over_the_whole_monthly_cost_without_grouping() {
         assert_eq!(text(&ui), want);
     }
     // The cost is rounded to the nearest unit, halves to even, and a big one is not grouped.
-    for (cost, want) in [(0.5, "$0 min"), (1.5, "$2 min"), (2.5, "$2 min"), (1234567.0, "$1234567 min")] {
+    for (cost, want) in [
+        (0.5, "$0 min"),
+        (1.5, "$2 min"),
+        (2.5, "$2 min"),
+        (1234567.0, "$1234567 min"),
+    ] {
         f.force = true;
         f.refresh(&mut ui, &marketing(vec![level(23101, cost)], 0), 0, false);
         assert_eq!(text(&ui), want, "{cost}");
@@ -139,12 +144,18 @@ fn a_missing_element_is_skipped_and_the_rest_written() {
     let mut ui = window("marketing-missing", &[TEXT]);
     ui.show(14);
     let mut f = Funding::default();
-    assert!(f.refresh(&mut ui, &marketing(four(), 1), 0, false).is_some());
+    assert!(
+        f.refresh(&mut ui, &marketing(four(), 1), 0, false)
+            .is_some()
+    );
     assert_eq!(text(&ui), "$200 min");
     let mut ui = window("marketing-missing2", &[LESS, MORE]);
     ui.show(14);
     let mut f = Funding::default();
-    assert!(f.refresh(&mut ui, &marketing(four(), 3), 0, false).is_some());
+    assert!(
+        f.refresh(&mut ui, &marketing(four(), 3), 0, false)
+            .is_some()
+    );
     assert!(!disabled(&ui, LESS) && disabled(&ui, MORE));
 }
 
@@ -170,7 +181,10 @@ fn it_runs_when_the_window_is_shown_every_10_seconds_and_after_a_button() {
     assert_eq!(text(&ui), "$1000 max");
     // A button asks for it at once.
     f.force = true;
-    assert!(f.refresh(&mut ui, &marketing(four(), 0), 10_007, false).is_some());
+    assert!(
+        f.refresh(&mut ui, &marketing(four(), 0), 10_007, false)
+            .is_some()
+    );
     assert_eq!(text(&ui), "$0 none");
     // Hidden and shown again: written at once.
     ui.tree.hide(ui.tree.find(14).unwrap());

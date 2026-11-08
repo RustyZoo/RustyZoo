@@ -1321,6 +1321,76 @@ fn the_research_manager_pays_every_3_seconds_and_hands_over_the_programs_it_comp
 }
 
 #[test]
+fn the_marketing_manager_pays_every_3_seconds_and_outlives_a_game_that_is_not_a_scenario() {
+    use crate::marketing::{Level, Marketing};
+    let level = Level {
+        name: 1,
+        cost: 1000.0,
+        benefit: 30,
+    };
+    let mut run = game(0);
+    run.money.set_cash(1000.0);
+    run.sim.set_marketing(Marketing::with_levels(vec![level]));
+    run.step(2999);
+    assert_eq!(run.money.total[crate::money::MARKETING], 0.0);
+    run.step(1);
+    let pay = 360.0_f32 * 1000.0 * 2.314_814_8e-5;
+    assert_eq!(run.money.total[crate::money::MARKETING], pay);
+    assert_eq!(run.money.cash, 1000.0 - pay);
+    // A step of 0 changes nothing.
+    run.step(0);
+    assert_eq!(run.money.total[crate::money::MARKETING], pay);
+    // The next game keeps the marketing and its clock (marketing 3.3).
+    run.step(1500);
+    let clocks = run.world.zoo.clocks.clone();
+    run.sim.start_game(run.world.zoo.tiles.len(), clocks);
+    assert_eq!(run.sim.marketing().benefit(), 30);
+    run.step(1500);
+    assert_eq!(run.money.total[crate::money::MARKETING], pay + pay);
+}
+
+#[test]
+fn the_marketing_manager_comes_after_the_research_manager() {
+    use crate::marketing::{Level, Marketing};
+    use crate::research::{Branch, Category, Level as Funding, Program, Tree};
+    let tree = Tree {
+        branches: vec![Branch {
+            name: 1,
+            funding: vec![Funding {
+                name: 1,
+                cost: 120.0,
+                work: 1.0,
+            }],
+            current: Some((0, 0)),
+            categories: vec![Category {
+                name: 1,
+                tick: true,
+                programs: vec![Program {
+                    cost: 100.0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+        ..Tree::default()
+    };
+    let level = Level {
+        name: 1,
+        cost: 120.0,
+        benefit: 0,
+    };
+    // Both shares are 1.0 and the cash covers one of them: the research gets it.
+    let mut run = game(0);
+    run.money.set_cash(1.5);
+    run.sim.set_research(tree);
+    run.sim.set_marketing(Marketing::with_levels(vec![level]));
+    run.step(3000);
+    assert_eq!(run.money.total[crate::money::MARKETING], 0.0);
+    assert!(run.money.total[crate::money::RESEARCH] > 0.0);
+}
+
+#[test]
 fn an_exhibit_whose_animal_count_falls_to_0_loses_its_viewing_time() {
     let mut w = world(0);
     let part = |tile| crate::exhibit::Part {

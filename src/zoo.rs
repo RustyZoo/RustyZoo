@@ -568,7 +568,9 @@ impl Zoo {
 
     /// The level the marketing word stores (from version 60).
     pub(crate) fn marketing(&self) -> Option<u32> {
-        Some(u32::from_le_bytes(self.kept.marketing.as_slice().try_into().ok()?))
+        Some(u32::from_le_bytes(
+            self.kept.marketing.as_slice().try_into().ok()?,
+        ))
     }
 
     /// Replaces the marketing word written (marketing 7.1).
