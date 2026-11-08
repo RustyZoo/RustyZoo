@@ -78,6 +78,21 @@ impl Sim {
         }
     }
 
+    /// The update of the tank filter at `at` in the entity loop: its events are posted, a flooded
+    /// one is queued for removal, and the water its cycle made clean sets up its ripples now.
+    pub(super) fn filter_update(
+        &mut self,
+        world: &mut World,
+        cat: &Catalogue,
+        data: &dyn Data,
+        (at, step): (usize, u32),
+    ) {
+        let (events, gone) = world.filter_step(cat, at, step);
+        self.draw_ripples(world, data);
+        events.into_iter().for_each(|event| self.events.post(event));
+        self.bulldozed.extend(gone);
+    }
+
     /// One step of the water effects (7.2); nothing when `animatedwater` is off.
     pub(super) fn water_effects(&mut self, world: &mut World, cat: &Catalogue, step: u32) {
         if !self.ai.animated_water {

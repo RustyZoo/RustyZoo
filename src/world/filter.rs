@@ -158,7 +158,12 @@ impl World {
     /// A save removes the bubbles of every tank's filter (tank staff 9 point 2): the next cycle
     /// makes a new set.
     pub(crate) fn remove_bubbles(&mut self) {
-        let filters: Vec<u32> = self.exhibits.list().iter().filter_map(|e| e.filter).collect();
+        let filters: Vec<u32> = self
+            .exhibits
+            .list()
+            .iter()
+            .filter_map(|e| e.filter)
+            .collect();
         for id in filters {
             if let Some(v) = self.filter_view.get_mut(&id) {
                 v.bubbles = 0;

@@ -823,12 +823,7 @@ impl Sim {
                 // A fence piece wears at its own place in the list.
                 self.wear_fence(world, cat, data, at, step);
                 // So does a tank filter.
-                let (events, gone) = world.filter_step(cat, at, step);
-                self.draw_ripples(world, data);
-                for event in events {
-                    self.events.post(event);
-                }
-                self.bulldozed.extend(gone);
+                self.filter_update(world, cat, data, (at, step));
             }
         }
         unit::gate::forget(world);

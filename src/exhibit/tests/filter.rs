@@ -877,7 +877,11 @@ fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
         (10, false),
     ] {
         world.set_purity(1, set);
-        assert_eq!(queued(&mut world), if want { vec![1] } else { vec![] }, "{set}");
+        assert_eq!(
+            queued(&mut world),
+            if want { vec![1] } else { vec![] },
+            "{set}"
+        );
     }
     world.set_purity(99, 70);
     assert!(queued(&mut world).is_empty(), "no such tank");
@@ -893,5 +897,8 @@ fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
     world.step_water();
     assert_eq!(queued(&mut world), [1], "the level rises from 0");
     world.step_water();
-    assert!(queued(&mut world).is_empty(), "a level between two values above 0");
+    assert!(
+        queued(&mut world).is_empty(),
+        "a level between two values above 0"
+    );
 }
