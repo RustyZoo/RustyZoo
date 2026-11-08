@@ -65,6 +65,7 @@ impl Sim {
             }
         }
         self.idles.forget_ripples();
+        world.set_all_up();
         world.remove_bubbles();
     }
 

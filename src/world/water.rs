@@ -158,6 +158,11 @@ impl World {
         self.bare.contains(&id)
     }
 
+    /// A save puts every clean tank's ripples back, a bare tank's too.
+    pub(crate) fn set_all_up(&mut self) {
+        self.bare.clear();
+    }
+
     /// Tank `id` is set up: it is not bare any more.
     pub(crate) fn set_up(&mut self, id: u32) {
         self.bare.retain(|&t| t != id);

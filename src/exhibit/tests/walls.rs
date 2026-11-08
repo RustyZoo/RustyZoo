@@ -137,3 +137,20 @@ fn a_new_tank_filled_at_once_while_paused_sets_no_ripples_up() {
         assert_eq!(world.is_bare(id), full, "paused {paused}");
     }
 }
+
+/// A save sets every clean tank's ripples up again (tank staff 9), a tank built filled while
+/// paused that no gate update reached too.
+#[test]
+fn a_save_takes_the_bare_mark_off_a_tank_built_filled_while_paused() {
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = tanks(&pieces, &[], &[]);
+    world.set_paused(true);
+    world.begin();
+    put_wall(&mut world, last.0, last.1);
+    let id = tank_id(&world, 2);
+    assert!(world.is_bare(id), "built filled while paused");
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.save_started(&mut world);
+    assert!(!world.is_bare(id), "still bare after the save");
+}
