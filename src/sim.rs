@@ -28,6 +28,7 @@ mod inspect;
 mod random_use;
 mod ripple;
 mod rng;
+mod sparkle;
 mod status;
 #[cfg(test)]
 mod tests;
@@ -800,6 +801,7 @@ impl Sim {
         world.units.finder.tick(u64::from(self.ai_ticks));
         // Each animal's update ages its reactions (animals 10).
         world.units.fade(step);
+        self.sparkles_doomed(world);
         for id in std::mem::take(&mut self.removals) {
             crate::show::removed(world, cat, id);
             world.unrecorded(|w| w.remove(id));
@@ -901,6 +903,7 @@ impl Sim {
         self.wet_changed(world, cat, data);
         world.decay_water(step);
         self.draw_ripples(world, cat, data);
+        self.sparkle_step(world, cat, step);
         self.water_effects(world, cat, step);
         self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).

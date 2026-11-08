@@ -81,6 +81,7 @@ impl App<'_> {
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
+        want.hidden.extend_from_slice(game.world.doomed());
         want.selected = game.selected;
         let animal = game
             .selected

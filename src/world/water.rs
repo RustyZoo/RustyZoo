@@ -34,7 +34,7 @@ impl World {
     }
 
     /// The ids of the tank exhibits.
-    pub(super) fn tank_ids(&self) -> Vec<u32> {
+    pub(crate) fn tank_ids(&self) -> Vec<u32> {
         let tanks = self.exhibits.list().iter();
         tanks.filter(|e| e.tank.is_some()).map(|e| e.id).collect()
     }
@@ -74,6 +74,10 @@ impl World {
                 self.push_set_up(Draw::Ripples(id));
             }
             self.events.push(super::Event::Tank(id));
+            // The level back to 0 removes the tank's transients (map drawing 9.7.10 point 6).
+            if now.level == 0 && before.level > 0 {
+                self.drop_sparkles(id);
+            }
             if (now.level, now.height) != (before.level, before.height) {
                 self.stir(id);
                 if !self.wet.contains(&id) {

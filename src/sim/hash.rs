@@ -367,6 +367,15 @@ pub(crate) fn state(sim: &Sim, world: &World, money: &Money) -> u64 {
     for x in world.exhibits().list() {
         h.exhibit(x);
     }
+    for (id, s) in world.sparkles() {
+        h.u32(id);
+        h.i32(s.timer);
+        h.len(s.list.len());
+        for &(entity, age) in &s.list {
+            h.u32(entity);
+            h.u32(age);
+        }
+    }
     h.u32(world.exhibits().next);
     h.u32(world.exhibits().counter);
     h.u32(crate::exhibit::rating::tests());

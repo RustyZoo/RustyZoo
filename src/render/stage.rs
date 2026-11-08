@@ -142,7 +142,14 @@ impl<'a> MapRenderer<'a> {
                 summary.objects_skipped += 1;
                 continue;
             };
-            let kind = Kind::of_class(&entity.class);
+            let kind = match (entity.class.as_str(), entity.type_name.as_str()) {
+                ("objects", "other")
+                    if matches!(entity.subtype.as_str(), "twaterwv" | "frshwav") =>
+                {
+                    Kind::Sparkle
+                }
+                _ => Kind::of_class(&entity.class),
+            };
             if no_units && matches!(kind, Kind::Unit | Kind::Overlay | Kind::Flight) {
                 continue;
             }
