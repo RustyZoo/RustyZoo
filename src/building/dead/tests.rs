@@ -691,14 +691,14 @@ fn a_dead_toy_keeps_its_saved_record() {
 #[test]
 fn a_scenery_object_on_land_is_dead_and_stays_dead_after_a_sync() {
     let bush = EntityType {
-        class: "scenery",
+        class: "objects",
         ..typed("bush", "[Characteristics/Integers]\ncDeadOnLand=1\n")
     };
     let mut cat = Catalogue::default();
     cat.push(bush);
     let mut w = world_with((8, 8), |zoo| {
         zoo.entities
-            .push(entity("scenery", "bush", 9, centre((6, 6)), 0));
+            .push(entity("objects", "bush", 9, centre((6, 6)), 0));
     });
     decide_all(&mut w, &cat);
     assert!(w.units.buildings[&9].dead, "dead on land");

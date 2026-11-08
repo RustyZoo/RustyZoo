@@ -192,7 +192,7 @@ mod tests {
     fn a_dead_scenery_object_shows_idledead() {
         let mut w = world_with((4, 4), |zoo| {
             zoo.entities
-                .push(entity("scenery", "bush", 1, centre((0, 0)), 0));
+                .push(entity("objects", "bush", 1, centre((0, 0)), 0));
         });
         let live = crate::building::Live {
             dead: true,
