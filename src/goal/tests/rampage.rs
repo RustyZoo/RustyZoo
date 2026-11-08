@@ -117,7 +117,10 @@ fn a_building_that_admits_guests_only_is_no_candidate_and_no_draw_is_made() {
     assert_eq!(call(&mut w, &mut rng), Some(Flow::Done));
     assert_eq!(rng, Rng::default());
     let (a, u) = (animal(&w), unit(&w));
-    assert_eq!((a.building, a.rampage_target, u.goal.record.task), (0, false, 0));
+    assert_eq!(
+        (a.building, a.rampage_target, u.goal.record.task),
+        (0, false, 0)
+    );
 }
 
 #[test]

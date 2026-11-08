@@ -243,7 +243,7 @@ pub(crate) struct Animal {
     pub rampaging: bool,
     pub rampage: i32,
     /// The rampage's building target flag (animals 21.4): one of the "doing something" flags of
-    /// 9.3, saved from version 78. Nothing raises it until the target building goal is traced.
+    /// 9.3, saved from version 78. The call `fTargetBuilding` raises it ([`rampage`]), the goal 0x7b lowers it.
     pub rampage_target: bool,
     /// It stands loose on the zoo grounds (animals 11.1): set by the escape check on the grounds,
     /// lowered by the escape check in an exhibit and when it is picked up.
