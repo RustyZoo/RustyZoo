@@ -41,6 +41,7 @@ impl World {
         zoo.habitat_info.clear();
         zoo.tanks.clear();
         let mut scratch = World::with_language(zoo, |_| None, self.language.clone());
+        scratch.replaying = true;
         for (e, shape) in self.zoo.entities.iter().zip(&self.shapes) {
             if let Some(s) = shape.filter(placed) {
                 scratch.place_piece(e.clone(), s);

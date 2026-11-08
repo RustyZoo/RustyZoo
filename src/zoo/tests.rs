@@ -861,7 +861,6 @@ fn reads_units_of_version_106() {
         ("maint", "maint", "m", staff(18, 24)),
         ("tour", "tour", "m", staff(13, 25)),
         ("helicopter", "heli", "m", staff(12, 26)),
-        ("staff", "vet", "m", staff(0, 27)),
     ];
     let z = parse(&file(106, 1, 1, &[], &ents));
     for (e, id) in z.entities.iter().zip(21..) {
@@ -2002,7 +2001,6 @@ fn made_in_play() -> Vec<Entity> {
         made("maint", "k", at.clone()),
         made("tour", "k", at.clone()),
         made("helicopter", "k", at.clone()),
-        made("staff", "k", at.clone()),
         // A new unit without a record is written with the values of a new one.
         made("animals", "m", at.clone()),
         made("guests", "", at.clone()),
@@ -3159,6 +3157,78 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
         .checked(&cat)
         .unwrap();
     assert!(z.entities.is_empty());
+}
+
+#[test]
+fn a_record_stored_as_staff_is_read_with_the_layout_of_its_type() {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "keeper",
+        type_name: b"keeper".to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    // The body of a keeper: its own fields (21), the common staff block (16), the unit block (161).
+    let body = unit(106, 21 + 16 + 161, 31);
+    let ents = [
+        ("staff", "keeper", "m", body.clone()),
+        ("keeper", "keeper", "m", body.clone()),
+        ("staff", "nobody", "m", body),
+    ];
+    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&cat).unwrap();
+    // The unknown type is dropped; the other two are the same keeper.
+    assert_eq!(z.entities.len(), 2);
+    assert_eq!(z.entities[0].class, "keeper");
+    assert_eq!(z.entities[0].common, z.entities[1].common);
+    let c = z.entities[0].common.as_ref().unwrap();
+    assert_eq!((c.id, c.rotation, &*c.name), (31, 6, "unit"));
+    assert!(c.staff.is_some());
+}
+
+/// A catalogue with the keeper type `keeper`/`m`.
+fn keeper_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "keeper",
+        type_name: b"keeper".to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
+#[test]
+fn a_staff_record_is_read_on_the_clamped_ground() {
+    // Version 80: the unit block holds an old tile position, read against the ground.
+    for size in 150..400 {
+        let body = unit(80, size, 31);
+        let load = |class: &str| {
+            let mut bytes = file(80, 1, 1, &[], &[(class, "keeper", "m", body.clone())]);
+            // The only tile: a huge elevation, after the marker that precedes the tiles.
+            let at = bytes
+                .windows(4)
+                .position(|w| w == 7777u32.to_le_bytes())
+                .unwrap()
+                + 4;
+            bytes[at..at + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+            parse(&bytes).checked(&keeper_catalogue()).unwrap()
+        };
+        let (staff, keeper) = (load("staff"), load("keeper"));
+        if keeper.entities[0].common.is_none() {
+            continue;
+        }
+        assert_eq!(staff.entities[0], keeper.entities[0], "size {size}");
+        return;
+    }
+    panic!("no size fits");
 }
 
 #[test]

@@ -1379,3 +1379,61 @@ fn a_corner_pinch_on_a_pair_outside_the_zoo_ends_the_walk_with_no_gate() {
     assert_eq!(world.take_events(), []);
     assert_eq!(world.exhibits().get(1).unwrap().gate, None);
 }
+
+/// The tiles of each part that is not the grounds, sorted, by first tile.
+fn tile_sets(parts: impl IntoIterator<Item = Part>) -> Vec<Vec<usize>> {
+    let mut sets: Vec<Vec<usize>> = (parts.into_iter().filter(|p| !p.grounds))
+        .map(|mut p| {
+            p.tiles.sort_unstable();
+            p.tiles
+        })
+        .collect();
+    sets.sort_unstable();
+    sets
+}
+
+/// The parts found from the line of the piece on side `d` of tile (`x`, `y`) against the parts of
+/// the whole map, after the edit `edit` of that piece (placed or removed).
+fn near_is_whole(world: &mut World, (x, y, d): (i32, i32, u32), edit: impl FnOnce(&mut World)) {
+    let t = world.tile_index(x, y).unwrap();
+    let before = world.exhibits().clone();
+    edit(world);
+    // A line on the edge of the map has no other side: the whole map is searched then.
+    if let Some(near) = parts_near(world, &before, t, d as usize) {
+        assert_eq!(
+            tile_sets(near),
+            tile_sets(parts(world)),
+            "piece {x} {y} {d}"
+        );
+    }
+}
+
+#[test]
+fn the_parts_found_from_a_line_are_those_of_the_whole_map() {
+    // Two squares side by side, a third inside the first: lines that close, open, cut and join.
+    let mut world = loaded(&[]);
+    let mut pieces = square(1, 1, 4, 4);
+    pieces.extend(square(2, 2, 3, 3));
+    pieces.extend(square(6, 0, 7, 2));
+    for &p in &pieces {
+        near_is_whole(&mut world, p, |w| {
+            place(w, p);
+        });
+    }
+    assert!(!world.exhibits().list().is_empty());
+    // Taking the pieces out again, from the middle: cuts, then merges with the grounds.
+    for &p in pieces
+        .iter()
+        .rev()
+        .step_by(2)
+        .chain(pieces.iter().step_by(2))
+    {
+        let at = world.tile_index(p.0, p.1).unwrap();
+        if let Some(e) = world.edge(at, p.2 as usize) {
+            let id = world.zoo.entities[e].common.as_ref().unwrap().id;
+            near_is_whole(&mut world, p, |w| {
+                assert!(w.remove(id));
+            });
+        }
+    }
+}

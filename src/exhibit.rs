@@ -368,16 +368,21 @@ pub(crate) fn boundary_of(
     pairs
 }
 
+/// The tile of the zoo entrance.
+fn entrance_tile(world: &World) -> Option<usize> {
+    let (ex, ey) = world.zoo.entrance;
+    i32::try_from(ex)
+        .ok()
+        .zip(i32::try_from(ey).ok())
+        .and_then(|(x, y)| world.tile_index(x, y))
+}
+
 /// The regions of a world, the one of the entrance first and then the others by their first tile.
 pub(crate) fn parts(world: &World) -> Vec<Part> {
     let tiles = world.zoo.tiles.len();
     let mut seen = vec![false; tiles];
     let mut parts = Vec::new();
-    let (ex, ey) = world.zoo.entrance;
-    let entrance = i32::try_from(ex)
-        .ok()
-        .zip(i32::try_from(ey).ok())
-        .and_then(|(x, y)| world.tile_index(x, y));
+    let entrance = entrance_tile(world);
     for start in entrance.into_iter().chain(0..tiles) {
         if seen[start] {
             continue;
@@ -404,6 +409,149 @@ pub(crate) fn parts(world: &World) -> Vec<Part> {
         });
     }
     parts
+}
+
+/// One of the two searches of [`parts_near`], from one side of a line.
+struct Search {
+    members: Vec<usize>,
+    at: usize,
+    /// The region holds the zoo entrance or a tile beyond the zoo wall.
+    grounds: bool,
+}
+
+impl Search {
+    fn new(t: usize, grounds: bool) -> Search {
+        Search {
+            members: vec![t],
+            at: 0,
+            grounds,
+        }
+    }
+
+    fn done(&self) -> bool {
+        self.at == self.members.len()
+    }
+
+    /// Whether the search goes on: not all found, and not known to be the grounds.
+    fn going(&self) -> bool {
+        !self.done() && !self.grounds
+    }
+
+    /// Takes the next tile found and finds the tiles it opens on (`seen`: 1 and 2 for the tiles
+    /// each search found); whether it reached a tile the other search found.
+    fn step(
+        &mut self,
+        world: &World,
+        ground: &dyn Fn(usize) -> bool,
+        seen: &mut [u8],
+        me: u8,
+    ) -> bool {
+        let t = self.members[self.at];
+        self.at += 1;
+        let mut met = false;
+        for d in [0, 2, 4, 6] {
+            let Some(n) = world.neighbour(t, d).filter(|_| !world.closed(t, d)) else {
+                continue;
+            };
+            match seen[n] {
+                0 => {
+                    seen[n] = me;
+                    self.grounds |= ground(n);
+                    self.members.push(n);
+                }
+                o => met |= o != me,
+            }
+        }
+        met
+    }
+}
+
+/// The parts that are not the zoo grounds, by their first tile, after the edit of the line between
+/// tile `a` and its neighbour in direction `d`, found again from the exhibits `old` before the
+/// edit. A line joins or cuts at most the regions of its two sides, so the exhibits that hold
+/// neither are the same parts; the two sides are searched together from the line, so that the
+/// zoo grounds, whose region is the whole open land, are never filled. The parts are those of
+/// [`parts`] with their tiles in another order. None when the line has no other side.
+pub(crate) fn parts_near(world: &World, old: &Exhibits, a: usize, d: usize) -> Option<Vec<Part>> {
+    let b = world.neighbour(a, d)?;
+    let (ra, rb) = (old.region(a)?, old.region(b)?);
+    let exhibit = |r: u32| r != GROUNDS && r != EXTERIOR;
+    // One side of the line was in the zoo grounds: they hold the entrance or the outside, so
+    // they are still in one of the sides.
+    let open = !exhibit(ra) || !exhibit(rb);
+    let entrance = entrance_tile(world);
+    let ground = |t: usize| !world.in_zoo(t) || Some(t) == entrance;
+    let mut sides = [Search::new(a, ground(a)), Search::new(b, ground(b))];
+    let mut seen = vec![0u8; world.zoo.tiles.len()];
+    (seen[a], seen[b]) = (1, 2);
+    let (mut met, mut turn) = (false, 0);
+    // A side that is all found without the grounds is a part; when one side was the grounds,
+    // the other one is the part (and the sides need not be found together).
+    while !met
+        && sides.iter().any(Search::going)
+        && !(open && sides.iter().any(|s| s.done() && !s.grounds))
+    {
+        if !sides[turn].going() {
+            turn = 1 - turn;
+        }
+        met = sides[turn].step(world, &ground, &mut seen, turn as u8 + 1);
+        turn = 1 - turn;
+    }
+    let mut found = Vec::new();
+    if met && !open {
+        // Two exhibits became one.
+        let mut all = Search::new(a, ground(a));
+        seen.fill(0);
+        seen[a] = 1;
+        while !all.done() {
+            all.step(world, &ground, &mut seen, 1);
+        }
+        if !all.grounds {
+            found.push((all.members.iter().copied().min()?, all));
+        }
+    } else if !met {
+        for s in sides.into_iter().filter(|s| s.done() && !s.grounds) {
+            found.push((s.members.iter().copied().min()?, s));
+        }
+    }
+    let mut parts: Vec<(usize, Part)> = old
+        .list()
+        .iter()
+        .filter(|e| e.id != ra && e.id != rb)
+        .map(|e| {
+            let part = Part {
+                tiles: e.order.clone(),
+                grounds: false,
+            };
+            (e.first, part)
+        })
+        .collect();
+    parts.extend(found.into_iter().map(|(first, s)| {
+        let part = Part {
+            tiles: s.members,
+            grounds: false,
+        };
+        (first, part)
+    }));
+    parts.sort_unstable_by_key(|p| p.0);
+    Some(parts.into_iter().map(|p| p.1).collect())
+}
+
+/// Panics unless `near` (from [`parts_near`]) holds the parts of [`parts`] but the grounds.
+#[cfg(debug_assertions)]
+pub(crate) fn assert_same_parts(world: &World, near: &[Part]) {
+    let sets = |parts: Vec<&Part>| {
+        let mut sets: Vec<Vec<usize>> = parts.into_iter().map(|p| p.tiles.clone()).collect();
+        sets.iter_mut().for_each(|t| t.sort_unstable());
+        sets
+    };
+    let all = parts(world);
+    let all = sets(all.iter().filter(|p| !p.grounds).collect());
+    assert_eq!(
+        sets(near.iter().collect()),
+        all,
+        "the parts found from the line"
+    );
 }
 
 impl Exhibits {
