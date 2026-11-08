@@ -170,16 +170,6 @@ struct Game {
 }
 
 impl Game {
-    /// The centre of the map view in view space, where the sounds are heard from (sound 5).
-    fn listener(&self) -> (i64, i64) {
-        let camera = &self.camera;
-        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
-        (
-            i64::from(camera.scroll.0) + w / 2,
-            i64::from(camera.scroll.1) + h / 2,
-        )
-    }
-
     /// The world position `(x, y)` of the selected entity, whatever its class (an animal, a guest,
     /// a staff member, a building, a gate or a filter), if any: the reference of a rotation or a
     /// zoom (camera 8.1 step 1), followed or not. A unit being carried is not selected.
@@ -189,32 +179,6 @@ impl Game {
             .common
             .as_ref()?;
         Some((c.x, c.y))
-    }
-
-    /// Places sounds (entity, file, voice, base term) at their entity's position in the view
-    /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
-    /// is gone is dropped.
-    fn placed(&self, sounds: impl Iterator<Item = (u32, String, String, i32)>) -> Vec<UnitSound> {
-        let camera = &self.camera;
-        let listener = self.listener();
-        let world = &self.world;
-        sounds
-            .filter_map(|(id, file, voice, base)| {
-                let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
-                let view = project(camera.rotation, c.x, c.y, c.z);
-                let at = zoom_view(camera.zoom, view);
-                let (distance, pan) = positional(at, listener);
-                Some(UnitSound {
-                    id,
-                    file,
-                    voice,
-                    base,
-                    at,
-                    distance,
-                    pan,
-                })
-            })
-            .collect()
     }
 
     /// The animation and frame each unit holds, for the picture.
@@ -668,7 +632,7 @@ impl<'a> App<'a> {
             game.world.units.cheat = self.cheats.flags;
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
             let (season, cat) = (&mut self.cheats.season, self.renderer.catalogue());
-            let vehicles = &mut game.vehicles;
+            let (vehicles, mut trio) = (&mut game.vehicles, false);
             let report = self.sim.step_hooked(
                 &data,
                 cat,
@@ -676,7 +640,10 @@ impl<'a> App<'a> {
                 &mut game.money,
                 step,
                 |_, _, _| {},
-                &mut |sim, world| cheat::guest_flights(season, &data, cat, sim, world, vehicles),
+                &mut |sim, world| {
+                    trio = world.units.cheat.lions_tigers_bears;
+                    crate::cheat::guest_flights(season, &data, cat, sim, world, vehicles)
+                },
             );
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;
@@ -691,7 +658,7 @@ impl<'a> App<'a> {
             }
             self.status_told(report.bars);
             if report.arrived {
-                self.guest_created();
+                self.guest_created(trio);
             }
             self.research_done();
             self.scenario_over();
@@ -943,10 +910,7 @@ mod undo;
 #[cfg(test)]
 mod adopt_tests;
 #[cfg(test)]
-mod random_use_tests;
-#[cfg(test)]
-mod tank_panel_tests;
-
+mod avail_tests;
 #[cfg(test)]
 mod carry_tests;
 #[cfg(test)]
@@ -955,12 +919,13 @@ mod cheat_guest_tests;
 mod cheat_season_tests;
 #[cfg(test)]
 mod cheat_tests;
-
+#[cfg(test)]
+mod random_use_tests;
+#[cfg(test)]
+mod tank_panel_tests;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-mod avail_tests;
 #[cfg(test)]
 mod replay_tests;
 
@@ -971,6 +936,7 @@ mod start_tests;
 
 #[cfg(test)]
 mod saves_tests;
+
 #[cfg(test)]
 mod scenario_tests;
 
@@ -978,9 +944,10 @@ mod scenario_tests;
 mod award_tests;
 
 #[cfg(test)]
-mod bulldozer_tests;
-#[cfg(test)]
 mod terrain_tests;
+
+#[cfg(test)]
+mod bulldozer_tests;
 
 #[cfg(test)]
 mod filter_tests;

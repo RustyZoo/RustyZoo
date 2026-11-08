@@ -1261,3 +1261,48 @@ fn the_step_passes_the_computers_date_to_the_arrival() {
         "the draws of this seed are not orange"
     );
 }
+
+/// The ambient flights of a run that stepped on the game date `month`/`day` until guests arrived.
+fn flights_on(month: u32, day: u32) -> (usize, Run) {
+    let mut run = game("", true);
+    run.cat.push(kind(
+        "ambient",
+        "sleigh",
+        "[Characteristics/Integers]\ncSpeed=100\n",
+        5083,
+    ));
+    let date = Date {
+        year: 2002,
+        month,
+        day,
+        ..crate::timing::Calendar::new().date()
+    };
+    let clocks = crate::zoo::Clocks {
+        calendar: date.game_ms(),
+        ..Default::default()
+    };
+    run.sim.start_game(0, clocks);
+    run.sim.status.settings.create_chance = [100; 5];
+    // The first guest only: the flight leaves the small map soon after.
+    let mut guests = 0;
+    for _ in 0..120 {
+        run.sim.status.rating = 85;
+        guests += added(&run.step(67)).len();
+        if guests > 0 {
+            break;
+        }
+    }
+    let flights = (run.world.zoo.entities.iter())
+        .filter(|e| e.class == "ambient")
+        .count();
+    assert!(guests > 0);
+    (flights, run)
+}
+
+#[test]
+fn the_sim_driver_runs_the_date_hook_so_a_flight_comes_with_the_first_guest_of_25_december() {
+    let (flights, run) = flights_on(12, 25);
+    assert_eq!(flights, 1);
+    assert_eq!(run.sim.spawns.ids(), [5083]);
+    assert_eq!(flights_on(12, 24).0, 0, "no flight on another day");
+}

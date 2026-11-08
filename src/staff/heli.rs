@@ -329,7 +329,8 @@ pub(crate) fn fly(unit: &Unit, world: &mut World, distance: u32, at: usize) -> b
 }
 
 /// Point 8.5: the landed helicopter at position `at` goes to the slot point of its stored slot of
-/// its base, facing as it did.
+/// its base, facing as it did. A stored slot the base's type lacks (0xff of an old file) gives the
+/// base's own position (staff 7.11.1 point 13.4).
 pub(crate) fn land(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(c) = world.zoo.entities[at].common.as_ref() else {
         return;
@@ -340,7 +341,14 @@ pub(crate) fn land(world: &mut World, cat: &Catalogue, at: usize) {
         Some(Part::Staff(s)) => base_at(world, s.heli.base),
         _ => None,
     };
-    if let Some(((x, y, z), _)) = base.and_then(|b| points(world, cat, b, slot)) {
+    let Some(base) = base else {
+        return;
+    };
+    let own = world.zoo.entities[base]
+        .common
+        .as_ref()
+        .map(|b| (b.x, b.y, b.z));
+    if let Some((x, y, z)) = points(world, cat, base, slot).map(|p| p.0).or(own) {
         world.place_unit(at, (x, y, z), rotation);
     }
 }

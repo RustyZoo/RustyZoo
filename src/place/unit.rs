@@ -659,7 +659,13 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
     if let Some(t) = tile {
         world.mark_rating(t);
     }
-    world.zoo.entities[at].common.as_mut()?.movement_mode = 0;
+    let c = world.zoo.entities[at].common.as_mut()?;
+    c.movement_mode = 0;
+    // The state clear writes "no slot" in the unit block of every kind (goals 11.3.1 point 2); a
+    // guest's and an animal's live slot is written over it at save, a staff member's is this byte.
+    if let Some(u) = c.unit.as_mut() {
+        u.slot = u8::MAX;
+    }
     // A keeper told the exhibit he is no longer coming: he closes the gate he remembers.
     crate::staff::leaves(world, id);
     let unit = world.units.get_mut(id)?;

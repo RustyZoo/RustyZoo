@@ -205,6 +205,39 @@ fn a_helicopter_is_born_waiting_at_its_slot_point_on_the_ground() {
     assert_eq!((base(&w).users, base(&w).users_now), (vec![(h, 0)], 1));
 }
 
+/// The slot byte of the helicopter's unit block, replaced by `v` when given.
+fn slot_byte(w: &mut World, id: u32, v: Option<u8>) -> u8 {
+    let at = w.find(id).unwrap();
+    let u = w.zoo.entities[at].common.as_mut().unwrap().unit.as_mut();
+    let u = u.unwrap();
+    let old = u.slot;
+    u.slot = v.unwrap_or(old);
+    old
+}
+
+#[test]
+fn the_base_placement_writes_the_slot_index_in_the_helicopters_block_and_a_save_keeps_it() {
+    let (mut w, cat, h) = zoo(&[]);
+    assert_eq!(slot_byte(&mut w, h, None), 0);
+    let mut saved = w.saved(|_| true);
+    w.finish_save(&mut saved, &cat);
+    let heli = saved.entities.iter().find(|e| e.class == "helicopter");
+    let c = heli.unwrap().common.as_ref().unwrap();
+    assert_eq!(c.unit.as_ref().unwrap().slot, 0);
+}
+
+#[test]
+fn a_landed_helicopter_is_put_at_the_slot_point_of_its_stored_byte_or_at_the_base_without_one() {
+    let (mut w, cat, h) = zoo(&[]);
+    let at = w.find(h).unwrap();
+    let base = ((10 * 64, 10 * 64, 0), SLOT);
+    for (byte, to) in [(0, SLOT), (1, base.0), (255, base.0), (0, SLOT)] {
+        slot_byte(&mut w, h, Some(byte));
+        crate::staff::heli::land(&mut w, &cat, at);
+        assert_eq!(point(&w, h), to, "byte {byte}");
+    }
+}
+
 #[test]
 fn a_helicopter_without_a_base_asks_for_its_removal_and_draws_nothing() {
     let (mut w, cat, h) = zoo(&[(HERON, (19, 10))]);

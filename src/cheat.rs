@@ -3,6 +3,12 @@
 //! match runs the cheat. The texts are game text, so the table keeps only the 64-bit FNV-1a hash
 //! of each, and a typed name is hashed and compared.
 
+use crate::behaviour::Data;
+use crate::entity::Catalogue;
+use crate::flight;
+use crate::sim::Sim;
+use crate::world::World;
+
 /// The kind of thing that was named: a cheat belongs to one class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Subject {
@@ -505,6 +511,35 @@ impl Cheats {
             cond,
             cheat,
         });
+    }
+}
+
+/// The flying objects of a guest created on the game date (cheats 6.2 steps 1 to 3, ambients 3.1),
+/// run by the guest creation of the step: each is told in the log and made, so that it moves in
+/// this very step and its three draws come before those of the entities. The sleigh and the
+/// biplane add their loop (flight, file, base term) to `vehicles` for the game to hold. A game
+/// without the type makes no flight and says so in the log (ambients 11.1).
+pub(crate) fn guest_flights(
+    season: &mut Season,
+    data: &dyn Data,
+    cat: &Catalogue,
+    sim: &mut Sim,
+    world: &mut World,
+    vehicles: &mut Vec<(u32, &'static str, i32)>,
+) {
+    let date = sim.calendar().date();
+    for fly in season.flights(date.month, date.day) {
+        sim.note(fly.line());
+        let Some(id) = fly.type_id() else { continue };
+        let Some(ty) = flight::ambient(cat, id) else {
+            sim.note(format!("flight {id} missing"));
+            continue;
+        };
+        sim.spawns.add(id);
+        let made = flight::launch(world, cat, ty, data.set_files(ty), &mut sim.rng);
+        if let (Some(flight), Some((file, base))) = (made, fly.loop_sound()) {
+            vehicles.push((flight, file, base));
+        }
     }
 }
 
