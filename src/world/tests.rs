@@ -952,3 +952,119 @@ fn a_placed_fence_is_not_in_the_need_order() {
     crate::show::added(&mut world, &crate::entity::Catalogue::default(), id);
     assert!(world.added.is_empty());
 }
+
+#[test]
+fn a_loaded_entity_of_every_class_with_an_empty_name_is_named_at_the_add() {
+    let ty = |class: &'static str, name: &[u8], id: i32| crate::entity::EntityType {
+        class,
+        type_name: name.to_vec(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: None,
+        name_id: id,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(ty("fences", b"iron", 5101));
+    cat.push(ty("paths", b"dirt", 5102));
+    cat.push(ty("objects", b"tree", 5103));
+    cat.push(ty("animals", b"lion", 5006));
+    let names = |locale: u32, stored: &[&str]| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = locale;
+        for (&(class, name), stored) in [
+            ("fences", "iron"),
+            ("paths", "dirt"),
+            ("objects", "tree"),
+            ("animals", "lion"),
+            ("animals", "lion"),
+        ]
+        .iter()
+        .zip(stored)
+        {
+            let mut e = typed(class, name, 0, 0, 0);
+            e.subtype = "f".into();
+            e.common.as_mut().unwrap().name = (*stored).into();
+            z.entities.push(e);
+        }
+        let language = Language {
+            number: 1036,
+            ..Language::shipped()
+        };
+        let mut world = World::with_language(z, |_| None, language);
+        world.units.names = [
+            (5101, "Fence".to_string()),
+            (5102, "Path".to_string()),
+            (5103, "Tree".to_string()),
+            (5006, "Lion".to_string()),
+        ]
+        .into();
+        world.name_loaded_entities(&cat);
+        (world.zoo.entities.iter())
+            .map(|e| e.common.as_ref().unwrap().name.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        names(1036, &["", "", "", "", ""]),
+        ["Fence", "Path", "Tree", "Lion 1", "Lion 2"],
+        "matching locale, every name empty"
+    );
+    assert_eq!(
+        names(1036, &["", "A", " ", "Mine", ""]),
+        ["Fence", "A", " ", "Mine", "Lion 1"],
+        "stored names are kept, even spaces; the counter is the new world's"
+    );
+    assert_eq!(
+        names(1033, &["A", "", " ", "B", ""]),
+        ["Fence", "Path", "Tree", "Lion 1", "Lion 2"],
+        "other locale"
+    );
+}
+
+#[test]
+fn a_name_made_at_the_add_needs_a_visible_character_for_every_class() {
+    let ty = |class: &'static str| crate::entity::EntityType {
+        class,
+        type_name: b"x".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: 1,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut world = World::new(zoo(4, 4, (0, 0)), |_| None);
+    for class in ["fences", "paths", "objects", "ambient", "tankwall"] {
+        for (text, name) in [
+            ("  ", ""),
+            ("", ""),
+            ("\u{e9}", ""),
+            ("a", "a"),
+            (" a ", " a "),
+        ] {
+            assert_eq!(
+                crate::place::unit::name(&mut world, &ty(class), text),
+                name,
+                "{class} {text:?}"
+            );
+        }
+    }
+    let animal = crate::place::unit::name(&mut world, &ty("animals"), "");
+    assert_eq!(animal, " 1", "a counted name holds its number");
+}
+
+#[test]
+fn a_typed_name_replaces_the_old_one_only_with_a_visible_character() {
+    let mut z = zoo(4, 4, (0, 0));
+    z.entities.push(typed("animals", "lion", 0, 0, 0));
+    z.entities[0].common.as_mut().unwrap().name = "Old".into();
+    let mut world = World::new(z, |_| None);
+    let name = |w: &World| w.zoo.entities[0].common.as_ref().unwrap().name.clone();
+    for bytes in [&b""[..], b"   ", b"\t\xa0\xe9"] {
+        world.rename_entity(0, bytes);
+        assert_eq!(name(&world), "Old", "{bytes:?}");
+    }
+    world.rename_entity(0, b" New ");
+    assert_eq!(name(&world), " New ");
+}
