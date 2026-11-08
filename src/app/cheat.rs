@@ -3,13 +3,9 @@
 
 use super::App;
 use super::cheat_guest::palette_set;
-use crate::behaviour::Data;
-use crate::cheat::{BIRDS, Cheat, Named, Season, Subject, WITCH};
-use crate::entity::Catalogue;
+use crate::cheat::{BIRDS, Cheat, Named, Subject, WITCH};
 use crate::flight;
-use crate::sim::Sim;
 use crate::text::from_cp1252;
-use crate::world::World;
 
 impl App<'_> {
     /// Runs the cheat whose text is exactly `text` in `class`, if there is one.
@@ -64,12 +60,10 @@ impl App<'_> {
     }
 
     /// The rest of the hook of a guest created this step (cheats 6): the seasonal items of the
-    /// game date and the yellow brick path. The flying objects went with the creation itself
-    /// ([`guest_flights`]).
-    pub(super) fn guest_created(&mut self) {
+    /// game date and the yellow brick path, `trio` being the flag as the creation saw it. The
+    /// flying objects went with the creation itself ([`crate::cheat::guest_flights`]).
+    pub(super) fn guest_created(&mut self, trio: bool) {
         let date = self.sim.calendar().date();
-        let Some(game) = &self.game else { return };
-        let trio = game.world.units.cheat.lions_tigers_bears;
         let set = self.cheats.season.guest_created(date.month, date.day, trio);
         self.make_available(&set);
     }
@@ -132,35 +126,6 @@ impl App<'_> {
                 log.into_iter().for_each(|line| self.sim.note(line));
             }
             None => game.build.start_research(cat, set),
-        }
-    }
-}
-
-/// The flying objects of a guest created on the game date (cheats 6.2 steps 1 to 3, ambients 3.1),
-/// run by the guest creation of the step: each is told in the log and made, so that it moves in
-/// this very step and its three draws come before those of the entities. The sleigh and the
-/// biplane add their loop (flight, file, base term) to `vehicles` for the game to hold. A game
-/// without the type makes no flight and says so in the log (ambients 11.1).
-pub(super) fn guest_flights(
-    season: &mut Season,
-    data: &dyn Data,
-    cat: &Catalogue,
-    sim: &mut Sim,
-    world: &mut World,
-    vehicles: &mut Vec<(u32, &'static str, i32)>,
-) {
-    let date = sim.calendar().date();
-    for fly in season.flights(date.month, date.day) {
-        sim.note(fly.line());
-        let Some(id) = fly.type_id() else { continue };
-        let Some(ty) = flight::ambient(cat, id) else {
-            sim.note(format!("flight {id} missing"));
-            continue;
-        };
-        sim.spawns.add(id);
-        let made = flight::launch(world, cat, ty, data.set_files(ty), &mut sim.rng);
-        if let (Some(flight), Some((file, base))) = (made, fly.loop_sound()) {
-            vehicles.push((flight, file, base));
         }
     }
 }

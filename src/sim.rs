@@ -733,6 +733,7 @@ impl Sim {
 
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
     /// read and book into them.
+    #[cfg(test)]
     pub(crate) fn step_game(
         &mut self,
         data: &dyn Data,

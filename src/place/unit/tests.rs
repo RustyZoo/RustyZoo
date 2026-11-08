@@ -908,6 +908,24 @@ fn a_guest_stands_on_any_empty_flat_tile_even_water_and_never_in_the_way() {
 }
 
 #[test]
+fn a_picked_up_staff_member_writes_no_slot_in_its_block() {
+    let cat = catalogue();
+    let mut w = tank_world(3);
+    let mut keeper = entity_at("keeper", "marine", "m", 6 * 64 + 20, 6 * 64 + 20, 2);
+    keeper.common.as_mut().unwrap().unit = Some(Default::default());
+    let id = w.add(keeper.clone(), shape(&keeper)).unwrap();
+    let slot = |w: &mut World, v| {
+        let at = w.find(id).unwrap();
+        let u = w.zoo.entities[at].common.as_mut().unwrap().unit.as_mut();
+        std::mem::replace(&mut u.unwrap().slot, v)
+    };
+    slot(&mut w, 7);
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    // The state clear of a pick-up writes 0xff for every kind (goals 11.3.1 point 2).
+    assert_eq!(slot(&mut w, 7), 0xff);
+}
+
+#[test]
 fn a_picked_up_keeper_closes_the_gate_it_remembers() {
     let cat = catalogue();
     let mut w = tank_world(3);

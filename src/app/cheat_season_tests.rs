@@ -167,15 +167,15 @@ fn the_permanent_halloween_flag_keeps_the_jack_o_lantern_over_a_guest_hook() {
         app.cheats.season.halloween = true;
         app.make_available(&[(JACK_O_LANTERN, true)]);
         today(app, 11, 1);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
         app.make_available(&[(JACK_O_LANTERN, false)]);
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
         // The flag down: the day flag was left alone, so the day makes it available.
         app.cheats.season.halloween = false;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
     });
 }
@@ -184,11 +184,11 @@ fn the_permanent_halloween_flag_keeps_the_jack_o_lantern_over_a_guest_hook() {
 fn a_guest_created_on_christmas_makes_the_snowman_and_the_tree_available_until_another_day() {
     run(|app, cat| {
         today(app, 12, 25);
-        app.guest_created();
+        guest_created(app);
         // Order of the ids: tree, jack-o'-lantern, snowman, path.
         assert_eq!(on(app, cat), [true, false, true, false]);
         today(app, 12, 26);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -197,10 +197,10 @@ fn a_guest_created_on_christmas_makes_the_snowman_and_the_tree_available_until_a
 fn a_guest_created_on_the_last_day_of_october_makes_the_jack_o_lantern_available() {
     run(|app, cat| {
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
         today(app, 11, 1);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -209,7 +209,7 @@ fn a_guest_created_on_the_last_day_of_october_makes_the_jack_o_lantern_available
 fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_it_back() {
     run(|app, cat| {
         today(app, 3, 3);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
         app.game
             .as_mut()
@@ -218,7 +218,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
             .units
             .cheat
             .lions_tigers_bears = true;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, false, false, true]);
         // A new game takes it away; the hook has spent its one time.
         restart(app);
@@ -230,7 +230,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
             .units
             .cheat
             .lions_tigers_bears = true;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -239,7 +239,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
 fn the_hooks_do_nothing_without_a_game() {
     run(|app, _| {
         app.game = None;
-        app.guest_created();
+        guest_created(app);
         app.game_started();
     });
 }
@@ -400,7 +400,7 @@ fn after_a_real_halloween_start_the_game_date_no_longer_offers_the_jack_o_lanter
         app.sim.real_day = real_other_day;
         app.game_started();
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -533,7 +533,7 @@ fn created(app: &mut App) {
     let game = app.game.as_mut().unwrap();
     let season = &mut app.cheats.season;
     let mut loops = Vec::new();
-    cheat::guest_flights(
+    crate::cheat::guest_flights(
         season,
         &data,
         cat,
@@ -542,7 +542,13 @@ fn created(app: &mut App) {
         &mut loops,
     );
     game.vehicles.extend(loops);
-    app.guest_created();
+    guest_created(app);
+}
+
+/// The rest of the hook of a guest created, the trio flag being as it is now.
+fn guest_created(app: &mut App) {
+    let trio = (app.game.as_ref()).is_some_and(|g| g.world.units.cheat.lions_tigers_bears);
+    app.guest_created(trio);
 }
 
 /// The ambient creatures of the game: type name, speed.
@@ -735,5 +741,103 @@ fn an_ordinary_game_draws_nothing_for_the_birds() {
         created(app);
         assert_eq!(creatures(app).len(), 1, "the sleigh alone");
         assert_eq!(spawned(app, 20), [5083]);
+    });
+}
+
+/// A game on the date `month`/`day` whose zoo has a pen with a zebra and an entrance, where a
+/// guest is created at every new-guest check: the types are the hooks' and the guests'.
+fn crowded(month: u32, day: u32, body: impl FnOnce(&mut App, &Catalogue)) {
+    use crate::unit::testing::{centre, entity, world_with};
+    let mut cat = flights("cSpeed=100\n");
+    for (name, class, id) in [("man", "guests", 9503), ("zebra", "animals", 5)] {
+        cat.push(EntityType {
+            class,
+            type_name: name.into(),
+            subtype: Vec::new(),
+            file: None,
+            config: Some(std::sync::Arc::new(
+                Config::parse(b"[Global]\nDefaultSubtype=man\n").unwrap(),
+            )),
+            name_id: id,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
+    let world = world_with((8, 8), |zoo| {
+        zoo.entrance = (7, 7);
+        for i in 1..=3 {
+            for (at, d) in [((i, 1), 0), ((i, 3), 4), ((1, i), 6), ((3, i), 2)] {
+                let id = 100 + zoo.entities.len() as u32;
+                zoo.entities.push(entity("fences", "", id, centre(at), d));
+            }
+        }
+        zoo.entities
+            .push(entity("animals", "zebra", 500, centre((2, 2)), 0));
+    });
+    with_world("cheat-crowd", (false, false), (cat, &[]), |app, cat| {
+        restart(app);
+        app.game.as_mut().unwrap().world = world;
+        today(app, month, day);
+        app.sim.status.settings.create_chance = [100; 5];
+        body(app, cat);
+    });
+}
+
+/// Passes of the app until a guest more is in the zoo, with the rating kept high and the
+/// new-guest check due; the guests of the zoo.
+fn until_a_guest(app: &mut App, now: &mut u64) -> usize {
+    let guests = |app: &App| {
+        let zoo = &app.game.as_ref().unwrap().world.zoo;
+        zoo.entities.iter().filter(|e| e.class == "guests").count()
+    };
+    let before = guests(app);
+    for _ in 0..50 {
+        app.sim.status.rating = 85;
+        app.sim.status.timers[2] = app.sim.status.settings.new_guest as u32;
+        *now += 100;
+        app.pass(*now, &[]);
+        if guests(app) > before {
+            break;
+        }
+    }
+    guests(app)
+}
+
+#[test]
+fn a_pass_of_the_app_on_25_december_makes_the_sleigh_with_the_first_guest() {
+    crowded(12, 25, |app, _| {
+        let mut now = 0;
+        assert_eq!(until_a_guest(app, &mut now), 1);
+        assert_eq!(creatures(app), [("sleigh".to_string(), 100)]);
+        assert_eq!(until_a_guest(app, &mut now), 2);
+        assert_eq!(creatures(app).len(), 1, "one sleigh a day");
+    });
+    crowded(12, 24, |app, _| {
+        assert_eq!(until_a_guest(app, &mut 0), 1);
+        assert!(creatures(app).is_empty());
+    });
+}
+
+#[test]
+fn the_brick_path_follows_the_trio_as_the_creation_saw_it() {
+    crowded(3, 3, |app, cat| {
+        let mut now = 0;
+        // The trio is found by the rating of this very step, after the guest was created.
+        let world = &mut app.game.as_mut().unwrap().world;
+        let rating = &mut world.exhibits_mut().list_mut()[0].rating;
+        (rating.trio, rating.revise, rating.species_ms) = (true, false, 0);
+        assert_eq!(until_a_guest(app, &mut now), 1);
+        assert!(
+            app.game
+                .as_ref()
+                .unwrap()
+                .world
+                .units
+                .cheat
+                .lions_tigers_bears
+        );
+        assert!(!on(app, cat)[3], "not before the next guest");
+        assert_eq!(until_a_guest(app, &mut now), 2);
+        assert!(on(app, cat)[3]);
     });
 }
