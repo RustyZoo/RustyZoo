@@ -5,8 +5,8 @@
 # reads the log. The run is long enough for the can to have 13 uses (the check fails below that):
 # the guests use it about once per 700 passes after the first 5000, and the stream moves it (a seed
 # can give 12 uses at 12000 passes and 15 at 12700): the `#seeds` line gives the seeds to try.
-# The `#probe` line has each seed play the first 333 passes alone, which are all the building and
-# hiring, and drop the seed whose hires came out as men before the whole game is played.
+# The `#probe` line has each seed play the first 333 passes alone, which are all the hiring
+# and adoption, and drop the seed whose hires came out as men before the whole game is played.
 #
 # The window is the default one (1024x768); every position is in its pixels. A tank filter, a rock
 # and plants are put in before the game runs: the rays rate a bare tank 66 (their preferences for

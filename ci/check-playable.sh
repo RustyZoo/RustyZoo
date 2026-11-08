@@ -13,10 +13,10 @@
 #                         pass and the time) with the words, each an extended regular expression that
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
 #                         The checks fail when the game did not build it; they never skip for it
-#   #probe N              the pass at which the script has built and hired everything the #expect lines
-#                         count (the unpause). Each seed is first played for N passes only (seconds) and
-#                         the #expect lines are checked; a seed whose hires came out as men (the staff
-#                         of the trials are women only, and the hire list stays empty after a man is
+#   #probe N              the pass at which the script has hired and adopted everything (the unpause).
+#                         Each seed is first played for N passes only (under a second) and the #expect
+#                         lines `unit add` are checked; a seed whose hires came out as men (the staff of
+#                         the trials are women only, and the hire list stays empty after a man is
 #                         drawn) is dropped there, without playing its whole game
 #   #seeds S...           fallback seeds: the game is played with the `--seed` of #run first and, when a
 #                         check fails, with each of these in turn; it passes with the first seed that
@@ -117,6 +117,7 @@ expects() {
   sed -n 's/^#expect //p' "$script" | tr -d '\r' >"$tmp/expects"
   while read -r n words; do
     [ -n "$n" ] || continue
+    [ -z "${PLAYABLE_PROBE:-}" ] || case $words in "unit add "*) ;; *) continue ;; esac # what a probe can see
     case $n in *[!0-9]*) fail "builds: '$n $words' does not start with a number"; continue ;; esac
     got=$(awk -v w="$words" 'BEGIN { nw = split(w, p, " ") }
       { for (i = 1; i <= nw; i++) if ($(3 + i) !~ ("^(" p[i] ")$")) next; c++ }
