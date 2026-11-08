@@ -333,8 +333,14 @@ impl World {
             return;
         };
         let holds = |i: usize, t: usize| plan.parts[i].tiles.contains(&t);
-        for (&i, &x) in &plan.split_from {
-            let new = plan.parts[i].tiles.first().and_then(|&t| built.next.region(t));
+        for i in 0..plan.parts.len() {
+            let Some(&x) = plan.split_from.get(&i) else {
+                continue;
+            };
+            let new = plan.parts[i]
+                .tiles
+                .first()
+                .and_then(|&t| built.next.region(t));
             let Some(new) = new.filter(|n| built.fresh.contains(n)) else {
                 continue;
             };

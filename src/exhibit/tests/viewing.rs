@@ -474,7 +474,11 @@ fn a_split_whose_survivor_keeps_the_side_across_the_piece_resizes_both_exhibits_
         let e = world.exhibits().get(id).unwrap();
         e.areas.iter().map(|a| a.tiles.clone()).collect()
     };
-    assert_eq!(region(&world, 5, 1), 1, "the survivor keeps the gate's side");
+    assert_eq!(
+        region(&world, 5, 1),
+        1,
+        "the survivor keeps the gate's side"
+    );
     assert_eq!(areas(1), [vec![west], vec![east], vec![west], vec![east]]);
     assert_eq!(areas(2), [vec![east], vec![west]]);
 }
