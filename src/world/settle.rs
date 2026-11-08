@@ -104,10 +104,15 @@ impl World {
     /// What the parts of the new fences are made of: for each, the old exhibits it holds tiles of
     /// and the exhibit it keeps (merges, splits), its kind and its morph.
     fn plan(&mut self, old: &Exhibits, hint: Option<(usize, usize)>, quiet: bool) -> Plan {
-        let parts: Vec<Part> = exhibit::parts(self)
-            .into_iter()
-            .filter(|p| !p.grounds)
-            .collect();
+        let near = hint.and_then(|(a, d)| exhibit::parts_near(self, old, a, d));
+        #[cfg(debug_assertions)]
+        if let Some(near) = &near {
+            exhibit::assert_same_parts(self, near);
+        }
+        let parts = near.unwrap_or_else(|| {
+            let all = exhibit::parts(self);
+            all.into_iter().filter(|p| !p.grounds).collect()
+        });
         let ra = hint.and_then(|(a, _)| old.region(a));
         let rb = hint
             .and_then(|(a, d)| self.neighbour(a, d))

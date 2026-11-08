@@ -178,6 +178,9 @@ pub struct World {
     /// A tank was made or went, or the ground of a tile changed, since the last
     /// [`World::take_reshaped`]: the objects are validated again (guest buildings 11.1.1).
     reshaped: bool,
+    /// The world is the scratch world of [`World::replay_areas`], read for its areas only: the
+    /// floor of a tank is not painted.
+    replaying: bool,
     /// The tanks whose water, base level, walls or ground changed (guest buildings 12.2 point 22).
     stirred: Vec<u32>,
     /// What each tank filter shows besides its record: switched off, or showing bubbles (not
@@ -245,6 +248,7 @@ impl World {
             wet: Vec::new(),
             ripple_setups: Vec::new(),
             reshaped: false,
+            replaying: false,
             stirred: Vec::new(),
             filter_view: BTreeMap::new(),
             words: language.exhibit_words.clone(),
