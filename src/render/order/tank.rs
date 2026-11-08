@@ -214,10 +214,11 @@ impl Painter<'_> {
         list.into_iter().map(|e| e.4).collect()
     }
 
-    /// The temporary entities of tile `i` (map drawing 9.5, 9.7.4 step 6): the pending shadows of
-    /// the flights whose shadow point is on it, then the overlays; `shadows` leaves the shadows
-    /// out, `sorted` sorts them all by the rule of 9.5 (shadows first among equals), else they
-    /// stay in list order.
+    /// The temporary entities of tile `i` (map drawing 9.5, 9.7.4 step 6) in the list order, the
+    /// reverse of the attachment order: the overlays are attached first, the pending shadows of
+    /// the flights whose shadow point is on the tile last, each at the head. `shadows` leaves
+    /// the shadows out, `sorted` sorts them all by the rule of 9.5 (a stable sort, so equal
+    /// ones keep the list order).
     pub(super) fn overlays(&mut self, i: usize, shadows: bool, sorted: bool) {
         let scene = self.scene;
         let t = self.order[i];
@@ -227,9 +228,8 @@ impl Painter<'_> {
             .filter(|_| shadows)
             .into_iter()
             .flatten();
-        let items = shadow_list
-            .map(|&o| (o, Item::Shadow(o)))
-            .chain(scene.overlay[t].iter().map(|&o| (o, Item::Object(o))));
+        let attached = scene.overlay[t].iter().map(|&o| (o, Item::Object(o)));
+        let items = attached.chain(shadow_list.map(|&o| (o, Item::Shadow(o))));
         let mut list: Vec<(Entry, Item)> = items
             .map(|(o, item)| {
                 let obj = &scene.objects[o];
@@ -237,6 +237,7 @@ impl Painter<'_> {
                 ((obj.late, 0, py, px, o), item)
             })
             .collect();
+        list.reverse();
         if sorted {
             list.sort_by_key(|&((late, forced, py, px, _), _)| (late, forced, py, px));
         }

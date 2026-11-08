@@ -485,6 +485,47 @@ fn a_flights_shadow_over_a_tank_is_painted_over_the_water_with_its_temporary_ent
 }
 
 #[test]
+fn step_6_draws_the_temporary_entities_from_the_last_attached() {
+    // Two overlays and a shadow on the tank tile (5, 5): the shadow, then the overlays, the later
+    // one in the vector first.
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(52, 52)
+    };
+    let overlay = |dx| Object {
+        kind: Kind::Overlay,
+        ..unit(5 * 64 + 20 + dx, 5 * 64 + 20)
+    };
+    let scene = tank_scene_on(8, 4, 1, 3, 2, vec![overlay(0), overlay(10), flight]);
+    let items = paint_order(&scene);
+    let last = items
+        .iter()
+        .rposition(|i| matches!(i, Item::Surface { .. }))
+        .unwrap();
+    assert_eq!(
+        items[last + 1..]
+            .iter()
+            .filter(|i| matches!(i, Item::Shadow(_) | Item::Object(8..=9)))
+            .copied()
+            .collect::<Vec<_>>(),
+        [Item::Shadow(10), Item::Object(9), Item::Object(8)]
+    );
+}
+
+#[test]
+fn equal_temporary_entities_of_an_ordinary_tile_keep_the_reverse_of_attachment() {
+    // Two overlays at the same point tie on every key: the later one is painted first.
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit(10, 10)
+    };
+    let scene = Scene::new(2, 2, 0, &flat_map(2, 2), vec![overlay, overlay]);
+    let order = paint_order(&scene);
+    let at = |item| order.iter().position(|&i| i == item).unwrap();
+    assert!(at(Item::Object(1)) < at(Item::Object(0)));
+}
+
+#[test]
 fn a_flights_shadow_over_a_tile_painted_one_by_one_is_drawn_once() {
     let tree = Object {
         kind: Kind::Fixed,
