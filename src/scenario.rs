@@ -4,7 +4,7 @@
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
-//! entities and the interface (rules 10 and 11); the research and shows rules read 0. The
+//! entities, the research tree (rule 13), the shows (rule 15) and the interface (rules 10 and 11). The
 //! triggers 1 to 10 do their work (messages, popups and elements, cash, availability, a
 //! boxed animal, an award, removal, the sell switch, forced research), and every trigger is also logged as
 //! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the

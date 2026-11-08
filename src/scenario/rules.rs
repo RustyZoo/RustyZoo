@@ -401,7 +401,7 @@ fn shows(g: &Game, rule: &[i32; 4]) -> i32 {
             }
         } else {
             // A plain find: it makes no record.
-            let Some(r) = i.records.iter().find(|r| r.key == rule[2] as u32) else {
+            let Some(r) = i.record(rule[2] as u32) else {
                 continue;
             };
             let scripted = i.records.iter().filter(|r| !matches!(r.script, 0 | 0xffff));
