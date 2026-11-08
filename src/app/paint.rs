@@ -208,3 +208,44 @@ pub fn frame_hashes(frames: &[&Framebuffer]) -> Vec<u64> {
     }
     hash[..frames.len()].to_vec()
 }
+
+impl Game {
+    /// The centre of the map view in view space, where the sounds are heard from (sound 5).
+    pub(super) fn listener(&self) -> (i64, i64) {
+        let camera = &self.camera;
+        let (w, h) = (i64::from(camera.size.0), i64::from(camera.size.1));
+        (
+            i64::from(camera.scroll.0) + w / 2,
+            i64::from(camera.scroll.1) + h / 2,
+        )
+    }
+
+    /// Places sounds (entity, file, voice, base term) at their entity's position in the view
+    /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
+    /// is gone is dropped.
+    pub(super) fn placed(
+        &self,
+        sounds: impl Iterator<Item = (u32, String, String, i32)>,
+    ) -> Vec<UnitSound> {
+        let camera = &self.camera;
+        let listener = self.listener();
+        let world = &self.world;
+        sounds
+            .filter_map(|(id, file, voice, base)| {
+                let c = world.zoo.entities[world.find(id)?].common.as_ref()?;
+                let view = project(camera.rotation, c.x, c.y, c.z);
+                let at = zoom_view(camera.zoom, view);
+                let (distance, pan) = positional(at, listener);
+                Some(UnitSound {
+                    id,
+                    file,
+                    voice,
+                    base,
+                    at,
+                    distance,
+                    pan,
+                })
+            })
+            .collect()
+    }
+}

@@ -145,6 +145,58 @@ fn a_grandstand_facing_the_show_tank_opens_the_finances_and_deselecting_it_close
     });
 }
 
+/// Closes the window, as a load or a new game does to the panel: the next showing is the first
+/// of a game, whose panel is new.
+fn restart(s: &mut Session) {
+    s.app.interface().unwrap().set_hidden(LAYOUT, true);
+    s.app.show_pass(0, false);
+    s.app.game.as_mut().unwrap().show.started = false;
+}
+
+/// The grandstand's way of opening the window.
+fn stand(s: &mut Session) {
+    let layout = crate::panel::building::PLAIN;
+    s.app.game.as_mut().unwrap().building.select(7, layout);
+    s.app.show_stand(7);
+    assert!(shown(s, LAYOUT));
+}
+
+#[test]
+fn the_first_showing_of_a_game_opens_the_tab_of_the_first_showing_of_the_program() {
+    with_show("show-tab-memory", |s, x| {
+        let tab = |s: &mut Session| {
+            let ui = s.app.interface().unwrap();
+            (ui.is_down(SCRIPT_TAB), ui.is_down(FINANCES_TAB))
+        };
+        // The first showing of the program is a grandstand: finances, remembered.
+        stand(s);
+        assert_eq!(tab(s), (false, true));
+        // A load: the exhibit panel asks for Show Script, the memory gives finances.
+        restart(s);
+        open(s, x);
+        assert_eq!(tab(s), (false, true));
+        // The memory is used once per game: the next showing opens the tab it is asked for.
+        restart(s);
+        s.app.game.as_mut().unwrap().show.started = true;
+        open(s, x);
+        assert_eq!(tab(s), (true, false));
+    });
+}
+
+#[test]
+fn a_tab_asked_for_in_the_first_showing_is_kept_for_the_games_after() {
+    with_show("show-tab-memory-script", |s, x| {
+        open(s, x);
+        assert!(s.app.interface().unwrap().is_down(SCRIPT_TAB));
+        // The grandstand of the next game opens the script, not the finances.
+        restart(s);
+        s.app.interface().unwrap().set_hidden(LAYOUT, true);
+        stand(s);
+        let ui = s.app.interface().unwrap();
+        assert!(ui.is_down(SCRIPT_TAB) && !ui.is_down(FINANCES_TAB));
+    });
+}
+
 #[test]
 fn opening_the_window_hides_the_menu_and_status_panels() {
     with_show("show-open-hides", |s, x| {

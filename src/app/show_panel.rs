@@ -30,21 +30,43 @@ const DROP_DOWNS: [(i32, i32); 2] = [
 ];
 
 /// Opens the window on show tank `x` and tab `tab` (19.3): the exhibit is set, the tab selected,
-/// and the layout shown when it is hidden, which hides the other panels.
-fn open(game: &mut Game, ui: &mut Interface, cat: &Catalogue, vfs: &Vfs, x: u32, tab: i32) {
+/// and the layout shown when it is hidden, which hides the other panels. `kept` is the tab
+/// remembered since the program started: the first showing sets it, and the first showing of a
+/// game selects it instead of `tab` (point 4).
+fn open(
+    game: &mut Game,
+    ui: &mut Interface,
+    cat: &Catalogue,
+    vfs: &Vfs,
+    x: u32,
+    tab: i32,
+    kept: &mut Option<i32>,
+) {
     game.show.stand = None;
     game.show
         .set_exhibit(ui, &mut game.world, cat, vfs, Some(x));
+    let hidden = !ui.shown(LAYOUT);
+    // The remembered tab is set and used by the showing (point 4), after the tab asked for.
+    let tab = match hidden {
+        true => {
+            let kept = *kept.get_or_insert(tab);
+            match std::mem::replace(&mut game.show.started, true) {
+                true => tab,
+                false => kept,
+            }
+        }
+        false => tab,
+    };
     if !ui.is_down(tab) {
         let other = SCRIPT_TAB + FINANCES_TAB - tab;
-        if ui.shown(LAYOUT) {
-            ui.press_button(tab);
-        } else {
+        if hidden {
             ui.set_button(other, false, true);
             ui.set_button(tab, true, true);
+        } else {
+            ui.press_button(tab);
         }
     }
-    if !ui.shown(LAYOUT) {
+    if hidden {
         ui.show(LAYOUT);
         for id in PANELS.into_iter().chain(STATUS) {
             ui.set_hidden(id, true);
@@ -74,7 +96,7 @@ impl App<'_> {
         let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
         let x = game.panel.current;
         if let Some(x) = x.filter(|&x| shows::info_of(&game.world, x).is_some()) {
-            open(game, ui, cat, vfs, x, SCRIPT_TAB);
+            open(game, ui, cat, vfs, x, SCRIPT_TAB, &mut self.show_tab);
         } else if x != game.show.exhibit {
             hide(game, ui, cat);
             game.show.set_exhibit(ui, &mut game.world, cat, vfs, None);
@@ -87,7 +109,7 @@ impl App<'_> {
         playing!(self, game, ui);
         let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
         if let Some(x) = shows::faced_exhibit(&game.world, cat, stand) {
-            open(game, ui, cat, vfs, x, FINANCES_TAB);
+            open(game, ui, cat, vfs, x, FINANCES_TAB, &mut self.show_tab);
             game.show.stand = Some(stand);
         }
     }
