@@ -14,7 +14,7 @@ use super::super::{
 use super::IN_BUILDING;
 use crate::building::items::{Item, LITTER};
 use crate::building::{self, Kind, Live, Mood, Point};
-use crate::guest::Guest;
+use crate::guest::{Guest, NO_SLOT};
 use crate::unit::Part;
 use crate::zoo::Entity;
 
@@ -240,14 +240,16 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// The unit has no building target and a guest serves no need; the slot is forgotten (slot 0).
+    /// The unit has no building target and a guest serves no need; the slot is forgotten (slot 0,
+    /// for a guest no slot, goals 11.3.1 point 2).
     /// An animal keeps the need byte it has (shows 32.1 point 2).
     pub(in crate::goal) fn clear_target(&mut self) {
         if let Some(g) = self.guest() {
             g.need = None;
         }
+        let none = if self.guest().is_some() { NO_SLOT } else { 0 };
         if let Some((b, s, _)) = self.aim() {
-            (*b, *s) = (0, 0);
+            (*b, *s) = (0, none);
         }
     }
 
@@ -301,9 +303,12 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Whether building `id` exists and satisfies the need being served (goals 11.3: the slot
-    /// search finds no building otherwise).
+    /// Whether building `id` exists and satisfies the need being served, for a unit that holds a
+    /// slot (goals 11.3, 11.3.1 point 4: the slot search finds no building otherwise).
     fn serves(&mut self, id: u32) -> bool {
+        if self.guest().is_some_and(|g| g.slot == NO_SLOT) {
+            return false;
+        }
         let need = self.need();
         (self.building(id)).is_some_and(|(_, k)| need.is_none_or(|n| k.satisfies(n)))
     }
@@ -381,6 +386,8 @@ impl Cx<'_, '_> {
     /// is on its own tile, and a refused walk or a building that is gone ends the goal.
     pub(in crate::goal) fn enter_decide(&mut self) {
         let (id, slot) = self.target();
+        // The walk is the same with no slot (goals 11.3.1 point 4.4): slot 0's inside position.
+        let slot = slot % NO_SLOT;
         let Some((e, kind)) = self.building(id) else {
             return self.clear_goal();
         };
@@ -703,7 +710,8 @@ impl Cx<'_, '_> {
             return;
         }
         let id = self.target_building();
-        let slot = self.target().1;
+        // No slot reads the entrances of slot 0 (goals 11.3.1 point 4.5).
+        let slot = self.target().1 % NO_SLOT;
         let own = self.tile();
         let found = self.building(id);
         if found
@@ -821,7 +829,8 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn exit_done(&mut self) {
         self.unit.through_building = false;
         let building = self.target_building();
-        if self.aim().is_some() {
+        // A guest with no slot leaves the building untouched (goals 11.3.1 point 4.5).
+        if self.aim().is_some() && self.guest().is_none_or(|g| g.slot != NO_SLOT) {
             self.remove_user();
         }
         // A failed exit left it hidden; the goal shows it whatever the removal did (6.7.1).
