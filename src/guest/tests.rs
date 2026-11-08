@@ -345,7 +345,12 @@ fn a_guest_slot_is_loaded_and_saved_as_the_unit_byte_and_ff_is_none() {
     let ty = man();
     let made = Guest::create(&Keys::of(&ty), &ty, &[], date(5, 6), 0, &mut seeded(1));
     assert_eq!(made.slot, NO_SLOT);
-    for (byte, want) in [(None, NO_SLOT), (Some(0), 0), (Some(7), 7), (Some(255), NO_SLOT)] {
+    for (byte, want) in [
+        (None, NO_SLOT),
+        (Some(0), 0),
+        (Some(7), 7),
+        (Some(255), NO_SLOT),
+    ] {
         let (mut world, cat, id) = stored(RECORD);
         let at = world.find(id).unwrap();
         let c = world.zoo.entities[at].common.as_mut().unwrap();
@@ -364,7 +369,13 @@ fn a_guest_slot_is_loaded_and_saved_as_the_unit_byte_and_ff_is_none() {
             }
             let mut zoo = world.saved(|_| true);
             world.finish_save(&mut zoo, &cat);
-            let block = zoo.entities[at].common.as_ref().unwrap().unit.clone().unwrap();
+            let block = zoo.entities[at]
+                .common
+                .as_ref()
+                .unwrap()
+                .unit
+                .clone()
+                .unwrap();
             assert_eq!(block.slot, saved, "{byte:?} {live}");
         }
     }

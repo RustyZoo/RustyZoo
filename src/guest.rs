@@ -509,9 +509,13 @@ pub(crate) fn load(
     date: Date,
     reset: i32,
 ) {
-    let Some((id, record, slot)) = (world.zoo.entities[at].common.as_ref())
-        .and_then(|c| Some((c.id, *c.guest.as_deref()?, c.unit.as_deref().map(|u| u.slot))))
-    else {
+    let Some((id, record, slot)) = (world.zoo.entities[at].common.as_ref()).and_then(|c| {
+        Some((
+            c.id,
+            *c.guest.as_deref()?,
+            c.unit.as_deref().map(|u| u.slot),
+        ))
+    }) else {
         return;
     };
     let Some(ty) = type_of(world, cat, at) else {

@@ -1134,7 +1134,10 @@ fn one_draw_in_fifteen_sends_a_guest_on_the_footprint_of_a_building_out_of_it() 
     assert_eq!(task_at((2, 6)), 0);
     assert_eq!(task_at((5, 5)), 0);
     assert_eq!(task_at((5, 3)), EXIT_BUILDING);
-    assert_eq!((guest(&w).building, guest(&w).slot), (9, crate::guest::NO_SLOT));
+    assert_eq!(
+        (guest(&w).building, guest(&w).slot),
+        (9, crate::guest::NO_SLOT)
+    );
     let r = &w.units.get(1).unwrap().goal.record;
     assert_eq!((r.mode, r.target.id, r.target.tile), (1, 9, None));
 }
