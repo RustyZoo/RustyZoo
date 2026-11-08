@@ -157,6 +157,15 @@ impl World {
     /// Drains tank `id`: refused (false) while an animal is in it. The level falls with the steps,
     /// or to 0 at once while the game is paused.
     pub(crate) fn drain(&mut self, id: u32) -> bool {
+        let drained = self.drain_quietly(id);
+        if drained {
+            crate::show::drained(self, id);
+        }
+        drained
+    }
+
+    /// [`World::drain`] without the abort event of the show (a load posts it by its own rule).
+    pub(super) fn drain_quietly(&mut self, id: u32) -> bool {
         let animal = self.tiles_of(id).into_iter().any(|t| {
             let units = self.scene.units_on(t);
             (units.iter()).any(|&o| self.zoo.entities[self.owner[o]].class == "animals")
@@ -171,7 +180,6 @@ impl World {
                 t.level = 0;
             }
         });
-        crate::show::drained(self, id);
         true
     }
 
