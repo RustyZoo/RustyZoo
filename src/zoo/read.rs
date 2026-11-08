@@ -366,19 +366,23 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
     let (body_size, common) = if r.v >= 70 {
         let size = r.u32()?;
         let data = r.take(size as usize)?;
-        // A record of the parent class `staff` is read with the layout of its type's class, which
-        // `Zoo::checked` knows: the bytes wait for it (zoo format 6.2 points 1 and 2).
-        let common = if class == b"staff" && size > 0 {
-            let raw = Raw {
-                body: data.to_vec(),
-                spans: Spans::default(),
-            };
+        // A record of a parent class is read with the layout of its type's class, which
+        // `Zoo::checked` knows: the bytes wait for it (zoo format 6.15 points 1 and 2). `objects` and
+        // `fences` are read as stored first, which is right for nearly every record.
+        let deferred = || {
             Some(Common {
-                raw,
+                raw: Raw {
+                    body: data.to_vec(),
+                    spans: Spans::default(),
+                },
                 ..Common::default()
             })
-        } else {
-            sized(data, r.v, r.ground.clone(), class)
+        };
+        let common = match class {
+            _ if size == 0 => None,
+            b"staff" | b"unit" => deferred(),
+            b"objects" | b"fences" => sized(data, r.v, r.ground.clone(), class).or_else(deferred),
+            _ => sized(data, r.v, r.ground.clone(), class),
         };
         (Some(size), common)
     } else {
