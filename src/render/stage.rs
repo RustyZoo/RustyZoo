@@ -184,6 +184,7 @@ impl<'a> MapRenderer<'a> {
                 clock: None,
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
+                connector: extra.connectors.binary_search(&c.id).is_ok(),
                 food: c.food,
                 tint: extra
                     .tinted
@@ -230,6 +231,7 @@ impl<'a> MapRenderer<'a> {
                 clock: None,
                 mode: 0,
                 portal: false,
+                connector: false,
                 food: 0,
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
@@ -263,6 +265,7 @@ impl<'a> MapRenderer<'a> {
             clock,
             mode: 0,
             portal: false,
+            connector: false,
             food: 0,
             tint: None,
             wall: 0,

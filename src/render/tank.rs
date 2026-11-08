@@ -313,16 +313,31 @@ impl MapRenderer<'_> {
     ) {
         let (obj, meta) = (scene.objects[o], &metas[o]);
         let e = ends(scene, metas, o);
+        let animations = meta.ty.animations();
+        // The connector of a combined exhibit takes its own top and single pieces; a gate does
+        // not, and a type without the key keeps the piece it has (tank fauna 12.4).
+        let linked = meta.connector && meta.ty.subtype.first() != Some(&b'g');
+        let connector = |own: String, plain: String| {
+            match linked && animations.iter().any(|a| a.name == own && a.member.is_some()) {
+                true => own,
+                false => plain,
+            }
+        };
+        let x = match e {
+            "l" => "lcr",
+            "r" => "rcr",
+            "m" => "mid",
+            _ => "col",
+        };
         let mut pieces: Vec<(String, i32)> = Vec::new();
         if ladder_only {
             // The pending gate has no wall pieces of its own (placing 6.4).
         } else if height == 1 {
-            let name = if e == "lr" {
-                "idle".to_string()
-            } else {
-                format!("tb{e}idle")
+            let (own, plain) = match e {
+                "lr" => ("idlesl".to_string(), "idle".to_string()),
+                _ => (format!("{x}lowsl"), format!("tb{e}idle")),
             };
-            pieces.push((name, 0));
+            pieces.push((connector(own, plain), 0));
         } else {
             pieces.push((format!("b{e}idle"), 0));
             for step in 1..height - 1 {
@@ -330,7 +345,8 @@ impl MapRenderer<'_> {
                     pieces.push((format!("m{e}idle"), step));
                 }
             }
-            pieces.push((format!("t{e}idle"), height - 1));
+            let top = connector(format!("{x}topsl"), format!("t{e}idle"));
+            pieces.push((top, height - 1));
         }
         if meta.portal {
             pieces.push(("portal".to_string(), height - 1));
@@ -338,7 +354,6 @@ impl MapRenderer<'_> {
         if meta.ty.subtype.first() == Some(&b'g') {
             pieces.extend((0..=height).map(|step| ("ladder".to_string(), step)));
         }
-        let animations = meta.ty.animations();
         let before = out.len();
         for (name, step) in pieces {
             let member = animations

@@ -33,6 +33,11 @@ impl World {
         common.is_some_and(|c| self.connectors.binary_search(&c.id).is_ok())
     }
 
+    /// The ids of the connector walls, ascending, for the picture (12.4).
+    pub(crate) fn connector_ids(&self) -> Vec<u32> {
+        self.connectors.clone()
+    }
+
     /// 12.1: the exhibit across the pair `(a, b)` of the boundary of exhibit `x` and the wall
     /// piece that links them, when they are amphibious neighbours.
     fn link(&self, x: u32, a: usize, b: usize) -> Option<(u32, usize)> {

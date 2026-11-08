@@ -2520,6 +2520,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         clock: None,
         mode,
         portal: false,
+        connector: false,
         food: 0,
         tint: None,
         wall: 0,

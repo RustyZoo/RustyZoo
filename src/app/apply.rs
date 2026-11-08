@@ -219,6 +219,7 @@ impl App<'_> {
             marks: game.marks.clone(),
             shown: game.shown(),
             filters: game.world.filter_looks(),
+            connectors: game.world.connector_ids(),
             ..Extra::default()
         };
         match self
