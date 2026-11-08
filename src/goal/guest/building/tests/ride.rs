@@ -8,6 +8,7 @@ use super::*;
 use crate::behaviour::{Call, Heard, Row, Timing};
 use crate::building::{Live, ret};
 use crate::goal::{NONE, RECOVER, RETURN_TO_BUILDING};
+use crate::guest::NO_SLOT;
 use crate::unit::Part;
 
 /// A return building: the slot exits on the water, the return slot is entered from the water
@@ -602,6 +603,24 @@ fn a_failed_building_tiles_update_leaves_the_members_and_recovers_with_mode_1() 
     let (cat, mut w) = lake("dolshack");
     set(&mut w, |g| g.building = 9);
     assert!(!ride(&cat, &mut w, |cx| cx.return_ladder()));
+}
+
+#[test]
+fn a_failed_walk_start_keeps_the_slot_it_found() {
+    // A held guest cannot walk: the start fails after the slot search found the return slot.
+    let (cat, mut w) = riding("boatshak", 8059);
+    set(&mut w, |g| {
+        (g.building, g.need, g.slot) = (9, Some("fun"), NO_SLOT)
+    });
+    w.units.get_mut(1).unwrap().goal.record.task = NONE;
+    w.units.get_mut(1).unwrap().held = true;
+    let at = w.find(1).unwrap();
+    let c = w.zoo.entities[at].common.as_mut().unwrap();
+    (c.x, c.y) = centre((6, 5));
+    ride(&cat, &mut w, |cx| cx.guest_ladder(NONE, false));
+    // The goal recovers from the water, and the slot stays (goals 11.3.1 point 2).
+    assert_eq!(w.units.get(1).unwrap().goal.record.task, RECOVER);
+    assert_eq!(guest(&w).slot, 1);
 }
 
 #[test]
