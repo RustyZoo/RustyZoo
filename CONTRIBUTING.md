@@ -40,10 +40,9 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 - In `ci/check-trials.sh`, what the random stream decides (a birth step, which guest is inside a building) is a property that fails when the behaviour is lost (`any_seed`), not a pin; a new check does the same. Only the lines marked "Sentinel" are exact stream values: when one moves, say in the pull request why the stream changed.
 - Why: a pin that is edited until it passes hides the regression it exists to catch.
 
-## Documentation rows
+## Documentation
 
-- `README.md` merges as a union (`.gitattributes`), so a rebase can succeed while leaving the old and the new copy of a line side by side, and GitHub's own merge then conflicts.
-- After every rebase run `ci/check-doc-rows.sh` and keep one line per row. It fails on two table rows with the same first cell, two bullets with the same bold lead, and two command lines with the same command in a code block.
+- `docs/architecture.md` is a short module map. Update it only when a module is added, removed or changes its role; never for a change inside a module (its own doc comment says what it does).
 - A function over 150 lines fails clippy (`too_many_lines`); a non-test file over 1000 lines fails `ci/check-file-size.sh` unless `ci/file-size-allow.txt` lists it, and a listed file may only shrink.
 
 ## Windows CI
