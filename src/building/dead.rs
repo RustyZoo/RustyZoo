@@ -98,27 +98,21 @@ pub(crate) fn decide_all(world: &mut World, cat: &Catalogue) {
 /// last call: the simulation's water step and the app's edits both call it, each tank once. The
 /// units of a tank whose water, base level, walls or ground changed get the AI reset of their
 /// kind (guest buildings 12.2 point 22).
+#[cfg(test)]
 pub(crate) fn wet_changed(world: &mut World, cat: &Catalogue, rng: &mut crate::sim::Rng) {
-    wet_changed_then(world, cat, rng, |_, _, _| {});
+    wet_moved(world, cat);
+    for tank in world.take_stirred() {
+        crate::goal::stir_units(world, cat, rng, tank);
+    }
 }
 
-/// [`wet_changed`], calling `then` with each stirred tank right after its units were reset (the
-/// ripples of a tank that got water are set up there, map drawing 9.7.8 point 4).
-pub(crate) fn wet_changed_then(
-    world: &mut World,
-    cat: &Catalogue,
-    rng: &mut crate::sim::Rng,
-    mut then: impl FnMut(&mut World, &mut crate::sim::Rng, u32),
-) {
+/// The first part of [`wet_changed`]: the objects are validated again, the units are not reset.
+pub(crate) fn wet_moved(world: &mut World, cat: &Catalogue) {
     for tank in world.take_wet() {
         tank_changed(world, cat, tank);
     }
     if world.take_reshaped() {
         revalidate(world, cat);
-    }
-    for tank in world.take_stirred() {
-        crate::goal::stir_units(world, cat, rng, tank);
-        then(world, rng, tank);
     }
 }
 

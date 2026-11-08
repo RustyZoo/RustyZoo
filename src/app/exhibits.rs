@@ -44,6 +44,22 @@ fn name_limit(ini: &[u8]) -> i32 {
         .unwrap_or(NAME_LIMIT)
 }
 
+/// Runs the draws the edits owe (ripple set-ups, fence start times) with the resets of the units,
+/// in the order the original makes them (map drawing 9.7.8 point 4).
+pub(super) fn run_draws(
+    sim: &mut crate::sim::Sim,
+    world: &mut World,
+    renderer: &MapRenderer,
+    timings: &Timings,
+) {
+    let data = Library {
+        catalogue: renderer.catalogue(),
+        vfs: renderer.vfs(),
+        timings,
+    };
+    sim.wet_changed(world, renderer.catalogue(), &data);
+}
+
 impl App<'_> {
     /// Tells what happened to the exhibits since the last call: one `exhibit` line each (`new 1
     /// "Exhibit 1" tiles 9 gate none`, `split 1 tiles 6`, `removed 1`, `merged 2 into 3 tiles 12`,
@@ -53,12 +69,9 @@ impl App<'_> {
     pub(super) fn exhibits_told(&mut self) {
         playing!(self, game);
         let events = game.world.take_events();
-        // Buildings on a tank whose water or walls moved are validated again (guest buildings 11.1.1).
-        crate::building::dead::wet_changed(
-            &mut game.world,
-            self.renderer.catalogue(),
-            &mut self.sim.rng,
-        );
+        // Buildings on a tank whose water or walls moved are validated again (guest buildings
+        // 11.1.1), the units of a stirred tank reset, and the draws the edits owe run in order.
+        run_draws(&mut self.sim, &mut game.world, &self.renderer, &self.timings);
         let world = &game.world;
         let slot = |id: u32| match world.gate_slot(id) {
             Some((t, d)) => format!(

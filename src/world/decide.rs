@@ -1,7 +1,7 @@
 //! The show decision of an exhibit (shows 31.1): once the show test has run, a show tank holds a
 //! show info and its plain walls are show walls, and an exhibit that fails the test holds no info.
 
-use super::{Shape, World};
+use super::{Draw, Shape, World};
 use crate::exhibit::Exhibits;
 use crate::show::Move;
 use crate::zoo::{HabitatInfo, ShowInfo};
@@ -154,6 +154,15 @@ impl World {
                 (f.life, f.strength) = (show.life, show.strength);
             }
             any = true;
+            // Re-typed and made healthy (its wear interval, then its start time), then the
+            // wall information of its tank is updated when the wall is active (map drawing
+            // 9.7.8 point 3.2.2).
+            if let Some(piece) = self.zoo.entities[w].common.as_ref().map(|c| c.id) {
+                self.draws.push(Draw::Heal(piece));
+                if let Some(tank) = self.active_wall_tank(piece) {
+                    self.draws.push(Draw::Walls(tank));
+                }
+            }
         }
         if any {
             self.changed(None);

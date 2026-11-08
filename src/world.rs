@@ -41,6 +41,7 @@ mod undo;
 mod water;
 mod wear;
 pub(crate) use exhibit::Event;
+pub(crate) use water::Draw;
 pub(crate) use filter::{
     Wear, months_since as filter_months_since, placed as placed_filter,
     sell_rate as filter_sell_rate, wear as filter_wear,
@@ -171,10 +172,11 @@ pub struct World {
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
     /// objects on their tiles are validated again (guest buildings 11.1.1; not saved).
     wet: Vec<u32>,
-    /// The tanks whose water became clean with some level since the last
-    /// [`World::take_ripple_setups`]: their ripples are set up and draw their start times (map
-    /// drawing 9.7.8 point 3; not saved).
-    ripple_setups: Vec<u32>,
+    /// The draws the water and the edits owe, in the order the original makes them: ripple
+    /// set-ups and fence start times (map drawing 9.7.8 point 3; not saved).
+    draws: Vec<Draw>,
+    /// The tanks a split updates once more when the gate of its new tank (the key) is chosen.
+    tails: Vec<(u32, Vec<u32>)>,
     /// A tank was made or went, or the ground of a tile changed, since the last
     /// [`World::take_reshaped`]: the objects are validated again (guest buildings 11.1.1).
     reshaped: bool,
@@ -243,7 +245,8 @@ impl World {
             waves: Default::default(),
             told_water: BTreeMap::new(),
             wet: Vec::new(),
-            ripple_setups: Vec::new(),
+            draws: Vec::new(),
+            tails: Vec::new(),
             reshaped: false,
             stirred: Vec::new(),
             filter_view: BTreeMap::new(),

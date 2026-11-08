@@ -416,21 +416,24 @@ impl Idles {
         }
     }
 
-    /// The tanks `ids` just got clean water with some level: their ripples are set up now, in the
-    /// middle of the step (map drawing 9.7.8 points 3 and 4), each wall drawing a start time.
+    /// The ripples of tank `id` are set up now, in the middle of the step or of an edit (map
+    /// drawing 9.7.8 points 3 and 4), each wall drawing a start time. A `walls` update first
+    /// removes the transients of a tank that holds ripples: the ripples and the filter's bubbles
+    /// (point 3.1); a tank without clean water then draws nothing.
     pub(crate) fn set_up_ripples(
         &mut self,
-        world: &World,
+        world: &mut World,
         data: &dyn Data,
         rng: &mut Rng,
-        ids: &[u32],
+        (id, walls): (u32, bool),
     ) {
-        let tanks = world.rippled_tanks();
-        for id in ids {
-            if let Some((_, walls)) = tanks.iter().find(|t| t.0 == *id) {
-                let set = self.ripple_set(data, rng, walls);
-                self.ripples.insert(*id, set);
-            }
+        if walls && self.ripples.get(&id).is_some_and(|r| !r.is_empty()) {
+            self.ripples.remove(&id);
+            world.remove_bubbles_of(id);
+        }
+        if let Some((_, walls)) = world.rippled_tanks().iter().find(|t| t.0 == id) {
+            let set = self.ripple_set(data, rng, walls);
+            self.ripples.insert(id, set);
         }
     }
 
@@ -446,19 +449,18 @@ impl Idles {
     }
 
     /// The ripples against the walls of the tanks (map drawing 9.7.8): a tank with clean water
-    /// gets them when it is set up, which is when it is first seen or its walls change, each at a
-    /// random time of 0 to 1999 ms. They go with the water.
+    /// that holds none when it is first seen (a loaded map) is set up, each wall at a random time
+    /// of 0 to 1999 ms. They go with the water; the walls changing sets nothing up (only the
+    /// updates of the wall information do, point 3).
     fn register_ripples(&mut self, world: &World, data: &dyn Data, rng: &mut Rng) {
         let tanks = world.rippled_tanks();
         self.ripples
             .retain(|id, _| tanks.iter().any(|t| t.0 == *id));
         for (id, walls) in tanks {
-            let known = self.ripples.get(&id);
-            if known.is_some_and(|k| k.iter().map(|w| w.0).eq(walls.iter().copied())) {
-                continue;
+            if !self.ripples.contains_key(&id) {
+                let set = self.ripple_set(data, rng, &walls);
+                self.ripples.insert(id, set);
             }
-            let set = self.ripple_set(data, rng, &walls);
-            self.ripples.insert(id, set);
         }
     }
 

@@ -13,7 +13,7 @@ use crate::behaviour::Data;
 use crate::entity::Catalogue;
 use crate::render::order::ground_height;
 use crate::render::shape_of;
-use crate::world::World;
+use crate::world::{Draw, World};
 use crate::zoo::{Common, Entity};
 
 /// The number of slots, and the age in ms above which a slot is free or its ripple goes.
@@ -68,27 +68,48 @@ impl Sim {
         world.remove_bubbles();
     }
 
-    /// The tanks that got clean water since the last call set up their ripples at once (map
-    /// drawing 9.7.8 points 3 and 4): called where the change can happen, so the start times come
-    /// at their place among the step's draws.
-    pub(super) fn draw_ripples(&mut self, world: &mut World, data: &dyn Data) {
-        let ids = world.take_ripple_setups();
-        if !ids.is_empty() {
-            self.idles.set_up_ripples(world, data, &mut self.rng, &ids);
+    /// The draws owed run at once, in order (map drawing 9.7.8 points 3 and 4), called where the
+    /// change can happen so the start times come at their place among the step's draws. A ripple
+    /// set-up of a tank whose units wait for their reset stays queued with what follows it.
+    pub(super) fn draw_ripples(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
+        while let Some(draw) = world.next_draw(true) {
+            self.run_draw(world, cat, data, draw);
         }
     }
 
-    /// The buildings and units of the tanks whose water moved are validated and reset; a tank
-    /// that got water sets up its ripples right after the reset of its units, tank by tank (map
-    /// drawing 9.7.8 point 4).
-    pub(super) fn wet_changed(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
-        let idles = &mut self.idles;
-        let set_up = |w: &mut World, rng: &mut super::Rng, tank| {
-            if w.take_ripple_setup(tank) {
-                idles.set_up_ripples(w, data, rng, &[tank]);
+    /// One draw owed: a ripple set-up, a fence start time, or a fence made healthy.
+    fn run_draw(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data, draw: Draw) {
+        match draw {
+            Draw::Ripples(t) | Draw::Walls(t) => {
+                let walls = matches!(draw, Draw::Walls(_));
+                self.idles
+                    .set_up_ripples(world, data, &mut self.rng, (t, walls));
             }
-        };
-        crate::building::dead::wet_changed_then(world, cat, &mut self.rng, set_up);
+            Draw::Start(id) => self.idles.start_next(id, self.rng.pick(2000)),
+            Draw::Heal(id) => {
+                if let Some(at) = world.find(id) {
+                    self.heal(world, cat, at);
+                }
+            }
+        }
+    }
+
+    /// The buildings and units of the tanks whose water moved are validated and reset, and the
+    /// draws owed run, in order: a tank that got water sets up its ripples right after the reset
+    /// of its units, tank by tank (map drawing 9.7.8 point 4).
+    pub(crate) fn wet_changed(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
+        crate::building::dead::wet_moved(world, cat);
+        while let Some(draw) = world.next_draw(false) {
+            if let Draw::Ripples(t) | Draw::Walls(t) = draw {
+                for tank in world.take_stirred_through(t) {
+                    crate::goal::stir_units(world, cat, &mut self.rng, tank);
+                }
+            }
+            self.run_draw(world, cat, data, draw);
+        }
+        for tank in world.take_stirred() {
+            crate::goal::stir_units(world, cat, &mut self.rng, tank);
+        }
     }
 
     /// The update of the tank filter at `at` in the entity loop: its events are posted, a flooded
@@ -101,7 +122,7 @@ impl Sim {
         (at, step): (usize, u32),
     ) {
         let (events, gone) = world.filter_step(cat, at, step);
-        self.draw_ripples(world, data);
+        self.draw_ripples(world, cat, data);
         events.into_iter().for_each(|event| self.events.post(event));
         self.bulldozed.extend(gone);
     }

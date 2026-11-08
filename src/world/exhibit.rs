@@ -6,7 +6,7 @@
 //! with the exhibits there were: that gives the same result as the original's check of the two
 //! tiles beside the piece. What the player has to be told or asked comes out as [`Event`]s.
 
-use super::World;
+use super::{Draw, World};
 use crate::exhibit::{self, EXTERIOR, Exhibit, Exhibits, GROUNDS, Part, Tank};
 use crate::path::{self, Mover};
 use crate::place::path_shape;
@@ -204,8 +204,13 @@ impl World {
         if !self.make_door(at) {
             return false;
         }
-        if let Some(old) = old.and_then(|g| self.find(g)).filter(|&o| o != at) {
+        // The old gate is a fence first, which draws its start time; then the tank of the new
+        // gate updates its walls (map drawing 9.7.8 point 3.2.1).
+        if let Some(g) = old.filter(|&g| g != piece)
+            && let Some(old) = self.find(g)
+        {
             self.make_fence(old);
+            self.draws.push(Draw::Start(g));
         }
         if let Some(f) = self.zoo.entities[at]
             .common
@@ -214,6 +219,7 @@ impl World {
         {
             (f.life, f.strength) = (life, strength);
         }
+        self.update_walls_of(piece);
         if let Some(e) = self.exhibits.get_mut(id) {
             e.gate = Some(piece);
         }
@@ -306,6 +312,11 @@ impl World {
         if let Some(i) = self.waiting.iter().position(|w| w.0 == id) {
             let (id, start, placed) = self.waiting.remove(i);
             self.choose_gate(id, start, placed);
+            // The updates a split ends with come after the gate of its new tank.
+            if let Some(n) = self.tails.iter().position(|t| t.0 == id) {
+                let (_, tanks) = self.tails.remove(n);
+                self.draws.extend(tanks.into_iter().map(Draw::Walls));
+            }
             // The last decision of a tank made in play (shows 31.2 step 9).
             if self.tank(id).is_some() {
                 self.note_decision();
@@ -360,6 +371,9 @@ impl World {
             let gate = self.exhibits.get(kept).is_some_and(|e| e.gate.is_some());
             if gate {
                 self.merge_water(kept, a, b);
+                // The tank that stays updates its wall information once (map drawing 9.7.8
+                // point 3.2.5).
+                self.draws.push(Draw::Walls(kept));
             }
             let tiles = a.1 + b.1;
             let merged = self.exhibits.get(kept).and_then(|e| e.tank);
@@ -677,6 +691,7 @@ impl World {
                 if let Some(e) = self.exhibits.get_mut(id) {
                     e.gate = gate;
                 }
+                gate.into_iter().for_each(|g| self.update_walls_of(g));
                 self.events.push(Event::Gate(id));
             }
         } else {
@@ -864,6 +879,7 @@ impl World {
         if let Some(e) = self.exhibits.get_mut(id) {
             e.gate = gate;
         }
+        gate.into_iter().for_each(|g| self.update_walls_of(g));
         self.events.push(Event::Gate(id));
         if let Some(message) = message {
             self.events.push(Event::Blocked { id, message });
