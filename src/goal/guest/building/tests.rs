@@ -14,6 +14,7 @@ use crate::unit::{Ctx, Unit};
 use crate::world::World;
 
 mod after;
+mod inside;
 mod placed;
 mod ride;
 mod shortcut;
