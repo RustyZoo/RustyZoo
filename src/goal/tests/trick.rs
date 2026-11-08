@@ -702,6 +702,21 @@ fn a_pick_up_writes_no_need() {
 }
 
 #[test]
+fn a_pick_up_writes_no_slot() {
+    // Goals 11.3.1 point 2: the state clear of a pick-up writes 0xff to an animal's slot.
+    let (cat, mut w) = (types(""), zoo(trick(1, "wave")));
+    let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part else {
+        panic!()
+    };
+    a.slot = 2;
+    assert!(crate::place::unit::pick_up(&mut w, &cat, 1, 0).is_some());
+    let Part::Animal(a) = &w.units.get(1).unwrap().part else {
+        panic!()
+    };
+    assert_eq!(a.slot, crate::guest::NO_SLOT);
+}
+
+#[test]
 fn a_saved_need_is_read_back_whatever_it_is_and_a_toy_user_goes_on_with_its_trick() {
     // Shows 32.1 points 3 and 5: nothing is derived from the building or the task after the load.
     let (cat, mut rng) = (types(""), Rng::default());

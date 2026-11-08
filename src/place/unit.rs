@@ -670,8 +670,9 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
     match &mut unit.part {
         // An escaped animal is crated (8.2 point 4); any other one's escape walk ends.
         crate::unit::Part::Animal(a) => {
-            // The state clear of a pick-up writes "no need" (shows 32.1 point 1).
-            a.need = crate::guest::NO_NEED;
+            // The state clear of a pick-up writes "no need" (shows 32.1 point 1) and "no slot"
+            // (goals 11.3.1 point 2).
+            (a.need, a.slot) = (crate::guest::NO_NEED, crate::guest::NO_SLOT);
             match a.escaped {
                 true => crate::animal::boxed::crate_up(a),
                 false => a.walk = None,
