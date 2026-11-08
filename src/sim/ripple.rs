@@ -78,6 +78,19 @@ impl Sim {
         }
     }
 
+    /// The buildings and units of the tanks whose water moved are validated and reset; a tank
+    /// that got water sets up its ripples right after the reset of its units, tank by tank (map
+    /// drawing 9.7.8 point 4).
+    pub(super) fn wet_changed(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
+        let idles = &mut self.idles;
+        let set_up = |w: &mut World, rng: &mut super::Rng, tank| {
+            if w.take_ripple_setup(tank) {
+                idles.set_up_ripples(w, data, rng, &[tank]);
+            }
+        };
+        crate::building::dead::wet_changed_then(world, cat, &mut self.rng, set_up);
+    }
+
     /// The update of the tank filter at `at` in the entity loop: its events are posted, a flooded
     /// one is queued for removal, and the water its cycle made clean sets up its ripples now.
     pub(super) fn filter_update(
