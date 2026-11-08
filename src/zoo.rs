@@ -375,6 +375,8 @@ pub struct Entity {
     /// not know, or a body that did not decode to exactly its stored size. The original never
     /// compares a body with its size for a class it knows (it goes on from where its decoding
     /// stopped); such a record is kept without fields here, which the format allows.
+    /// A record stored under a parent class (`unit`, `staff`, `objects`, `fences`) keeps only its
+    /// bytes until [`Zoo::checked`] finds its type and reads it with that type's layout.
     pub common: Option<Common>,
 }
 
