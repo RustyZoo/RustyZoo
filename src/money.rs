@@ -18,6 +18,8 @@ pub(crate) const ADMISSIONS_INCOME: usize = 5;
 pub(crate) const DONATIONS: usize = 8;
 /// Research expenditure.
 pub(crate) const RESEARCH: usize = 19;
+/// Marketing expenditure.
+pub(crate) const MARKETING: usize = 29;
 /// What guests pay at the guest buildings.
 pub(crate) const CONCESSIONS: usize = 6;
 pub(crate) const CONSTRUCTION_REFUND: usize = 9;

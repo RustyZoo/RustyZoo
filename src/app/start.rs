@@ -2,6 +2,7 @@
 //! scenario, and the start of a game from the menu.
 
 use super::*;
+use crate::marketing::Marketing;
 
 impl App<'_> {
     /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
@@ -42,6 +43,7 @@ impl App<'_> {
         self.cheats.season.loops_stopped();
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
+        let level = zoo.marketing();
         let goals = (zoo.scenario_states(), zoo.version >= 86);
         let stored = zoo.expansion;
         let size = (self.frame.width as i32, self.frame.height as i32);
@@ -67,8 +69,16 @@ impl App<'_> {
             // the price as saved, whatever the range (zoo status 3.1, 11).
             if let Some(file) = &file {
                 self.scenario_economy(file);
+                // The set-up rebuilds the marketing at level 0 (marketing 3.2).
+                let marketing = Marketing::of_scenario(self.renderer.vfs(), file);
+                self.sim.set_marketing(marketing);
             }
             self.sim.status.price = world.zoo.clocks.status.price;
+        }
+        // The file's word comes over the set-up's; a load with no scenario block and a bare map keep
+        // the configuration of the game before (marketing 3.3, 7.2).
+        if let Some(level) = level {
+            self.sim.marketing_mut().load(level);
         }
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         // The programs complete come before the animals are read: their life counters are cut by
@@ -292,6 +302,8 @@ impl App<'_> {
             self.scenario_economy(file);
             let soundscape = Soundscape::load(self.renderer.vfs(), Some(file.as_str()));
             self.sim.set_soundscape(soundscape);
+            let marketing = Marketing::of_scenario(self.renderer.vfs(), file);
+            self.sim.set_marketing(marketing);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(mut tree) =

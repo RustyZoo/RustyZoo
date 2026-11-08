@@ -32,7 +32,7 @@ impl Sim {
         if due.new_guest {
             let occupied = guest::occupied(world, cat);
             // The effective rating: a cheat adds to it (zoo status 8).
-            let bonus = world.units.cheat.rating_points();
+            let bonus = world.units.cheat.rating_points(self.marketing.benefit());
             if let Some(advice) = self.status.new_guest_check(occupied, bonus, &mut self.rng) {
                 let s = &self.status;
                 let arrival = guest::Arrival {

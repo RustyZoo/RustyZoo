@@ -566,6 +566,16 @@ impl Zoo {
         self.kept.research = section;
     }
 
+    /// The level the marketing word stores (from version 60).
+    pub(crate) fn marketing(&self) -> Option<u32> {
+        Some(u32::from_le_bytes(self.kept.marketing.as_slice().try_into().ok()?))
+    }
+
+    /// Replaces the marketing word written (marketing 7.1).
+    pub(crate) fn set_marketing(&mut self, level: u32) {
+        self.kept.marketing = level.to_le_bytes().to_vec();
+    }
+
     /// The thoughts as stored, newest first.
     pub(crate) fn thoughts(&self) -> &[[u32; 5]] {
         &self.kept.thoughts
