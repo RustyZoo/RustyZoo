@@ -294,6 +294,18 @@ impl Scene {
         self.index(tx, ty)
     }
 
+    /// The height a shadow at a world point is placed at: the ground of its tile (16 times the
+    /// base elevation plus the slope), never the water level, so over a tank it is the floor
+    /// (ambients 5.3 point 4).
+    pub(crate) fn shadow_height(&self, x: i32, y: i32) -> Option<i32> {
+        let t = self.tile_at(x, y)?;
+        Some(ground_height(
+            &self.tiles[t],
+            x - 64 * (t % self.width) as i32,
+            y - 64 * (t / self.width) as i32,
+        ))
+    }
+
     pub(crate) fn index(&self, tx: i32, ty: i32) -> Option<usize> {
         (tx >= 0 && ty >= 0 && (tx as usize) < self.width && (ty as usize) < self.height)
             .then(|| ty as usize * self.width + tx as usize)
@@ -920,11 +932,9 @@ impl Painter<'_> {
         self.state[i] = State::Objects;
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
-        let shadows = self.shadows.get(&self.order[i]).into_iter().flatten();
-        self.out.extend(shadows.map(|&o| Item::Shadow(o)));
         let list = self.tile_entries(i, &|_| true);
         self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
-        self.overlays(i);
+        self.overlays(i, true, true);
     }
 }
 

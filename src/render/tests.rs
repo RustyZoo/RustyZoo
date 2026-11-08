@@ -403,7 +403,7 @@ fn flights_are_painted_after_the_whole_map_oldest_first() {
 }
 
 #[test]
-fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_objects() {
+fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_after_its_objects() {
     let at = |order: &[Item], item| order.iter().position(|&i| i == item);
     // The tile (0, 4) holds a tree; the flight, 300 units up and to the right of its shadow point
     // at rotation 0, has its shadow there.
@@ -411,8 +411,8 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_o
     let scene = flights_scene(0, &[(Kind::Flight, 300, 0), tree]);
     let order = paint_order(&scene);
     assert_eq!(
-        at(&order, Item::Shadow(0)).map(|p| p + 1),
-        at(&order, Item::Object(1))
+        at(&order, Item::Object(1)).map(|p| p + 1),
+        at(&order, Item::Shadow(0))
     );
     // Another rotation moves the point: (+300, +300) at rotation 1 is off the tile (0, 4).
     let scene = flights_scene(1, &[(Kind::Flight, 300, 0), tree]);
@@ -424,6 +424,151 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_o
             .iter()
             .any(|i| matches!(i, Item::Shadow(_)))
     );
+}
+
+#[test]
+fn a_flights_shadow_is_sorted_with_the_temporary_entities_of_its_tile() {
+    // The shadow point (10, 310) is on tile (0, 4), the overlay stands there at view y 64.
+    let flight = |z| Object {
+        z,
+        kind: Kind::Flight,
+        ..unit(310, 10)
+    };
+    let paint = |z| {
+        let overlay = Object {
+            kind: Kind::Overlay,
+            ..unit(10, 266)
+        };
+        let scene = Scene::new(6, 6, 0, &flat_map(6, 6), vec![flight(z), overlay]);
+        let order = paint_order(&scene);
+        let at = |item| order.iter().position(|&i| i == item).unwrap();
+        at(Item::Shadow(0)) < at(Item::Object(1))
+    };
+    // View y -75 at z 0, 125 at z -200.
+    assert!(paint(0));
+    assert!(!paint(-200));
+}
+
+#[test]
+fn a_flights_shadow_over_a_tank_is_painted_over_the_water_with_its_temporary_entities() {
+    // The centre (352, 352) of the tank tile (5, 5) is the shadow point of this flight at rotation 1.
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(52, 52)
+    };
+    let afloat = Object {
+        z: 48,
+        ..unit_on(5, 5)
+    };
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit_on(5, 5)
+    };
+    let scene = tank_scene_on(8, 4, 1, 3, 2, vec![afloat, flight, overlay]);
+    let items = paint_order(&scene);
+    let at = |wanted: Item| position(&items, |&i| i == wanted);
+    assert_eq!(
+        items.iter().filter(|&&i| i == Item::Shadow(9)).count(),
+        1,
+        "once"
+    );
+    let last_surface = items
+        .iter()
+        .rposition(|i| matches!(i, Item::Surface { .. }))
+        .unwrap();
+    let first_face = position(&items, |i| matches!(i, Item::Face { .. }));
+    // After the water and the afloat layer, before the overlays and the front walls.
+    assert!(last_surface < at(Item::Shadow(9)));
+    assert!(at(Item::Object(8)) < at(Item::Shadow(9)));
+    assert!(at(Item::Shadow(9)) < at(Item::Object(10)));
+    assert!(at(Item::Shadow(9)) < first_face);
+}
+
+#[test]
+fn step_6_draws_the_temporary_entities_from_the_last_attached() {
+    // Two overlays and a shadow on the tank tile (5, 5): the shadow, then the overlays, the later
+    // one in the vector first.
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(52, 52)
+    };
+    let overlay = |dx| Object {
+        kind: Kind::Overlay,
+        ..unit(5 * 64 + 20 + dx, 5 * 64 + 20)
+    };
+    let scene = tank_scene_on(8, 4, 1, 3, 2, vec![overlay(0), overlay(10), flight]);
+    let items = paint_order(&scene);
+    let last = items
+        .iter()
+        .rposition(|i| matches!(i, Item::Surface { .. }))
+        .unwrap();
+    assert_eq!(
+        items[last + 1..]
+            .iter()
+            .filter(|i| matches!(i, Item::Shadow(_) | Item::Object(8..=9)))
+            .copied()
+            .collect::<Vec<_>>(),
+        [Item::Shadow(10), Item::Object(9), Item::Object(8)]
+    );
+}
+
+#[test]
+fn equal_temporary_entities_of_an_ordinary_tile_keep_the_reverse_of_attachment() {
+    // Two overlays at the same point tie on every key: the later one is painted first.
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit(10, 10)
+    };
+    let scene = Scene::new(2, 2, 0, &flat_map(2, 2), vec![overlay, overlay]);
+    let order = paint_order(&scene);
+    let at = |item| order.iter().position(|&i| i == item).unwrap();
+    assert!(at(Item::Object(1)) < at(Item::Object(0)));
+}
+
+#[test]
+fn a_flights_shadow_over_a_tile_painted_one_by_one_is_drawn_once() {
+    let tree = Object {
+        kind: Kind::Fixed,
+        height: 5,
+        ..unit_on(5, 5)
+    };
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(52, 52)
+    };
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit_on(5, 5)
+    };
+    let items = paint_order(&tank_scene_on(8, 4, 1, 3, 2, vec![tree, flight, overlay]));
+    let at = |wanted: Item| position(&items, |&i| i == wanted);
+    assert_eq!(items.iter().filter(|i| **i == Item::Shadow(9)).count(), 1);
+    assert!(at(Item::Object(8)) < at(Item::Shadow(9)));
+    // The overlay comes in both passes, the shadow in the first only.
+    assert_eq!(items.iter().filter(|i| **i == Item::Object(10)).count(), 2);
+    let first = at(Item::Object(10));
+    assert!(at(Item::Shadow(9)) < first);
+}
+
+#[test]
+fn a_shadow_over_a_tank_is_placed_at_the_floor_not_the_water() {
+    let mut tiles = flat_map(4, 4);
+    tiles.iter_mut().for_each(|t| t.elevation = 3);
+    let mut scene = Scene::new(4, 4, 0, &tiles, Vec::new());
+    let spec = TankSpec {
+        tile: (1, 1),
+        gate: (-1, -1),
+        height: 5,
+        level: 4,
+    };
+    scene.set_tanks(&[spec], &[]);
+    assert_eq!(scene.tank_of(5), Some(0));
+    assert_eq!(scene.shadow_height(96, 96), Some(48));
+    assert_eq!(scene.surface(5), Some(48 + 64));
+    // Off the map, negative or huge: no height, no shadow.
+    assert_eq!(scene.shadow_height(-1, 0), None);
+    assert_eq!(scene.shadow_height(i32::MIN, i32::MAX), None);
+    assert_eq!(scene.shadow_height(i32::MAX, 0), None);
 }
 
 #[test]
@@ -2027,12 +2172,17 @@ fn a_new_building_starts_with_the_default_variant_of_each_colour_group() {
 /// A 4 by 4 map with a tank on the middle four tiles, `height` and `level` steps, a wall on every
 /// outer edge of it (objects 0 to 7) and then the `extra` objects.
 fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
+    tank_scene_on(4, 1, r, height, level, extra)
+}
+
+/// The same on a `size` by `size` map, the tank on the four tiles from `(at, at)`.
+fn tank_scene_on(size: i32, at: i32, r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
     let mut objects = Vec::new();
-    for (tx, ty) in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+    for (tx, ty) in [(at, at), (at + 1, at), (at, at + 1), (at + 1, at + 1)] {
         for facing in [0u32, 2, 4, 6] {
             // The wall stands on the edge if there is no tank tile across it.
             let (dx, dy) = [(0, -1), (1, 0), (0, 1), (-1, 0)][facing as usize / 2];
-            if (1..=2).contains(&(tx + dx)) && (1..=2).contains(&(ty + dy)) {
+            if (at..=at + 1).contains(&(tx + dx)) && (at..=at + 1).contains(&(ty + dy)) {
                 continue;
             }
             let (x, y) = match facing {
@@ -2051,10 +2201,11 @@ fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
     assert_eq!(objects.len(), 8);
     objects.extend(extra);
     let fences: Vec<bool> = objects.iter().map(|o| o.kind == Kind::Wall).collect();
-    let mut scene = Scene::new(4, 4, r, &flat_map(4, 4), objects);
+    let n = size as usize;
+    let mut scene = Scene::new(n, n, r, &flat_map(n, n), objects);
     scene.set_tanks(
         &[TankSpec {
-            tile: (1, 1),
+            tile: (at, at),
             gate: (-1, -1),
             height,
             level,
