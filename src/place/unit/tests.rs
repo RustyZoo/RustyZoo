@@ -1036,7 +1036,14 @@ fn a_guest_forgets_its_return_building_when_picked_up_and_when_put_down() {
         std::mem::replace(&mut g.returning, v)
     };
     set(&mut w, Some(0x1f7b));
+    let slot = |w: &mut World, v| match w.units.get_mut(id).map(|u| &mut u.part) {
+        Some(crate::unit::Part::Guest(g)) => std::mem::replace(&mut g.slot, v),
+        _ => panic!("a guest"),
+    };
+    slot(&mut w, 2);
     pick_up(&mut w, &cat, id, 0).unwrap();
+    // The state clear of a pick-up writes "no slot" (goals 11.3.1 point 2).
+    assert_eq!(slot(&mut w, 2), crate::guest::NO_SLOT, "pick-up slot");
     assert_eq!(set(&mut w, Some(5)), None, "pick-up");
     assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
     assert_eq!(set(&mut w, None), None, "drop");
