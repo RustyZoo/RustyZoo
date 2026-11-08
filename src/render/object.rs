@@ -109,6 +109,14 @@ impl<'a> MapRenderer<'a> {
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)
     }
 
+    /// The number of sprite files of the base animation set of a type: 0 when it has none or it
+    /// does not load (ambients 3.2).
+    pub(crate) fn set_files(&mut self, ty: &EntityType) -> usize {
+        let member = ty.base_animation().and_then(|a| a.member);
+        let anim = member.and_then(|m| self.animation(&m));
+        anim.map_or(0, |a| a.set.files.len())
+    }
+
     /// Places the face of a reaction above the unit whose anchor is `(x, y)` (animals 10, sprite
     /// drawing 9.3): `objects/smile` when it likes the change, `objects/frown` when not, up by the
     /// type's `cFacesYOffset` pixels of the view's zoom (not scaled by it), at the frame its age in

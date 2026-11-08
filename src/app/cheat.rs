@@ -4,7 +4,7 @@
 use super::App;
 use super::cheat_guest::palette_set;
 use crate::behaviour::Data;
-use crate::cheat::{Cheat, Named, Season, Subject, WITCH};
+use crate::cheat::{BIRDS, Cheat, Named, Season, Subject, WITCH};
 use crate::entity::Catalogue;
 use crate::flight;
 use crate::sim::Sim;
@@ -72,6 +72,30 @@ impl App<'_> {
         let trio = game.world.units.cheat.lions_tigers_bears;
         let set = self.cheats.season.guest_created(date.month, date.day, trio);
         self.make_available(&set);
+    }
+
+    /// Adds an entry of the type `id` to the spawn list and makes one creature of it. A game
+    /// without the type makes no flight and says so in the log (ambients 11.1).
+    fn spawn(&mut self, id: i32) -> Option<u32> {
+        let cat = self.renderer.catalogue();
+        self.sim.spawns.add(id);
+        let Some(ty) = flight::ambient(cat, id) else {
+            self.sim.note(format!("flight {id} missing"));
+            return None;
+        };
+        let files = self.renderer.set_files(ty);
+        let game = self.game.as_mut()?;
+        flight::launch(&mut game.world, cat, ty, files, &mut self.sim.rng)
+    }
+
+    /// The birds of `guests_flee_birds` (cheats 4.2): 15 times a crow then a seagull, each as an
+    /// entry of the spawn list and one creature.
+    pub(super) fn birds(&mut self) {
+        for _ in 0..15 {
+            for id in BIRDS {
+                self.spawn(id);
+            }
+        }
     }
 
     /// The start hook (cheats 6.3): the seasonal items and the yellow brick path are unavailable

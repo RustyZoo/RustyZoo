@@ -761,6 +761,7 @@ impl Sim {
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
+        self.draw_ripples(world, data);
         self.idles.register(world, cat, data, &mut self.rng);
         let made = world.units.take_exploded();
         self.idles.queue_explode(world, &made, data);
@@ -826,6 +827,8 @@ impl Sim {
                     cat,
                 };
                 unit::update(&mut unit::Standard { data }, world, &mut ctx, at);
+                // A keeper's cleaning or a dung may have made the water clean.
+                self.draw_ripples(world, data);
                 self.start_mended(world, cat, data);
                 self.random_use(world, cat, data, at);
                 unit::gate::advance(world, cat, data, at, step);
@@ -839,11 +842,7 @@ impl Sim {
                 // A fence piece wears at its own place in the list.
                 self.wear_fence(world, cat, data, at, step);
                 // So does a tank filter.
-                let (events, gone) = world.filter_step(cat, at, step);
-                for event in events {
-                    self.events.post(event);
-                }
-                self.bulldozed.extend(gone);
+                self.filter_update(world, cat, data, (at, step));
             }
         }
         unit::gate::forget(world);
@@ -898,8 +897,9 @@ impl Sim {
         }
         let water_moved = world.step_water();
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
-        crate::building::dead::wet_changed(world, cat, &mut self.rng);
+        self.wet_changed(world, cat, data);
         world.decay_water(step);
+        self.draw_ripples(world, data);
         self.water_effects(world, cat, step);
         self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).

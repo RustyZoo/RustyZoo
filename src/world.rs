@@ -171,6 +171,10 @@ pub struct World {
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
     /// objects on their tiles are validated again (guest buildings 11.1.1; not saved).
     wet: Vec<u32>,
+    /// The tanks whose water became clean with some level since the last
+    /// [`World::take_ripple_setups`]: their ripples are set up and draw their start times (map
+    /// drawing 9.7.8 point 3; not saved).
+    ripple_setups: Vec<u32>,
     /// A tank was made or went, or the ground of a tile changed, since the last
     /// [`World::take_reshaped`]: the objects are validated again (guest buildings 11.1.1).
     reshaped: bool,
@@ -239,6 +243,7 @@ impl World {
             waves: Default::default(),
             told_water: BTreeMap::new(),
             wet: Vec::new(),
+            ripple_setups: Vec::new(),
             reshaped: false,
             stirred: Vec::new(),
             filter_view: BTreeMap::new(),

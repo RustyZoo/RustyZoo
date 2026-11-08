@@ -12,7 +12,8 @@
 //! The animation is the type's first key in byte order (`idle` for nearly all), or for a filter, a
 //! food object, a trash can and a dung pile the one their state chooses: a change of state starts
 //! it again at frame 0. The ripples against the walls of a tank (map drawing 9.7.8) start at a
-//! random time of 0 to 1999 ms when the tank is set up. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
+//! random time of 0 to 1999 ms when the tank is set up: at the change itself for a tank that
+//! gets clean water (the fill after the reset of its units, a filter's cycle, a keeper's cleaning), else at the next step. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
 //! reads the frames without staging the map again (`Staged::reframe`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -415,6 +416,35 @@ impl Idles {
         }
     }
 
+    /// The tanks `ids` just got clean water with some level: their ripples are set up now, in the
+    /// middle of the step (map drawing 9.7.8 points 3 and 4), each wall drawing a start time.
+    pub(crate) fn set_up_ripples(
+        &mut self,
+        world: &World,
+        data: &dyn Data,
+        rng: &mut Rng,
+        ids: &[u32],
+    ) {
+        let tanks = world.rippled_tanks();
+        for id in ids {
+            if let Some((_, walls)) = tanks.iter().find(|t| t.0 == *id) {
+                let set = self.ripple_set(data, rng, walls);
+                self.ripples.insert(*id, set);
+            }
+        }
+    }
+
+    /// A clock for each wall of a set, at a random time of 0 to 1999 ms, one draw each in order.
+    fn ripple_set(&self, data: &dyn Data, rng: &mut Rng, walls: &[u32]) -> Vec<(u32, Clock)> {
+        let timing = data.timing(&other("tankripl"), "idle");
+        let make = |&wall: &u32| {
+            let mut clock = Clock::new(timing, None);
+            clock.t = rng.pick(2000);
+            (wall, clock)
+        };
+        walls.iter().map(make).collect()
+    }
+
     /// The ripples against the walls of the tanks (map drawing 9.7.8): a tank with clean water
     /// gets them when it is set up, which is when it is first seen or its walls change, each at a
     /// random time of 0 to 1999 ms. They go with the water.
@@ -422,18 +452,12 @@ impl Idles {
         let tanks = world.rippled_tanks();
         self.ripples
             .retain(|id, _| tanks.iter().any(|t| t.0 == *id));
-        let timing = data.timing(&other("tankripl"), "idle");
         for (id, walls) in tanks {
             let known = self.ripples.get(&id);
             if known.is_some_and(|k| k.iter().map(|w| w.0).eq(walls.iter().copied())) {
                 continue;
             }
-            let set = walls.into_iter().map(|wall| {
-                let mut clock = Clock::new(timing, None);
-                clock.t = rng.pick(2000);
-                (wall, clock)
-            });
-            let set = set.collect();
+            let set = self.ripple_set(data, rng, &walls);
             self.ripples.insert(id, set);
         }
     }

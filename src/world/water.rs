@@ -47,6 +47,11 @@ impl World {
                 self.units
                     .world_note(format!("water {id} level {level} purity {purity}"));
             }
+            // Clean water with some level, where there was none: the ripples are set up now.
+            if super::tank::clean(&now, config.murky) && !super::tank::clean(&before, config.murky)
+            {
+                self.ripple_setups.push(id);
+            }
             self.events.push(super::Event::Tank(id));
             if (now.level, now.height) != (before.level, before.height) {
                 self.stir(id);
@@ -98,6 +103,25 @@ impl World {
     /// The tanks whose water level or wall height moved since the last call.
     pub(crate) fn take_wet(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.wet)
+    }
+
+    /// The tanks whose water became clean with some level since the last call, in the order it
+    /// happened (map drawing 9.7.8 point 3). A tank whose units wait for their reset (it is
+    /// stirred) stays queued: its ripples come after the reset (see [`World::take_ripple_setup`]).
+    pub(crate) fn take_ripple_setups(&mut self) -> Vec<u32> {
+        let stirred = &self.stirred;
+        let (wait, now) = std::mem::take(&mut self.ripple_setups)
+            .into_iter()
+            .partition(|id| stirred.contains(id));
+        self.ripple_setups = wait;
+        now
+    }
+
+    /// Whether tank `id` was queued for the set-up of its ripples; it is taken off the queue.
+    pub(crate) fn take_ripple_setup(&mut self, id: u32) -> bool {
+        let before = self.ripple_setups.len();
+        self.ripple_setups.retain(|&t| t != id);
+        self.ripple_setups.len() != before
     }
 
     /// Whether a tank was made or went, or the ground of a tile changed, since the last call.
