@@ -657,8 +657,12 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
                 false => a.walk = None,
             }
         }
-        // A guest forgets the building it meant to return to (unit placing 8.2 point 5).
-        crate::unit::Part::Guest(g) => g.returning = None,
+        // A guest forgets the building it meant to return to (unit placing 8.2 point 5) and its
+        // slot (goals 11.3.1 point 2).
+        crate::unit::Part::Guest(g) => {
+            g.returning = None;
+            g.slot = crate::guest::NO_SLOT;
+        }
         _ => {}
     }
     if unit.kind == crate::unit::Kind::Animal {

@@ -302,6 +302,7 @@ pub(crate) struct Guest {
     /// and the slot and entrance it was chosen with.
     pub need: Option<&'static str>,
     pub building: u32,
+    /// The slot as the unit record's byte: [`NO_SLOT`] for none (goals 11.3.1 point 1).
     pub slot: usize,
     pub entrance: crate::building::Point,
     /// The eat-standing flag, and the wish for a gift (guests 6.9, 8).
@@ -324,6 +325,9 @@ pub(crate) struct Guest {
     /// Not saved.
     pub seized: bool,
 }
+
+/// The slot byte of a guest that holds no slot (goals 11.3.1 point 1).
+pub const NO_SLOT: usize = 0xff;
 
 /// The bits of the return word that hold the return building's name id (zoo format 6.12).
 const RETURN_MASK: u32 = 0x7_ffff;
@@ -428,6 +432,7 @@ impl Guest {
             arrived: Some(date),
             speed_offset: rng.pick(11),
             sick: date.month == 1 && date.day == 1,
+            slot: NO_SLOT,
             ..Guest::default()
         }
     }
@@ -504,8 +509,8 @@ pub(crate) fn load(
     date: Date,
     reset: i32,
 ) {
-    let Some((id, record)) =
-        (world.zoo.entities[at].common.as_ref()).and_then(|c| Some((c.id, *c.guest.as_deref()?)))
+    let Some((id, record, slot)) = (world.zoo.entities[at].common.as_ref())
+        .and_then(|c| Some((c.id, *c.guest.as_deref()?, c.unit.as_deref().map(|u| u.slot))))
     else {
         return;
     };
@@ -524,6 +529,8 @@ pub(crate) fn load(
         let list = favourites(cat);
         (!list.is_empty()).then(|| list[rng.pick(list.len() as u32) as usize])
     };
+    // The saved slot byte, 0xff for none (goals 11.3.1 point 2).
+    guest.slot = slot.map_or(NO_SLOT, usize::from);
     guest.values = record.values;
     guest.countdowns = record.countdowns;
     guest.arrived = Some(Date::from_file_time(record.arrived));
