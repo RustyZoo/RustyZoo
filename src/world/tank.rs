@@ -72,6 +72,9 @@ impl World {
     /// Paints the tiles with the terrain type of a show tank or of a tank, free and recorded for
     /// undo; a tile that has the type is left.
     pub(super) fn paint(&mut self, tiles: &[usize], show: bool) {
+        if self.replaying {
+            return;
+        }
         let terrain = self.tank_config.terrain[usize::from(show)];
         for &t in tiles {
             let tile = self.zoo.tiles[t];
