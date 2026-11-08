@@ -832,3 +832,35 @@ fn a_save_draws_the_wall_ripples_again() {
         assert_eq!(sim.rng.state() != before, again, "animatedwater {on}");
     }
 }
+
+/// A tank that gets its first water in a step sets up its ripples in that step, at the change
+/// (map drawing 9.7.8 points 3 and 4), not at the start of the next one; the next step draws
+/// nothing more for it, and a tank whose water stays murky sets up none.
+#[test]
+fn the_ripples_of_a_filling_tank_are_set_up_in_the_step_of_the_fill() {
+    use crate::behaviour::NoData;
+    for (purity, set_up) in [(90, true), (59, false)] {
+        let mut world = watered(0, purity);
+        let id = world.exhibits().list()[0].id;
+        world.fill(id);
+        world.take_ripple_setups();
+        let (mut sim, cat) = (crate::sim::Sim::new(b""), Catalogue::default());
+        sim.set_seed(1);
+        sim.start_game(0, crate::zoo::Clocks::default());
+        let money = &mut crate::money::Money::default();
+        let step = |sim: &mut crate::sim::Sim, world: &mut World, money: &mut _| {
+            sim.step_game(&NoData, &cat, world, money, 100, |_, _, _| {});
+        };
+        step(&mut sim, &mut world, money);
+        assert!(world.tank(id).unwrap().level > 0, "the first step fills");
+        let walls = world.rippled_tanks().first().map(|t| t.1.len());
+        let made = sim.idles.ripples.get(&id).map(Vec::len);
+        assert_eq!(made, walls.filter(|_| set_up), "purity {purity}");
+        // The next step draws no new start time for the ripples that stand (no timing here, so
+        // the clocks stay where they were drawn).
+        let start = |sim: &crate::sim::Sim| sim.idles.ripples.get(&id).map(|s| s[0].1.t);
+        let before = start(&sim);
+        step(&mut sim, &mut world, money);
+        assert_eq!(before, start(&sim), "purity {purity}");
+    }
+}

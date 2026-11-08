@@ -824,3 +824,74 @@ fn a_set_of_bubbles_has_3000_ms_minus_the_step_left_at_the_end_of_its_cycle_upda
     world.filter_step(&cat, at, 0);
     assert_eq!(looks(&world), [(false, true)]);
 }
+
+/// A save removes the bubbles of every tank's filter (tank staff 9 point 2), a switched-off filter
+/// stays off, and the next cycle makes a new set; with `animatedwater` off a save removes none.
+#[test]
+fn a_save_removes_the_bubbles_and_the_next_cycle_makes_a_new_set() {
+    let (mut world, cat, at) = filtered(10, [200_000, 0], KEYS);
+    let id = world.zoo.entities[at].common.as_ref().unwrap().id;
+    let mut sim = crate::sim::Sim::new(b"");
+    sim.save_started(&mut world);
+    assert!(looks(&world).is_empty(), "nothing to remove");
+    world.filter_step(&cat, at, 67);
+    assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
+    let mut off = crate::sim::Sim::new(b"");
+    off.ai.animated_water = false;
+    off.save_started(&mut world);
+    assert_eq!(looks(&world), [(false, true)], "animatedwater off");
+    sim.save_started(&mut world);
+    assert!(looks(&world).is_empty() && world.filter_bubbles().next().is_none());
+    // The cycle 50 s later makes a new set.
+    world.filter_step(&cat, at, 49_999);
+    assert!(looks(&world).is_empty());
+    world.filter_step(&cat, at, 1);
+    assert_eq!(world.filter_bubbles().collect::<Vec<_>>(), [(id, 1)]);
+    // Without water the filter stays off.
+    world.set_paused(true);
+    world.drain(1);
+    world.filter_step(&cat, at, 1);
+    sim.save_started(&mut world);
+    assert_eq!(looks(&world), [(true, false)]);
+}
+
+/// A tank whose water becomes clean with some level is queued for the set-up of its ripples
+/// (map drawing 9.7.8 point 3): the purity rising to `murkyWaterPurity` or more, the level
+/// rising from 0. A change that stays on one side, a murky tank and an empty one queue nothing.
+#[test]
+fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
+    let (mut world, ..) = filtered(10, [200_000, 0], KEYS);
+    world.take_ripple_setups();
+    let queued = |w: &mut World| w.take_ripple_setups();
+    for (set, want) in [
+        (50, false),
+        (59, false),
+        (70, true),
+        (80, false),
+        (60, false),
+        (59, false),
+        (60, true),
+        (i64::MIN, false),
+        (i64::MAX, true),
+        (0, false),
+        (10, false),
+    ] {
+        world.set_purity(1, set);
+        assert_eq!(queued(&mut world), if want { vec![1] } else { vec![] }, "{set}");
+    }
+    world.set_purity(99, 70);
+    assert!(queued(&mut world).is_empty(), "no such tank");
+    // Drained, the tank has no water: the purity is reset and nothing is queued; filling queues it.
+    world.set_paused(true);
+    world.drain(1);
+    assert!(queued(&mut world).is_empty());
+    world.set_purity(1, 5);
+    world.set_purity(1, 90);
+    assert!(queued(&mut world).is_empty(), "no level");
+    world.set_paused(false);
+    world.fill(1);
+    world.step_water();
+    assert_eq!(queued(&mut world), [1], "the level rises from 0");
+    world.step_water();
+    assert!(queued(&mut world).is_empty(), "a level between two values above 0");
+}
