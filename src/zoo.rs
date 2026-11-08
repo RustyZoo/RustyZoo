@@ -622,8 +622,9 @@ impl Zoo {
         }
     }
 
-    /// Applies [`Zoo::check_types`] with the types of `catalogue`, then drops the entities of an
-    /// unknown type, so the world built from the zoo has no unit or id for them.
+    /// Reads the records stored as `staff` with the layout of their type's class, applies
+    /// [`Zoo::check_types`] with the types of `catalogue`, then drops the entities of an unknown
+    /// type, so the world built from the zoo has no unit or id for them.
     pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
         self.resolve_classes(catalogue);
         self.check_types(knows(catalogue))?;
