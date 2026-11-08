@@ -2,7 +2,6 @@
 //! scenario, and the start of a game from the menu.
 
 use super::*;
-use crate::marketing::Marketing;
 
 impl App<'_> {
     /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
@@ -43,7 +42,6 @@ impl App<'_> {
         self.cheats.season.loops_stopped();
         let file = zoo.scenario_file().filter(|_| saved);
         let research = saved.then(|| (file.clone(), zoo.research().to_vec()));
-        let level = zoo.marketing();
         let goals = (zoo.scenario_states(), zoo.version >= 86);
         let stored = zoo.expansion;
         let size = (self.frame.width as i32, self.frame.height as i32);
@@ -64,22 +62,7 @@ impl App<'_> {
         let soundscape = Soundscape::load(self.renderer.vfs(), file.as_deref());
         self.sim.set_soundscape(soundscape);
         world.units.set_period(self.sim.ai.status_period);
-        if saved {
-            // The resume of a scenario sets the defaults up again, the game section then restores
-            // the price as saved, whatever the range (zoo status 3.1, 11).
-            if let Some(file) = &file {
-                self.scenario_economy(file);
-                // The set-up rebuilds the marketing at level 0 (marketing 3.2).
-                let marketing = Marketing::of_scenario(self.renderer.vfs(), file);
-                self.sim.set_marketing(marketing);
-            }
-            self.sim.status.price = world.zoo.clocks.status.price;
-        }
-        // The file's word comes over the set-up's; a load with no scenario block and a bare map keep
-        // the configuration of the game before (marketing 3.3, 7.2).
-        if let Some(level) = level {
-            self.sim.marketing_mut().load(level);
-        }
+        self.set_up_loaded(file.as_deref(), saved, &world.zoo);
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
         // The programs complete come before the animals are read: their life counters are cut by
         // the changed types (research 7.2). Their availability follows the scenario's resume.
@@ -218,6 +201,24 @@ impl App<'_> {
         Ok(())
     }
 
+    /// What a file just read sets over the defaults. The resume of a scenario sets them up again
+    /// (economy, marketing), the game section then restores the price as saved, whatever the range
+    /// (zoo status 3.1, 11). The marketing word of the file comes over the set-up's level; a load
+    /// with no scenario block and a bare map keep the configuration of the game before
+    /// (marketing 3.2, 3.3, 7.2).
+    fn set_up_loaded(&mut self, file: Option<&str>, saved: bool, zoo: &Zoo) {
+        if saved {
+            if let Some(file) = file {
+                self.scenario_economy(file);
+                self.marketing_set_up(file);
+            }
+            self.sim.status.price = zoo.clocks.status.price;
+        }
+        if let Some(word) = zoo.marketing() {
+            self.sim.marketing_mut().load(word);
+        }
+    }
+
     /// The rating check that ends every load (zoo status 16).
     pub(super) fn loaded_check(&mut self) {
         if let Some(game) = &mut self.game {
@@ -303,8 +304,7 @@ impl App<'_> {
             self.scenario_economy(file);
             let soundscape = Soundscape::load(self.renderer.vfs(), Some(file.as_str()));
             self.sim.set_soundscape(soundscape);
-            let marketing = Marketing::of_scenario(self.renderer.vfs(), file);
-            self.sim.set_marketing(marketing);
+            self.marketing_set_up(file);
             // The research tree and its picks come before the fence repairs of the start (7.4).
             let rng = &mut self.sim.rng;
             if let Some(mut tree) =

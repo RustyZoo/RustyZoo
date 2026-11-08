@@ -94,10 +94,7 @@ impl App<'_> {
                     }
                 }
                 marketing_panel::LESS | marketing_panel::MORE if self.game.is_some() => {
-                    if let Some(game) = &mut self.game {
-                        self.sim.marketing_mut().fund(id == marketing_panel::MORE);
-                        game.funding.force = true;
-                    }
+                    self.marketing_fund(id == marketing_panel::MORE);
                 }
                 research_panel::LESS | research_panel::MORE if self.game.is_some() => {
                     self.research_fund(id == research_panel::MORE);

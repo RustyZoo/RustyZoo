@@ -92,7 +92,7 @@ impl Marketing {
         // One single-precision operation after the other (main loop 5.4).
         let pay = minutes as f32 * level.cost * PER_MINUTE;
         // A share the cash cannot cover is skipped and never owed (4.2).
-        if !(money.cash < pay) {
+        if money.cash >= pay {
             money.spend(MARKETING, pay);
         }
     }
