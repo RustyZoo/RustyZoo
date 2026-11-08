@@ -99,7 +99,8 @@ impl World {
         if let Some((a, d)) = hint.filter(|_| !quiet) {
             self.announce(&built, a, d);
         }
-        // A new tank with no gate to choose ends its split at once.
+        // A new tank with no gate to choose ends its split at once; one that is gone ends nothing.
+        self.tails.retain(|t| self.exhibits.get(t.0).is_some());
         let waiting: Vec<u32> = self.waiting.iter().map(|w| w.0).collect();
         let (wait, now): (Vec<_>, Vec<_>) =
             (std::mem::take(&mut self.tails).into_iter()).partition(|t| waiting.contains(&t.0));
