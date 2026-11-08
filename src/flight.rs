@@ -10,7 +10,8 @@
 //! Every move of a creature plays the call its type names (`cSoundName`, ambients 6.4); a creature
 //! added with no name gets its type's text alone (ambients 3.3).
 //!
-//! Not done yet: the shadow over the water of a tank.
+//! A launch runs inside the guest creation of the step, so the flight moves in that same step
+//! (ambients 3.1). Not done yet: the shadow over the water of a tank.
 
 use std::collections::BTreeMap;
 
