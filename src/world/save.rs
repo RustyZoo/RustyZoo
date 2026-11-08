@@ -296,8 +296,9 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
-        // A guest and an animal write their slot byte, 0xff for none; a staff member never changes
-        // it, so its block keeps the byte it has (goals 11.3.1 point 2).
+        // A guest and an animal write their live slot byte, 0xff for none (the constructor writes
+        // 0xff for every kind); a staff member never changes it, so its block keeps the byte it has
+        // (goals 11.3.1 point 2).
         if let Part::Guest(guest::Guest { slot, .. }) | Part::Animal(animal::Animal { slot, .. }) =
             &u.part
         {
