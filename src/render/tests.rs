@@ -403,7 +403,7 @@ fn flights_are_painted_after_the_whole_map_oldest_first() {
 }
 
 #[test]
-fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_objects() {
+fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_after_its_objects() {
     let at = |order: &[Item], item| order.iter().position(|&i| i == item);
     // The tile (0, 4) holds a tree; the flight, 300 units up and to the right of its shadow point
     // at rotation 0, has its shadow there.
@@ -411,8 +411,8 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_o
     let scene = flights_scene(0, &[(Kind::Flight, 300, 0), tree]);
     let order = paint_order(&scene);
     assert_eq!(
-        at(&order, Item::Shadow(0)).map(|p| p + 1),
-        at(&order, Item::Object(1))
+        at(&order, Item::Object(1)).map(|p| p + 1),
+        at(&order, Item::Shadow(0))
     );
     // Another rotation moves the point: (+300, +300) at rotation 1 is off the tile (0, 4).
     let scene = flights_scene(1, &[(Kind::Flight, 300, 0), tree]);
@@ -424,6 +424,106 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_before_its_o
             .iter()
             .any(|i| matches!(i, Item::Shadow(_)))
     );
+}
+
+#[test]
+fn a_flights_shadow_is_sorted_with_the_temporary_entities_of_its_tile() {
+    // The shadow point (10, 20) is on tile 0, the overlay stands there at view y 0.
+    let flight = |z| Object {
+        z,
+        ..flights_scene(0, &[(Kind::Flight, 310, -280)]).objects[0]
+    };
+    let paint = |z| {
+        let overlay = Object {
+            kind: Kind::Overlay,
+            ..unit(10, 10)
+        };
+        let scene = Scene::new(6, 6, 0, &flat_map(6, 6), vec![flight(z), overlay]);
+        let order = paint_order(&scene);
+        let at = |item| order.iter().position(|&i| i == item).unwrap();
+        at(Item::Shadow(0)) < at(Item::Object(1))
+    };
+    // View y -147 at z 0, 53 at z -200.
+    assert!(paint(0));
+    assert!(!paint(-200));
+}
+
+#[test]
+fn a_flights_shadow_over_a_tank_is_painted_over_the_water_with_its_temporary_entities() {
+    // Tile 5 of the tank, its centre (96, 96) is the shadow point of this flight at rotation 0.
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(396, -204)
+    };
+    let afloat = Object {
+        z: 48,
+        ..unit_on(1, 1)
+    };
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit_on(1, 1)
+    };
+    let scene = tank_scene(0, 3, 2, vec![afloat, flight, overlay]);
+    let items = paint_order(&scene);
+    let at = |wanted: Item| position(&items, |&i| i == wanted);
+    assert_eq!(
+        items.iter().filter(|&&i| i == Item::Shadow(9)).count(),
+        1,
+        "once"
+    );
+    let last_surface = items
+        .iter()
+        .rposition(|i| matches!(i, Item::Surface { .. }))
+        .unwrap();
+    let first_face = position(&items, |i| matches!(i, Item::Face { .. }));
+    // After the water and the afloat layer, before the overlays and the front walls.
+    assert!(last_surface < at(Item::Shadow(9)));
+    assert!(at(Item::Object(8)) < at(Item::Shadow(9)));
+    assert!(at(Item::Shadow(9)) < at(Item::Object(10)));
+    assert!(at(Item::Shadow(9)) < first_face);
+}
+
+#[test]
+fn a_flights_shadow_over_a_tile_painted_one_by_one_is_drawn_once() {
+    let tree = Object {
+        kind: Kind::Fixed,
+        height: 5,
+        ..unit_on(1, 1)
+    };
+    let flight = Object {
+        kind: Kind::Flight,
+        ..unit(396, -204)
+    };
+    let overlay = Object {
+        kind: Kind::Overlay,
+        ..unit_on(1, 1)
+    };
+    let items = paint_order(&tank_scene(0, 3, 2, vec![tree, flight, overlay]));
+    let at = |wanted: Item| position(&items, |&i| i == wanted);
+    assert_eq!(items.iter().filter(|i| **i == Item::Shadow(9)).count(), 1);
+    assert!(at(Item::Object(8)) < at(Item::Shadow(9)));
+    // The overlay comes in both passes, the shadow in the first only.
+    assert_eq!(items.iter().filter(|i| **i == Item::Object(10)).count(), 2);
+    let first = at(Item::Object(10));
+    assert!(at(Item::Shadow(9)) < first);
+}
+
+#[test]
+fn a_shadow_over_a_tank_is_placed_at_the_floor_not_the_water() {
+    let mut tiles = flat_map(4, 4);
+    tiles.iter_mut().for_each(|t| t.elevation = 3);
+    let mut scene = Scene::new(4, 4, 0, &tiles, Vec::new());
+    let spec = TankSpec {
+        tile: (1, 1),
+        gate: (-1, -1),
+        height: 5,
+        level: 4,
+    };
+    scene.set_tanks(&[spec], &[]);
+    assert_eq!(scene.tank_of(5), Some(0));
+    assert_eq!(scene.shadow_height(96, 96), Some(48));
+    assert_eq!(scene.surface(5), Some(48 + 64));
+    assert_eq!(scene.shadow_height(-1, 0), None);
 }
 
 #[test]

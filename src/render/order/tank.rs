@@ -214,19 +214,33 @@ impl Painter<'_> {
         list.into_iter().map(|e| e.4).collect()
     }
 
-    /// The temporary entities attached to tile `i`, sorted.
-    pub(super) fn overlays(&mut self, i: usize) {
+    /// The temporary entities of tile `i` (map drawing 9.5, 9.7.4 step 6): the pending shadows of
+    /// the flights whose shadow point is on it, then the overlays; `shadows` leaves the shadows
+    /// out, `sorted` sorts them all by the rule of 9.5 (shadows first among equals), else they
+    /// stay in list order.
+    pub(super) fn overlays(&mut self, i: usize, shadows: bool, sorted: bool) {
         let scene = self.scene;
-        let mut list: Vec<Entry> = scene.overlay[self.order[i]]
-            .iter()
-            .map(|&o| {
+        let t = self.order[i];
+        let shadow_list = self
+            .shadows
+            .get(&t)
+            .filter(|_| shadows)
+            .into_iter()
+            .flatten();
+        let items = shadow_list
+            .map(|&o| (o, Item::Shadow(o)))
+            .chain(scene.overlay[t].iter().map(|&o| (o, Item::Object(o))));
+        let mut list: Vec<(Entry, Item)> = items
+            .map(|(o, item)| {
                 let obj = &scene.objects[o];
                 let (px, py) = project(scene.rotation, obj.x, obj.y, obj.z);
-                (obj.late, 0, py, px, o)
+                ((obj.late, 0, py, px, o), item)
             })
             .collect();
-        list.sort_by_key(|&(late, forced, py, px, _)| (late, forced, py, px));
-        self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
+        if sorted {
+            list.sort_by_key(|&((late, forced, py, px, _), _)| (late, forced, py, px));
+        }
+        self.out.extend(list.into_iter().map(|e| e.1));
     }
 
     fn surface_at(&self, i: usize) -> i32 {
@@ -432,13 +446,15 @@ impl Painter<'_> {
         for group in groups {
             let mut in_list_order = group.clone();
             in_list_order.sort_by_key(|i| at[i]);
-            if self.holds_surface(group[0], level) {
+            // A tile painted one by one drew its shadows with its first pass (9.7.6).
+            let by_tile = self.holds_surface(group[0], level);
+            if by_tile {
                 self.tile_by_tile(&in_list_order, &tank);
             } else {
                 self.layers(&group, &in_list_order, &tank);
             }
             for &i in &in_list_order {
-                self.overlays(i);
+                self.overlays(i, !by_tile, false);
                 self.state[i] = State::Done;
             }
         }
@@ -558,7 +574,7 @@ impl Painter<'_> {
                     });
                 }
             }
-            self.overlays(i);
+            self.overlays(i, true, true);
             self.paint_plain_edge(i, LOWER_RIGHT);
             self.paint_plain_edge(i, LOWER_LEFT);
             self.gate(i, tank);
