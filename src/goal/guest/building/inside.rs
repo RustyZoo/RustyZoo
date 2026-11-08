@@ -82,13 +82,10 @@ impl Cx<'_, '_> {
             return false;
         };
         let w = self.world.zoo.width as usize;
-        let sign = |a: usize, b: usize| (b % w).cmp(&(a % w)) as i32 + 1;
-        let (sx, sy) = (sign(here, to), (to / w).cmp(&(here / w)) as i32 + 1);
-        // Index into the map directions (0: y-1, clockwise) from the signs, 4 for the same tile.
-        let Some(d) = crate::render::order::STEP
-            .iter()
-            .position(|&(dx, dy)| (dx + 1, dy + 1) == (sx, sy))
-        else {
+        let sign = |a: usize, b: usize| b.cmp(&a) as i32;
+        let want = (sign(here % w, to % w), sign(here / w, to / w));
+        // The map direction (0: y-1, clockwise) of the signs; none for the same tile.
+        let Some(d) = crate::render::order::STEP.iter().position(|&s| s == want) else {
             return true;
         };
         let mover = crate::unit::movement::mover(self.unit, self.world, self.at, here);
