@@ -145,7 +145,10 @@ impl App<'_> {
             Cheat::Palette { guests, buildings } => {
                 palette_set(&mut game.world, cat, guests, buildings)
             }
-            Cheat::GuestsLeave => each_guest(&mut game.world, |g| g.leave = true),
+            Cheat::GuestsLeave => {
+                each_guest(&mut game.world, |g| g.leave = true);
+                self.birds();
+            }
             Cheat::FencesBreak => self.sim.break_fences(&mut game.world, cat),
             Cheat::GuestsSick => guests_sick(&mut game.world),
             Cheat::UnlockScenarios => {
