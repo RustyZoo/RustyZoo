@@ -13,7 +13,7 @@
 //! food object, a trash can and a dung pile the one their state chooses: a change of state starts
 //! it again at frame 0. The ripples against the walls of a tank (map drawing 9.7.8) start at a
 //! random time of 0 to 1999 ms when the tank is set up: at the change itself for a tank that
-//! gets clean water (the fill, a filter's cycle, a keeper's cleaning), else at the next step. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
+//! gets clean water (the fill after the reset of its units, a filter's cycle, a keeper's cleaning), else at the next step. The clocks are not saved: a loaded zoo restarts them at frame 0. The picture
 //! reads the frames without staging the map again (`Staged::reframe`).
 
 use std::collections::{BTreeMap, HashMap, HashSet};

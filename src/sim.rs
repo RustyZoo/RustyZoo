@@ -877,9 +877,15 @@ impl Sim {
             crate::show::open_portals(world, cat, id);
         }
         let water_moved = world.step_water();
-        self.draw_ripples(world, data);
         // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
-        crate::building::dead::wet_changed(world, cat, &mut self.rng);
+        // A tank that got water sets up its ripples after the reset of its units, tank by tank.
+        let idles = &mut self.idles;
+        let set_up = |w: &mut World, rng: &mut Rng, tank| {
+            if w.take_ripple_setup(tank) {
+                idles.set_up_ripples(w, data, rng, &[tank]);
+            }
+        };
+        crate::building::dead::wet_changed_then(world, cat, &mut self.rng, set_up);
         world.decay_water(step);
         self.draw_ripples(world, data);
         self.water_effects(world, cat, step);

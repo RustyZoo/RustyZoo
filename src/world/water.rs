@@ -111,6 +111,13 @@ impl World {
         std::mem::take(&mut self.ripple_setups)
     }
 
+    /// Whether tank `id` was queued for the set-up of its ripples; it is taken off the queue.
+    pub(crate) fn take_ripple_setup(&mut self, id: u32) -> bool {
+        let before = self.ripple_setups.len();
+        self.ripple_setups.retain(|&t| t != id);
+        self.ripple_setups.len() != before
+    }
+
     /// Whether a tank was made or went, or the ground of a tile changed, since the last call.
     pub(crate) fn take_reshaped(&mut self) -> bool {
         std::mem::take(&mut self.reshaped)
