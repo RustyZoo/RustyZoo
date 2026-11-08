@@ -766,13 +766,13 @@ fn a_loaded_numbered_entity_gets_a_numbered_name_on_a_locale_mismatch() {
     };
     let mut cat = crate::entity::Catalogue::default();
     cat.push(ty("animals", b"lion", 5006));
-    cat.push(ty("scenery", b"tree", 5007));
+    cat.push(ty("objects", b"tree", 5007));
     let mut z = zoo(4, 4, (0, 0));
     z.locale = 1033;
     z.names.insert("lion".into(), 7);
     for (class, name) in [
         ("animals", "lion"),
-        ("scenery", "tree"),
+        ("objects", "tree"),
         ("animals", "lion"),
     ] {
         let mut e = typed(class, name, 0, 0, 0);

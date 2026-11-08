@@ -97,7 +97,7 @@ impl Data for Building {
 fn an_entity_first_seen_at_a_step_advances_by_it() {
     let mut world = world_with((4, 4), |zoo| {
         zoo.entities
-            .push(entity("scenery", "tree", 1, centre((0, 0)), 0));
+            .push(entity("objects", "tree", 1, centre((0, 0)), 0));
         zoo.entities
             .push(entity("animals", "lion", 2, centre((1, 1)), 0));
     });
@@ -120,7 +120,7 @@ fn an_entity_first_seen_at_a_step_advances_by_it() {
     world
         .zoo
         .entities
-        .push(entity("scenery", "bush", 4, centre((2, 2)), 0));
+        .push(entity("objects", "bush", 4, centre((2, 2)), 0));
     idles.advance(70);
     assert_eq!(idles.frames().get(&4), None);
     step(&mut idles, &world, 70);

@@ -263,7 +263,7 @@ fn trees() -> Catalogue {
     let mut cat = Catalogue::default();
     cat.push(ty("rubble", "other", "brubls1"));
     for kind in ["tree", "wide", "stone"] {
-        cat.push(ty("scenery", kind, ""));
+        cat.push(ty("objects", kind, ""));
     }
     cat.push(ty("building", "shed", ""));
     cat
@@ -281,7 +281,7 @@ fn grove(kinds: &[&str]) -> (World, Unit) {
             let class = if *kind == "shed" {
                 "building"
             } else {
-                "scenery"
+                "objects"
             };
             zoo.entities.push(thing(class, kind, 10 + i as u32, at, 0));
         }
