@@ -449,3 +449,32 @@ fn the_areas_of_a_loaded_zoo_follow_the_order_of_the_file() {
         }
     }
 }
+
+#[test]
+fn a_split_whose_survivor_keeps_the_side_across_the_piece_resizes_both_exhibits_twice() {
+    // A pen of 6 x 2 tiles with its gate on the east side, paths two rows below at both ends.
+    // The cut puts the survivor (the gate's side) across the last piece: each exhibit is first
+    // resized over the side it does not keep (habitat rating 10.1), so both keep the areas of
+    // both sides.
+    let mut pieces = square(1, 1, 6, 2);
+    let last = pieces.pop().unwrap();
+    let mut world = loaded(&[]);
+    for x in [1, 6] {
+        let path = entity("path", x, 4, 0);
+        world.add(path.clone(), shape(&path));
+    }
+    for p in pieces {
+        put(&mut world, p);
+    }
+    put(&mut world, last);
+    put(&mut world, (3, 1, 2));
+    put(&mut world, (3, 2, 2));
+    let (west, east) = (4 * SIZE as usize + 1, 4 * SIZE as usize + 6);
+    let areas = |id: u32| -> Vec<Vec<usize>> {
+        let e = world.exhibits().get(id).unwrap();
+        e.areas.iter().map(|a| a.tiles.clone()).collect()
+    };
+    assert_eq!(region(&world, 5, 1), 1, "the survivor keeps the gate's side");
+    assert_eq!(areas(1), [vec![west], vec![east], vec![west], vec![east]]);
+    assert_eq!(areas(2), [vec![east], vec![west]]);
+}

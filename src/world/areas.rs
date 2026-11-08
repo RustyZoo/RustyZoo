@@ -7,8 +7,9 @@ use crate::exhibit::viewing::Plan;
 impl World {
     /// Resizes the areas of the exhibits `ids` (10.1): the ones the original resizes, an exhibit
     /// made, split, merged, morphed, or a tank merged or split; the slots of the exhibits that
-    /// are gone are cleared.
-    pub(super) fn resize_areas(&mut self, ids: &[u32]) {
+    /// are gone are cleared. The `early` resizes come first, each over the tiles it names (an
+    /// exhibit resized for the side of a split it does not keep, 10.1).
+    pub(super) fn resize_areas(&mut self, early: &[(u32, Vec<usize>)], ids: &[u32]) {
         let alive: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
         self.exhibits
             .views
@@ -17,6 +18,10 @@ impl World {
             .flatten()
             .filter(|s| s.is_some_and(|(x, _)| !alive.contains(&x)))
             .for_each(|s| *s = None);
+        for (id, order) in early {
+            let plan = Plan::over(self, order.clone());
+            self.exhibits.resize(&plan, *id);
+        }
         for &id in ids {
             let plan = Plan::of(self, id);
             self.exhibits.resize(&plan, id);
@@ -74,7 +79,7 @@ impl World {
                 None => missing.push(id),
             }
         }
-        self.resize_areas(&missing);
+        self.resize_areas(&[], &missing);
     }
 
     /// Adds a path piece or a fence piece to the scratch world of the replay: what [`World::add`]
