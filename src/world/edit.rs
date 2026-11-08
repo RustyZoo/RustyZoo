@@ -95,7 +95,7 @@ impl World {
     }
 
     /// Removes the entity with this id alone; `undoable` records it for the undo.
-    pub(super) fn remove_one(&mut self, id: u32, undoable: bool) -> bool {
+    pub(crate) fn remove_one(&mut self, id: u32, undoable: bool) -> bool {
         let Some(at) = self.find(id) else {
             return false;
         };

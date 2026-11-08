@@ -103,7 +103,7 @@ impl World {
     /// step of 3.9): a line whose slot inside is empty and whose wall stands across gets that wall
     /// moved, or, when the tile across is a tank too, a copy of it (a plain piece), so that two
     /// tanks side by side end with one wall each. The gates that moved in are replaced.
-    fn wall_step(&mut self, id: u32) {
+    pub(super) fn wall_step(&mut self, id: u32) {
         let mut moved = Vec::new();
         for (t, n) in self.exhibits.boundary(self, id) {
             let Some((n, d)) = n.zip(n.and_then(|n| self.side_to(t, n))) else {
@@ -119,10 +119,16 @@ impl World {
                 continue;
             };
             let piece = match self.tank_at(n).is_some() {
-                true => self.copy_wall(wall, t, d),
+                // A copy is made healthy: its wear interval, then its start time.
+                true => self.copy_wall(wall, t, d).inspect(|&c| self.draws.push(Draw::Heal(c))),
                 false => {
                     self.move_wall(wall, t, d);
-                    self.zoo.entities[wall].common.as_ref().map(|c| c.id)
+                    // The moved piece is validated again: a gate draws no start time.
+                    let moved = self.zoo.entities[wall].common.as_ref().map(|c| c.id);
+                    if !self.is_door(wall) {
+                        self.draws.extend(moved.map(Draw::Start));
+                    }
+                    moved
                 }
             };
             moved.push((piece, n));
@@ -324,11 +330,6 @@ impl World {
             false => Event::New { id, ask: physical },
         };
         self.events.push(event);
-    }
-
-    /// The tank cut in two keeps its side: its walls are brought to its side again.
-    pub(super) fn rewall(&mut self, id: u32) {
-        self.wall_step(id);
     }
 
     /// The entities (ids) in tank `id` that it does not allow (3.9): a unit whose type is not at

@@ -87,6 +87,7 @@ impl Sim {
                     .set_up_ripples(world, data, &mut self.rng, (t, walls));
             }
             Draw::Start(id) => self.idles.start_next(id, self.rng.pick(2000)),
+            Draw::Delete(id) => _ = world.remove_one(id, false),
             Draw::Heal(id) => {
                 if let Some(at) = world.find(id) {
                     self.heal(world, cat, at);

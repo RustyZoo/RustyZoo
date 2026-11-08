@@ -449,6 +449,10 @@ impl World {
             .filter_map(|t| t.1.map(|_| t.0))
             .collect();
         if !quiet {
+            // The tank cut keeps its side: its walls are brought to it, then it updates.
+            for &x in split_kept {
+                self.wall_step(x);
+            }
             self.draws
                 .extend(split_kept.iter().map(|&x| Draw::Walls(x)));
         }
@@ -456,9 +460,6 @@ impl World {
             self.make_tank(id, inherited, !quiet);
         }
         if !quiet && !split_kept.is_empty() {
-            for &id in split_kept {
-                self.rewall(id);
-            }
             let mut changed = self.retank(false);
             changed.extend(split_kept.iter().copied());
             self.floors(&changed);

@@ -17,6 +17,8 @@ pub(crate) enum Draw {
     Start(u32),
     /// The fence piece is made healthy: its wear interval, then its start time.
     Heal(u32),
+    /// The wall piece is deleted (a merge's walls between its two tanks, after the update).
+    Delete(u32),
 }
 
 impl World {
@@ -137,7 +139,7 @@ impl World {
         let first = *self.draws.first()?;
         let tank = match first {
             Draw::Ripples(t) | Draw::Walls(t) => Some(t),
-            Draw::Start(_) | Draw::Heal(_) => None,
+            Draw::Start(_) | Draw::Heal(_) | Draw::Delete(_) => None,
         };
         if waiting && tank.is_some_and(|t| self.stirred.contains(&t)) {
             return None;
