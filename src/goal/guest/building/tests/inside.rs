@@ -88,3 +88,55 @@ fn the_enter_decide_walks_to_the_inside_tile_found_from_the_unit_not_to_the_slot
         assert_eq!(cx.record().task, 0);
     });
 }
+
+#[test]
+fn the_enter_decide_clears_the_goal_when_the_first_step_from_the_unit_is_closed() {
+    let cat = types();
+    // The unit at (5, 2) walks south to the booth (5, 5); a step on its south edge closes that step
+    // (cost 20), and the path finder is not asked to walk around it. The east edge is no matter.
+    for (edges, task) in [
+        (0x00, ENTER_BUILDING),
+        (2 << 2, 0),
+        (3 << 2, 0),
+        (2 << 4, ENTER_BUILDING),
+    ] {
+        let mut w = world_with((10, 10), |zoo| {
+            zoo.entities
+                .push(entity("guests", "man", 1, centre((5, 2)), 0));
+            zoo.entities
+                .push(entity("building", "booth", 7, centre((5, 5)), 4));
+        });
+        let t = w.tile_index(5, 2).unwrap();
+        w.zoo.tiles[t].edges = edges;
+        with_cx(&cat, &mut w, |cx| {
+            cx.guest().unwrap().building = 7;
+            cx.set_task(ENTER_BUILDING, 0, 7, None);
+            cx.enter_decide();
+            assert_eq!(cx.record().task, task, "edges {edges:#x}");
+            assert_eq!(cx.unit.through_building, task != 0);
+        });
+    }
+}
+
+#[test]
+fn the_step_test_follows_the_signs_of_the_tile_difference_and_passes_on_the_same_tile() {
+    let cat = types();
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((5, 5)), 0));
+    });
+    let t = w.tile_index(5, 5).unwrap();
+    // The south-east diagonal is closed by a step on the south edge (the worst of the four edges).
+    w.zoo.tiles[t].edges = 2 << 2;
+    with_cx(&cat, &mut w, |cx| {
+        for (to, open) in [
+            ((5, 5), true),
+            ((7, 9), false),
+            ((9, 5), true),
+            ((4, 4), true),
+        ] {
+            let to = cx.world.tile_index(to.0, to.1).unwrap();
+            assert_eq!(cx.first_step_open(to), open, "to {to}");
+        }
+    });
+}
