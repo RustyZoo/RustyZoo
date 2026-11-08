@@ -442,9 +442,13 @@ impl World {
                 TankValue::Height(_) | TankValue::Level(_) | TankValue::Filled(_) => {}
             }
         }
-        // The filled state goes through the fill change, which makes the show links again.
+        // The filled state goes through the fill or the drain, which makes the show links again;
+        // the drain posts the abort event of the tank's show (shows 30.4 point 5).
         if let TankValue::Filled(v) = value {
-            self.edit_tank(id, |t, _| t.filled = v);
+            match v {
+                true => _ = self.fill(id),
+                false => _ = self.drain(id),
+            }
         }
         // The height goes through the wall height change: the water is cut to the new full level.
         if let TankValue::Height(v) = value {

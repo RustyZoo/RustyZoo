@@ -1132,6 +1132,7 @@ fn the_gate_of_a_loaded_exhibit_is_the_piece_its_record_names() {
     }
 }
 
+mod abort;
 mod decision;
 mod filter;
 mod neighbours;
