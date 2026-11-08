@@ -3,7 +3,8 @@
 
 use super::{Sim, hash};
 use crate::animal::Class;
-use crate::behaviour::{Library, NoData, Timings};
+use crate::behaviour::{Data, Library, NoData, Timings};
+use crate::cheat::{Season, guest_flights};
 use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::soundscape::Soundscape;
@@ -190,6 +191,8 @@ pub struct Run {
     pub world: World,
     pub money: Money,
     timings: Timings,
+    /// The flags of the date hooks (cheats 6), as the window's game has them.
+    season: Season,
 }
 
 impl Run {
@@ -291,6 +294,7 @@ impl Run {
             world,
             money,
             timings: Timings::default(),
+            season: Season::default(),
         }
     }
 
@@ -501,19 +505,28 @@ impl Run {
 
     /// [`Run::step`] whose units run their sets and animations, from the files of `vfs`.
     pub fn step_with(&mut self, ms: u32, vfs: Option<&Vfs>) -> Vec<String> {
-        let money = &mut self.money;
         let update = |_: &mut World, _, _| {};
-        match vfs {
-            None => (self.sim).step_game(&NoData, &self.cat, &mut self.world, money, ms, update),
+        let data: &dyn Data = &NoData;
+        let library;
+        let data = match vfs {
+            None => data,
             Some(vfs) => {
-                let data = Library {
+                library = Library {
                     catalogue: &self.cat,
                     vfs,
                     timings: &self.timings,
                 };
-                (self.sim).step_game(&data, &self.cat, &mut self.world, money, ms, update)
+                &library
             }
         };
+        // The date hook runs inside the guest creation, as the window's game runs it. The loops
+        // of the sleigh and the biplane are the interface's: there is none to hold them.
+        let (cat, season) = (&self.cat, &mut self.season);
+        let hook = &mut |sim: &mut Sim, world: &mut World| {
+            guest_flights(season, data, cat, sim, world, &mut Vec::new());
+        };
+        let (world, money) = (&mut self.world, &mut self.money);
+        (self.sim).step_hooked(data, cat, world, money, ms, update, hook);
         let mut lines: Vec<String> = (self.sim.take_lines().into_iter())
             .map(|l| format!("sim {l}"))
             .collect();

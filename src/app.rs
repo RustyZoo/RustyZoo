@@ -665,7 +665,7 @@ impl<'a> App<'a> {
             game.world.units.cheat = self.cheats.flags;
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
             let (season, cat) = (&mut self.cheats.season, self.renderer.catalogue());
-            let vehicles = &mut game.vehicles;
+            let (vehicles, mut trio) = (&mut game.vehicles, false);
             let report = self.sim.step_hooked(
                 &data,
                 cat,
@@ -673,7 +673,10 @@ impl<'a> App<'a> {
                 &mut game.money,
                 step,
                 |_, _, _| {},
-                &mut |sim, world| cheat::guest_flights(season, &data, cat, sim, world, vehicles),
+                &mut |sim, world| {
+                    trio = world.units.cheat.lions_tigers_bears;
+                    crate::cheat::guest_flights(season, &data, cat, sim, world, vehicles)
+                },
             );
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;
@@ -688,7 +691,7 @@ impl<'a> App<'a> {
             }
             self.status_told(report.bars);
             if report.arrived {
-                self.guest_created();
+                self.guest_created(trio);
             }
             self.research_done();
             self.scenario_over();
@@ -940,25 +943,21 @@ mod undo;
 #[cfg(test)]
 mod adopt_tests;
 #[cfg(test)]
-mod random_use_tests;
-#[cfg(test)]
-mod tank_panel_tests;
-
+mod avail_tests;
 #[cfg(test)]
 mod carry_tests;
-
 #[cfg(test)]
 mod cheat_guest_tests;
 #[cfg(test)]
 mod cheat_season_tests;
 #[cfg(test)]
 mod cheat_tests;
-
+#[cfg(test)]
+mod random_use_tests;
+#[cfg(test)]
+mod tank_panel_tests;
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod avail_tests;
 
 #[cfg(test)]
 mod replay_tests;
