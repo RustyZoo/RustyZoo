@@ -56,6 +56,13 @@ impl Marketing {
         }
     }
 
+    /// A marketing over `levels` at level 0, for the tests.
+    #[cfg(test)]
+    pub(crate) fn with_levels(levels: Vec<Level>) -> Marketing {
+        let config = Some(Funding { levels, level: 0 });
+        Marketing { acc: 0, config }
+    }
+
     /// The configuration, if there is one.
     pub(crate) fn config(&self) -> Option<&Funding> {
         self.config.as_ref()
