@@ -524,7 +524,10 @@ fn a_shadow_over_a_tank_is_placed_at_the_floor_not_the_water() {
     assert_eq!(scene.tank_of(5), Some(0));
     assert_eq!(scene.shadow_height(96, 96), Some(48));
     assert_eq!(scene.surface(5), Some(48 + 64));
+    // Off the map, negative or huge: no height, no shadow.
     assert_eq!(scene.shadow_height(-1, 0), None);
+    assert_eq!(scene.shadow_height(i32::MIN, i32::MAX), None);
+    assert_eq!(scene.shadow_height(i32::MAX, 0), None);
 }
 
 #[test]
