@@ -490,19 +490,28 @@ pub(crate) fn name(world: &mut World, ty: &EntityType, text: &str) -> String {
 /// for anything else) a space and the next number of the counter of its key, started at 1 (unit
 /// placing 7.2). The key is the type name for a unit (`giraffe`, not the text) and the subtype for
 /// a building or a filter (`vendfood`, `f`). Scenery, fences, paths, tank walls, rubble, ambient
-/// animals and food the bare text whatever the flag says.
+/// animals and food the bare text whatever the flag says. A guest is numbered by the counter
+/// `guests`, shared by its four types. A numbered class with an empty text keeps an empty name
+/// and takes no number (localisation 10).
 fn numbered(world: &mut World, ty: &EntityType, text: &str) -> String {
     let bare = matches!(
         ty.class,
         "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient" | "food"
     );
     let subtyped = matches!(ty.class, "building" | "filter");
-    let counted = is_unit(ty) || subtyped || ty.class == "helicopter";
+    let counted = is_unit(ty) || subtyped || matches!(ty.class, "helicopter" | "guests");
     let numbered = plain(ty, "cUseNumbersInName").unwrap_or(f32::from(u8::from(counted)));
     if bare || numbered != 1.0 {
         return text.into();
     }
-    let key = if subtyped { &ty.subtype } else { &ty.type_name };
+    if text.is_empty() {
+        return String::new();
+    }
+    let key = match ty.class {
+        "guests" => b"guests",
+        _ if subtyped => ty.subtype.as_slice(),
+        _ => ty.type_name.as_slice(),
+    };
     let key = String::from_utf8_lossy(key).into_owned();
     let counter = world.zoo.names.entry(key).or_insert(0);
     *counter = counter.saturating_add(1);
@@ -510,9 +519,13 @@ fn numbered(world: &mut World, ty: &EntityType, text: &str) -> String {
 }
 
 /// The name of a new entity of the type from the type's name text (`world.units.names`): empty
-/// when the interface gave none.
+/// when the interface gave none (a guest's text is the guests' string, not the type's).
 pub(crate) fn named(world: &mut World, ty: &EntityType) -> String {
-    match world.units.names.get(&ty.name_id).cloned() {
+    let text = match ty.class {
+        "guests" => Some(world.units.guest_name.clone()),
+        _ => world.units.names.get(&ty.name_id).cloned(),
+    };
+    match text {
         Some(text) => name(world, ty, &text),
         None => String::new(),
     }

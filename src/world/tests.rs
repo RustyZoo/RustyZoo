@@ -1050,8 +1050,83 @@ fn a_name_made_at_the_add_needs_a_visible_character_for_every_class() {
             );
         }
     }
-    let animal = crate::place::unit::name(&mut world, &ty("animals"), "");
-    assert_eq!(animal, " 1", "a counted name holds its number");
+}
+
+#[test]
+fn a_numbered_name_with_an_empty_text_stays_empty_and_takes_no_number() {
+    let ty = |class: &'static str| crate::entity::EntityType {
+        class,
+        type_name: b"x".to_vec(),
+        subtype: b"s".to_vec(),
+        file: None,
+        config: None,
+        name_id: 1,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut world = World::new(zoo(4, 4, (0, 0)), |_| None);
+    for class in [
+        "animals",
+        "keeper",
+        "building",
+        "filter",
+        "guests",
+        "helicopter",
+    ] {
+        let t = ty(class);
+        assert_eq!(crate::place::unit::name(&mut world, &t, ""), "", "{class}");
+    }
+    assert!(world.zoo.names.is_empty(), "no counter was touched");
+    assert_eq!(
+        crate::place::unit::name(&mut world, &ty("animals"), "Lion"),
+        "Lion 1"
+    );
+}
+
+#[test]
+fn a_loaded_guest_with_an_empty_name_is_named_guest_n_by_the_guest_counter() {
+    let ty = |name: &[u8]| crate::entity::EntityType {
+        class: "guests",
+        type_name: name.to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: None,
+        name_id: 9507,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let mut cat = crate::entity::Catalogue::default();
+    cat.push(ty(b"man"));
+    cat.push(ty(b"woman"));
+    let names = |guest_name: &str| {
+        let mut z = zoo(4, 4, (0, 0));
+        z.locale = 1033;
+        z.names.insert("guests".into(), 60);
+        for (kind, stored) in [("man", ""), ("woman", "Kept"), ("woman", ""), ("man", "")] {
+            let mut e = typed("guests", kind, 0, 0, 0);
+            e.common.as_mut().unwrap().name = stored.into();
+            z.entities.push(e);
+        }
+        let mut world = World::new(z, |_| None);
+        world.units.guest_name = guest_name.into();
+        world.units.names = [(9507, "Man".to_string())].into();
+        world.name_loaded_entities(&cat);
+        let names: Vec<_> = (world.zoo.entities.iter())
+            .map(|e| e.common.as_ref().unwrap().name.clone())
+            .collect();
+        (names, world.zoo.names["guests"])
+    };
+    assert_eq!(
+        names("Guest"),
+        (
+            ["Guest 1", "Kept", "Guest 2", "Guest 3"]
+                .map(String::from)
+                .to_vec(),
+            60
+        ),
+        "the new world's counter in file order, the file's counter put back"
+    );
+    assert_eq!(names("").0, ["", "Kept", "", ""], "no text, no name");
 }
 
 #[test]
