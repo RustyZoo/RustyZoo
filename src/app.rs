@@ -943,6 +943,8 @@ mod undo;
 #[cfg(test)]
 mod adopt_tests;
 #[cfg(test)]
+mod avail_tests;
+#[cfg(test)]
 mod carry_tests;
 #[cfg(test)]
 mod cheat_guest_tests;
@@ -954,12 +956,8 @@ mod cheat_tests;
 mod random_use_tests;
 #[cfg(test)]
 mod tank_panel_tests;
-
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod avail_tests;
 
 #[cfg(test)]
 mod replay_tests;

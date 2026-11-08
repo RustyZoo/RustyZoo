@@ -167,15 +167,15 @@ fn the_permanent_halloween_flag_keeps_the_jack_o_lantern_over_a_guest_hook() {
         app.cheats.season.halloween = true;
         app.make_available(&[(JACK_O_LANTERN, true)]);
         today(app, 11, 1);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
         app.make_available(&[(JACK_O_LANTERN, false)]);
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
         // The flag down: the day flag was left alone, so the day makes it available.
         app.cheats.season.halloween = false;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
     });
 }
@@ -184,11 +184,11 @@ fn the_permanent_halloween_flag_keeps_the_jack_o_lantern_over_a_guest_hook() {
 fn a_guest_created_on_christmas_makes_the_snowman_and_the_tree_available_until_another_day() {
     run(|app, cat| {
         today(app, 12, 25);
-        app.guest_created();
+        guest_created(app);
         // Order of the ids: tree, jack-o'-lantern, snowman, path.
         assert_eq!(on(app, cat), [true, false, true, false]);
         today(app, 12, 26);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -197,10 +197,10 @@ fn a_guest_created_on_christmas_makes_the_snowman_and_the_tree_available_until_a
 fn a_guest_created_on_the_last_day_of_october_makes_the_jack_o_lantern_available() {
     run(|app, cat| {
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, true, false, false]);
         today(app, 11, 1);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -209,7 +209,7 @@ fn a_guest_created_on_the_last_day_of_october_makes_the_jack_o_lantern_available
 fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_it_back() {
     run(|app, cat| {
         today(app, 3, 3);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
         app.game
             .as_mut()
@@ -218,7 +218,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
             .units
             .cheat
             .lions_tigers_bears = true;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false, false, false, true]);
         // A new game takes it away; the hook has spent its one time.
         restart(app);
@@ -230,7 +230,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
             .units
             .cheat
             .lions_tigers_bears = true;
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -239,7 +239,7 @@ fn the_yellow_brick_path_follows_the_trio_flag_once_and_a_start_does_not_bring_i
 fn the_hooks_do_nothing_without_a_game() {
     run(|app, _| {
         app.game = None;
-        app.guest_created();
+        guest_created(app);
         app.game_started();
     });
 }
@@ -400,7 +400,7 @@ fn after_a_real_halloween_start_the_game_date_no_longer_offers_the_jack_o_lanter
         app.sim.real_day = real_other_day;
         app.game_started();
         today(app, 10, 31);
-        app.guest_created();
+        guest_created(app);
         assert_eq!(on(app, cat), [false; 4]);
     });
 }
@@ -533,7 +533,7 @@ fn created(app: &mut App) {
     let game = app.game.as_mut().unwrap();
     let season = &mut app.cheats.season;
     let mut loops = Vec::new();
-    cheat::guest_flights(
+    crate::cheat::guest_flights(
         season,
         &data,
         cat,
@@ -542,7 +542,12 @@ fn created(app: &mut App) {
         &mut loops,
     );
     game.vehicles.extend(loops);
-    let trio = game.world.units.cheat.lions_tigers_bears;
+    guest_created(app);
+}
+
+/// The rest of the hook of a guest created, the trio flag being as it is now.
+fn guest_created(app: &mut App) {
+    let trio = app.game.as_ref().unwrap().world.units.cheat.lions_tigers_bears;
     app.guest_created(trio);
 }
 
