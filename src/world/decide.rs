@@ -160,7 +160,7 @@ impl World {
             if let Some(piece) = self.zoo.entities[w].common.as_ref().map(|c| c.id) {
                 self.draws.push(Draw::Heal(piece));
                 if let Some(tank) = self.active_wall_tank(piece) {
-                    self.draws.push(Draw::Walls(tank));
+                    self.push_set_up(Draw::Walls(tank));
                 }
             }
         }

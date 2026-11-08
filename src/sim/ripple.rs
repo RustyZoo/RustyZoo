@@ -84,7 +84,18 @@ impl Sim {
             Draw::Ripples(t) | Draw::Walls(t) => {
                 let walls = matches!(draw, Draw::Walls(_));
                 self.idles
-                    .set_up_ripples(world, data, &mut self.rng, (t, walls));
+                    .set_up_ripples(world, data, &mut self.rng, (t, walls, None));
+            }
+            Draw::Over(k) => {
+                if let Some((t, walls, held)) = world.take_over(k) {
+                    let up = (t, walls, Some(held));
+                    self.idles.set_up_ripples(world, data, &mut self.rng, up);
+                }
+            }
+            Draw::Interval(id) => {
+                if let Some(at) = world.find(id) {
+                    self.heal_with(world, cat, at, false);
+                }
             }
             Draw::Start(id) => self.idles.start_next(id, self.rng.pick(2000)),
             Draw::Delete(id) => _ = world.remove_one(id, false),
@@ -102,7 +113,7 @@ impl Sim {
     pub(crate) fn wet_changed(&mut self, world: &mut World, cat: &Catalogue, data: &dyn Data) {
         crate::building::dead::wet_moved(world, cat);
         while let Some(draw) = world.next_draw(false) {
-            if let Draw::Ripples(t) | Draw::Walls(t) = draw {
+            if let Some(t) = world.draw_tank(draw) {
                 for tank in world.take_stirred_through(t) {
                     crate::goal::stir_units(world, cat, &mut self.rng, tank);
                 }

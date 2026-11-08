@@ -102,35 +102,45 @@ impl World {
     /// Brings the walls of the boundary of tank `id` to the tank's side of their lines (the wall
     /// step of 3.9): a line whose slot inside is empty and whose wall stands across gets that wall
     /// moved, or, when the tile across is a tank too, a copy of it (a plain piece), so that two
-    /// tanks side by side end with one wall each. The gates that moved in are replaced.
+    /// tanks side by side end with one wall each. The gates that moved in are replaced. Each
+    /// pair with a tile across validates the pieces of its two slots, inside then outside, which
+    /// draw a start time each unless they are gates (map drawing 9.7.8 point 3.4).
     pub(super) fn wall_step(&mut self, id: u32) {
         let mut moved = Vec::new();
         for (t, n) in self.exhibits.boundary(self, id) {
             let Some((n, d)) = n.zip(n.and_then(|n| self.side_to(t, n))) else {
                 continue;
             };
-            if self.edge(t, d).is_some() {
-                continue;
-            }
-            let Some(wall) = self
-                .edge(n, (d + 4) % 8)
-                .filter(|&w| self.shapes[w].is_some_and(|s| s.tank.wall))
-            else {
+            let (inside, outside) = (self.edge(t, d), self.edge(n, (d + 4) % 8));
+            let wall = outside.filter(|&w| self.shapes[w].is_some_and(|s| s.tank.wall));
+            let (Some(wall), None) = (wall, inside) else {
+                inside
+                    .into_iter()
+                    .chain(outside)
+                    .for_each(|at| self.validate(Some(at)));
                 continue;
             };
             let piece = match self.tank_at(n).is_some() {
-                // A copy is made healthy: its wear interval, then its start time.
-                true => self
-                    .copy_wall(wall, t, d)
-                    .inspect(|&c| self.draws.push(Draw::Heal(c))),
+                // A copy is made healthy (a gate's copy draws its wear interval only), then
+                // validated, then the piece it was made from.
+                true => {
+                    let gate = self.is_door(wall);
+                    let copy = self.copy_wall(wall, t, d);
+                    if let Some(c) = copy {
+                        self.draws.push(if gate {
+                            Draw::Interval(c)
+                        } else {
+                            Draw::Heal(c)
+                        });
+                        self.draws.push(Draw::Start(c));
+                        self.validate(outside);
+                    }
+                    copy
+                }
                 false => {
                     self.move_wall(wall, t, d);
-                    // The moved piece is validated again: a gate draws no start time.
-                    let moved = self.zoo.entities[wall].common.as_ref().map(|c| c.id);
-                    if !self.is_door(wall) {
-                        self.draws.extend(moved.map(Draw::Start));
-                    }
-                    moved
+                    self.validate(Some(wall));
+                    self.zoo.entities[wall].common.as_ref().map(|c| c.id)
                 }
             };
             moved.push((piece, n));
@@ -148,6 +158,15 @@ impl World {
                 self.replace_gate(region);
             }
         }
+    }
+
+    /// The piece at `at` is validated: it draws a start time unless it is a gate.
+    fn validate(&mut self, at: Option<usize>) {
+        let Some(at) = at.filter(|&at| !self.is_door(at)) else {
+            return;
+        };
+        let id = self.zoo.entities[at].common.as_ref().map(|c| c.id);
+        self.draws.extend(id.map(Draw::Start));
     }
 
     /// Puts the wall at position `wall` of the entity list on side `d` of tile `t`.
@@ -309,7 +328,7 @@ impl World {
         // The part cut off a tank updates its wall information once its water values are set
         // (map drawing 9.7.8 point 3.4); a new tank draws nothing (its level is 0).
         if physical && inherited.is_some() {
-            self.draws.push(Draw::Walls(id));
+            self.push_set_up(Draw::Walls(id));
         }
         let asks = physical && inherited.is_none() && !self.refused(id).is_empty();
         // Nothing to ask about: the tank is filled again, whatever the file says (3.10).
@@ -395,14 +414,17 @@ impl World {
         let murky = self.tank_config.murky;
         (self.exhibits.list().iter())
             .filter(|e| e.tank.as_ref().is_some_and(|t| clean(t, murky)))
-            .map(|e| {
-                let slots = e.order.iter().flat_map(|&t| [0, 2, 4, 6].map(|d| (t, d)));
-                let walls = slots.filter_map(|(t, d)| self.edge(t, d));
-                let walls = walls.filter(|&p| self.shape(p).is_some_and(|s| s.tank.wall));
-                let ids = walls.filter_map(|p| self.zoo.entities[p].common.as_ref().map(|c| c.id));
-                (e.id, ids.collect())
-            })
+            .map(|e| (e.id, self.walls_over(&e.order)))
             .collect()
+    }
+
+    /// The ids of the tank walls held in an edge slot of the `tiles`, in list then slot order.
+    pub(super) fn walls_over(&self, tiles: &[usize]) -> Vec<u32> {
+        let slots = tiles.iter().flat_map(|&t| [0, 2, 4, 6].map(|d| (t, d)));
+        let walls = slots.filter_map(|(t, d)| self.edge(t, d));
+        let walls = walls.filter(|&p| self.shape(p).is_some_and(|s| s.tank.wall));
+        let ids = walls.filter_map(|p| self.zoo.entities[p].common.as_ref().map(|c| c.id));
+        ids.collect()
     }
 
     /// The tile outside the first pair of the boundary of exhibit `id`, where an animal or a

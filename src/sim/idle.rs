@@ -425,7 +425,7 @@ impl Idles {
         world: &mut World,
         data: &dyn Data,
         rng: &mut Rng,
-        (id, walls): (u32, bool),
+        (id, walls, held): (u32, bool, Option<Vec<u32>>),
     ) {
         world.set_up(id);
         if walls && self.ripples.get(&id).is_some_and(|r| !r.is_empty()) {
@@ -433,7 +433,8 @@ impl Idles {
             world.remove_bubbles_of(id);
         }
         if let Some((_, walls)) = world.rippled_tanks().iter().find(|t| t.0 == id) {
-            let set = self.ripple_set(data, rng, walls);
+            // A set-up queued while the tanks of a split had each other's tiles keeps its walls.
+            let set = self.ripple_set(data, rng, held.as_ref().unwrap_or(walls));
             self.ripples.insert(id, set);
         }
     }

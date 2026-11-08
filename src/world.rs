@@ -179,7 +179,13 @@ pub struct World {
     /// next set-up (map drawing 9.7.8 open point a; not saved).
     bare: Vec<u32>,
     /// The tanks a split updates once more when the gate of its new tank (the key) is chosen.
-    tails: Vec<(u32, Vec<u32>)>,
+    /// The flag tells that the walls of the tanks are brought inwards once more first.
+    tails: Vec<(u32, Vec<u32>, bool)>,
+    /// The set-ups queued while the two tanks of a split stand on each other's side
+    /// ([`World::swapped`]): the tank, whether it removes its ripples first, and the walls it held.
+    overs: Vec<Option<(u32, bool, Vec<u32>)>>,
+    /// The two tanks of a split have each other's tiles for a while (map drawing 9.7.8 point 3.4).
+    swapped: bool,
     /// A tank was made or went, or the ground of a tile changed, since the last
     /// [`World::take_reshaped`]: the objects are validated again (guest buildings 11.1.1).
     reshaped: bool,
@@ -253,6 +259,8 @@ impl World {
             wet: Vec::new(),
             draws: Vec::new(),
             tails: Vec::new(),
+            overs: Vec::new(),
+            swapped: false,
             bare: Vec::new(),
             reshaped: false,
             replaying: false,

@@ -28,28 +28,58 @@ fn tank_id(world: &World, x: usize) -> u32 {
     world.tank_at(2 * SIZE as usize + x).unwrap()
 }
 
+/// X is first resized to the side of the piece, whatever the side of its gate: when the gate is
+/// across, the two tanks stand on each other's tiles while X's walls are brought in and X updates
+/// (the walls of the piece's side), the copy of the piece is made in Y's step, after X's update,
+/// and Y updates (the walls of the other side); after Y's gate, the sides are swapped and the walls
+/// are brought inwards again, X then Y, before the last updates (map drawing 9.7.8 point 3.4).
 #[test]
-fn a_split_updates_x_then_the_new_tank_then_ends_after_the_gate_with_x_and_y() {
+fn a_split_gives_x_the_side_of_the_piece_first_and_swaps_after_the_gate() {
     let mut world = watered();
     let x = tank_id(&world, 2);
     let wall = wall("tank", (3, 2, 2));
     let shape = tank_shape(&wall);
     world.add(wall, shape).unwrap();
-    // X keeps the side of its gate; the new tank is on the other side.
+    // X keeps the east side, where its gate is; the piece stands on the west tile.
     let y = tank_id(&world, 2);
     assert_ne!(x, y);
-    // X's walls are brought to its side first (the copy of the cut piece, healthy), then X, then
-    // Y: the level it takes from X, its own update; the last two wait for the gate.
-    use Draw::{Heal, Ripples, Walls};
-    let copy = piece_at(&world, 4, 2, 6);
-    assert_eq!(world.draws(), [Heal(copy), Walls(x), Ripples(y), Walls(y)]);
+    let (cut, copy) = (piece_at(&world, 3, 2, 2), piece_at(&world, 4, 2, 6));
+    let drawn = world.drawn();
+    // X over the west tiles: six pairs, one piece each; its update holds six walls.
+    assert_eq!(drawn[6], format!("w{x}:6"), "{drawn:?}");
+    assert!(drawn[..6].iter().all(|d| d.starts_with('s')) && drawn[4] == format!("s{cut}"));
+    // Y over the east tiles: the copy of the cut piece in its pair, made healthy, validated, then
+    // the piece it was made from; then its level and its update, six walls with the copy.
+    assert_eq!(
+        drawn[12..15],
+        [format!("h{copy}"), format!("s{copy}"), format!("s{cut}")]
+    );
+    assert_eq!(
+        drawn[15..],
+        [format!("r{y}:6"), format!("w{y}:6")],
+        "{drawn:?}"
+    );
+    assert!(drawn[7..12].iter().all(|d| d.starts_with('s')));
     for new in world.waiting() {
         world.give_gate(new);
     }
-    let draws = world.draws();
-    assert_eq!(draws.len(), 7, "{draws:?}");
-    assert!(matches!(draws[4], Walls(t) if t == y || t == x), "the gate");
-    assert_eq!(draws[5..], [Walls(x), Walls(y)]);
+    // The gate's update first, then X (now east) and Y (west) validate both slots of the shared
+    // line, seven pieces each, then the last updates.
+    let drawn = world.drawn();
+    assert_eq!(drawn.len(), 17 + 1 + 14 + 2, "{drawn:?}");
+    assert!(drawn[17].starts_with('w'), "the gate: {drawn:?}");
+    assert!(
+        drawn[18..32].iter().all(|d| d.starts_with('s')),
+        "{drawn:?}"
+    );
+    assert_eq!(
+        drawn[18..25]
+            .iter()
+            .filter(|d| **d == format!("s{copy}"))
+            .count(),
+        1
+    );
+    assert_eq!(drawn[32..], [format!("w{x}"), format!("w{y}")]);
 }
 
 #[test]
@@ -163,24 +193,6 @@ fn a_save_takes_the_bare_mark_off_a_tank_built_filled_while_paused() {
     assert!(!world.is_bare(id), "still bare after the save");
 }
 
-/// The piece that cuts a tank is on the side of the new tank: the new tank takes a copy, after the
-/// start times of the cut tank (map drawing 9.7.8 point 3.4).
-#[test]
-fn a_split_whose_piece_stands_on_the_cut_tank_copies_it_for_the_new_tank_after_the_cut_one() {
-    let mut world = watered();
-    let x = tank_id(&world, 2);
-    let wall = wall("tank", (4, 2, 6));
-    let shape = tank_shape(&wall);
-    world.add(wall, shape).unwrap();
-    // X keeps the side of its gate, the east.
-    let (y, copy) = (tank_id(&world, 2), piece_at(&world, 3, 2, 2));
-    assert_ne!(x, y);
-    use Draw::{Heal, Ripples, Walls};
-    let draws = world.draws();
-    assert_eq!(draws[..2], [Walls(x), Heal(copy)], "{draws:?}");
-    assert_eq!(draws[2..], [Ripples(y), Walls(y)], "{draws:?}");
-}
-
 /// The walls a new tank brings inwards are validated again: each moved piece draws a start time,
 /// in the order of the tank's boundary, and nothing else is drawn (no water).
 #[test]
@@ -287,4 +299,104 @@ fn an_undone_removal_that_merges_two_tanks_deletes_no_wall() {
         "{:?}",
         world.draws()
     );
+}
+
+/// The piece stands on the side X keeps (the gate is on that side): X's walls are brought in and X
+/// updates, then the copy is made in Y's step; nothing is swapped, nothing is brought in again.
+#[test]
+fn a_split_whose_piece_stands_on_the_side_of_the_gate_makes_the_copy_in_the_step_of_y() {
+    let mut world = watered();
+    let x = tank_id(&world, 2);
+    let wall = wall("tank", (4, 2, 6));
+    let shape = tank_shape(&wall);
+    world.add(wall, shape).unwrap();
+    let (y, copy, cut) = (
+        tank_id(&world, 2),
+        piece_at(&world, 3, 2, 2),
+        piece_at(&world, 4, 2, 6),
+    );
+    assert_ne!(x, y);
+    let drawn = world.drawn();
+    assert_eq!(drawn.len(), 17, "{drawn:?}");
+    assert_eq!(drawn[5], format!("s{cut}"), "{drawn:?}");
+    assert_eq!(drawn[6], format!("w{x}"), "{drawn:?}");
+    assert_eq!(
+        drawn[11..14],
+        [format!("h{copy}"), format!("s{copy}"), format!("s{cut}")]
+    );
+    assert!(drawn[14].starts_with('s'), "{drawn:?}");
+    assert_eq!(drawn[15..], [format!("r{y}"), format!("w{y}")]);
+    for new in world.waiting() {
+        world.give_gate(new);
+    }
+    let drawn = world.drawn();
+    assert_eq!(
+        drawn.len(),
+        17 + 3,
+        "gate update, then the last updates: {drawn:?}"
+    );
+    assert_eq!(drawn[18..], [format!("w{x}"), format!("w{y}")]);
+}
+
+/// Every pair of the boundary with a tile across validates the pieces of its two slots, inside
+/// then outside, one start time each: a piece that stays draws too, a line with two walls draws
+/// twice, a copy is made healthy, validated, then the piece it was made from is (map drawing
+/// 9.7.8 point 3.4).
+#[test]
+fn the_wall_step_validates_both_slots_of_every_boundary_line() {
+    let mut pieces = ring("tank", 1, 2, 1, 2);
+    pieces.extend([
+        ("tank", (2, 2, 0)),
+        ("tank", (2, 2, 2)),
+        ("tank", (3, 2, 6)),
+    ]);
+    let mut world = tanks(&pieces, &[], &[]);
+    world.begin();
+    let last = wall("tank", (2, 2, 4));
+    let shape = tank_shape(&last);
+    world.add(last, shape).unwrap();
+    let (north, east, east_across) = (
+        piece_at(&world, 2, 2, 0),
+        piece_at(&world, 2, 2, 2),
+        piece_at(&world, 3, 2, 6),
+    );
+    let (south, copy, west) = (
+        piece_at(&world, 2, 2, 4),
+        piece_at(&world, 2, 2, 6),
+        piece_at(&world, 1, 2, 2),
+    );
+    // North, east (two walls), south, west (the copy of the first tank's wall).
+    let s = |n: u32| format!("s{n}");
+    let want = [
+        s(north),
+        s(east),
+        s(east_across),
+        s(south),
+        format!("h{copy}"),
+        s(copy),
+        s(west),
+    ];
+    assert_eq!(world.drawn(), want);
+}
+
+/// A merge without a gate brings nothing inwards and updates nothing, but the walls between the
+/// two tanks are deleted all the same (map drawing 9.7.8 point 3.4).
+#[test]
+fn a_merge_without_a_gate_still_deletes_the_walls_between() {
+    let mut pieces = ring("tank", 2, 2, 3, 3);
+    pieces.extend(ring("tank", 4, 2, 5, 3));
+    let mut world = tanks(&pieces, &[], &[]);
+    assert_eq!(world.exhibits().list().len(), 2);
+    let between = [(3, 3, 2), (4, 3, 6)].map(|(x, y, d)| piece_at(&world, x, y, d));
+    let (a, b) = (piece_at(&world, 3, 2, 2), piece_at(&world, 4, 2, 6));
+    world.begin();
+    world.remove(a);
+    assert!(world.draws().is_empty(), "the line stays closed");
+    world.remove(b);
+    assert_eq!(world.exhibits().list().len(), 1);
+    let mut want: Vec<String> = between.iter().map(|n| format!("d{n}")).collect();
+    let mut got = world.drawn();
+    want.sort();
+    got.sort();
+    assert_eq!(got, want);
 }

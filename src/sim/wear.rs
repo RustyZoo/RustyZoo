@@ -46,11 +46,18 @@ impl Sim {
     /// not a gate, its start time right after (sprite drawing 3.6 item 5); a line tells of a
     /// piece that wears.
     pub(super) fn heal(&mut self, world: &mut World, cat: &Catalogue, at: usize) {
+        self.heal_with(world, cat, at, true);
+    }
+
+    /// The same, with or without the start time (a gate's copy draws its interval only).
+    pub(super) fn heal_with(&mut self, world: &mut World, cat: &Catalogue, at: usize, start: bool) {
         let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
             return;
         };
         if let Some(interval) = world.heal(cat, id, &mut || self.rng.rand()) {
-            self.draw_start(world, id);
+            if start {
+                self.draw_start(world, id);
+            }
             if world.wears(cat, at) {
                 self.lines.push(format!("fence {id} healthy {interval}"));
             }
