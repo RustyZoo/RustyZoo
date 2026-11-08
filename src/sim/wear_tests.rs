@@ -921,3 +921,55 @@ fn a_piece_of_a_type_that_is_no_exhibit_fence_does_not_break_at_the_wear_step() 
     (0..3).for_each(|_| _ = run.step(1003));
     assert_eq!((fence(&run).life, fence(&run).strength), (0, 0));
 }
+
+#[test]
+fn a_loaded_break_marks_the_exhibits_beside_the_piece_for_the_escape_check() {
+    // The piece of the world has no subtype.
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "fences",
+        type_name: b"iron".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: crate::config::Config::parse(b"[HabitatFence]\n")
+            .ok()
+            .map(std::sync::Arc::new),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    // The land exhibit of the amphibious world stands beside the piece 1095.
+    let id = 1000 + 9 * 10 + 3 + 2;
+    for (life, marked) in [(-1, true), (0, true), (1, false), (i32::MAX, false)] {
+        let mut w = crate::unit::testing::amphibious_world(2, &[]);
+        let land = w.exhibits().region(2 * 12 + 6).unwrap();
+        w.heal(&cat, id, &mut || 0).unwrap();
+        let at = w.find(id).unwrap();
+        let piece = w.zoo.entities[at].common.as_mut().unwrap();
+        piece.fence.as_mut().unwrap().life = life;
+        w.exhibits_mut().get_mut(land).unwrap().rating.escape = false;
+        w.break_loaded(&cat);
+        let escape = w.exhibits().get(land).unwrap().rating.escape;
+        assert_eq!(escape, marked, "{life}");
+    }
+}
+
+#[test]
+fn a_wear_step_that_does_not_break_draws_one_start_time() {
+    // The step that takes life 1 to 0 draws three times for an exhibit fence (it breaks) and once
+    // for a type that is none (it only wears).
+    for (sections, expected) in [("[HabitatFence]\n", 3), ("", 1)] {
+        let mut run = run(types_with(sections, WEARING), world("f"), 1);
+        run.step(1003);
+        run.step(1003);
+        let before = run.sim.rng.clone();
+        run.step(1003);
+        assert!(fence(&run).life < 1);
+        let drawn = (0..8).find(|&n| {
+            let mut copy = before.clone();
+            (0..n).for_each(|_| _ = copy.pick(2000));
+            copy == run.sim.rng
+        });
+        assert_eq!(drawn, Some(expected), "{sections:?}");
+    }
+}
