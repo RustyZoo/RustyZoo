@@ -186,6 +186,8 @@ impl World {
         let decayed = number(ty, "cDecayedLife").unwrap_or(0.0) as i64;
         let delta = number(ty, "cDecayDelta").unwrap_or(8.0) as u32;
         let electrified = number(ty, "cIsElectrified").unwrap_or(0.0) != 0.0;
+        // Only an exhibit fence breaks; any other type keeps wearing below life 1.
+        let breaks = deteriorates(ty);
         let Some(c) = self.zoo.entities[at].common.as_mut() else {
             return Vec::new();
         };
@@ -194,7 +196,7 @@ impl World {
             return Vec::new();
         };
         // A broken piece does not wear (its life below 1, as a signed number).
-        if f.life < 1 {
+        if breaks && f.life < 1 {
             return Vec::new();
         }
         if f.timers[1] > ms {
@@ -206,21 +208,25 @@ impl World {
         f.strength = f.strength.saturating_sub(delta).max(1);
         let mut kinds = Vec::new();
         let mut state = "";
-        // The piece's own life is below 1, never 500: it can deteriorate.
-        if f.life < 1 {
+        // The piece's own life is below 1, never 500: when the type can deteriorate, it breaks.
+        if breaks && f.life < 1 {
             f.strength = 0;
             kinds.push(BROKEN);
             state = " broken";
         }
         if i64::from(f.life) == decayed {
             kinds.push(if electrified { BROKEN } else { DECAYED });
-            state = if f.life < 1 { state } else { " decayed" };
+            state = if breaks && f.life < 1 {
+                state
+            } else {
+                " decayed"
+            };
         }
         lines.push(format!(
             "fence {id} life {} strength {}{state}",
             f.life, f.strength
         ));
-        let broken = f.life < 1;
+        let broken = breaks && f.life < 1;
         self.dirty = true;
         if broken {
             // The break sound plays once, at the piece (placing 7.4 "Breaking").
@@ -241,7 +247,7 @@ impl World {
     /// The type of the piece at `at` when the break routine takes it (placing 7.4 "Breaking"): a
     /// piece with a condition whose life is not 500 and whose type can deteriorate. There is no
     /// test of the zoo, a gate subtype or the strength (those are the wear step's).
-    fn breakable<'a>(&self, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
+    pub(crate) fn breakable<'a>(&self, cat: &'a Catalogue, at: usize) -> Option<&'a EntityType> {
         let e = &self.zoo.entities[at];
         let f = e.common.as_ref()?.fence?;
         type_of(cat, e).filter(|&ty| f.life != 500 && deteriorates(ty))
@@ -307,15 +313,36 @@ impl World {
         (events, broke)
     }
 
-    /// The ids of the pieces the end of a load breaks again (placing 7.4 "The events"), in entity
-    /// list order: a life below 1 on a piece that can deteriorate. Those that start an animation
-    /// draw two start times (sprite drawing 3.6 item 4).
-    pub(crate) fn loaded_breaks(&self, cat: &Catalogue) -> Vec<u32> {
-        let broken = |at| self.fence_life(at).is_some_and(|l| l < 1);
-        (0..self.zoo.entities.len())
-            .filter(|&at| broken(at) && self.loops(at) && self.breakable(cat, at).is_some())
-            .filter_map(|at| Some(self.zoo.entities[at].common.as_ref()?.id))
-            .collect()
+    /// The end of a load breaks again the pieces with a life below 1 that can deteriorate (placing
+    /// 7.4 "Breaking"), in entity list order: life and strength 0 (a stored -1 becomes 0) and the
+    /// type's break sound, and the exhibits beside it are marked for the escape check. Returns the
+    /// ids of those that start an animation; they draw two start times (sprite drawing 3.6 item 4).
+    pub(crate) fn break_loaded(&mut self, cat: &Catalogue) -> Vec<u32> {
+        let mut ids = Vec::new();
+        for at in 0..self.zoo.entities.len() {
+            let Some(ty) = self.breakable(cat, at) else {
+                continue;
+            };
+            let Some(c) = self.zoo.entities[at].common.as_mut() else {
+                continue;
+            };
+            let (id, Some(f)) = (c.id, c.fence.as_mut()) else {
+                continue;
+            };
+            if f.life >= 1 {
+                continue;
+            }
+            (f.life, f.strength) = (0, 0);
+            let voice = format!("{id}/cBreakSound");
+            let heard = crate::unit::gate::heard_of(ty, "cBreakSound", "cBreakSoundAtten", &voice);
+            self.units.push_sound(id, heard);
+            // The whole break routine runs at load: the exhibits beside it get the escape check.
+            self.fence_changed(at, true);
+            if self.loops(at) {
+                ids.push(id);
+            }
+        }
+        ids
     }
 
     /// Whether the repair cheat makes the piece at `at` healthy (placing 7.4): a condition that is

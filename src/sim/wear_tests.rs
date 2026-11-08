@@ -465,7 +465,7 @@ fn the_events_of_a_loaded_zoo_wait_for_the_next_step_after_the_stored_ones() {
         .unwrap()
         .life = 0;
     let before = run.sim.events.buffers()[1].len();
-    run.sim.fences_loaded(&run.world, &cat);
+    run.sim.fences_loaded(&mut run.world, &cat);
     let next = run.sim.events.buffers()[1];
     assert_eq!(next.len(), before + 1);
     assert_eq!(next.last().map(|e| e.kind), Some(10034));
@@ -565,14 +565,14 @@ fn a_loaded_zoo_posts_its_can_fence_and_filter_events_in_entity_list_order() {
     piece.fence.as_mut().unwrap().life = 0;
     assert_eq!(run.world.units.buildings[&9].fill, 13);
     let before = run.sim.events.buffers()[1].len();
-    run.sim.fences_loaded(&run.world, &cat());
+    run.sim.fences_loaded(&mut run.world, &cat());
     let next = run.sim.events.buffers()[1];
     let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
     assert_eq!(kinds, [(7, 10034), (8, 10036), (9, 10030)]);
     // A can before the piece posts first.
     run.world.zoo.entities.reverse();
     let before = run.sim.events.buffers()[1].len();
-    run.sim.fences_loaded(&run.world, &cat());
+    run.sim.fences_loaded(&mut run.world, &cat());
     let next = run.sim.events.buffers()[1];
     let kinds: Vec<_> = next[before..].iter().map(|e| (e.sender, e.kind)).collect();
     assert_eq!(kinds, [(9, 10030), (8, 10036), (7, 10034)]);
@@ -803,7 +803,7 @@ fn a_loaded_piece_with_life_below_1_draws_two_starts_in_list_order() {
         c.fence.as_mut().unwrap().life = life;
     }
     let before = run.sim.rng.clone();
-    run.sim.fences_loaded(&run.world, &cat);
+    run.sim.fences_loaded(&mut run.world, &cat);
     assert_eq!(run.sim.rng.state(), after(&before, 4).state());
     assert_eq!(run.sim.idles.starts[&7], after(&before, 1).pick(2000));
     assert_eq!(run.sim.idles.starts[&10], after(&before, 3).pick(2000));
@@ -811,13 +811,13 @@ fn a_loaded_piece_with_life_below_1_draws_two_starts_in_list_order() {
     // A type that cannot deteriorate, and a life that is not below 1, draw nothing.
     let none = types_with("", WEARING);
     let before = run.sim.rng.clone();
-    run.sim.fences_loaded(&run.world, &none);
+    run.sim.fences_loaded(&mut run.world, &none);
     assert_eq!(run.sim.rng.state(), before.state());
     let c = run.world.zoo.entities[0].common.as_mut().unwrap();
     c.fence.as_mut().unwrap().life = i32::MAX;
     let c = run.world.zoo.entities[3].common.as_mut().unwrap();
     c.fence.as_mut().unwrap().life = 1;
-    run.sim.fences_loaded(&run.world, &cat);
+    run.sim.fences_loaded(&mut run.world, &cat);
     assert_eq!(run.sim.rng.state(), before.state());
 }
 
@@ -842,4 +842,134 @@ fn the_repair_cheat_applies_no_wear_test() {
         assert_eq!((f.strength, f.life), (500, 3), "{at}");
     }
     assert_eq!(run.sim.rng.state(), after(&before, 3).state());
+}
+
+const SOUND: &str = "cBreakSound=sounds/brokfenc.wav\ncBreakSoundAtten=1100";
+
+/// The run of a loaded piece stored with `life` and the strength 9, of a type with these `sections`.
+fn loaded_run(sections: &str, life: i32) -> Run {
+    let mut world = world("f");
+    world.zoo.version = 55;
+    let piece = world.zoo.entities[0].common.as_mut().unwrap();
+    piece.fence = Some(crate::zoo::Fence {
+        strength: 9,
+        life,
+        timers: [5, 6],
+        portal: false,
+        open: false,
+    });
+    run(
+        types_with(sections, &format!("{WEARING}\n{SOUND}")),
+        world,
+        1,
+    )
+}
+
+fn sounds(run: &mut Run) -> Vec<String> {
+    // Short enough for the countdown of 6 ms not to end.
+    let lines = run.step(1);
+    lines
+        .into_iter()
+        .filter(|l| l.starts_with("unit sound"))
+        .collect()
+}
+
+#[test]
+fn a_loaded_piece_with_life_below_1_is_normalised_and_plays_its_break_sound() {
+    let key = "[HabitatFence]\n";
+    for life in [-1, i32::MIN, 0] {
+        let mut run = loaded_run(key, life);
+        assert_eq!((fence(&run).life, fence(&run).strength), (0, 0), "{life}");
+        assert_eq!(
+            sounds(&mut run),
+            ["unit sound 7 sounds/brokfenc.wav"],
+            "{life}"
+        );
+        assert!(sounds(&mut run).is_empty());
+    }
+    // A life of 1 and a huge life are left alone and silent.
+    for life in [1, i32::MAX] {
+        let mut run = loaded_run(key, life);
+        assert_eq!((fence(&run).life, fence(&run).strength), (life, 9));
+        assert!(sounds(&mut run).is_empty());
+    }
+    // A type that cannot deteriorate keeps the stored life and plays nothing.
+    for sections in ["", "[HabitatFence]\n[TankFence]\n"] {
+        let mut run = loaded_run(sections, -1);
+        assert_eq!((fence(&run).life, fence(&run).strength), (-1, 9));
+        assert!(sounds(&mut run).is_empty());
+    }
+}
+
+#[test]
+fn a_piece_of_a_type_that_is_no_exhibit_fence_does_not_break_at_the_wear_step() {
+    // Life 3 goes to 0 and then on: no break, no sound, no 10034, the strength stays at 1.
+    let keys = format!("{WEARING}\n{SOUND}");
+    let mut run = run(types_with("", &keys), world("f"), 1);
+    let mut kinds = Vec::new();
+    let mut heard = Vec::new();
+    for _ in 0..5 {
+        let lines = run.step(1003);
+        heard.extend(lines.into_iter().filter(|l| l.starts_with("unit sound")));
+        kinds.extend(posted(&run).into_iter().map(|e| e.0));
+    }
+    assert_eq!((fence(&run).life, fence(&run).strength), (-2, 1));
+    assert_eq!(kinds, [10033]);
+    assert!(heard.is_empty());
+    // The same type with the block breaks at life 0.
+    let mut run = run_with("f", &keys);
+    (0..3).for_each(|_| _ = run.step(1003));
+    assert_eq!((fence(&run).life, fence(&run).strength), (0, 0));
+}
+
+#[test]
+fn a_loaded_break_marks_the_exhibits_beside_the_piece_for_the_escape_check() {
+    // The piece of the world has no subtype.
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "fences",
+        type_name: b"iron".to_vec(),
+        subtype: Vec::new(),
+        file: None,
+        config: crate::config::Config::parse(b"[HabitatFence]\n")
+            .ok()
+            .map(std::sync::Arc::new),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    // The land exhibit of the amphibious world stands beside the piece 1095.
+    let id = 1000 + 9 * 10 + 3 + 2;
+    for (life, marked) in [(-1, true), (0, true), (1, false), (i32::MAX, false)] {
+        let mut w = crate::unit::testing::amphibious_world(2, &[]);
+        let land = w.exhibits().region(2 * 12 + 6).unwrap();
+        w.heal(&cat, id, &mut || 0).unwrap();
+        let at = w.find(id).unwrap();
+        let piece = w.zoo.entities[at].common.as_mut().unwrap();
+        piece.fence.as_mut().unwrap().life = life;
+        w.exhibits_mut().get_mut(land).unwrap().rating.escape = false;
+        w.break_loaded(&cat);
+        let escape = w.exhibits().get(land).unwrap().rating.escape;
+        assert_eq!(escape, marked, "{life}");
+    }
+}
+
+#[test]
+fn a_wear_step_that_does_not_break_draws_one_start_time() {
+    // The step that takes life 1 to 0 draws three times for an exhibit fence (it breaks) and once
+    // for a type that is none (it only wears).
+    for (sections, expected) in [("[HabitatFence]\n", 3), ("", 1)] {
+        let mut run = run(types_with(sections, WEARING), world("f"), 1);
+        run.step(1003);
+        run.step(1003);
+        let before = run.sim.rng.clone();
+        run.step(1003);
+        assert!(fence(&run).life < 1);
+        let drawn = (0..8).find(|&n| {
+            let mut copy = before.clone();
+            (0..n).for_each(|_| _ = copy.pick(2000));
+            copy == run.sim.rng
+        });
+        assert_eq!(drawn, Some(expected), "{sections:?}");
+    }
 }
