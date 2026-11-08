@@ -13,11 +13,17 @@
 #                         pass and the time) with the words, each an extended regular expression that
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
 #                         The checks fail when the game did not build it; they never skip for it
+#   #probe N              the pass at which the script has built and hired everything the #expect lines
+#                         count (the unpause). Each seed is first played for N passes only (seconds) and
+#                         the #expect lines are checked; a seed whose hires came out as men (the staff
+#                         of the trials are women only, and the hire list stays empty after a man is
+#                         drawn) is dropped there, without playing its whole game
 #   #seeds S...           fallback seeds: the game is played with the `--seed` of #run first and, when a
 #                         check fails, with each of these in turn; it passes with the first seed that
-#                         passes every check. The games need luck (the hire list gives women, an animal
-#                         eats) and a change that adds a random draw moves it: no re-seed. A broken
-#                         engine fails under every seed
+#                         passes every check, but at most 4 whole games are played (a broken engine
+#                         must fail within the CI time). The games need luck (an animal eats; the
+#                         probe lets the hires through) and a change that adds a random draw moves it:
+#                         no re-seed. A broken engine fails under every seed
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #   #unfed ID N           the animal ID is not required to eat: a known fault the original has too (issue N)
 #
@@ -40,7 +46,15 @@ if [ -z "${PLAYABLE_SEED:-}" ]; then
   if [ -n "$first" ]; then
     err=$(mktemp)
     trap 'rm -f "$err"' EXIT
+    probe=$(sed -n 's/^#probe \([0-9][0-9]*\).*/\1/p' "$script" | head -1)
+    games=0
     for s in $first $(sed -n 's/^#seeds //p' "$script" | head -1 | tr -d '\r'); do
+      if [ -n "$probe" ] && ! PLAYABLE_SEED=$s PLAYABLE_PROBE=$probe "$0" "$@" >/dev/null 2>"$err"; then
+        sed "s/^FAILED: /FAILED: seed $s: probe of $probe passes: /" "$err" >&2
+        continue
+      fi
+      [ "$games" -lt 4 ] || break
+      games=$((games + 1))
       if out=$(PLAYABLE_SEED=$s "$0" "$@" 2>"$err"); then
         printf '%s\n' "$out"
         echo "ok: $(basename "$script" .txt): seed $s"
@@ -84,15 +98,42 @@ if [ -z "$words" ]; then
 fi
 # shellcheck disable=SC2001 # a regex, not a plain substitution
 [ -z "${PLAYABLE_SEED:-}" ] || words=$(echo "$words" | sed "s/--seed [0-9]*/--seed $PLAYABLE_SEED/")
-for r in a b; do
+# shellcheck disable=SC2001 # a regex, not a plain substitution
+[ -z "${PLAYABLE_PROBE:-}" ] || words=$(echo "$words" | sed "s/--passes [0-9]*/--passes $PLAYABLE_PROBE/")
+runs="a b"
+[ -z "${PLAYABLE_PROBE:-}" ] || runs=a # a probe plays the start once and checks only what was built
+for r in $runs; do
   # shellcheck disable=SC2086 # the words are a list of flags
   (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$script" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
 done
 wait
-for r in a b; do
+for r in $runs; do
   [ "$(cat "$tmp/$r.status")" = 0 ] || { fail "the run $r ended with status $(cat "$tmp/$r.status"): $(tail -n 3 "$tmp/$r.err")"; exit 1; }
 done
 tr -d '\r' <"$tmp/a.log" >"$tmp/log"
+
+# expects: what the script builds and hires, as its header declares it.
+expects() {
+  sed -n 's/^#expect //p' "$script" | tr -d '\r' >"$tmp/expects"
+  while read -r n words; do
+    [ -n "$n" ] || continue
+    case $n in *[!0-9]*) fail "builds: '$n $words' does not start with a number"; continue ;; esac
+    got=$(awk -v w="$words" 'BEGIN { nw = split(w, p, " ") }
+      { for (i = 1; i <= nw; i++) if ($(3 + i) !~ ("^(" p[i] ")$")) next; c++ }
+      END { print c + 0 }' "$tmp/log")
+    if [ "$n" = 0 ]; then
+      [ "$got" = 0 ] && ok "builds: no '$words'" || fail "builds: $got lines '$words', the script has none"
+    elif [ "$got" -ge "$n" ]; then
+      ok "builds: $got lines '$words' (at least $n)"
+    else
+      fail "builds: $got lines '$words', at least $n needed"
+    fi
+  done <"$tmp/expects"
+}
+if [ -n "${PLAYABLE_PROBE:-}" ]; then
+  expects
+  exit $failed
+fi
 
 # The same game twice: the same state at each month change, then the same log.
 hashes() { awk '$4 == "sim" && $5 == "hash" { print $1, $2, $6 }' "$tmp/$1.log" | tr -d '\r'; }
@@ -112,23 +153,7 @@ fi
 # Counts of the log: <awk condition> -> number of lines.
 count() { awk "$1 { n++ } END { print n + 0 }" "$tmp/log"; }
 
-# What the script builds and hires, as its header declares it.
-while read -r n words; do
-  [ -n "$n" ] || continue
-  case $n in *[!0-9]*) fail "builds: '$n $words' does not start with a number"; continue ;; esac
-  got=$(awk -v w="$words" 'BEGIN { nw = split(w, p, " ") }
-    { for (i = 1; i <= nw; i++) if ($(3 + i) !~ ("^(" p[i] ")$")) next; c++ }
-    END { print c + 0 }' "$tmp/log")
-  if [ "$n" = 0 ]; then
-    [ "$got" = 0 ] && ok "builds: no '$words'" || fail "builds: $got lines '$words', the script has none"
-  elif [ "$got" -ge "$n" ]; then
-    ok "builds: $got lines '$words' (at least $n)"
-  else
-    fail "builds: $got lines '$words', at least $n needed"
-  fi
-done <<EXPECT
-$(sed -n 's/^#expect //p' "$script" | tr -d '\r')
-EXPECT
+expects
 # want <words>: the number the script expects for these words (0 when it names none).
 want() { tr -d '\r' <"$script" | awk -v w="$1" '/^#expect [0-9]+ / { n = $2; sub(/^#expect [0-9]+ /, ""); if ($0 == w) { print n; exit } }'; }
 
