@@ -18,6 +18,7 @@ use crate::guest::{Guest, NO_SLOT};
 use crate::unit::Part;
 use crate::zoo::Entity;
 
+mod inside;
 mod litter;
 mod ride;
 mod shortcut;
@@ -381,22 +382,20 @@ impl Cx<'_, '_> {
         self.set_task(ENTER_BUILDING, 0, id, None);
     }
 
-    /// 0x68 decide (goals 11.3): a user that stays outside or is put inside is done on its own
-    /// tile, at the entrance; any other walks into its slot, even when the slot's inside position
-    /// is on its own tile, and a refused walk or a building that is gone ends the goal.
+    /// 0x68 decide (goals 11.3, 11.3.2): a user that stays outside or is put inside is done on its
+    /// own tile, at the entrance; any other walks to the inside tile found from its own tile (the
+    /// slot is not read), and a refused walk, a result off the map or a building that is gone ends
+    /// the goal.
     pub(in crate::goal) fn enter_decide(&mut self) {
-        let (id, slot) = self.target();
-        // The walk is the same with no slot (goals 11.3.1 point 4.4): slot 0's inside position.
-        let slot = slot % NO_SLOT;
-        let Some((e, kind)) = self.building(id) else {
+        let id = self.target().0;
+        let Some((_, kind)) = self.building(id) else {
             return self.clear_goal();
         };
         let own = self.tile();
         if kind.outside || kind.teleports {
             return self.unit.goal.record.target.set_tile(self.world, own);
         }
-        let to = kind.slots.get(slot).map(|s| building::place(&e, s.at));
-        let Some(t) = to.and_then(|p| self.tile_at(p)) else {
+        let Some(t) = self.inside_tile(id) else {
             return self.clear_goal();
         };
         // The walk into the building looks at the edge cost only (pathfinding 4.2).
