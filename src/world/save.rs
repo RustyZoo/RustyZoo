@@ -197,7 +197,7 @@ impl World {
             }
             if matches!(
                 e.class.as_str(),
-                "staff" | "keeper" | "maint" | "tour" | "helicopter"
+                "keeper" | "maint" | "tour" | "helicopter"
             ) {
                 let base = c.staff.take().map_or_else(Default::default, |s| *s);
                 let live = self.units.get(c.id).filter(|u| u.started);
@@ -222,7 +222,7 @@ impl World {
             }
             if matches!(
                 e.class.as_str(),
-                "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter"
+                "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter"
             ) {
                 let cost = cat
                     .guest_non_path_cost

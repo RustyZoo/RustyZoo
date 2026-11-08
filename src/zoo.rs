@@ -605,9 +605,27 @@ impl Zoo {
         self.entities.retain(known);
     }
 
+    /// Gives a record stored under a parent class name the class of the type it finds and reads
+    /// its body with that class's layout (zoo format 6.2 points 1 and 2). Only `staff` is a parent
+    /// name that bodies wait on.
+    fn resolve_classes(&mut self, catalogue: &Catalogue) {
+        for at in 0..self.entities.len() {
+            let e = &self.entities[at];
+            if e.class != "staff" {
+                continue;
+            }
+            let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+            let found = catalogue.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype));
+            if let Some(ty) = found {
+                read::reread(self, at, ty.class);
+            }
+        }
+    }
+
     /// Applies [`Zoo::check_types`] with the types of `catalogue`, then drops the entities of an
     /// unknown type, so the world built from the zoo has no unit or id for them.
     pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+        self.resolve_classes(catalogue);
         self.check_types(knows(catalogue))?;
         self.drop_unknown(knows(catalogue));
         Ok(self)

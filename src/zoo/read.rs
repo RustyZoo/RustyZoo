@@ -362,18 +362,19 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
     let (body_size, common) = if r.v >= 70 {
         let size = r.u32()?;
         let data = r.take(size as usize)?;
-        let mut body = Reader::new(data, r.v);
-        body.ground = r.ground.clone();
-        // A body that does not decode to exactly its size is skipped, like an unknown class.
-        let common = match body::decode(&mut body, class) {
-            Ok(Some(mut common)) if body.data.is_empty() && size > 0 => {
-                common.raw = Raw {
-                    body: data.to_vec(),
-                    spans: body.spans,
-                };
-                Some(common)
-            }
-            _ => None,
+        // A record of the parent class `staff` is read with the layout of its type's class, which
+        // `Zoo::checked` knows: the bytes wait for it (zoo format 6.2 points 1 and 2).
+        let common = if class == b"staff" && size > 0 {
+            let raw = Raw {
+                body: data.to_vec(),
+                spans: Spans::default(),
+            };
+            Some(Common {
+                raw,
+                ..Common::default()
+            })
+        } else {
+            sized(data, r.v, r.ground.clone(), class)
         };
         (Some(size), common)
     } else {
@@ -408,6 +409,37 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
         body_size,
         common,
     })
+}
+
+/// Decodes a body that has its stored size. A body that does not decode to exactly its size is
+/// skipped, like an unknown class.
+fn sized(data: &[u8], v: u32, ground: Option<Rc<Ground>>, class: &[u8]) -> Option<Common> {
+    let mut body = Reader::new(data, v);
+    body.ground = ground;
+    match body::decode(&mut body, class) {
+        Ok(Some(mut common)) if body.data.is_empty() && !data.is_empty() => {
+            common.raw = Raw {
+                body: data.to_vec(),
+                spans: body.spans,
+            };
+            Some(common)
+        }
+        _ => None,
+    }
+}
+
+/// Reads a record of a parent class again with the layout of the class of its type
+/// (zoo format 6.2 point 2), once `Zoo::checked` has found that type.
+pub(super) fn reread(zoo: &mut Zoo, at: usize, class: &'static str) {
+    let ground = Rc::new(Ground {
+        width: zoo.width,
+        height: zoo.height,
+        tiles: zoo.tiles.clone(),
+    });
+    let e = &mut zoo.entities[at];
+    let data = e.common.take().map(|c| c.raw.body).unwrap_or_default();
+    e.class = class.into();
+    e.common = sized(&data, zoo.version, Some(ground), class.as_bytes());
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.

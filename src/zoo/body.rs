@@ -103,7 +103,7 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
                 ..zoo_unit(r, true)?
             }
         }
-        b"staff" | b"keeper" | b"maint" | b"tour" | b"helicopter" => {
+        b"keeper" | b"maint" | b"tour" | b"helicopter" => {
             let record = super::staff::read(r, class)?;
             Common {
                 staff: Some(Box::new(record)),
