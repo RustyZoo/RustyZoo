@@ -714,3 +714,57 @@ fn rule_15_sums_the_show_figures_in_single_precision_and_truncates() {
     p.world.zoo.shows.infos.push(Some(c));
     assert_eq!(one(&p, 3, 5402), -32);
 }
+
+/// The goals of the shipped Marine Mania scenario 32 name programs of its research tree; each is
+/// complete once its progress reaches its cost, and the goals of the shipped extra file read the
+/// show figure 3 of the shows 5040, 5414, 5400 and 5402 (scenarios 6.1, 6.2).
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_scn32_research_goals_and_unlock02_show_goals() {
+    use crate::config::to_int;
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    if !crate::fixtures::with_expansions("full_game_scn32", &dir) {
+        return;
+    }
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let file = "scenario/scn32/scn32.scn";
+    let cfg = Config::parse(&vfs.read(file).unwrap()).unwrap();
+    let mut tree = Tree::of_scenario(&vfs, file, &mut || 0).unwrap();
+    let names = [
+        "RESEARCH_MANATEE",
+        "RESEARCH_BELUGA",
+        "RESEARCH_MANTARAY",
+        "RESEARCH_HUMPBACK",
+    ];
+    for name in names {
+        let s = cfg.section(name).unwrap();
+        let ids: Vec<i32> = (s.get_all("arga").iter())
+            .filter_map(|v| to_int(v))
+            .collect();
+        assert_eq!(ids.len(), 1, "{name}");
+        assert_eq!(s.get("rulea").and_then(to_int), Some(13), "{name}");
+        assert!(!tree.id_complete(ids[0]), "{name} starts incomplete");
+        for p in tree.branches.iter_mut().flat_map(|b| &mut b.categories) {
+            for p in p.programs.iter_mut().filter(|p| p.name == ids[0]) {
+                p.progress = p.cost;
+            }
+        }
+        assert!(tree.id_complete(ids[0]), "{name} is complete at its cost");
+    }
+    let cfg = Config::parse(&vfs.read("freeform/unlock02.scn").unwrap()).unwrap();
+    let shows = [
+        ("sea_lion_show_rule", 5040),
+        ("sea_otter_show_rule", 5414),
+        ("orca_show_rule", 5400),
+        ("dolphin_show_rule", 5402),
+    ];
+    for (name, id) in shows {
+        let s = cfg.section(name).unwrap();
+        let int = |k: &str| s.get(k).and_then(to_int).unwrap_or(0);
+        assert_eq!(
+            (int("rulea"), int("ruleb"), int("arga")),
+            (15, 3, id),
+            "{name}"
+        );
+    }
+}
