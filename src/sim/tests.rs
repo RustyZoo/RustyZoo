@@ -1435,8 +1435,7 @@ fn a_saved_game_opens_as_it_was_saved() {
     let cat = Catalogue::load(&vfs).unwrap();
     let start = |bytes: &[u8], saved: bool| {
         let cat = Catalogue::load(&vfs).unwrap();
-        let (zoo, money) = crate::zoo::Zoo::parse_money(bytes)
-            .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+        let (zoo, money) = crate::zoo::Zoo::parse_money_in(bytes, &cat)
             .unwrap();
         let renderer = crate::render::MapRenderer::new(&vfs, &cat);
         let mut world = World::new(zoo, |e| renderer.shape(e));
@@ -1544,8 +1543,7 @@ fn the_bench_users_of_a_shipped_old_file_sit_again_by_their_use_set() {
     }
     let cat = Catalogue::load(&vfs).unwrap();
     let bytes = vfs.read("maps/scn01a.zoo").unwrap();
-    let (zoo, money) = crate::zoo::Zoo::parse_money(&bytes)
-        .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+    let (zoo, money) = crate::zoo::Zoo::parse_money_in(&bytes, &cat)
         .unwrap();
     assert!(zoo.version < 80);
     let renderer = crate::render::MapRenderer::new(&vfs, &cat);
@@ -1728,8 +1726,7 @@ fn a_loaded_building_is_saved_with_the_figures_it_was_loaded_with() {
             continue; // the saved game is in the English install only
         };
         let cat = Catalogue::load(&vfs).unwrap();
-        let Ok((zoo, money)) = crate::zoo::Zoo::parse_money(&bytes)
-            .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+        let Ok((zoo, money)) = crate::zoo::Zoo::parse_money_in(&bytes, &cat)
         else {
             continue;
         };

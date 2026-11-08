@@ -348,8 +348,7 @@ fn load_game(
     cash: Option<f32>,
 ) -> Result<(Catalogue, Zoo, rustyzoo::money::Money), CliError> {
     let catalogue = Catalogue::load(vfs)?;
-    let (zoo, mut money) = Zoo::parse_money(&vfs.read(member)?)
-        .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
+    let (zoo, mut money) = Zoo::parse_money_in(&vfs.read(member)?, &catalogue)
         .map_err(|e| format!("{member}: {e}"))?;
     if let Some(cash) = cash {
         money.set_cash(cash);

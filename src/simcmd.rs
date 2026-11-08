@@ -77,8 +77,7 @@ fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
 /// A saved game read from a file on disk.
 fn load(file: &str, catalogue: &Catalogue) -> Result<(Zoo, Money), String> {
     let bytes = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
-    Zoo::parse_money(&bytes)
-        .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
+    Zoo::parse_money_in(&bytes, catalogue)
         .map_err(|e| format!("{file}: {e}"))
 }
 
@@ -95,8 +94,7 @@ pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
         eprintln!("rustyzoo: warning: script step {step} is never reached");
     }
     let catalogue = Catalogue::load(vfs)?;
-    let (zoo, money) = Zoo::parse_money(&vfs.read(member)?)
-        .and_then(|(zoo, money)| Ok((zoo.checked(&catalogue)?, money)))
+    let (zoo, money) = Zoo::parse_money_in(&vfs.read(member)?, &catalogue)
         .map_err(|e| format!("{member}: {e}"))?;
     let economy = vfs.read("economy.cfg").unwrap_or_else(|e| {
         eprintln!("rustyzoo: warning: economy.cfg: {e}; the built-in economy settings are used");

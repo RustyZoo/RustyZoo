@@ -171,14 +171,16 @@ fn staff_class(key: &[u8]) -> Option<&'static str> {
 }
 
 /// The class a class descends from in the program's fixed tree. The ZT unit level has no name
-/// of its own and answers to `unit`.
+/// of its own and answers to `unit`; `objects` and `unit` answer to no name above them (a record of
+/// class `entity` finds nothing), and `ambient` answers to `Overlay`, a name the game never writes
+/// (zoo format 6.16 point 3).
 fn parent(class: &str) -> Option<&'static str> {
     match class {
         "building" | "fences" | "paths" | "food" | "rubble" | "filter" => Some("objects"),
         "tankwall" => Some("fences"),
         "animals" | "guests" | "staff" => Some("unit"),
         "keeper" | "tour" | "maint" | "helicopter" => Some("staff"),
-        "objects" | "unit" | "ambient" => Some("entity"),
+        "ambient" => Some("Overlay"),
         _ => None,
     }
 }

@@ -86,8 +86,7 @@ pub fn find_path(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError
     let (from, to, unit, task) = args(words)?;
     let catalogue = Catalogue::load(vfs)?;
     let renderer = MapRenderer::new(vfs, &catalogue);
-    let zoo = Zoo::parse(&vfs.read(member)?)
-        .and_then(|zoo| zoo.checked(&catalogue))
+    let zoo = Zoo::parse_in(&vfs.read(member)?, &catalogue)
         .map_err(|e| format!("{member}: {e}"))?;
     let language = strings::Language::of(vfs.root());
     let mut world = World::with_language(zoo, |e| renderer.shape(e), language);

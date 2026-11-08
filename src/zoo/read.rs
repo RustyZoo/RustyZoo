@@ -46,7 +46,12 @@ pub(super) struct Reader<'a> {
     pub(super) post: Vec<u8>,
     /// The end of each section read, when asked for ([`Zoo::sections`]).
     pub(super) marks: Option<Marks>,
+    /// Finds the type of a record before its body is read.
+    pub(super) resolve: Option<Resolve<'a>>,
 }
+
+/// Finds the class of the type of a record from its class, type and subtype names.
+pub(super) type Resolve<'a> = &'a dyn Fn(&str, &str, &str) -> Option<&'static str>;
 
 /// The map of a file, for the heights of the positions an old file stores as tiles.
 pub(super) struct Ground {
@@ -103,6 +108,7 @@ impl<'a> Reader<'a> {
             pre: Vec::new(),
             post: Vec::new(),
             marks: None,
+            resolve: None,
         }
     }
 
@@ -360,36 +366,40 @@ pub(super) fn taken(from: &[u8], r: &Reader) -> Vec<u8> {
 }
 
 pub(super) fn entity(r: &mut Reader) -> R<Entity> {
-    let class = r.string()?;
+    let stored = r.text()?;
     let type_name = r.text()?;
     let subtype = r.text()?;
+    // With the types at hand the type is found before the body is read, at every version, and the
+    // body is read with the layout of the type's class; the stored class served the lookup only
+    // (zoo format 6.16 points 1 and 2). Without them the stored class is the layout.
+    let found = r.resolve.map(|find| find(&stored, &type_name, &subtype));
+    let class = match found {
+        Some(Some(class)) => class.to_string(),
+        _ => stored,
+    };
     let (body_size, common) = if r.v >= 70 {
         let size = r.u32()?;
         let data = r.take(size as usize)?;
-        // A record of a parent class is read with the layout of its type's class, which
-        // `Zoo::checked` knows: the bytes wait for it (zoo format 6.15 points 1 and 2). `objects` and
-        // `fences` are read as stored first, which is right for nearly every record.
-        let deferred = || {
-            Some(Common {
-                raw: Raw {
-                    body: data.to_vec(),
-                    spans: Spans::default(),
-                },
-                ..Common::default()
-            })
-        };
-        let common = match class {
+        let common = match found {
+            // No type: the record is skipped by its size; `Zoo::drop_unknown` drops it.
+            Some(None) => None,
             _ if size == 0 => None,
-            b"staff" | b"unit" => deferred(),
-            b"objects" | b"fences" => sized(data, r.v, r.ground.clone(), class).or_else(deferred),
-            _ => sized(data, r.v, r.ground.clone(), class),
+            // A body that does not decode to its size with its type's layout fails the load
+            // (6.16 point 6).
+            Some(Some(_)) => match sized(data, r.v, r.ground.clone(), class.as_bytes()) {
+                None => return bad("a body that does not decode to its size with its type's layout"),
+                common => common,
+            },
+            None => sized(data, r.v, r.ground.clone(), class.as_bytes()),
         };
         (Some(size), common)
+    } else if found == Some(None) {
+        return bad("no definition of its type in a file without body sizes");
     } else {
         let (from, v) = (r.data, r.v);
         let mut body = Reader::new(from, v);
         body.ground = r.ground.clone();
-        match body::decode(&mut body, class)? {
+        match body::decode(&mut body, class.as_bytes())? {
             Some(mut common) => {
                 let data = &from[..from.len() - body.data.len()];
                 common.raw = Raw {
@@ -403,7 +413,7 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
         }
     };
     let mut common: Option<Common> = common;
-    if class != b"food"
+    if class != "food"
         && !["poo", "dinopoo"]
             .iter()
             .any(|s| subtype.eq_ignore_ascii_case(s))
@@ -411,7 +421,7 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
         common.iter_mut().for_each(|c| c.food = 0);
     }
     Ok(Entity {
-        class: latin1(class),
+        class,
         type_name,
         subtype,
         body_size,
@@ -434,16 +444,6 @@ fn sized(data: &[u8], v: u32, ground: Option<Rc<Ground>>, class: &[u8]) -> Optio
         }
         _ => None,
     }
-}
-
-/// Reads a record of a parent class again with the layout of the class of its type
-/// (zoo format 6.2 point 2), once `Zoo::checked` has found that type.
-pub(super) fn reread(zoo: &mut Zoo, at: usize, class: &'static str) {
-    let ground = Rc::new(Ground::of(zoo.width, zoo.height, &zoo.tiles));
-    let e = &mut zoo.entities[at];
-    let data = e.common.take().map(|c| c.raw.body).unwrap_or_default();
-    e.class = class.into();
-    e.common = sized(&data, zoo.version, Some(ground), class.as_bytes());
 }
 
 /// Reads and drops the sections after the entities, as far as the original loader checks them.

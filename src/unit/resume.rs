@@ -515,8 +515,7 @@ mod tests {
         let renderer = crate::render::MapRenderer::new(&vfs, &cat);
         let (mut checked, mut jobs, mut kinds) = (0, 0, std::collections::BTreeSet::new());
         for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
-            let Ok((zoo, _)) = crate::zoo::Zoo::parse_money(&vfs.read(member).unwrap())
-                .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
+            let Ok((zoo, _)) = crate::zoo::Zoo::parse_money_in(&vfs.read(member).unwrap(), &cat)
             else {
                 continue;
             };
