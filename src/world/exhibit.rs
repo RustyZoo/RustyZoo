@@ -567,7 +567,9 @@ impl World {
     /// load of the event queue empties the queue afterwards, so nothing outlives the load.
     pub(super) fn post_loaded_drains(&mut self, drained: Vec<u32>) {
         if self.zoo.version < 97 {
-            drained.into_iter().for_each(|id| crate::show::drained(self, id));
+            drained
+                .into_iter()
+                .for_each(|id| crate::show::drained(self, id));
         }
     }
 

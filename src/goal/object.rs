@@ -5,7 +5,8 @@ use super::{
     AVOID, CAPTURE, CHASE, Cx, DO_SCENERY, DRINK, DROWN, DUTIES, EAT, EAT_STANDING,
     EATING_STANDING, ENTER_BUILDING, ENTER_TANK, ENTRANCE, EXIT_BUILDING, EXIT_TANK, GAWK,
     GO_BUILDING, GO_TO_SHOW, HABITAT, KEEPER_FOOD, LEAVE, LEG, MAINT, NONE, RANDOM, RECOVER,
-    RETURN_FROM_SHOW, RETURN_TO_BUILDING, SCENERY, SICK, SITE, SURFACE, TALK, TRICK_FOOD, USE,
+    RETURN_FROM_SHOW, RETURN_TO_BUILDING, SCENERY, SICK, SITE, SURFACE, TALK, TARGET_BUILDING,
+    TRICK_FOOD, USE,
 };
 use crate::unit::Kind;
 
@@ -37,6 +38,8 @@ pub(crate) enum Goal {
     Surface,
     /// 0x7d of an animal: go to the platform for a treat (shows 23.5).
     TrickFood,
+    /// 0x7b of an animal: the rampage's walk to a building (animals 11.11 point 6).
+    TargetBuilding,
     /// 100 of a guest: choose an exhibit to see (11.1).
     Site,
     /// 0x70 of a guest: view the animals from the viewing area (11.5).
@@ -106,6 +109,7 @@ impl Goal {
             (DRINK, Kind::Animal) => Some(Goal::DrinkWater),
             (SURFACE, Kind::Animal) => Some(Goal::Surface),
             (TRICK_FOOD, Kind::Animal) => Some(Goal::TrickFood),
+            (TARGET_BUILDING, Kind::Animal) => Some(Goal::TargetBuilding),
             (SITE, Kind::Guest) => Some(Goal::Site),
             (GAWK, Kind::Guest) => Some(Goal::Gawk),
             (SCENERY, Kind::Guest) => Some(Goal::Scenery),
@@ -148,6 +152,7 @@ impl Goal {
             Goal::DrinkWater => DRINK,
             Goal::Surface => SURFACE,
             Goal::TrickFood => TRICK_FOOD,
+            Goal::TargetBuilding => TARGET_BUILDING,
             Goal::Site => SITE,
             Goal::Gawk => GAWK,
             Goal::Scenery => SCENERY,
@@ -313,6 +318,7 @@ impl Goal {
             Goal::DrinkWater => cx.drink_complete(),
             Goal::Surface => cx.surface_complete(),
             Goal::TrickFood => cx.trick_food_complete(),
+            Goal::TargetBuilding => cx.target_building_complete(),
             Goal::Gawk => cx.gawk_complete(),
             Goal::Scenery => cx.scenery_arrived(),
             Goal::DoScenery => cx.reset(),

@@ -74,6 +74,7 @@ pub mod food;
 pub mod home;
 mod hook;
 pub mod life;
+pub mod rampage;
 pub mod tank;
 #[cfg(test)]
 mod tests;
@@ -142,6 +143,8 @@ const NEEDS_EXHIBIT: u32 = 62;
 /// The need a shelter serves, and the radius of the search for one (the square root of the largest
 /// whole number: no limit in practice).
 pub(crate) const NEED: &str = "animalrest";
+/// The index of the need `building` (guests 7.4), which a rampage serves.
+pub(crate) const NEED_BUILDING: u8 = 1;
 const SEARCH: i64 = 46_340;
 
 /// The terrain type of trampled ground.

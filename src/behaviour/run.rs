@@ -394,6 +394,9 @@ pub(crate) struct Runner {
     pub talking: bool,
     /// The move call the last execution stopped at, for the unit to run.
     moving: Option<(Gait, Target, bool)>,
+    /// The move call is an `fTargetBuilding` (animals 11.11 point 4): the animal first chooses its
+    /// building.
+    rampage: bool,
     /// A `fFaceTowardFood` call ran, for the unit to turn.
     face: bool,
     /// A `fFaceTowardTarget` call ran, for a guest or staff member to turn to its own target.
@@ -465,6 +468,7 @@ impl Default for Runner {
             wet: false,
             talking: false,
             moving: None,
+            rampage: false,
             face: false,
             target: false,
             halt: false,
@@ -497,6 +501,11 @@ impl Runner {
     /// The move call the set reached, once.
     pub(crate) fn take_move(&mut self) -> Option<(Gait, Target, bool)> {
         self.moving.take()
+    }
+
+    /// Whether the move call taken is an `fTargetBuilding`, once.
+    pub(crate) fn take_rampage(&mut self) -> bool {
+        std::mem::take(&mut self.rampage)
     }
 
     /// Whether a face-the-food call ran since the last time, once.
@@ -848,9 +857,16 @@ impl Runner {
             Op::KeepControl | Op::Spray | Op::FaceDirection => {
                 return true;
             }
-            // No target is found (animals 11.11 point 4): the call is done at once.
+            // The call is the unit's, like a move: the target choice, then a fast move (animals
+            // 11.11 point 4).
             Op::TargetBuilding => {
-                self.chain[k].done = true;
+                let own = Gait::Own {
+                    anim: "run".into(),
+                    speed: Number::Characteristic("cFastRate".into()),
+                    percent: Number::Int(100),
+                    sound: None,
+                };
+                (self.moving, self.rampage) = (Some((own, Target::Keep, false)), true);
                 return true;
             }
             Op::FaceFood => {
