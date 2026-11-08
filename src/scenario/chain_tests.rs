@@ -67,6 +67,7 @@ fn once(s: &mut Scenario, month: i32, held: &[i32], rewards: &mut Vec<i32>) -> V
         cat: &cat,
         money: &money,
         status: &status,
+        research: None,
     };
     s.update(PERIOD, &Env::new(month, 0, Some(game)), &mut Vec::new());
     world.zoo.awards.clear();

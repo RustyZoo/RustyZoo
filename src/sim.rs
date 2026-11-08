@@ -912,6 +912,7 @@ impl Sim {
                 cat,
                 money,
                 status: &self.status,
+                research: self.research.as_ref(),
             };
             let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);

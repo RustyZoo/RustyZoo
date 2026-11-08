@@ -1,4 +1,5 @@
 use super::*;
+use crate::research::{Branch, Category, Program};
 use crate::config::Config;
 use crate::entity::EntityType;
 use crate::unit::Part;
@@ -67,6 +68,7 @@ struct Parts {
     cat: Catalogue,
     money: Money,
     status: Status,
+    research: Option<Tree>,
 }
 
 impl Parts {
@@ -82,6 +84,7 @@ impl Parts {
             cat,
             money,
             status,
+            research: None,
         }
     }
 
@@ -96,6 +99,7 @@ impl Parts {
             cat: &self.cat,
             money: &self.money,
             status: &self.status,
+            research: self.research.as_ref(),
         };
         eval(
             &rule,

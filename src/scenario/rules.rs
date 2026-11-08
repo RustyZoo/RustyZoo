@@ -4,9 +4,8 @@
 //! The figures that take a walk over the entities or the exhibits are made once per pass, the
 //! first time a rule asks, and kept in the [`Env`].
 //!
-//! Not read yet, they give 0: rule 8 (research makes types available), rule 13 (research), rule 15
-//! (shows), the escaped animals of rule 4, and the rules and
-//! `ruleb` values no shipped file uses. The interface rules 10 and 11 read the [`Gui`].
+//! Not read yet, they give 0: rule 8 (research makes types available) and the rules and `ruleb`
+//! values no shipped file uses. The interface rules 10 and 11 read the [`Gui`].
 
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -20,6 +19,7 @@ use crate::exhibit::rating;
 use crate::exhibit::rating::Likes;
 use crate::money::{CATEGORIES, MONTHS, Money, YEARS};
 use crate::panel::animal::{suitability, suitability_in};
+use crate::research::Tree;
 use crate::status::zoo::Status;
 use crate::world::World;
 
@@ -30,6 +30,7 @@ pub(crate) struct Game<'a> {
     pub cat: &'a Catalogue,
     pub money: &'a Money,
     pub status: &'a Status,
+    pub research: Option<&'a Tree>,
 }
 
 /// What an animal's type says, for the rules that count and average animals.
@@ -44,6 +45,7 @@ struct Animal {
     expansion: i32,
     crated: bool,
     egg: bool,
+    escaped: bool,
 }
 
 /// One entity of the list with a known type.
@@ -94,8 +96,8 @@ fn facts<'e>(env: &'e Env, g: &Game) -> &'e [Fact] {
                     .find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))?;
                 let unit = e.common.as_ref().and_then(|c| g.world.units.get(c.id));
                 let state = match unit.map(|u| &u.part) {
-                    Some(crate::unit::Part::Animal(a)) => (a.crated, a.egg),
-                    _ => (false, false),
+                    Some(crate::unit::Part::Animal(a)) => (a.crated, a.egg, a.escaped),
+                    _ => (false, false, false),
                 };
                 Some(Fact {
                     at,
@@ -114,6 +116,7 @@ fn facts<'e>(env: &'e Env, g: &Game) -> &'e [Fact] {
                         expansion: plain(ty, "cExpansionID").unwrap_or(0.0) as i32,
                         crated: state.0,
                         egg: state.1,
+                        escaped: state.2,
                     }),
                 })
             })
@@ -196,6 +199,9 @@ fn animals(env: &Env, g: &Game, rule: &[i32; 4]) -> i32 {
         13 => count(&|a| a.egg),
         14 => count(&|a| a.egg && a.family == x),
         15 => count(&|a| a.egg && a.genus == x),
+        16 => count(&|a| a.escaped),
+        17 => count(&|a| a.escaped && a.family == x),
+        18 => count(&|a| a.escaped && a.genus == x),
         19 => count(&|a| a.expansion == x),
         _ => 0,
     }
@@ -352,7 +358,8 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4], gui: &Gui) -> i32 {
         4 => sums.animals,
         5 => sums.sick,
         6 => sums.species,
-        7 => g.money.cash.round() as i32,
+        // Truncated toward 0, not rounded (scenarios 6.4).
+        7 => g.money.cash as i32,
         // The awards held, whether or not they have a definition (`awards.md` 4.3), and those a
         // goal earlier in this pass has just given.
         11 => {
@@ -362,6 +369,54 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4], gui: &Gui) -> i32 {
         }
         _ => 0,
     }
+}
+
+/// Rule 13: the number of listed research ids that are complete (scenarios 6.1); an id listed twice
+/// counts twice. Without a research tree none is.
+pub(super) fn research(ids: &[i32], env: &Env) -> i32 {
+    let tree = env.game.and_then(|g| g.research);
+    let done = ids.iter().filter(|&&id| tree.is_some_and(|t| t.id_complete(id)));
+    done.count() as i32
+}
+
+/// Rule 15: the show figure `ruleb` of every show info (or of the species `arga`'s records),
+/// summed in single precision and truncated toward 0 (scenarios 6.2).
+fn shows(g: &Game, rule: &[i32; 4]) -> i32 {
+    let mut infos: Vec<_> = g.world.zoo.shows.infos.iter().flatten().collect();
+    infos.sort_by_key(|i| i.id);
+    let money = |bits: u32| f32::from_bits(bits);
+    let mut sum = 0.0f32;
+    for i in infos {
+        let b = rule[1];
+        let term = if rule[2] <= 0 {
+            match b {
+                0 => money(i.receipts[1]),
+                1 => money(i.receipts[2]),
+                2 => money(i.receipts[1]) - money(i.upkeep[1]),
+                3 => money(i.receipts[2]) - money(i.upkeep[2]),
+                4 => i.attendance[2] as i32 as f32,
+                _ => continue,
+            }
+        } else {
+            // A plain find: it makes no record.
+            let Some(r) = i.records.iter().find(|r| r.key == rule[2] as u32) else {
+                continue;
+            };
+            let scripted = i.records.iter().filter(|r| !matches!(r.script, 0 | 0xffff));
+            let n = scripted.count().max(1) as f32;
+            match b {
+                0 => money(r.receipts[1]),
+                1 => money(r.receipts[2]),
+                2 => money(r.receipts[1]) - money(i.upkeep[1]) / n,
+                3 => money(r.receipts[2]) - money(i.upkeep[2]) / n,
+                4 => r.attendance[2] as i32 as f32,
+                _ => continue,
+            }
+        };
+        sum += term;
+    }
+    // The chop store is a 64-bit integer of which the low 32 bits are returned.
+    sum as i64 as i32
 }
 
 /// The value a rule reads: `rule` is `rulea`, `ruleb`, `arga`, `argb`; `value` the goal's own;
@@ -420,6 +475,7 @@ pub(super) fn eval(rule: &[i32; 4], value: i32, env: &Env, states: &[u8], gui: &
                 4 => animals(env, &g, rule),
                 5 => all_suit(env, &g, rule, value),
                 6 => some_suit(env, &g, rule, value),
+                15 => shows(&g, rule),
                 16 => tanks(&g, rule),
                 _ => 0,
             }
