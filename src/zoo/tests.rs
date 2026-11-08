@@ -930,7 +930,7 @@ fn unknown_classes_are_skipped_by_size_or_refused() {
 
 #[test]
 fn a_type_without_definition_refuses_a_file_without_body_sizes() {
-    let known = |e: &Entity| e.type_name == "tree";
+    let cat = one_type("objects", "tree", "oak");
     for (v, refused) in [
         (45, true),
         (55, true),
@@ -942,14 +942,18 @@ fn a_type_without_definition_refuses_a_file_without_body_sizes() {
             ("objects", "tree", "oak", scenery(v, 1, "Tree")),
             ("objects", "lost", "oak", scenery(v, 2, "Lost")),
         ];
-        let z = parse(&file(v, 1, 1, &[], &ents));
+        let bytes = file(v, 1, 1, &[], &ents);
         // The class is known and the body decodes; only the type is missing.
-        assert_eq!(z.check_types(known).is_err(), refused, "version {v}");
-        assert!(z.check_types(|_| true).is_ok(), "version {v}");
-        // The entity of the missing type can be dropped, with its record.
+        assert_eq!(
+            Zoo::parse_money_in(&bytes, &cat).is_err(),
+            refused,
+            "version {v}"
+        );
+        // Without the types the file loads.
+        assert!(Zoo::parse(&bytes).is_ok(), "version {v}");
+        // The entity of the missing type is dropped, with its record.
         if !refused {
-            let (mut z, money) = Zoo::parse_money(&file(v, 1, 1, &[], &ents)).unwrap();
-            z.drop_unknown(known);
+            let (z, money) = Zoo::parse_money_in(&bytes, &cat).unwrap();
             assert_eq!(z.entities.len(), 1, "version {v}");
             assert_eq!(
                 Zoo::parse(&z.write(&money).unwrap())
@@ -962,35 +966,39 @@ fn a_type_without_definition_refuses_a_file_without_body_sizes() {
     }
     let ents = [("objects", "lost", "oak", scenery(55, 1, "Lost"))];
     assert_eq!(
-        parse(&file(55, 1, 1, &[], &ents)).check_types(known),
+        Zoo::parse_in(&file(55, 1, 1, &[], &ents), &cat),
         Err(ZooError::Corrupted(
-            "entities: entity 0: no definition of its type in a file without body sizes".into()
+            "entities: no definition of its type in a file without body sizes".into()
         ))
     );
 }
 
 #[test]
-fn bodies_of_size_zero_and_of_the_wrong_size_are_skipped() {
+fn bodies_of_size_zero_are_skipped_and_of_the_wrong_size_refused() {
     let mut long = scenery(106, 3, "Long");
     long.push(0);
     let short = scenery(106, 4, "Short")[..20].to_vec();
-    let ents = [
-        ("objects", "other", "tankripl", vec![]),
-        ("objects", "tree", "oak", long),
-        ("objects", "tree", "oak", short),
-        ("objects", "tree", "oak", scenery(106, 5, "Ok")),
-    ];
-    // A body that waits for its type's layout (`Zoo::checked`) is skipped too when the type has
-    // the class it was stored under.
     let mut cat = one_type("objects", "tree", "oak");
     push_type(&mut cat, "objects", "other", "tankripl");
-    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&cat).unwrap();
+    let ents = [
+        ("objects", "other", "tankripl", vec![]),
+        ("objects", "tree", "oak", scenery(106, 5, "Ok")),
+    ];
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &cat).unwrap();
     let found: Vec<Option<u32>> = z
         .entities
         .iter()
         .map(|e| e.common.as_ref().map(|c| c.id))
         .collect();
-    assert_eq!(found, [None, None, None, Some(5)]);
+    assert_eq!(found, [None, Some(5)]);
+    // A body that does not decode to its size with its type's layout fails the load; without the
+    // types it is skipped.
+    for body in [long, short] {
+        let ents = [("objects", "tree", "oak", body)];
+        let bytes = file(106, 1, 1, &[], &ents);
+        assert!(Zoo::parse_in(&bytes, &cat).is_err());
+        assert_eq!(Zoo::parse(&bytes).unwrap().entities[0].common, None);
+    }
 }
 
 #[test]
@@ -1430,17 +1438,12 @@ fn full_game_facts() {
     // Two of the 96 (the leftovers of the scenario archive, versions 45 and 55) hold entities
     // of a type without definition, which the original cannot load before version 70.
     let catalogue = crate::entity::Catalogue::load(&vfs).unwrap();
-    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     let mut untyped = Vec::new();
     let (mut ok, mut old, mut corrupted, mut transient, mut skipped) = (0, 0, 0, 0, 0);
     for member in vfs.list(None).iter().filter(|m| m.ends_with(".zoo")) {
         match load(member) {
             Ok(zoo) => {
-                let known = |e: &Entity| {
-                    let (t, s) = (bytes(&e.type_name), bytes(&e.subtype));
-                    catalogue.find(&e.class, &t, &s).is_some()
-                };
-                if zoo.check_types(known).is_err() {
+                if Zoo::parse_in(&vfs.read(member).unwrap(), &catalogue).is_err() {
                     untyped.push((member.clone(), zoo.version));
                 }
                 ok += 1;
@@ -3123,7 +3126,7 @@ fn a_guide_written_with_a_zero_countdown_reads_it_back() {
 }
 
 #[test]
-fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
+fn parse_in_drops_the_entities_of_an_unknown_type_after_the_load() {
     let mut cat = Catalogue::default();
     cat.push(crate::entity::EntityType {
         class: "objects",
@@ -3146,20 +3149,12 @@ fn checked_drops_the_entities_of_an_unknown_type_after_the_load() {
             .map(|e| e.common.as_ref().unwrap().id)
             .collect()
     };
-    let z = parse(&file(70, 1, 1, &[], &ents)).checked(&cat).unwrap();
+    let z = Zoo::parse_in(&file(70, 1, 1, &[], &ents), &cat).unwrap();
     assert_eq!(ids(&z), [1, 3]);
     // Before version 70 the file is refused.
-    let old = parse(&file(69, 1, 1, &[], &ents));
-    assert!(
-        old.checked(&cat)
-            .unwrap_err()
-            .to_string()
-            .contains("entity 1")
-    );
+    assert!(Zoo::parse_in(&file(69, 1, 1, &[], &ents), &cat).is_err());
     // Nothing of an unknown type: the entity list is empty, and the file still loads.
-    let z = parse(&file(70, 1, 1, &[], &ents[1..2]))
-        .checked(&cat)
-        .unwrap();
+    let z = Zoo::parse_in(&file(70, 1, 1, &[], &ents[1..2]), &cat).unwrap();
     assert!(z.entities.is_empty());
 }
 
@@ -3183,7 +3178,7 @@ fn a_record_stored_as_staff_is_read_with_the_layout_of_its_type() {
         ("keeper", "keeper", "m", body.clone()),
         ("staff", "nobody", "m", body),
     ];
-    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&cat).unwrap();
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &cat).unwrap();
     // The unknown type is dropped; the other two are the same keeper.
     assert_eq!(z.entities.len(), 2);
     assert_eq!(z.entities[0].class, "keeper");
@@ -3232,7 +3227,7 @@ fn a_staff_record_is_read_on_the_clamped_ground() {
                 .unwrap()
                 + 4;
             bytes[at..at + 4].copy_from_slice(&i32::MAX.to_le_bytes());
-            parse(&bytes).checked(&keeper_catalogue()).unwrap()
+            Zoo::parse_in(&bytes, &keeper_catalogue()).unwrap()
         };
         let (staff, keeper) = (load("staff"), load("keeper"));
         if keeper.entities[0].common.is_none() {
@@ -3251,15 +3246,13 @@ fn a_record_stored_as_unit_is_read_with_the_layout_of_its_type() {
         ("unit", "keeper", "m", body.clone()),
         ("keeper", "keeper", "m", body),
     ];
-    let z = parse(&file(106, 1, 1, &[], &ents))
-        .checked(&keeper_catalogue())
-        .unwrap();
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &keeper_catalogue()).unwrap();
     assert_eq!(z.entities.len(), 2);
     assert_eq!(z.entities[0], z.entities[1]);
     assert!(z.entities[0].common.as_ref().unwrap().staff.is_some());
     // A unit of no type is dropped.
     let ents = [("unit", "nobody", "m", unit(106, 21 + 16 + 161, 31))];
-    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&keeper_catalogue());
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &keeper_catalogue());
     assert!(z.unwrap().entities.is_empty());
 }
 
@@ -3267,28 +3260,14 @@ fn a_record_stored_as_unit_is_read_with_the_layout_of_its_type() {
 fn a_record_stored_as_objects_is_read_with_the_layout_of_its_type() {
     // A fence type stored under the class `objects`: the body has the fence fields after the base.
     let cat = one_type("fences", "fence", "f");
-    let z = parse(&file(
-        106,
-        1,
-        1,
-        &[],
-        &[("objects", "fence", "f", fence(106, 12))],
-    ))
-    .checked(&cat)
-    .unwrap();
+    let ents = [("objects", "fence", "f", fence(106, 12))];
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &cat).unwrap();
     assert_eq!(z.entities[0].class, "fences");
     assert!(z.entities[0].common.as_ref().unwrap().fence.is_some());
     // The type of the class itself is not read again.
     let cat = one_type("objects", "tree", "a");
-    let z = parse(&file(
-        106,
-        1,
-        1,
-        &[],
-        &[("objects", "tree", "a", scenery(106, 12, "T"))],
-    ))
-    .checked(&cat)
-    .unwrap();
+    let ents = [("objects", "tree", "a", scenery(106, 12, "T"))];
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &ents), &cat).unwrap();
     assert_eq!(z.entities[0].class, "objects");
     assert!(z.entities[0].common.as_ref().unwrap().id == 12);
 }
@@ -3298,9 +3277,7 @@ fn a_record_stored_as_fences_is_read_with_the_layout_of_its_type() {
     let mut body = fence(106, 13);
     body.extend([1, 0]);
     let cat = one_type("tankwall", "glass", "g");
-    let z = parse(&file(106, 1, 1, &[], &[("fences", "glass", "g", body)]))
-        .checked(&cat)
-        .unwrap();
+    let z = Zoo::parse_in(&file(106, 1, 1, &[], &[("fences", "glass", "g", body)]), &cat).unwrap();
     assert_eq!(z.entities[0].class, "tankwall");
     let fence = z.entities[0]
         .common
