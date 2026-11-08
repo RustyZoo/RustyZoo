@@ -664,14 +664,22 @@ impl<'a> App<'a> {
             // The session flags go in with the step, and come back as the rules left them.
             game.world.units.cheat = self.cheats.flags;
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
-            let report = self.sim.step_game(
+            // The date hook's flights are made inside the guest creation (ambients 3.1).
+            let season = &mut self.cheats.season;
+            let (cat, mut loops) = (self.renderer.catalogue(), Vec::new());
+            let mut created = |sim: &mut Sim, world: &mut World| {
+                loops.extend(cheat::guest_flights(season, &data, cat, sim, world));
+            };
+            let report = self.sim.step_hooked(
                 &data,
-                self.renderer.catalogue(),
+                cat,
                 &mut game.world,
                 &mut game.money,
                 step,
                 |_, _, _| {},
+                &mut created,
             );
+            game.vehicles.extend(loops);
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;
             if report.month_end {

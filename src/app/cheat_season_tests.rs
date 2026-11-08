@@ -410,7 +410,7 @@ fn a_guest_created_on_the_game_date_launches_the_flying_objects() {
     run(|app, _| {
         let log = |app: &mut App, month, day| {
             today(app, month, day);
-            app.guest_created();
+            created(app);
             app.sim
                 .take_lines()
                 .into_iter()
@@ -443,15 +443,15 @@ fn a_guest_created_on_the_game_date_launches_the_flying_objects() {
 fn a_start_and_a_file_load_stop_the_loops_so_the_sleigh_comes_again() {
     run(|app, _| {
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         app.game_started();
         app.sim.take_lines();
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert!(app.sim.take_lines().contains(&"fly 5083".to_string()));
         app.open_game(tile_with(&[]), Money::default()).unwrap();
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert!(app.sim.take_lines().contains(&"fly 5083".to_string()));
     });
 }
@@ -516,6 +516,21 @@ fn fly(ini: &str, body: impl FnOnce(&mut App)) {
     });
 }
 
+/// A guest created: the flights its creation makes, then the rest of the hook.
+fn created(app: &mut App) {
+    let (cat, vfs) = (app.renderer.catalogue(), app.renderer.vfs());
+    let data = crate::behaviour::Library {
+        catalogue: cat,
+        vfs,
+        timings: &app.timings,
+    };
+    let game = app.game.as_mut().unwrap();
+    let season = &mut app.cheats.season;
+    let loops = cheat::guest_flights(season, &data, cat, &mut app.sim, &mut game.world);
+    game.vehicles.extend(loops);
+    app.guest_created();
+}
+
 /// The ambient creatures of the game: type name, speed.
 fn creatures(app: &App) -> Vec<(String, u32)> {
     let zoo = &app.game.as_ref().unwrap().world.zoo;
@@ -532,17 +547,17 @@ fn the_date_hooks_make_a_flight_of_the_type_of_the_day() {
     fly("cSpeed=100\n", |app| {
         for (month, day, name) in [(12, 25, "sleigh"), (9, 15, "biplane"), (10, 31, "witch")] {
             today(app, month, day);
-            app.guest_created();
+            created(app);
             assert_eq!(creatures(app).pop(), Some((name.to_string(), 100)));
         }
         assert_eq!(creatures(app).len(), 3);
         // The same day again launches nothing more for the vehicles.
         today(app, 10, 31);
-        app.guest_created();
+        created(app);
         today(app, 9, 15);
-        app.guest_created();
+        created(app);
         today(app, 9, 15);
-        app.guest_created();
+        created(app);
         assert_eq!(creatures(app).len(), 5, "a second witch, no second biplane");
     });
 }
@@ -581,17 +596,17 @@ fn the_permanent_witch_adds_the_witch_to_the_spawn_list_with_a_period_of_30_seco
 fn a_launch_adds_its_type_to_the_spawn_list_each_time_but_a_missing_type_none() {
     fly("cFrequency=20\n", |app| {
         today(app, 10, 31);
-        app.guest_created();
-        app.guest_created();
+        created(app);
+        created(app);
         assert_eq!(spawned(app, 20), [5084, 5084]);
         // A new game (`today` starts one) empties the list.
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert_eq!(spawned(app, 40), [5083]);
     });
     run(|app, _| {
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert!(spawned(app, 1000).is_empty());
     });
 }
@@ -601,7 +616,7 @@ fn a_type_that_is_missing_makes_no_flight_and_no_loop_and_a_line_says_so() {
     run(|app, _| {
         app.sim.take_lines();
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         let log = app.sim.take_lines();
         assert!(log.contains(&"fly 5083".to_string()), "{log:?}");
         assert!(log.contains(&"flight 5083 missing".to_string()), "{log:?}");
@@ -626,13 +641,13 @@ fn the_sleigh_and_the_biplane_hold_a_loop_each_and_the_witch_none() {
         };
         assert!(loops(app).is_empty());
         today(app, 10, 31);
-        app.guest_created();
+        created(app);
         assert!(loops(app).is_empty(), "the witch has no loop");
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert_eq!(loops(app), [("sounds/sleigh.wav".to_string(), 0)]);
         today(app, 9, 15);
-        app.guest_created();
+        created(app);
         assert_eq!(
             loops(app),
             [
@@ -651,7 +666,7 @@ fn a_flight_leaves_the_map_and_takes_its_loop_with_it() {
     // 1,000 units a second: the one-tile map is crossed in a few steps.
     fly("cSpeed=1000\n", |app| {
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         let at = |app: &App| {
             let c = app.game.as_ref().unwrap().world.zoo.entities[0]
                 .common

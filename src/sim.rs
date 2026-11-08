@@ -733,6 +733,7 @@ impl Sim {
 
     /// [`Sim::step_with`] in a game whose cash and accounts are `money`: the zoo status checks
     /// read and book into them.
+    #[cfg(test)]
     pub(crate) fn step_game(
         &mut self,
         data: &dyn Data,
@@ -740,7 +741,24 @@ impl Sim {
         world: &mut World,
         money: &mut Money,
         step: u32,
+        update: impl FnMut(&mut World, usize, u32),
+    ) -> Report {
+        self.step_hooked(data, cat, world, money, step, update, &mut |_, _| {})
+    }
+
+    /// [`Sim::step_game`] with the date hook: `created` runs inside the guest creation, once the
+    /// new guest is in the world and its admission booked, so what it adds to the world moves in
+    /// this very step and its draws come before those of the entities (ambients 3.1).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn step_hooked(
+        &mut self,
+        data: &dyn Data,
+        cat: &Catalogue,
+        world: &mut World,
+        money: &mut Money,
+        step: u32,
         mut update: impl FnMut(&mut World, usize, u32),
+        created: &mut dyn FnMut(&mut Sim, &mut World),
     ) -> Report {
         self.lines.push(format!("step {step}"));
         // The objects on the map now start their clocks, and advance by this step.
@@ -754,7 +772,7 @@ impl Sim {
         let month_end = self.calendar.advance(step);
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);
-        let bars = self.zoo_status(world, cat, money, step, month_end);
+        let bars = self.zoo_status(world, cat, money, step, month_end, created);
         // The ambient soundscape follows the zoo status and the bars (simulation 3 point 1).
         if let Some(soundscape) = &mut self.soundscape {
             let guests = self.status.sums.guests;

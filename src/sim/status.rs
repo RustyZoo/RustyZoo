@@ -16,6 +16,7 @@ impl Sim {
         money: &mut Money,
         step: u32,
         month_end: bool,
+        created: &mut dyn FnMut(&mut Sim, &mut World),
     ) -> Option<[i32; 3]> {
         let due = self.status.due(step, month_end);
         if due.rating {
@@ -44,6 +45,7 @@ impl Sim {
                 };
                 if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
                     self.arrived = true;
+                    created(self, world);
                     if advice {
                         self.status.advise(&mut self.messages, &mut self.lines);
                     }
