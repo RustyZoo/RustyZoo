@@ -732,7 +732,7 @@ fn the_birds_cheat_without_the_types_adds_entries_but_draws_nothing_and_makes_no
 fn an_ordinary_game_draws_nothing_for_the_birds() {
     fly("cSpeed=50\ncFrequency=20\n", |app| {
         today(app, 12, 25);
-        app.guest_created();
+        created(app);
         assert_eq!(creatures(app).len(), 1, "the sleigh alone");
         assert_eq!(spawned(app, 20), [5083]);
     });
