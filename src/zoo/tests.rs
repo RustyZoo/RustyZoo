@@ -980,7 +980,11 @@ fn bodies_of_size_zero_and_of_the_wrong_size_are_skipped() {
         ("objects", "tree", "oak", short),
         ("objects", "tree", "oak", scenery(106, 5, "Ok")),
     ];
-    let z = parse(&file(106, 1, 1, &[], &ents));
+    // A body that waits for its type's layout (`Zoo::checked`) is skipped too when the type has
+    // the class it was stored under.
+    let mut cat = one_type("objects", "tree", "oak");
+    push_type(&mut cat, "objects", "other", "tankripl");
+    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&cat).unwrap();
     let found: Vec<Option<u32>> = z
         .entities
         .iter()
@@ -3191,18 +3195,27 @@ fn a_record_stored_as_staff_is_read_with_the_layout_of_its_type() {
 
 /// A catalogue with the keeper type `keeper`/`m`.
 fn keeper_catalogue() -> Catalogue {
+    one_type("keeper", "keeper", "m")
+}
+
+/// A catalogue with one type.
+fn one_type(class: &'static str, type_name: &str, subtype: &str) -> Catalogue {
     let mut cat = Catalogue::default();
+    push_type(&mut cat, class, type_name, subtype);
+    cat
+}
+
+fn push_type(cat: &mut Catalogue, class: &'static str, type_name: &str, subtype: &str) {
     cat.push(crate::entity::EntityType {
-        class: "keeper",
-        type_name: b"keeper".to_vec(),
-        subtype: b"m".to_vec(),
+        class,
+        type_name: type_name.into(),
+        subtype: subtype.into(),
         file: None,
         config: None,
         name_id: 0,
         footprint: [1, 1, 1],
         height: 0,
     });
-    cat
 }
 
 #[test]
@@ -3229,6 +3242,74 @@ fn a_staff_record_is_read_on_the_clamped_ground() {
         return;
     }
     panic!("no size fits");
+}
+
+#[test]
+fn a_record_stored_as_unit_is_read_with_the_layout_of_its_type() {
+    let body = unit(106, 21 + 16 + 161, 31);
+    let ents = [
+        ("unit", "keeper", "m", body.clone()),
+        ("keeper", "keeper", "m", body),
+    ];
+    let z = parse(&file(106, 1, 1, &[], &ents))
+        .checked(&keeper_catalogue())
+        .unwrap();
+    assert_eq!(z.entities.len(), 2);
+    assert_eq!(z.entities[0], z.entities[1]);
+    assert!(z.entities[0].common.as_ref().unwrap().staff.is_some());
+    // A unit of no type is dropped.
+    let ents = [("unit", "nobody", "m", unit(106, 21 + 16 + 161, 31))];
+    let z = parse(&file(106, 1, 1, &[], &ents)).checked(&keeper_catalogue());
+    assert!(z.unwrap().entities.is_empty());
+}
+
+#[test]
+fn a_record_stored_as_objects_is_read_with_the_layout_of_its_type() {
+    // A fence type stored under the class `objects`: the body has the fence fields after the base.
+    let cat = one_type("fences", "fence", "f");
+    let z = parse(&file(
+        106,
+        1,
+        1,
+        &[],
+        &[("objects", "fence", "f", fence(106, 12))],
+    ))
+    .checked(&cat)
+    .unwrap();
+    assert_eq!(z.entities[0].class, "fences");
+    assert!(z.entities[0].common.as_ref().unwrap().fence.is_some());
+    // The type of the class itself is not read again.
+    let cat = one_type("objects", "tree", "a");
+    let z = parse(&file(
+        106,
+        1,
+        1,
+        &[],
+        &[("objects", "tree", "a", scenery(106, 12, "T"))],
+    ))
+    .checked(&cat)
+    .unwrap();
+    assert_eq!(z.entities[0].class, "objects");
+    assert!(z.entities[0].common.as_ref().unwrap().id == 12);
+}
+
+#[test]
+fn a_record_stored_as_fences_is_read_with_the_layout_of_its_type() {
+    let mut body = fence(106, 13);
+    body.extend([1, 0]);
+    let cat = one_type("tankwall", "glass", "g");
+    let z = parse(&file(106, 1, 1, &[], &[("fences", "glass", "g", body)]))
+        .checked(&cat)
+        .unwrap();
+    assert_eq!(z.entities[0].class, "tankwall");
+    let fence = z.entities[0]
+        .common
+        .as_ref()
+        .unwrap()
+        .fence
+        .as_ref()
+        .unwrap();
+    assert!(fence.portal);
 }
 
 #[test]
