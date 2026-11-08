@@ -293,6 +293,10 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        // A guest writes its slot byte, 0xff for none (goals 11.3.1 point 2).
+        if let Part::Guest(g) = &u.part {
+            block.slot = u8::try_from(g.slot).unwrap_or(0xff);
+        }
         if let Part::Animal(a) = &u.part {
             // The need being served and the position of the own target tile; the tile is rebuilt
             // at load (shows 32.1 point 3, 32.2 point 6).

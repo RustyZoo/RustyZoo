@@ -334,7 +334,8 @@ impl World {
         }
     }
 
-    /// A morph refills the region across its start pair from that tile (3.1).
+    /// A morph refills the region across its start pair from that tile (3.1), and resizes its
+    /// exhibit (habitat rating 10.1): once more when the split or merge resized it already.
     fn refill(&self, built: &mut Built) {
         for &(id, (_, out)) in &built.starts {
             if let Some(r) = built
@@ -343,9 +344,7 @@ impl World {
                 .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
             {
                 built.next.reorder(r, exhibit::fill(self, out));
-                if !built.resized.contains(&r) {
-                    built.resized.push(r);
-                }
+                built.resized.push(r);
             }
         }
     }
