@@ -281,6 +281,15 @@ impl Scene {
         scene
     }
 
+    /// Adds an object after the others and places it: the scene [`Scene::new`] makes of the longer
+    /// list, without building it again.
+    pub(crate) fn push(&mut self, object: Object) {
+        self.objects.push(object);
+        self.covers.push(0);
+        self.placed.push(false);
+        self.place(self.objects.len() - 1);
+    }
+
     /// The tile index under a world point, if it is on the map.
     pub(crate) fn tile_at(&self, x: i32, y: i32) -> Option<usize> {
         let (tx, ty) = (x.div_euclid(64), y.div_euclid(64));
