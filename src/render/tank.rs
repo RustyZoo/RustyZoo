@@ -1,7 +1,7 @@
 //! The pictures of tank exhibits (map drawing 9.7, sprite drawing 3.6, 7.5 to 7.8): wall stacks,
 //! glass panes, water, underwater pictures and the shadows of units on the floor.
 
-use super::order::{Glass, ground_height, shadow_point};
+use super::order::{Glass, shadow_point};
 use super::*;
 
 const HALF: Blend = Blend {

@@ -428,42 +428,43 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_after_its_ob
 
 #[test]
 fn a_flights_shadow_is_sorted_with_the_temporary_entities_of_its_tile() {
-    // The shadow point (10, 20) is on tile 0, the overlay stands there at view y 0.
+    // The shadow point (10, 310) is on tile (0, 4), the overlay stands there at view y 64.
     let flight = |z| Object {
         z,
-        ..flights_scene(0, &[(Kind::Flight, 310, -280)]).objects[0]
+        kind: Kind::Flight,
+        ..unit(310, 10)
     };
     let paint = |z| {
         let overlay = Object {
             kind: Kind::Overlay,
-            ..unit(10, 10)
+            ..unit(10, 266)
         };
         let scene = Scene::new(6, 6, 0, &flat_map(6, 6), vec![flight(z), overlay]);
         let order = paint_order(&scene);
         let at = |item| order.iter().position(|&i| i == item).unwrap();
         at(Item::Shadow(0)) < at(Item::Object(1))
     };
-    // View y -147 at z 0, 53 at z -200.
+    // View y -75 at z 0, 125 at z -200.
     assert!(paint(0));
     assert!(!paint(-200));
 }
 
 #[test]
 fn a_flights_shadow_over_a_tank_is_painted_over_the_water_with_its_temporary_entities() {
-    // Tile 5 of the tank, its centre (96, 96) is the shadow point of this flight at rotation 0.
+    // The centre (352, 352) of the tank tile (5, 5) is the shadow point of this flight at rotation 1.
     let flight = Object {
         kind: Kind::Flight,
-        ..unit(396, -204)
+        ..unit(52, 52)
     };
     let afloat = Object {
         z: 48,
-        ..unit_on(1, 1)
+        ..unit_on(5, 5)
     };
     let overlay = Object {
         kind: Kind::Overlay,
-        ..unit_on(1, 1)
+        ..unit_on(5, 5)
     };
-    let scene = tank_scene(0, 3, 2, vec![afloat, flight, overlay]);
+    let scene = tank_scene_on(8, 4, 1, 3, 2, vec![afloat, flight, overlay]);
     let items = paint_order(&scene);
     let at = |wanted: Item| position(&items, |&i| i == wanted);
     assert_eq!(
@@ -488,17 +489,17 @@ fn a_flights_shadow_over_a_tile_painted_one_by_one_is_drawn_once() {
     let tree = Object {
         kind: Kind::Fixed,
         height: 5,
-        ..unit_on(1, 1)
+        ..unit_on(5, 5)
     };
     let flight = Object {
         kind: Kind::Flight,
-        ..unit(396, -204)
+        ..unit(52, 52)
     };
     let overlay = Object {
         kind: Kind::Overlay,
-        ..unit_on(1, 1)
+        ..unit_on(5, 5)
     };
-    let items = paint_order(&tank_scene(0, 3, 2, vec![tree, flight, overlay]));
+    let items = paint_order(&tank_scene_on(8, 4, 1, 3, 2, vec![tree, flight, overlay]));
     let at = |wanted: Item| position(&items, |&i| i == wanted);
     assert_eq!(items.iter().filter(|i| **i == Item::Shadow(9)).count(), 1);
     assert!(at(Item::Object(8)) < at(Item::Shadow(9)));
@@ -2127,12 +2128,17 @@ fn a_new_building_starts_with_the_default_variant_of_each_colour_group() {
 /// A 4 by 4 map with a tank on the middle four tiles, `height` and `level` steps, a wall on every
 /// outer edge of it (objects 0 to 7) and then the `extra` objects.
 fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
+    tank_scene_on(4, 1, r, height, level, extra)
+}
+
+/// The same on a `size` by `size` map, the tank on the four tiles from `(at, at)`.
+fn tank_scene_on(size: i32, at: i32, r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
     let mut objects = Vec::new();
-    for (tx, ty) in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+    for (tx, ty) in [(at, at), (at + 1, at), (at, at + 1), (at + 1, at + 1)] {
         for facing in [0u32, 2, 4, 6] {
             // The wall stands on the edge if there is no tank tile across it.
             let (dx, dy) = [(0, -1), (1, 0), (0, 1), (-1, 0)][facing as usize / 2];
-            if (1..=2).contains(&(tx + dx)) && (1..=2).contains(&(ty + dy)) {
+            if (at..=at + 1).contains(&(tx + dx)) && (at..=at + 1).contains(&(ty + dy)) {
                 continue;
             }
             let (x, y) = match facing {
@@ -2151,10 +2157,11 @@ fn tank_scene(r: u8, height: i32, level: i32, extra: Vec<Object>) -> Scene {
     assert_eq!(objects.len(), 8);
     objects.extend(extra);
     let fences: Vec<bool> = objects.iter().map(|o| o.kind == Kind::Wall).collect();
-    let mut scene = Scene::new(4, 4, r, &flat_map(4, 4), objects);
+    let n = size as usize;
+    let mut scene = Scene::new(n, n, r, &flat_map(n, n), objects);
     scene.set_tanks(
         &[TankSpec {
-            tile: (1, 1),
+            tile: (at, at),
             gate: (-1, -1),
             height,
             level,
