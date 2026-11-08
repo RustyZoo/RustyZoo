@@ -1,8 +1,8 @@
 //! The new list of exhibits after the edit of an exhibit fence piece (exhibits and money 3.1 to
 //! 3.9): the parts of the fences, the merges and splits, the kinds, the morph, then the tanks.
 
-use super::World;
 use super::exhibit::{Event, Pair};
+use super::{Draw, World};
 use crate::exhibit::{self, EXTERIOR, Exhibits, GROUNDS, Part, Tank};
 use std::collections::{HashMap, HashSet};
 
@@ -98,6 +98,15 @@ impl World {
         self.commit(&old, &plan, &mut built, &gone, quiet);
         if let Some((a, d)) = hint.filter(|_| !quiet) {
             self.announce(&built, a, d);
+        }
+        // A new tank with no gate to choose ends its split at once; one that is gone ends nothing.
+        self.tails.retain(|t| self.exhibits.get(t.0).is_some());
+        let waiting: Vec<u32> = self.waiting.iter().map(|w| w.0).collect();
+        let (wait, now): (Vec<_>, Vec<_>) =
+            (std::mem::take(&mut self.tails).into_iter()).partition(|t| waiting.contains(&t.0));
+        self.tails = wait;
+        for (_, tanks) in now {
+            self.draws.extend(tanks.into_iter().map(Draw::Walls));
         }
     }
 
@@ -389,6 +398,17 @@ impl World {
             self.spend_temporary_ids(made.map(|t| t.0));
         }
         self.decide(&changed, false);
+        // A split updates the wall information of the tank it cuts first (map drawing 9.7.8
+        // point 3.2.4 and 3.4).
+        let cuts: Vec<u32> = built
+            .tanks
+            .iter()
+            .filter_map(|t| t.1.map(|_| t.0))
+            .collect();
+        if !quiet {
+            self.draws
+                .extend(split_kept.iter().map(|&x| Draw::Walls(x)));
+        }
         for (id, inherited) in std::mem::take(&mut built.tanks) {
             self.make_tank(id, inherited, !quiet);
         }
@@ -400,6 +420,11 @@ impl World {
             changed.extend(split_kept.iter().copied());
             self.floors(&changed);
             self.decide(&changed, true);
+            // The last updates, X then the new tank Y, come after the gate of Y.
+            for &y in &cuts {
+                let tanks = split_kept.iter().copied().chain([y]).collect();
+                self.tails.push((y, tanks));
+            }
         }
         for &id in &built.regate {
             if let Some(e) = self.exhibits.get_mut(id) {

@@ -6,6 +6,19 @@
 use super::World;
 use crate::exhibit::Tank;
 
+/// A draw owed at its place among the others (map drawing 9.7.8 point 3).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Draw {
+    /// The tank got clean water with some level: its ripples are set up.
+    Ripples(u32),
+    /// The wall information of the tank is updated: its ripples are set up again.
+    Walls(u32),
+    /// The fence piece draws its start time now.
+    Start(u32),
+    /// The fence piece is made healthy: its wear interval, then its start time.
+    Heal(u32),
+}
+
 impl World {
     /// Tells the world whether the game is paused: a fill or a drain is then instant.
     pub(crate) fn set_paused(&mut self, paused: bool) {
@@ -50,7 +63,7 @@ impl World {
             // Clean water with some level, where there was none: the ripples are set up now.
             if super::tank::clean(&now, config.murky) && !super::tank::clean(&before, config.murky)
             {
-                self.ripple_setups.push(id);
+                self.draws.push(Draw::Ripples(id));
             }
             self.events.push(super::Event::Tank(id));
             if (now.level, now.height) != (before.level, before.height) {
@@ -105,23 +118,92 @@ impl World {
         std::mem::take(&mut self.wet)
     }
 
-    /// The tanks whose water became clean with some level since the last call, in the order it
-    /// happened (map drawing 9.7.8 point 3). A tank whose units wait for their reset (it is
-    /// stirred) stays queued: its ripples come after the reset (see [`World::take_ripple_setup`]).
-    pub(crate) fn take_ripple_setups(&mut self) -> Vec<u32> {
-        let stirred = &self.stirred;
-        let (wait, now) = std::mem::take(&mut self.ripple_setups)
-            .into_iter()
-            .partition(|id| stirred.contains(id));
-        self.ripple_setups = wait;
-        now
+    /// The draws owed, for a test.
+    #[cfg(test)]
+    pub(crate) fn draws(&self) -> &[Draw] {
+        &self.draws
     }
 
-    /// Whether tank `id` was queued for the set-up of its ripples; it is taken off the queue.
-    pub(crate) fn take_ripple_setup(&mut self, id: u32) -> bool {
-        let before = self.ripple_setups.len();
-        self.ripple_setups.retain(|&t| t != id);
-        self.ripple_setups.len() != before
+    /// Queues a draw behind the ones owed, for a test.
+    #[cfg(test)]
+    pub(crate) fn queue_draw(&mut self, draw: Draw) {
+        self.draws.push(draw);
+    }
+
+    /// The next draw owed, in order. With `waiting` a ripple draw of a tank whose units wait for
+    /// their reset stays queued (the ripples come after the reset, map drawing 9.7.8 point 4), and
+    /// so does everything behind it.
+    pub(crate) fn next_draw(&mut self, waiting: bool) -> Option<Draw> {
+        let first = *self.draws.first()?;
+        let tank = match first {
+            Draw::Ripples(t) | Draw::Walls(t) => Some(t),
+            Draw::Start(_) | Draw::Heal(_) => None,
+        };
+        if waiting && tank.is_some_and(|t| self.stirred.contains(&t)) {
+            return None;
+        }
+        Some(self.draws.remove(0))
+    }
+
+    /// The tanks stirred up to and including `tank`, in order: their units are reset now.
+    pub(crate) fn take_stirred_through(&mut self, tank: u32) -> Vec<u32> {
+        let Some(n) = self.stirred.iter().position(|&t| t == tank) else {
+            return Vec::new();
+        };
+        self.stirred.drain(..=n).collect()
+    }
+
+    /// Whether tank `id` holds no ripples though its water is clean, until its next set-up.
+    pub(crate) fn is_bare(&self, id: u32) -> bool {
+        self.bare.contains(&id)
+    }
+
+    /// A save puts every clean tank's ripples back, a bare tank's too.
+    pub(crate) fn set_all_up(&mut self) {
+        self.bare.clear();
+    }
+
+    /// Tank `id` is set up: it is not bare any more.
+    pub(crate) fn set_up(&mut self, id: u32) {
+        self.bare.retain(|&t| t != id);
+    }
+
+    /// The wall information of the tank that tile `t` belongs to is updated (map drawing 9.7.8
+    /// point 3.2): its ripples are set up again whether or not its walls changed.
+    pub(super) fn update_walls(&mut self, t: usize) {
+        if let Some(id) = self.tank_at(t) {
+            self.draws.push(Draw::Walls(id));
+        }
+    }
+
+    /// The wall information of the tank of the tile that holds fence piece `id` is updated.
+    pub(crate) fn update_walls_of(&mut self, id: u32) {
+        let tile = self.find(id).and_then(|at| self.slot_of(at));
+        if let Some((t, _)) = tile {
+            self.update_walls(t);
+        }
+    }
+
+    /// A fence piece bought on a slot that holds one of the same type (it keeps its id): on an
+    /// active tank wall its tank updates its wall information, then the piece's validation
+    /// draws its start time once more (map drawing 9.7.8 point 3.2.2 and 3.4). Whether it did.
+    pub(crate) fn retyped_wall(&mut self, id: u32) -> bool {
+        let active = self.active_wall_tank(id).is_some();
+        if active {
+            self.update_walls_of(id);
+            self.draws.push(Draw::Start(id));
+        }
+        active
+    }
+
+    /// The tank of the wall piece `id` when the wall is active: a tank wall whose tank has a
+    /// wall height (map drawing 9.7.8 point 3.2.2).
+    pub(crate) fn active_wall_tank(&self, id: u32) -> Option<u32> {
+        let at = self.find(id)?;
+        self.shapes[at].filter(|s| s.tank.wall)?;
+        let (t, _) = self.slot_of(at)?;
+        let tank = self.tank_at(t)?;
+        self.tank(tank).filter(|k| k.height > 0).map(|_| tank)
     }
 
     /// Whether a tank was made or went, or the ground of a tile changed, since the last call.
