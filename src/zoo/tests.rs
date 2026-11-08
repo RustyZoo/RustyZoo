@@ -3284,7 +3284,11 @@ fn a_record_stored_as_fences_is_read_with_the_layout_of_its_type() {
     let mut body = fence(106, 13);
     body.extend([1, 0]);
     let cat = one_type("tankwall", "glass", "g");
-    let z = Zoo::parse_in(&file(106, 1, 1, &[], &[("fences", "glass", "g", body)]), &cat).unwrap();
+    let z = Zoo::parse_in(
+        &file(106, 1, 1, &[], &[("fences", "glass", "g", body)]),
+        &cat,
+    )
+    .unwrap();
     assert_eq!(z.entities[0].class, "tankwall");
     let fence = z.entities[0]
         .common
@@ -3746,7 +3750,7 @@ fn a_stored_class_that_is_not_an_ancestor_finds_no_type() {
         ("", "tree", "oak", scenery(106, 8, "T")),
     ];
     for record in &wrong {
-        let z = Zoo::parse_in(&file(106, 1, 1, &[], &[record.clone()]), &cat).unwrap();
+        let z = Zoo::parse_in(&file(106, 1, 1, &[], std::slice::from_ref(record)), &cat).unwrap();
         assert!(z.entities.is_empty(), "{}", record.0);
         // Below 70 there is no size to skip it by.
         let old = [(record.0, record.1, record.2, scenery(69, 3, "T"))];
@@ -3769,7 +3773,7 @@ fn a_body_laid_out_for_another_class_than_the_type_fails_the_load() {
             ("objects", "rail", "f", keeper_body(v)),
         ];
         for record in wrong {
-            let bytes = file(v, 1, 1, &[], &[record.clone()]);
+            let bytes = file(v, 1, 1, &[], std::slice::from_ref(&record));
             assert!(Zoo::parse_in(&bytes, &cat).is_err(), "{} {v}", record.0);
         }
     }

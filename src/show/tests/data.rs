@@ -24,8 +24,7 @@ fn open_install() -> Vfs {
 
 /// A run of `scn28` whose world `edit` changed first.
 fn run_of(vfs: &Vfs, cat: Catalogue, edit: impl FnOnce(&mut World, &MapRenderer)) -> Run {
-    let (zoo, money) = Zoo::parse_money_in(&vfs.read("maps/scn28.zoo").unwrap(), &cat)
-        .unwrap();
+    let (zoo, money) = Zoo::parse_money_in(&vfs.read("maps/scn28.zoo").unwrap(), &cat).unwrap();
     let renderer = crate::render::MapRenderer::new(vfs, &cat);
     let language = crate::strings::Language::of(vfs.root());
     let mut world = World::with_language(zoo, |e| renderer.shape(e), language);
@@ -94,8 +93,7 @@ fn orca_at_its_ball(vfs: &Vfs) -> (Run, u32, u32) {
 /// The run `run` saved and opened again as Continue does.
 fn reload(vfs: &Vfs, run: &mut Run) -> Run {
     let cat = Catalogue::load(vfs).unwrap();
-    let (zoo, money) = Zoo::parse_money_in(&run.save().unwrap(), &cat)
-        .unwrap();
+    let (zoo, money) = Zoo::parse_money_in(&run.save().unwrap(), &cat).unwrap();
     let renderer = MapRenderer::new(vfs, &cat);
     let language = crate::strings::Language::of(vfs.root());
     let mut world = World::with_language(zoo, |e| renderer.shape(e), language);

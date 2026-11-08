@@ -2937,8 +2937,7 @@ fn a_portal_wall_draws_the_frame_its_player_shows() {
         return;
     }
     let catalogue = Catalogue::load(&vfs).unwrap();
-    let zoo = Zoo::parse_in(&vfs.read("maps/scn28.zoo").unwrap(), &catalogue)
-        .unwrap();
+    let zoo = Zoo::parse_in(&vfs.read("maps/scn28.zoo").unwrap(), &catalogue).unwrap();
     let portals: Vec<u32> = (zoo.entities.iter())
         .filter_map(|e| e.common.as_ref())
         .filter(|c| c.fence.is_some_and(|f| f.portal))

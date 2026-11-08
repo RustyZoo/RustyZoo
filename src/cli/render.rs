@@ -60,7 +60,8 @@ pub fn render_map(
         return Err(CliError::Usage);
     }
     let catalogue = Catalogue::load(vfs)?;
-    let zoo = Zoo::parse_in(&vfs.read(member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
+    let zoo =
+        Zoo::parse_in(&vfs.read(member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
     let (image, summary) =
         MapRenderer::new(vfs, &catalogue).render_with(&zoo, rotation, options)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;

@@ -387,7 +387,9 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
             // A body that does not decode to its size with its type's layout fails the load
             // (6.16 point 6).
             Some(Some(_)) => match sized(data, r.v, r.ground.clone(), class.as_bytes()) {
-                None => return bad("a body that does not decode to its size with its type's layout"),
+                None => {
+                    return bad("a body that does not decode to its size with its type's layout");
+                }
                 common => common,
             },
             None => sized(data, r.v, r.ground.clone(), class.as_bytes()),

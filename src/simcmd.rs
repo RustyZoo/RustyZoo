@@ -77,8 +77,7 @@ fn flags<'a>(mut words: &[&'a str]) -> Result<Flags<'a>, CliError> {
 /// A saved game read from a file on disk.
 fn load(file: &str, catalogue: &Catalogue) -> Result<(Zoo, Money), String> {
     let bytes = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
-    Zoo::parse_money_in(&bytes, catalogue)
-        .map_err(|e| format!("{file}: {e}"))
+    Zoo::parse_money_in(&bytes, catalogue).map_err(|e| format!("{file}: {e}"))
 }
 
 pub fn sim(vfs: &Vfs, member: &str, words: &[&str]) -> Result<(), CliError> {
