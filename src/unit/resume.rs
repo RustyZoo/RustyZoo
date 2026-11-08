@@ -113,7 +113,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1, block.b2 != 0);
         let call = (block.b5, block.b6);
-        let (cost, need) = (block.w4, block.need);
+        let (cost, need, slot) = (block.w4, block.need, block.slot);
         let own = (block.p1, crate::unit::own::tile_under(world, block.p1));
         let task = u8::try_from(block.target.goal).ok();
         // A helicopter's building tasks are its own (staff 7.11.1): it is no user of the building here.
@@ -130,7 +130,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
             (unit.held, unit.show, unit.trick) = (held, show, trick);
             // The need being served comes back as it was saved (shows 32.1 point 3).
             if let Part::Animal(a) = &mut unit.part {
-                a.need = need;
+                (a.need, a.slot) = (need, usize::from(slot));
                 // The position is read; the tile is the one under it (shows 32.2 point 6).
                 (unit.own_pos, unit.own_tile) = (own.0, own.1);
             }

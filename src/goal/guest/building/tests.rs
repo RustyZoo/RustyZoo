@@ -2406,6 +2406,25 @@ fn a_returning_guest_whose_walk_start_fails_recovers_from_water() {
 }
 
 #[test]
+fn a_failed_walk_start_keeps_the_slot_it_found() {
+    // A held guest cannot walk: the start fails after the slot search found slot 0.
+    let (cat, mut w) = crowded_stand(0, 2);
+    w.units.get_mut(1).unwrap().held = true;
+    let started = with_cx(&cat, &mut w, |cx| {
+        cx.guest().unwrap().returning = Some(7);
+        cx.head_for(7, "food")
+    });
+    assert!(started, "the returning guest recovers from the water");
+    assert_eq!(task(&w), crate::goal::RECOVER);
+    assert_eq!(guest(&w).slot, 0);
+    // Not returning: the goal reset forgets it.
+    let (cat, mut w) = crowded_stand(0, 2);
+    w.units.get_mut(1).unwrap().held = true;
+    assert!(!with_cx(&cat, &mut w, |cx| cx.head_for(7, "food")));
+    assert_eq!(guest(&w).slot, crate::guest::NO_SLOT);
+}
+
+#[test]
 fn entering_a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
     // The stand has no room, so the old complete would have thought it crowded.
     let (cat, mut w) = crowded_stand(2, 2);
