@@ -664,13 +664,16 @@ impl<'a> App<'a> {
             // The session flags go in with the step, and come back as the rules left them.
             game.world.units.cheat = self.cheats.flags;
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
-            let report = self.sim.step_game(
+            let (season, cat) = (&mut self.cheats.season, self.renderer.catalogue());
+            let vehicles = &mut game.vehicles;
+            let report = self.sim.step_hooked(
                 &data,
-                self.renderer.catalogue(),
+                cat,
                 &mut game.world,
                 &mut game.money,
                 step,
                 |_, _, _| {},
+                &mut |sim, world| cheat::guest_flights(season, &data, cat, sim, world, vehicles),
             );
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;

@@ -9,6 +9,7 @@ use crate::world::World;
 impl Sim {
     /// The zoo status of a step: the due checks in the original's order, the donation and the
     /// bars. The generator is seeded again inside the finance check, after the other checks.
+    /// `created` runs inside the guest creation, once the guest is in the world (ambients 3.1).
     pub(super) fn zoo_status(
         &mut self,
         world: &mut World,
@@ -16,6 +17,7 @@ impl Sim {
         money: &mut Money,
         step: u32,
         month_end: bool,
+        created: &mut dyn FnMut(&mut Sim, &mut World),
     ) -> Option<[i32; 3]> {
         let due = self.status.due(step, month_end);
         if due.rating {
@@ -44,6 +46,7 @@ impl Sim {
                 };
                 if guest::arrive(world, cat, &mut self.rng, money, &arrival) {
                     self.arrived = true;
+                    created(self, world);
                     if advice {
                         self.status.advise(&mut self.messages, &mut self.lines);
                     }
