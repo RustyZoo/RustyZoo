@@ -327,6 +327,18 @@ fn tanks(g: &Game, rule: &[i32; 4]) -> i32 {
     heights.filter(|t| test(t.steps().0)).count() as i32
 }
 
+/// The chop store (scenarios 6.2 point 7, 6.4): truncated toward 0 into a 64-bit integer of which
+/// the low 32 bits are returned; outside the 64-bit range, and NaN, it gives 0.
+fn chop(v: f32) -> i32 {
+    let t = v.trunc();
+    let limit = 2.0f32.powi(63);
+    if (-limit..limit).contains(&t) {
+        t as i64 as i32
+    } else {
+        0
+    }
+}
+
 /// Rule 0: a figure of the accounts, truncated.
 fn account(m: &Money, rule: &[i32; 4]) -> i32 {
     let Some(c) = usize::try_from(rule[1]).ok().filter(|&c| c < CATEGORIES) else {
@@ -358,8 +370,7 @@ fn status(env: &Env, g: &Game, rule: &[i32; 4], gui: &Gui) -> i32 {
         4 => sums.animals,
         5 => sums.sick,
         6 => sums.species,
-        // Truncated toward 0, not rounded (scenarios 6.4).
-        7 => g.money.cash as i32,
+        7 => chop(g.money.cash),
         // The awards held, whether or not they have a definition (`awards.md` 4.3), and those a
         // goal earlier in this pass has just given.
         11 => {
@@ -417,8 +428,7 @@ fn shows(g: &Game, rule: &[i32; 4]) -> i32 {
         };
         sum += term;
     }
-    // The chop store is a 64-bit integer of which the low 32 bits are returned.
-    sum as i64 as i32
+    chop(sum)
 }
 
 /// The value a rule reads: `rule` is `rulea`, `ruleb`, `arga`, `argb`; `value` the goal's own;

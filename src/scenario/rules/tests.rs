@@ -172,8 +172,10 @@ fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_truncated() {
         (0.99, 0),
         (-0.5, 0),
         (f32::NAN, 0),
-        (1e20, i32::MAX),
-        (-1e20, i32::MIN),
+        (3.0e9, -1_294_967_296),
+        (-3.0e9, 1_294_967_296),
+        (1e20, 0),
+        (-1e20, 0),
     ] {
         p.money.cash = cash;
         assert_eq!(p.read([1, 7, 0, 0]), want, "cash {cash}");
@@ -713,6 +715,23 @@ fn rule_15_sums_the_show_figures_in_single_precision_and_truncates() {
     c.records = vec![crate::zoo::TypeRecord::new(5402, u16::MAX, 0)];
     p.world.zoo.shows.infos.push(Some(c));
     assert_eq!(one(&p, 3, 5402), -32);
+}
+
+#[test]
+fn rule_15_keeps_the_low_32_bits_of_the_chopped_64_bit_sum_and_gives_0_outside_the_range() {
+    let mut p = Parts::new(world(), zoo_types());
+    for (v, want) in [
+        (3.0e9f32, -1_294_967_296),
+        (-3.0e9, 1_294_967_296),
+        (1e20, 0),
+        (-1e20, 0),
+        (f32::NAN, 0),
+    ] {
+        let mut i = crate::zoo::ShowInfo::new(1, 0, 0);
+        i.receipts[2] = v.to_bits();
+        p.world.zoo.shows.infos = vec![Some(i)];
+        assert_eq!(p.read([15, 1, 0, 0]), want, "figure {v}");
+    }
 }
 
 /// The goals of the shipped Marine Mania scenario 32 name programs of its research tree; each is
