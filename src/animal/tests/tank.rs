@@ -581,6 +581,8 @@ struct Meal {
     set: Option<Set>,
     /// The tile and the task at the end.
     end: (Option<usize>, u8),
+    /// The eating flag and the set queued after the first bite.
+    bite: (bool, Option<String>),
 }
 
 /// Manta 1 in the tank (tiles x 2 to 5, y 2 to 4) with a pile of food at tile (4, 3), species key
@@ -634,6 +636,7 @@ fn manta_meal(keys: &str, seed: u32, delay: usize) -> Meal {
         ate: false,
         set: None,
         end: (None, 0),
+        bite: (false, None),
     };
     for step in 0..delay + 300 {
         if step == delay
@@ -664,6 +667,9 @@ fn manta_meal(keys: &str, seed: u32, delay: usize) -> Meal {
             });
         }
         if meal.ate {
+            if let Part::Animal(a) = &u.part {
+                meal.bite = (a.eating, u.runner.queued().map(str::to_string));
+            }
             break;
         }
     }
@@ -699,4 +705,22 @@ fn a_keep_moving_swimmer_on_the_neighbour_edge_is_carried_past_and_keeps_its_foo
     // walk, too.
     assert!(manta_meal("cKeepMoving=0\n", SEED, 60).ate);
     assert!(manta_meal("cKeepMoving=1\n", SEED, 0).ate);
+}
+
+/// Animals needs 5.3 points 4 and 7: the first bite of a keep-moving swimmer takes the random
+/// walk, sets no eating flag and queues no second `bEat`; any other value eats the usual way.
+#[test]
+fn the_first_bite_of_a_keep_moving_swimmer_takes_the_random_walk_and_queues_nothing() {
+    const SEED: u32 = 3;
+    let m = manta_meal("cOnlyUnderwater=1\ncKeepMoving=1\n", SEED, 0);
+    assert!(m.ate);
+    assert_eq!(m.end.1, crate::goal::RANDOM);
+    assert_eq!(m.bite, (false, None));
+    let huge = format!("cKeepMoving={}\n", i32::MAX);
+    for keys in ["", "cKeepMoving=0\n", "cKeepMoving=-1\n", &huge] {
+        let m = manta_meal(&format!("cOnlyUnderwater=1\n{keys}"), SEED, 0);
+        assert!(m.ate, "{keys}");
+        assert_eq!(m.end.1, crate::goal::KEEPER_FOOD, "{keys}");
+        assert_eq!(m.bite, (true, Some("bEat".to_string())), "{keys}");
+    }
 }

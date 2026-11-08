@@ -126,3 +126,57 @@ fn a_step_past_the_food_that_is_not_valid_appends_the_food_only() {
     let p = walk(&mut ground(), "cKeepMoving=1", KEEPER_FOOD, (19, 10)).unwrap();
     assert_eq!(p[p.len() - 2..], [t(18), t(19)]);
 }
+
+/// The rotation of a zebra at (10, 10) facing north after the keeper food complete, with pile
+/// food at (13, 10) in its target; `task` is the task it has and `keys` the zebra keys.
+fn faced(keys: &str, task: u8) -> u32 {
+    let mut w = world_with((20, 20), |zoo| {
+        let mut a = entity("animals", "zebra", ID, centre((10, 10)), 0);
+        a.subtype = "m".into();
+        zoo.entities.push(a);
+        let mut f = entity("food", "food", 9, centre((13, 10)), 0);
+        f.common.as_mut().unwrap().food = 40;
+        zoo.entities.push(f);
+    });
+    let mut cat = Catalogue::default();
+    cat.push(unit_ty("animals", "zebra", "m", 2, keys));
+    let (data, mut rng) = (sets(), Rng::default());
+    let (events, mut removals) = (Events::default(), Vec::new());
+    let mut u = w.units.get(ID).unwrap().clone();
+    u.part = Part::Animal(crate::animal::Animal {
+        food: 9,
+        ..Default::default()
+    });
+    u.goal.record.task = task;
+    let at = w.find(ID).unwrap();
+    let mut ctx = Ctx {
+        rng: &mut rng,
+        events: &events,
+        removals: &mut removals,
+        step: 67,
+        cat: &cat,
+    };
+    Cx {
+        unit: &mut u,
+        world: &mut w,
+        ctx: &mut ctx,
+        at,
+        data: &data,
+    }
+    .keeper_food_complete();
+    w.zoo.entities[at].common.as_ref().unwrap().rotation
+}
+
+#[test]
+fn a_keep_moving_animal_does_not_face_the_keeper_food_it_reaches() {
+    // Animals needs 7.1 step 4: cKeepMoving exactly 1 with the food or random walk task skips the
+    // turn; any other value, or another task, turns to the pile (east, rotation 2).
+    let huge = format!("cKeepMoving={}", i32::MAX);
+    assert_eq!(faced("cKeepMoving=0", KEEPER_FOOD), 2);
+    for keys in ["", "cKeepMoving=-1", "cKeepMoving=2", &huge] {
+        assert_eq!(faced(keys, KEEPER_FOOD), 2, "{keys}");
+    }
+    assert_eq!(faced("cKeepMoving=1", KEEPER_FOOD), 0);
+    assert_eq!(faced("cKeepMoving=1", RANDOM), 0);
+    assert_eq!(faced("cKeepMoving=1", NONE), 2);
+}
