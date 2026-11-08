@@ -2420,3 +2420,24 @@ fn entering_a_building_that_no_longer_serves_the_need_only_clears_the_goal() {
     assert!(guest(&w).seen.is_empty() && guest(&w).building == 0);
     assert!(task(&w) == 0 && w.units.get(1).unwrap().goal.wandered);
 }
+
+#[test]
+fn a_leave_complete_with_no_slot_leaves_the_building_untouched() {
+    use crate::guest::NO_SLOT;
+    let (cat, mut w) = (types(), zoo());
+    w.units.buildings.insert(
+        7,
+        Live {
+            users: vec![(1, 0, 0)],
+            ..Default::default()
+        },
+    );
+    with_cx(&cat, &mut w, |cx| {
+        if let Some(g) = cx.guest() {
+            (g.need, g.building, g.slot) = (Some("food"), 7, NO_SLOT);
+        }
+        cx.set_task(EXIT_BUILDING, 1, 7, None);
+        cx.exit_done();
+    });
+    assert_eq!(w.units.buildings[&7].users.len(), 1);
+}

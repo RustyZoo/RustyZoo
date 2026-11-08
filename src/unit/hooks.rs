@@ -137,7 +137,13 @@ impl Hooks for Standard<'_> {
         // the same step.
         lower_walk(unit);
         while let Some(go) = unit.runner.take_move() {
-            let flow = movement::call(unit, world, self.data, ctx.cat, ctx.rng, at, &go);
+            // An `fTargetBuilding` chooses the animal's building first (animals 11.11 point 4).
+            let chosen = (unit.runner.take_rampage())
+                .then(|| crate::animal::rampage::target(unit, world, ctx, at, self.data))
+                .flatten();
+            let flow = chosen.unwrap_or_else(|| {
+                movement::call(unit, world, self.data, ctx.cat, ctx.rng, at, &go)
+            });
             if flow == Flow::Running {
                 break;
             }

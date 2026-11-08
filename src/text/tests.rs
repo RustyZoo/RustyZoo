@@ -605,3 +605,38 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
         "cd5069739d569e52"
     );
 }
+
+#[test]
+fn a_visible_character_is_ascii_graphic_or_double_byte_by_code_page() {
+    use super::visible;
+    // Single-byte installs, and any language number that is none: ASCII 0x21 to 0x7E only.
+    for language in [0, 1033, 1036, u32::MAX] {
+        assert!(visible(language, b"Lion"), "{language}");
+        assert!(visible(language, b"  7 "));
+        assert!(visible(language, b"\x21") && visible(language, b"\x7e"));
+        assert!(!visible(language, b""), "empty");
+        assert!(
+            !visible(language, b" \t\x7f\x20"),
+            "space, controls, delete"
+        );
+        assert!(
+            !visible(language, b"\xa1\xdf\x81\xe9\xff"),
+            "bytes above 127"
+        );
+    }
+    // Code page 932: lead bytes and the half-width range count.
+    for byte in [0x81, 0x9f, 0xe0, 0xfc, 0xa1, 0xdf] {
+        assert!(visible(1041, &[byte]), "{byte:#x}");
+    }
+    for byte in [0x80, 0xa0, 0xfd, 0xff] {
+        assert!(!visible(1041, &[byte]), "{byte:#x}");
+    }
+    // The other double-byte code pages: lead bytes only.
+    for language in [2052, 4100, 1042, 1028, 3076, 5124] {
+        assert!(
+            visible(language, &[0x81]) && visible(language, &[0xfe]),
+            "{language}"
+        );
+        assert!(!visible(language, &[0x80]) && !visible(language, &[0xff]));
+    }
+}

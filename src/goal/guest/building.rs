@@ -829,7 +829,8 @@ impl Cx<'_, '_> {
     pub(in crate::goal) fn exit_done(&mut self) {
         self.unit.through_building = false;
         let building = self.target_building();
-        if self.aim().is_some() {
+        // A guest with no slot leaves the building untouched (goals 11.3.1 point 4.5).
+        if self.aim().is_some() && self.guest().is_none_or(|g| g.slot != NO_SLOT) {
             self.remove_user();
         }
         // A failed exit left it hidden; the goal shows it whatever the removal did (6.7.1).

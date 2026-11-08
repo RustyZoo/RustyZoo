@@ -283,11 +283,40 @@ fn the_calls_of_the_other_issues_are_done_at_once_or_never() {
 }
 
 #[test]
-fn a_rampage_set_goes_on_past_its_target_building_call() {
-    // No target is found (animals 11.11 point 4): the call is done at once.
+fn a_target_building_call_is_the_units_fast_move_and_the_set_goes_on_when_it_is_done() {
+    // Animals 11.11 point 4: `fMove(0, 0, fast, cFastRate, 100)` after the unit's target choice.
     let mut rig = Rig::new(&[("bAmbient", &["fTargetBuilding()", "fPlay(d)"])]);
     rig.tick(100);
-    assert_eq!(rig.tick(100).0, "d");
+    let go = rig.runner.take_move().unwrap();
+    let Gait::Own {
+        anim,
+        speed,
+        percent,
+        ..
+    } = go.0
+    else {
+        panic!("{go:?}");
+    };
+    assert_eq!(
+        (anim.as_str(), speed),
+        ("run", Number::Characteristic("cFastRate".into()))
+    );
+    assert_eq!(
+        (percent, go.1, go.2),
+        (Number::Int(100), Target::Keep, false)
+    );
+    assert!(
+        rig.runner.take_rampage() && !rig.runner.take_rampage(),
+        "taken once"
+    );
+    rig.runner.answer(Flow::Done);
+    let mut env = Env {
+        data: &rig.data,
+        unit: &rig.unit,
+        rng: &mut rig.rng,
+    };
+    rig.runner.resume(&mut rig.anim, &mut env);
+    assert_eq!(rig.anim.queue.len(), 1, "fPlay(d) queued");
 }
 
 #[test]

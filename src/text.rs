@@ -212,6 +212,21 @@ pub(crate) fn from_cp1252(byte: u8) -> char {
     }
 }
 
+/// Whether a name of these bytes, in the code page of `language`, holds a visible character: an
+/// ASCII one from 0x21 to 0x7E, a double-byte lead byte, or on code page 932 a byte from 0xA1 to
+/// 0xDF (ambients 3.3). Every name setter uses it.
+pub(crate) fn visible(language: u32, bytes: &[u8]) -> bool {
+    let lead = |b: u8| match language {
+        1041 => matches!(b, 0x81..=0x9f | 0xe0..=0xfc),
+        2052 | 4100 | 1042 | 1028 | 3076 | 5124 => matches!(b, 0x81..=0xfe),
+        _ => false,
+    };
+    let kana = |b: u8| language == 1041 && matches!(b, 0xa1..=0xdf);
+    bytes
+        .iter()
+        .any(|&b| b.is_ascii_graphic() || lead(b) || kana(b))
+}
+
 /// Whether Windows-1252 has the character `c`.
 pub(crate) fn in_cp1252(c: char) -> bool {
     (0..=255u8).any(|b| from_cp1252(b) == c)
