@@ -175,6 +175,9 @@ pub struct World {
     /// The draws the water and the edits owe, in the order the original makes them: ripple
     /// set-ups and fence start times (map drawing 9.7.8 point 3; not saved).
     draws: Vec<Draw>,
+    /// The tanks made filled at once while the game was paused, which hold no ripples until their
+    /// next set-up (map drawing 9.7.8 open point a; not saved).
+    bare: Vec<u32>,
     /// The tanks a split updates once more when the gate of its new tank (the key) is chosen.
     tails: Vec<(u32, Vec<u32>)>,
     /// A tank was made or went, or the ground of a tile changed, since the last
@@ -247,6 +250,7 @@ impl World {
             wet: Vec::new(),
             draws: Vec::new(),
             tails: Vec::new(),
+            bare: Vec::new(),
             reshaped: false,
             stirred: Vec::new(),
             filter_view: BTreeMap::new(),

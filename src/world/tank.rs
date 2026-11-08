@@ -309,8 +309,12 @@ impl World {
         // written yet when the level is (map drawing 9.7.8 open point a).
         if physical && inherited.is_none() {
             let made = self.draws.split_off(owed);
+            let before = made.len();
             self.draws
                 .extend(made.into_iter().filter(|&d| d != Draw::Ripples(id)));
+            if self.draws.len() - owed != before {
+                self.bare.push(id);
+            }
         }
         let event = match asks {
             true => Event::Objects(id),

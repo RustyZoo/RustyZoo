@@ -153,6 +153,16 @@ impl World {
         self.stirred.drain(..=n).collect()
     }
 
+    /// Whether tank `id` holds no ripples though its water is clean, until its next set-up.
+    pub(crate) fn is_bare(&self, id: u32) -> bool {
+        self.bare.contains(&id)
+    }
+
+    /// Tank `id` is set up: it is not bare any more.
+    pub(crate) fn set_up(&mut self, id: u32) {
+        self.bare.retain(|&t| t != id);
+    }
+
     /// The wall information of the tank that tile `t` belongs to is updated (map drawing 9.7.8
     /// point 3.2): its ripples are set up again whether or not its walls changed.
     pub(super) fn update_walls(&mut self, t: usize) {

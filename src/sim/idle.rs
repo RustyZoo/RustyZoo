@@ -427,6 +427,7 @@ impl Idles {
         rng: &mut Rng,
         (id, walls): (u32, bool),
     ) {
+        world.set_up(id);
         if walls && self.ripples.get(&id).is_some_and(|r| !r.is_empty()) {
             self.ripples.remove(&id);
             world.remove_bubbles_of(id);
@@ -457,7 +458,7 @@ impl Idles {
         self.ripples
             .retain(|id, _| tanks.iter().any(|t| t.0 == *id));
         for (id, walls) in tanks {
-            if !self.ripples.contains_key(&id) {
+            if !self.ripples.contains_key(&id) && !world.is_bare(id) {
                 let set = self.ripple_set(data, rng, &walls);
                 self.ripples.insert(id, set);
             }

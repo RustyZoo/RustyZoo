@@ -120,3 +120,20 @@ fn a_piece_of_the_same_type_bought_on_an_active_wall_updates_its_tank_then_draws
     assert!(!world.retyped_wall(far) && !world.retyped_wall(u32::MAX));
     assert!(world.draws().is_empty());
 }
+
+#[test]
+fn a_new_tank_filled_at_once_while_paused_sets_no_ripples_up() {
+    for (paused, full) in [(true, true), (false, false)] {
+        let mut pieces = ring("tank", 2, 2, 3, 3);
+        let last = pieces.pop().unwrap();
+        let mut world = tanks(&pieces, &[], &[]);
+        world.set_paused(paused);
+        world.begin();
+        put_wall(&mut world, last.0, last.1);
+        let id = tank_id(&world, 2);
+        let level = world.tank(id).unwrap().level;
+        assert_eq!(level > 0, full, "paused {paused}");
+        assert!(!world.draws().contains(&Draw::Ripples(id)), "{paused}");
+        assert_eq!(world.is_bare(id), full, "paused {paused}");
+    }
+}
