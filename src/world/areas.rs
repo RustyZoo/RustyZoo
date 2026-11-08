@@ -27,7 +27,7 @@ impl World {
     /// what the placements and resizes of that sequence leave, not one build of the final map. The
     /// paths and fence pieces are replayed on a scratch world (every tile inside the zoo: the
     /// exterior is marked after the entities are added), and its areas go to the exhibits
-    /// that hold the same tiles.
+    /// that hold the same tiles. A map with no exhibit has no area to replay.
     pub(super) fn replay_areas(&mut self) {
         let placed = |s: &Shape| s.fence || matches!(s.kind, Kind::Path);
         if self.exhibits.list().is_empty() || !self.shapes.iter().flatten().any(placed) {
