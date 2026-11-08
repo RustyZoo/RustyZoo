@@ -54,7 +54,7 @@ SDL3 is used only there, built from source and linked statically.
 ## Simulation
 
 - `sim`: the step (managers in the original's order), the generator (`sim::Rng`), the state hash, `sim::drive::Run`.
-- `scenario`, `goal`, `research`: scenario files and goals; the units' goals; the research tree.
+- `scenario`, `goal`, `research`, `marketing`: scenario files and goals; the units' goals; the research tree; the marketing levels, charge and guest bonus.
 - `unit`, `behaviour`: live state of animals, guests and staff with their per-step update; behaviour scripts run by a state machine per unit.
 - `animal`, `guest`, `staff`: needs and life of an animal; guest arrival and state; hiring and wages.
 - `building`, `show`: guest buildings; shows, tricks and performers.
