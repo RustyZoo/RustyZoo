@@ -23,8 +23,8 @@ fail=0
 aliases=$(cat "${files[@]}" | grep -oP "^\s*(pub(\([a-z]+\))? )?type \K\w+(?=(<[^=]*>)?\s*=\s*(std::collections::)?Hash(Map|Set)\b)" | sort -u | paste -sd'|')
 hash='(std::collections::)?(Hash(Map|Set)'"${aliases:+|$aliases}"')'
 for f in "${files[@]}"; do
-  # Only the code above the unit tests module of the file.
-  code=$(awk '/^(#\[cfg\(test\)\]|mod tests)/ {exit} {print}' "$f")
+  # Only the code above the unit tests module of the file (a `#[cfg(test)]` on a `use` or `fn` is no end).
+  code=$(awk '/^mod tests/ {exit} cfg && /^(pub(\([a-z]+\))? )?mod / {exit} {cfg = /^#\[cfg\(test\)\]/} {print}' "$f")
   # Names declared with a hash type: `name: HashMap<..>`, `let name = HashMap::new()`,
   # `let name = ..collect::<HashSet<..>>()`, `let (mut a, mut b) = (HashSet::new(), ..)`.
   names=$( { grep -oP "\b\w+(?=\s*:\s*&?(mut )?$hash\b)" <<<"$code"
