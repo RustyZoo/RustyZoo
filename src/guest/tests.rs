@@ -710,6 +710,66 @@ fn the_step_reports_a_guest_created_for_the_date_hooks() {
 }
 
 #[test]
+fn the_date_hook_runs_inside_the_guest_creation_so_its_flight_moves_in_that_step() {
+    let mut run = game("", true);
+    (run.sim.status.rating, run.sim.status.price) = (85, 9.0);
+    run.sim.status.settings.create_chance = [100; 5];
+    run.cat.push(kind(
+        "ambient",
+        "sleigh",
+        "[Characteristics/Integers]\ncSpeed=100\n",
+        5083,
+    ));
+    let mut flights = 0;
+    for _ in 0..120 {
+        let guests = |w: &crate::world::World| {
+            w.zoo
+                .entities
+                .iter()
+                .filter(|e| e.class == "guests")
+                .count()
+        };
+        let before = guests(&run.world);
+        let mut told = Vec::new();
+        let report = run.sim.step_hooked(
+            &crate::behaviour::NoData,
+            &run.cat,
+            &mut run.world,
+            &mut run.money,
+            67,
+            |_, _, _| {},
+            &mut |sim, world| {
+                let ty = crate::flight::ambient(&run.cat, 5083).unwrap();
+                told.push((
+                    guests(world),
+                    crate::flight::launch(world, &run.cat, ty, 5, &mut sim.rng),
+                ));
+            },
+        );
+        run.sim.status.rating = 85;
+        // The hook runs once per guest created, with the guest already in the world.
+        assert_eq!(told.len(), usize::from(report.arrived));
+        for (count, id) in told {
+            assert_eq!(count, before + 1);
+            // The flight stood on the corner of a tile and has moved since: it made its first
+            // move in the very step of its creation.
+            let flight = run
+                .world
+                .zoo
+                .entities
+                .iter()
+                .find(|e| e.class == "ambient")
+                .unwrap();
+            let at = flight.common.as_ref().unwrap();
+            assert!(id.is_some() && (at.x % 64 != 0 || at.y % 64 != 0), "{at:?}");
+            flights += 1;
+            run.world.zoo.entities.retain(|e| e.class != "ambient");
+        }
+    }
+    assert!(flights > 0);
+}
+
+#[test]
 fn the_step_raises_the_trio_flag_when_an_exhibit_holds_a_lion_a_tiger_and_a_grizzly_bear() {
     let run_with = |names: &[(&'static str, i32)], by_step: bool| {
         let mut cat = types();

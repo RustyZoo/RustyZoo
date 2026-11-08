@@ -8,8 +8,8 @@ use crate::cheat::{Cheat, Named, Season, Subject, WITCH};
 use crate::entity::Catalogue;
 use crate::flight;
 use crate::sim::Sim;
-use crate::world::World;
 use crate::text::from_cp1252;
+use crate::world::World;
 
 impl App<'_> {
     /// Runs the cheat whose text is exactly `text` in `class`, if there is one.
