@@ -3189,6 +3189,48 @@ fn a_record_stored_as_staff_is_read_with_the_layout_of_its_type() {
     assert!(c.staff.is_some());
 }
 
+/// A catalogue with the keeper type `keeper`/`m`.
+fn keeper_catalogue() -> Catalogue {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "keeper",
+        type_name: b"keeper".to_vec(),
+        subtype: b"m".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    cat
+}
+
+#[test]
+fn a_staff_record_is_read_on_the_clamped_ground() {
+    // Version 80: the unit block holds an old tile position, read against the ground.
+    for size in 150..400 {
+        let body = unit(80, size, 31);
+        let load = |class: &str| {
+            let mut bytes = file(80, 1, 1, &[], &[(class, "keeper", "m", body.clone())]);
+            // The only tile: a huge elevation, after the marker that precedes the tiles.
+            let at = bytes
+                .windows(4)
+                .position(|w| w == 7777u32.to_le_bytes())
+                .unwrap()
+                + 4;
+            bytes[at..at + 4].copy_from_slice(&i32::MAX.to_le_bytes());
+            parse(&bytes).checked(&keeper_catalogue()).unwrap()
+        };
+        let (staff, keeper) = (load("staff"), load("keeper"));
+        if keeper.entities[0].common.is_none() {
+            continue;
+        }
+        assert_eq!(staff.entities[0], keeper.entities[0], "size {size}");
+        return;
+    }
+    panic!("no size fits");
+}
+
 #[test]
 fn a_loaded_building_is_written_from_its_record() {
     for v in [70, 74, 75, 106] {

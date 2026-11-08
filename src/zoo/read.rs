@@ -56,6 +56,21 @@ pub(super) struct Ground {
 }
 
 impl Ground {
+    /// The ground of a map. A hostile elevation must not overflow the height, so it is clamped.
+    pub(super) fn of(width: u32, height: u32, tiles: &[Tile]) -> Ground {
+        Ground {
+            width,
+            height,
+            tiles: tiles
+                .iter()
+                .map(|t| Tile {
+                    elevation: t.elevation.clamp(-(1 << 24), 1 << 24),
+                    ..*t
+                })
+                .collect(),
+        }
+    }
+
     /// The tile at the tile coordinates, if it is on the map.
     pub(super) fn tile(&self, x: i32, y: i32) -> Option<&Tile> {
         let (x, y) = (u32::try_from(x).ok()?, u32::try_from(y).ok()?);
@@ -295,18 +310,7 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
     }
 
     r.mark("tiles");
-    r.ground = Some(Rc::new(Ground {
-        width,
-        height,
-        // A hostile elevation must not overflow the height.
-        tiles: tiles
-            .iter()
-            .map(|t| Tile {
-                elevation: t.elevation.clamp(-(1 << 24), 1 << 24),
-                ..*t
-            })
-            .collect(),
-    }));
+    r.ground = Some(Rc::new(Ground::of(width, height, &tiles)));
 
     *section = "entities";
     let min_record = if v >= 70 { 16 } else { 12 };
@@ -431,11 +435,7 @@ fn sized(data: &[u8], v: u32, ground: Option<Rc<Ground>>, class: &[u8]) -> Optio
 /// Reads a record of a parent class again with the layout of the class of its type
 /// (zoo format 6.2 point 2), once `Zoo::checked` has found that type.
 pub(super) fn reread(zoo: &mut Zoo, at: usize, class: &'static str) {
-    let ground = Rc::new(Ground {
-        width: zoo.width,
-        height: zoo.height,
-        tiles: zoo.tiles.clone(),
-    });
+    let ground = Rc::new(Ground::of(zoo.width, zoo.height, &zoo.tiles));
     let e = &mut zoo.entities[at];
     let data = e.common.take().map(|c| c.raw.body).unwrap_or_default();
     e.class = class.into();
