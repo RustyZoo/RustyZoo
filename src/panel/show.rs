@@ -130,6 +130,8 @@ pub(crate) struct Panel {
     editor: editor::Editor,
     /// The grandstand that opened the panel on the finances tab: deselecting it closes it.
     pub stand: Option<u32>,
+    /// The window was shown since the game began (19.3 point 4): false is the reset flag.
+    pub started: bool,
     pub clock: Clock,
     /// The window was shown at the last look.
     pub shown: bool,

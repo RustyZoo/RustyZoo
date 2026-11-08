@@ -276,6 +276,8 @@ pub struct App<'a> {
     game: Option<Game>,
     /// The name cheats; its flags last as long as the program.
     cheats: crate::cheat::Cheats,
+    /// The show panel's tab of the program's first showing (info-panels 19.3 point 4).
+    show_tab: Option<i32>,
     timers: Timers,
     quit: bool,
     /// The paused message (string 400) is on the message line (input 4.5).
@@ -471,6 +473,7 @@ impl<'a> App<'a> {
             renderer,
             game: None,
             cheats: Default::default(),
+            show_tab: None,
             timers,
             quit: false,
             pause_said: false,
@@ -946,7 +949,6 @@ mod tank_panel_tests;
 
 #[cfg(test)]
 mod carry_tests;
-
 #[cfg(test)]
 mod cheat_guest_tests;
 #[cfg(test)]
@@ -959,7 +961,6 @@ mod tests;
 
 #[cfg(test)]
 mod avail_tests;
-
 #[cfg(test)]
 mod replay_tests;
 
@@ -970,7 +971,6 @@ mod start_tests;
 
 #[cfg(test)]
 mod saves_tests;
-
 #[cfg(test)]
 mod scenario_tests;
 
@@ -978,10 +978,9 @@ mod scenario_tests;
 mod award_tests;
 
 #[cfg(test)]
-mod terrain_tests;
-
-#[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod terrain_tests;
 
 #[cfg(test)]
 mod filter_tests;
