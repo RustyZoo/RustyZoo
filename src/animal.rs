@@ -273,7 +273,9 @@ pub(crate) struct Animal {
     /// for a destination.
     pub terrain: u8,
     /// The shelter it aims at (animals 6): the building's id, 0 for none, and the slot and entrance
-    /// it was given by the goals (guest buildings 6.2). The need served is [`Animal::need`].
+    /// it was given by the goals (guest buildings 6.2). The need served is [`Animal::need`]. The
+    /// slot is the unit record's byte, [`crate::guest::NO_SLOT`] from creation; a reset keeps it
+    /// (goals 11.3.1 point 2).
     pub building: u32,
     pub slot: usize,
     pub entrance: crate::building::Point,
@@ -321,6 +323,7 @@ impl Animal {
             crate_count: class.boxed.wrapping_sub(1),
             crowd_direction: -1,
             need: crate::guest::NO_NEED,
+            slot: crate::guest::NO_SLOT,
             ..Animal::default()
         }
     }

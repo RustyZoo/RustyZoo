@@ -293,9 +293,13 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
-        // A guest writes its slot byte, 0xff for none (goals 11.3.1 point 2).
-        if let Part::Guest(g) = &u.part {
-            block.slot = u8::try_from(g.slot).unwrap_or(0xff);
+        // A guest and an animal write their live slot byte, 0xff for none (the constructor writes
+        // 0xff for every kind); a staff member never changes it, so its block keeps the byte it has
+        // (goals 11.3.1 point 2).
+        if let Part::Guest(guest::Guest { slot, .. }) | Part::Animal(animal::Animal { slot, .. }) =
+            &u.part
+        {
+            block.slot = u8::try_from(*slot).unwrap_or(0xff);
         }
         if let Part::Animal(a) = &u.part {
             // The need being served and the position of the own target tile; the tile is rebuilt
