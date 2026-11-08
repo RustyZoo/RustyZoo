@@ -515,15 +515,7 @@ impl World {
     /// member or an ambient creature, which the rating does not see.
     fn rated_tiles(&self, at: usize) -> Vec<usize> {
         let e = &self.zoo.entities[at];
-        let unseen = [
-            "guests",
-            "keeper",
-            "maint",
-            "tour",
-            "staff",
-            "helicopter",
-            "ambient",
-        ];
+        let unseen = ["guests", "keeper", "maint", "tour", "helicopter", "ambient"];
         if unseen.contains(&e.class.as_str()) {
             return Vec::new();
         }

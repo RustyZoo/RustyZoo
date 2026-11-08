@@ -50,9 +50,7 @@ impl Kind {
             "fences" => Kind::Edge,
             "tankwall" => Kind::Wall,
             "ambient" => Kind::Flight,
-            "animals" | "guests" | "staff" | "keeper" | "maint" | "tour" | "helicopter" => {
-                Kind::Unit
-            }
+            "animals" | "guests" | "keeper" | "maint" | "tour" | "helicopter" => Kind::Unit,
             _ => Kind::Fixed,
         }
     }
