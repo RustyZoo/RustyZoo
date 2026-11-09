@@ -21,6 +21,7 @@
 
 mod catalogue;
 pub use catalogue::Catalogue;
+pub(crate) use catalogue::is_of_class;
 
 /// The type of an entity: the first type of its class with its names, `None` when there is none.
 /// A name outside ASCII is looked up by its low bytes (one byte per character).

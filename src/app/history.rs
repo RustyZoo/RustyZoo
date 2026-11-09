@@ -18,10 +18,16 @@ impl App<'_> {
     /// entity of the message, which becomes the selected one with its panel, the bulldozer
     /// released. The message on the line gives way at the next update, whichever row it was.
     pub(super) fn message_clicked(&mut self, row: i32) {
-        playing!(self, game, ui);
-        let Some(Some(id)) = ui.message_click(row) else {
+        let Some(Some(id)) = self.ui.as_mut().and_then(|ui| ui.message_click(row)) else {
             return;
         };
+        self.centre_select(id);
+    }
+
+    /// The view centres on entity `id`, which becomes the selected one with its panel, the
+    /// bulldozer released.
+    pub(super) fn centre_select(&mut self, id: u32) {
+        playing!(self, game, ui);
         let tile = game.world.find(id).and_then(|at| {
             let c = game.world.zoo.entities[at].common.as_ref()?;
             Some((c.x.div_euclid(64), c.y.div_euclid(64)))

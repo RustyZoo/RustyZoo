@@ -174,7 +174,7 @@ impl Tree {
                 },
                 ..Region::default()
             }),
-            b"UIGraph" => Kind::Graph,
+            b"UIGraph" => Kind::Graph(Box::new(Graph::read(s))),
             b"ZTMapView" => Kind::MapView,
             b"ZTMiniMap" => Kind::MiniMap,
             b"ZTMessageQueue" => Kind::MessageQueue,
@@ -210,7 +210,7 @@ impl Tree {
         let border = int("border", 0);
         let button = matches!(kind, Kind::Button(_));
         let text = matches!(kind, Kind::Text(_));
-        let own_background = matches!(kind, Kind::Text(_) | Kind::ListBox(_) | Kind::ScrollBar(_));
+        let own_background = owns_background(&kind);
         let mut look = Look {
             animation: Vec::new(),
             normal: None,
@@ -346,4 +346,13 @@ impl Tree {
         }
         index
     }
+}
+
+/// Whether a type draws its own background, so that it is not transparent unless the file says
+/// so.
+fn owns_background(kind: &Kind) -> bool {
+    matches!(
+        kind,
+        Kind::Text(_) | Kind::ListBox(_) | Kind::ScrollBar(_) | Kind::Graph(_)
+    )
 }
