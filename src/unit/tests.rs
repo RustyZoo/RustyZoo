@@ -529,7 +529,7 @@ impl Data for Script {
     fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
         let count = match name {
             "a" => 3,
-            "b" => 1,
+            "b" | "idle" => 1,
             _ => return None,
         };
         Some(crate::behaviour::Timing { count, delay: 100 })

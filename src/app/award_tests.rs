@@ -340,3 +340,71 @@ fn full_game_award_chains_have_the_condition_the_award_and_the_companions_of_the
         assert_eq!(after, tail, "{id}");
     }
 }
+
+#[test]
+fn a_load_gives_the_file_list_even_when_a_saved_goal_state_says_an_award_was_given() {
+    // The goal gave award 3 and is saved in state 1; the list of the file lacks it.
+    let scn = b"[duration]\nnummonths=-1\n[goals]\ngoal=g\n\
+        [g]\nrulea=99\narga=1\nvalue=1\ntrulea=6\ntarga=3\n"
+        .to_vec();
+    with_game(
+        "award-resume",
+        "",
+        &[("s/aw.scn", scn)],
+        None,
+        |app, install| {
+            let mut now = play(app, "s/aw.scn");
+            for _ in 0..60 {
+                now += 66;
+                app.pass(now, &[]);
+            }
+            assert!(held(app).contains(&3));
+            app.game
+                .as_mut()
+                .unwrap()
+                .world
+                .zoo
+                .awards
+                .retain(|&a| a != 3);
+            let file = install.0.join("awards.zoo");
+            app.save_game(file.to_str().unwrap());
+            assert!(app.load_saved(file.to_str().unwrap()));
+            let before = held(app);
+            app.pass(now + 66, &[]);
+            assert_eq!((held(app), before.contains(&3)), (before, false));
+            assert!(!app.interface().unwrap().modal_open());
+        },
+    );
+}
+
+#[test]
+fn a_modal_donation_popup_is_answered_before_the_award_popups_of_its_pass_show() {
+    let now = "rulea=99\narga=1\ntype=0\nvalue=1";
+    // A donation goal with its modal popup, then an award in the shape of the extra file.
+    let donation = format!(
+        "[d]\n{now}\ntrulea=3\ntruleb=0\ntarga=10\n[d_popup]\n{now}\ntrulea=2\ntruleb=0\ntarga=5\n\
+         [5]\npause=1\nlongText1=AWD_SEVEN\n"
+    );
+    let sections = [donation, award("a", 7, now, Some(100))];
+    let goals = ["d", "d_popup", "a", "a_popup", "a_cash"];
+    let mut at_modal = None;
+    let lines = run("award-modal", file(&goals, &sections), 120, |app, _| {
+        if app.interface().unwrap().modal_open() {
+            // The award waits behind the modal popup.
+            at_modal.get_or_insert_with(|| held(app));
+            app.interface().unwrap().answer(1);
+        }
+    });
+    assert_eq!(at_modal, Some(vec![0]));
+    assert_eq!(
+        lines,
+        [
+            "cash 0 10",
+            "popup 45200 modal",
+            "award 7",
+            "popup 45200 open",
+            "cash 1 100",
+            "awards [7, 0] cash 110",
+        ]
+    );
+}

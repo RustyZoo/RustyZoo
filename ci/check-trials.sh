@@ -310,6 +310,29 @@ check base-trial '2,playable,playable,playable:enabled,' 'scenario_screen ""'
 check base-trial '2,playable,playable,playable:enabled,scenario/scn01a/scn01a.scn' 'scenario_screen "4 mouse 146 438\n5 down\n6 up\n7 double\n8 up"'
 check expansion-trial '4,playable,playable,playable,playable,playable:enabled,' 'scenario_screen ""'
 
+# The first tutorial from its list entry, its two modal popups answered with Enter at passes 25 and 40:
+# the popups ask one after the other, the second only after the first was answered, and no step of the
+# simulation or answer 2 (a cancelled popup) comes between; the hint and the enabled options button
+# follow the second answer (scenarios 8.5, 8.3). Prints the asks, the steps between, the cancels, then
+# whether the hint and the button came in the pass of the second answer.
+tutorial_start() {
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '1 mouse 512 365\n2 down\n3 up\n4 mouse 146 438\n5 down\n6 up\n7 double\n8 up\n25 key enter\n40 key enter\n' >"$tmp/tut"
+  rz run --headless --passes 46 --clock 100 --script "$tmp/tut" 2>/dev/null |
+    awk '/ sim scenario popup 45100 modal/{if(!first)first=$2}
+      / ui ask 45100/{asks++}
+      / ui answer 1/{n++; if(n==2)last=$2}
+      / ui answer 2/{cancels++}
+      / sim step /{step[$2]=1}
+      / sim scenario hint 45400/{hint=$2}
+      / sim scenario element 1004 enable/{button=$2}
+      END{for(p in step)if(p>first&&p<=last)between++
+        print asks+0","between+0","cancels+0","(hint==last&&button==last?"after":"early")}'
+}
+check base-trial 2,0,0,after 'tutorial_start'
+
 # The freeform screen from its menu button: the number of maps, then the starting cash and its
 # difficulty. (The spinners of the full game are not in the trials' layout; the unit tests cover
 # them.)

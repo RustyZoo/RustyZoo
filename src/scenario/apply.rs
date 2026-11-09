@@ -27,20 +27,35 @@ pub(crate) fn built_line(ui: &Interface, line: Line) -> String {
     format::expand(&names, &ui.template(line.text), &args)
 }
 
+/// The text of a popup element: the named text when there is one, else the plain string of the id
+/// (none for 0 or less).
+fn text(ui: &Interface, long: &str, short: i32) -> Vec<u8> {
+    match (long, short) {
+        ("", 1..) => to_cp1252(&ui.string(short)),
+        ("", _) => Vec::new(),
+        _ => ui.text_entry(long.as_bytes()),
+    }
+}
+
 /// Where the dialog layouts keep their pictures and texts, from the layout's id.
 const ICON: i32 = 2;
 const IMAGE1: i32 = 4;
 const IMAGE2: i32 = 5;
 const TEXT2: i32 = 8;
+/// Where the hint panel keeps its line and its second button, from the hint layout's id.
+const LINE: i32 = 6;
+const SECOND_BUTTON: i32 = 12;
 
 /// What the triggers changed in the interface, so that it can be given back (8.4).
 #[derive(Debug, Default)]
 pub(crate) struct Marks {
     disabled: Vec<i32>,
     hidden: Vec<i32>,
-    /// The last popup, which the hint's button shows again, and the layout of the hint on screen.
+    /// The popup the hint's line shows again, and the layout of the hint on screen.
     last: Option<Popup>,
     hint: Option<i32>,
+    /// A modal popup whose hint is decided once it is answered (8.3 point 1).
+    waiting: Option<Popup>,
 }
 
 impl Marks {
@@ -92,28 +107,50 @@ impl Marks {
             }
         };
         if let Some(popup) = popup.filter(|_| show) {
+            self.last = None;
             self.show(popup, ui, vfs, log);
         }
     }
 
-    /// The hint's button was pressed: the last popup shows again.
-    pub(crate) fn again(&mut self, id: i32, ui: &mut Interface, vfs: &Vfs, log: &mut Vec<String>) {
-        if let Some(last) = self.last.clone().filter(|p| p.hint.button == id) {
+    /// The hint's line was pressed: the remembered popup shows again, with the hint line `line` of
+    /// the goals as they are now (8.3 point 5); nothing is forgotten.
+    pub(crate) fn again(
+        &mut self,
+        id: i32,
+        line: Option<Line>,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        log: &mut Vec<String>,
+    ) {
+        if let Some(mut last) = self.last.clone().filter(|p| p.hint.layout + LINE == id) {
+            if last.hint.short == -1 {
+                last.hint.goal = line;
+            }
             self.show(last, ui, vfs, log);
         }
     }
 
+    /// The hint of a modal popup that was answered is decided now (8.3 point 1). Call it while no
+    /// question is open.
+    pub(crate) fn settle(&mut self, ui: &mut Interface, log: &mut Vec<String>) {
+        if let Some(popup) = self.waiting.take() {
+            self.hint_of(popup, ui, log);
+        }
+    }
+
+    /// Whether a modal popup still waits for its answer to decide its hint.
+    pub(crate) fn waiting(&self) -> bool {
+        self.waiting.is_some()
+    }
+
     /// Shows a popup over the hint, which goes; a popup of a layout the interface lacks, or of none,
-    /// shows nothing. The hint, a line with the text it is given, stays when there is one.
+    /// shows nothing. The hint, a line with the text it is given, comes after the dialog call
+    /// returns: for a modal popup when it is answered.
     fn show(&mut self, p: Popup, ui: &mut Interface, vfs: &Vfs, log: &mut Vec<String>) {
+        self.waiting = None;
         if let Some(hint) = self.hint.take() {
             ui.conceal(hint, true);
         }
-        let text = |ui: &Interface, long: &str, short: i32| match (long, short) {
-            ("", 1..) => to_cp1252(&ui.string(short)),
-            ("", _) => Vec::new(),
-            _ => ui.text_entry(long.as_bytes()),
-        };
         let texts = [0, 1].map(|n| text(ui, &p.long[n], p.short[n]));
         let buttons = Buttons {
             ok: p.ok,
@@ -137,11 +174,23 @@ impl Marks {
             if p.modal { "modal" } else { "open" }
         ));
         ui.set_text(layout + TEXT2, &texts[1]);
-        // The pictures come after the layout is shown, which would show them again.
-        for (at, name) in [ICON, IMAGE1, IMAGE2].into_iter().zip(&p.pictures[1..]) {
+        // The pictures come after the layout is shown, which would show them again. The routine
+        // puts the first image on both image elements and never reads the second (original bug,
+        // engine issue 1458).
+        let image = &p.pictures[2];
+        for (at, name) in [(ICON, &p.pictures[1]), (IMAGE1, image), (IMAGE2, image)] {
             let picture = (!name.is_empty()).then(|| ui.tree.picture(vfs, name));
             ui.set_picture(layout + at, picture.flatten());
         }
+        match p.modal {
+            true => self.waiting = Some(p),
+            false => self.hint_of(p, ui, log),
+        }
+    }
+
+    /// The hint panel of a popup that was shown: its line, in the element `layout + 6`, and the
+    /// popup is remembered if none is (8.3).
+    fn hint_of(&mut self, p: Popup, ui: &mut Interface, log: &mut Vec<String>) {
         let line = match p.hint.short {
             -1 if p.hint.long.is_empty() => p
                 .hint
@@ -149,12 +198,16 @@ impl Marks {
                 .map_or(Vec::new(), |g| to_cp1252(&built_line(ui, g))),
             _ => text(ui, &p.hint.long, p.hint.short),
         };
-        if p.hint.layout > 0 && !line.is_empty() && ui.set_text(p.hint.button, &line) {
-            ui.show(p.hint.layout);
-            self.hint = Some(p.hint.layout);
-            log.push(format!("scenario hint {}", p.hint.layout));
+        let layout = p.hint.layout;
+        if layout > 0 && !line.is_empty() && ui.set_text(layout + LINE, &line) {
+            ui.conceal(layout + SECOND_BUTTON, !p.hint.button);
+            ui.show(layout);
+            self.hint = Some(layout);
+            log.push(format!("scenario hint {layout}"));
+            if self.last.is_none() {
+                self.last = Some(p);
+            }
         }
-        self.last = Some(p);
     }
 
     /// Gives back what the triggers changed and hides the hint (8.4). An element a trigger hid
@@ -167,6 +220,6 @@ impl Marks {
         if let Some(hint) = self.hint.take() {
             ui.conceal(hint, true);
         }
-        self.last = None;
+        (self.last, self.waiting) = (None, None);
     }
 }

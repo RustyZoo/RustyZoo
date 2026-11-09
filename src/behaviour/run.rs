@@ -14,11 +14,15 @@
 //! routine call is done when the play state is ready and the unit's goals (which run every step)
 //! do the rest; a nested terrain or tank set is the land one.
 
+mod data;
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use super::{Call, Gait, Number, Op, Place, Play, Routine, Row, Target, parse_call, split_call};
-use crate::entity::EntityType;
+pub(crate) use data::NoData;
+pub use data::{Data, Heard, Timing};
+
+use super::{Call, Gait, Op, Place, Play, Routine, Target, parse_call, split_call};
 use crate::sim::Rng;
 use crate::zoo::{Behaviour as Saved, Entity};
 
@@ -26,75 +30,6 @@ use crate::zoo::{Behaviour as Saved, Entity};
 const DEPTH: usize = 16;
 /// The most entries one play call queues: `fPlayTime` repeats its animation to cover the time.
 const ENTRIES: i64 = 10_000;
-
-/// The frames of an animation and the time each lasts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Timing {
-    pub count: u32,
-    pub delay: u32,
-}
-
-/// What the runner reads of the data, for the unit of an entity.
-pub trait Data {
-    /// The set `name` the unit starts: its calls, if it has any (behaviours 3.1).
-    fn set(&self, unit: &Entity, name: &str) -> Option<&[Call]>;
-    /// The rows of the unit's ambient table number `table` of [`super::TABLES`].
-    fn ambient(&self, unit: &Entity, table: usize) -> &[Row];
-    /// The frames and delay of one of the unit's animations; `None` if it has none of that name.
-    fn timing(&self, unit: &Entity, animation: &str) -> Option<Timing>;
-    /// The value of a number of a call (behaviours 5.8).
-    fn number(&self, unit: &Entity, number: &Number) -> i32;
-    /// The sound the unit's `[Sounds]` section names with this key.
-    fn sound(&self, unit: &Entity, key: &str) -> Option<Heard>;
-    /// A whole number of `[Characteristics/Integers]` of the unit class file `ztunit.ai`, shared by
-    /// all units (pathfinding 6.5); `None` when the file or the key is missing.
-    fn unit_class(&self, _key: &str) -> Option<i32> {
-        None
-    }
-    /// The number of sprite files of the base animation set of an ambient type; 0 when it has
-    /// none or it does not load (ambients 3.2).
-    fn set_files(&self, _ty: &EntityType) -> usize {
-        0
-    }
-    /// The bytes of the data file `name`; `None` when there is none.
-    fn read(&self, _name: &str) -> Option<Vec<u8>> {
-        None
-    }
-}
-
-/// No data: no set, no animation.
-pub(crate) struct NoData;
-
-impl Data for NoData {
-    fn set(&self, _: &Entity, _: &str) -> Option<&[Call]> {
-        None
-    }
-    fn ambient(&self, _: &Entity, _: usize) -> &[Row] {
-        &[]
-    }
-    fn timing(&self, _: &Entity, _: &str) -> Option<Timing> {
-        None
-    }
-    fn number(&self, _: &Entity, number: &Number) -> i32 {
-        match number {
-            Number::Int(n) => *n,
-            Number::Characteristic(_) => 0,
-        }
-    }
-    fn sound(&self, _: &Entity, _: &str) -> Option<Heard> {
-        None
-    }
-}
-
-/// A sound of a `[Sounds]` key: the member of the file (behaviours 5.2), the base term `B` (the
-/// second value of the key, sound 4.4) and the name of its voice: each key of each type has one
-/// (sound 9.1).
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Heard {
-    pub file: String,
-    pub base: i32,
-    pub voice: String,
-}
 
 /// What happened that the log and the app are told.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -320,11 +255,12 @@ impl Animation {
     }
 
     /// Drops the queued sequences and queues `seq` behind the one playing, the base loop
-    /// included: the player takes it when that ends (behaviours 5.2).
-    fn queue(&mut self, seq: Vec<Entry>) {
+    /// included: the player takes it when that ends. `base` is the unit's idle animation
+    /// (behaviours 5.2, 5.10).
+    fn queue(&mut self, seq: Vec<Entry>, base: &str) {
         self.queue.clear();
         self.queue.push_back(seq);
-        self.base = "idle".to_string();
+        self.base = base.to_string();
     }
 
     /// Clears the player and shows `name` from its first frame as the base (`fSetBase`).
@@ -360,6 +296,24 @@ struct Level {
     own: Option<Arc<[Call]>>,
 }
 
+/// The two names the idle animation of a unit is chosen from (behaviours 5.10): `forced` is the
+/// one an egg, a crate or the water gives, which has no fallback; else the type's animation
+/// `named` is taken, and the plain `idle` when the type has none of that name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Rest {
+    pub forced: Option<&'static str>,
+    pub named: &'static str,
+}
+
+impl Default for Rest {
+    fn default() -> Self {
+        Rest {
+            forced: None,
+            named: "idle",
+        }
+    }
+}
+
 /// What a unit needs to run its set.
 pub(crate) struct Env<'a> {
     pub data: &'a dyn Data,
@@ -389,6 +343,9 @@ pub(crate) struct Runner {
     /// a nesting call (tank fauna 9.5): set by the unit before each run.
     pub tank_mode: u8,
     pub wet: bool,
+    /// What the idle animation of the unit depends on (behaviours 5.10): set by the unit before
+    /// each run; not in the state hash.
+    pub rest: Rest,
     /// The guide's task is the talk and not done: its routine does not make idle the base
     /// (behaviours 5.5). Set by the unit before each run.
     pub talking: bool,
@@ -466,6 +423,7 @@ impl Default for Runner {
             place: Place::Land,
             tank_mode: 0,
             wet: false,
+            rest: Rest::default(),
             talking: false,
             moving: None,
             rampage: false,
@@ -937,13 +895,28 @@ impl Runner {
         if entries.is_empty() {
             return false;
         }
+        // The base of the call is the unit's idle animation; without one the call fails.
+        let Some(idle) = self.idle(env) else {
+            return false;
+        };
         let base = anim.shows_base();
-        anim.queue(entries);
+        anim.queue(entries, idle);
         if self.fresh && base {
             anim.finish(&timing);
         }
         (self.playing, self.ready) = (true, false);
         true
+    }
+
+    /// The idle animation of the unit (behaviours 5.10): the forced one when the type has it, else
+    /// the named one, else the plain `idle`; none when the type has none of them.
+    fn idle(&self, env: &Env) -> Option<&'static str> {
+        let has = |name: &str| env.data.timing(env.unit, name).is_some();
+        let Rest { forced, named } = self.rest;
+        match forced {
+            Some(name) => has(name).then_some(name),
+            None => [named, "idle"].into_iter().find(|n| has(n)),
+        }
     }
 
     /// A set picked at random among the rows (behaviours 5.3): one draw, and another after every

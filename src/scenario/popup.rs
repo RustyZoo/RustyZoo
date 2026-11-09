@@ -6,9 +6,6 @@
 use super::Line;
 use crate::config::{Config, Section, to_int};
 
-/// The element that shows the last popup again, when the file names none.
-const HINT_BUTTON: i32 = 45406;
-
 /// A popup: the section `[p]` over `[default]` of the same file.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Popup {
@@ -36,8 +33,8 @@ pub(crate) struct Hint {
     pub long: String,
     /// The goal line a hint of -1 shows, taken when the popup is given (none: no text).
     pub goal: Option<Line>,
-    /// The element that shows the last popup again.
-    pub button: i32,
+    /// `persistentButton`: whether the second button of the hint panel (`layout + 12`) shows.
+    pub button: bool,
 }
 
 fn text(s: Option<&[u8]>) -> String {
@@ -70,7 +67,7 @@ impl Popup {
                 short: int("persistentShortText", 0),
                 long: text(get("persistentLongText")),
                 goal: None,
-                button: int("persistentButton", HINT_BUTTON),
+                button: int("persistentButton", 0) != 0,
             },
         })
     }
