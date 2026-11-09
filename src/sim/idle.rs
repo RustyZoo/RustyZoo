@@ -431,6 +431,7 @@ impl Idles {
         if walls && self.ripples.get(&id).is_some_and(|r| !r.is_empty()) {
             self.ripples.remove(&id);
             world.remove_bubbles_of(id);
+            world.drop_sparkles(id);
         }
         if let Some((_, walls)) = world.rippled_tanks().iter().find(|t| t.0 == id) {
             // A set-up queued while the tanks of a split had each other's tiles keeps its walls.

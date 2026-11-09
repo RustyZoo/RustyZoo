@@ -81,6 +81,7 @@ impl App<'_> {
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
+        want.hidden.extend_from_slice(game.world.hidden_sparkles());
         want.selected = game.selected;
         let animal = game
             .selected
@@ -95,6 +96,7 @@ impl App<'_> {
         };
         want.faces.clone_from(&game.world.units.reactions);
         want.filters = game.world.filter_looks();
+        want.connectors = game.world.connector_ids();
         want.idle = Frames(self.sim.idle_frames());
         want.looks = self.sim.idle_looks();
         want.marks.extend(game.selection);

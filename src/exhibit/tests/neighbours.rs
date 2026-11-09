@@ -1258,3 +1258,18 @@ fn a_wall_that_closes_a_pen_into_a_tank_reads_the_land_beside_it() {
     rating::again(&w, &mut before, Some(tile), false);
     assert_eq!(read(&before), [(tank, Some(false))]);
 }
+
+#[test]
+fn the_connector_walls_are_listed_for_the_picture_until_their_link_goes() {
+    let mut w = linked();
+    let ids = w.connector_ids();
+    assert!(!ids.is_empty() && ids.windows(2).all(|p| p[0] < p[1]));
+    assert!(w.remove(ids[0]));
+    assert!(!w.connector_ids().contains(&ids[0]));
+    let (tank, _) = pair(&w);
+    assert!(
+        w.exhibits()
+            .get(tank)
+            .is_none_or(|e| e.amphibious.is_empty())
+    );
+}
