@@ -223,9 +223,10 @@ impl Vfs {
     /// the search path and the members of their archives. Loose files are not read until
     /// requested.
     ///
-    /// Fails if the folder or its ini file is missing or unusable, or if a directory of the
-    /// search path cannot be listed. Directories of the search path that do not exist are
-    /// skipped. Archives that are not acceptable ZIP files are ignored and reported by
+    /// Fails if the folder or its ini file is missing or unusable, if a directory of the search
+    /// path cannot be listed, or if the path names no directory that exists. Directories that do
+    /// not exist are skipped, and so are elements that cannot be resolved (with a warning).
+    /// Archives that are not acceptable ZIP files are ignored and reported by
     /// [`warnings`](Vfs::warnings); an archive that cannot be read for any other reason (the
     /// operating system refuses to open or read it) fails the open, naming the file.
     pub fn open(install_dir: &Path) -> Result<Vfs, VfsError> {
