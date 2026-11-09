@@ -1,35 +1,124 @@
-//! Re-save parity of the shipped files (issue 1037): each map and saved game of version 105 or 106
-//! is loaded as `sim` does and written back before the first step, and the file is compared with
-//! the original section by section. The differences are pinned in [`BUDGET`]; a file may differ
-//! less, never more, so lower a pin when a section is fixed.
+//! Re-save parity of the shipped files (issues 1037, 1439): each map and saved game of version 105
+//! or 106 is opened as Continue does and written back before the first step, and the file is
+//! compared section by section with the file the original would write (save games 15): the source
+//! with the changes the original makes too, [`expected`]. A file may differ by [`BUDGET`] at most;
+//! it is empty, so every file is within [`DEFAULT`].
 
 use super::*;
+use crate::goal::USE;
 use crate::{animal::Class, exhibit::TankConfig, place, sim::drive::Run, terrain, world::Decay};
 use std::collections::BTreeMap;
 
-/// Per file: the most bytes that differ (section by section, a section that changed its size
-/// counting the bytes added or lost) and the most the size may change by, measured on the full
-/// game and on the French install (the larger of the two).
-const BUDGET: &[(&str, usize, usize)] = &[
-    ("maps/lg_resrt.zoo", 115, 80),
-    ("maps/lg_sandy.zoo", 8689, 108),
-    ("maps/lg_sub.zoo", 61463, 2808),
-    ("maps/med_kids.zoo", 758, 56),
-    ("maps/scn28.zoo", 397, 40),
-    ("maps/scn28b.zoo", 449, 44),
-    ("maps/scn31.zoo", 5463, 69),
-    ("maps/scn33.zoo", 717, 113),
-    ("maps/scn36.zoo", 831, 166),
-    ("maps/scn37.zoo", 2310, 452),
-    ("maps/scn42.zoo", 1602, 1517),
-    ("saved games/test.zoo", 353, 78),
-];
+/// Per file, the most bytes that differ and the most the size may change by, for a file that the
+/// original's changes cannot explain.
+const BUDGET: &[(&str, usize, usize)] = &[];
 
-/// What a file without a pin may differ by: the version word, counters and clocks.
+/// What a file without a pin may differ by: the version word, the clocks a Continue start still
+/// touches (the three status timers) and the like.
 const DEFAULT: (usize, usize) = (64, 0);
 
 /// Files the writer refuses today (none); one that writes is measured against [`DEFAULT`] unless pinned.
 const REFUSED: &[&str] = &[];
+
+/// What the original changes in a file that the expected file applies, per file (the rest hold 0):
+/// the records of a type the game does not have (15.2), the events posted at load (15.4) and how many
+/// times the longevity research lengthens the animals (15.5).
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Changes {
+    dropped: usize,
+    events: usize,
+    lengthened: u32,
+}
+
+impl Changes {
+    const NONE: Changes = Changes {
+        dropped: 0,
+        events: 0,
+        lengthened: 0,
+    };
+}
+
+const CHANGES: &[(&str, Changes)] = &[
+    (
+        "maps/lg_resrt.zoo",
+        Changes {
+            events: 4,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/lg_sandy.zoo",
+        Changes {
+            dropped: 1,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/lg_sub.zoo",
+        Changes {
+            dropped: 26,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/med_kids.zoo",
+        Changes {
+            lengthened: 1,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn28.zoo",
+        Changes {
+            events: 2,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn28b.zoo",
+        Changes {
+            events: 1,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn31.zoo",
+        Changes {
+            dropped: 2,
+            events: 8,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn33.zoo",
+        Changes {
+            dropped: 1,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn36.zoo",
+        Changes {
+            events: 8,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "maps/scn37.zoo",
+        Changes {
+            dropped: 4,
+            ..Changes::NONE
+        },
+    ),
+    (
+        "saved games/test.zoo",
+        Changes {
+            events: 2,
+            lengthened: 2,
+            ..Changes::NONE
+        },
+    ),
+];
 
 /// The sections of a file as (name, bytes); the name of an entity is `entity/CLASS`, and what
 /// follows the last section is `tail`. Equal names are paired in order across two files.
@@ -42,6 +131,134 @@ fn sections(bytes: &[u8]) -> Vec<(String, &[u8])> {
     }
     out.push(("tail".into(), &bytes[at..]));
     out
+}
+
+/// What the longevity research (aquatic species, way 2) adds to a life, in per cent.
+const LONGEVITY: i32 = 25;
+
+/// The file the original writes when `source` is opened with Continue and saved before the first
+/// step (save games 15), and what it changed. `engine` is the engine's save of the file: the
+/// bytes the original draws at random or takes from the running game, which a comparison leaves
+/// out (the data word of a posted event, the places of the guests seated again, the research
+/// section and the scenario block of the running game, 15.10), are taken from it.
+fn expected(
+    source: &[u8],
+    cat: &Catalogue,
+    engine: &[u8],
+    changes: &Changes,
+) -> Result<(Vec<u8>, Changes), String> {
+    let (mut zoo, money) = Zoo::parse_money_in(source, cat).map_err(|e| e.to_string())?;
+    let (theirs, _) = Zoo::parse_money_in(engine, cat).map_err(|e| e.to_string())?;
+    let mut made = Changes {
+        lengthened: changes.lengthened,
+        ..Changes::default()
+    };
+    // 15.2: the records of the type `jeep1`, which the update archive's scenery file lacks, are
+    // gone (the parse drops them; they are counted from the file as it is).
+    let all = Zoo::parse(source).map_err(|e| e.to_string())?;
+    let jeep =
+        |e: &Entity| (&*e.class, &*e.type_name, &*e.subtype) == ("objects", "other", "jeep1");
+    made.dropped = all.entities.iter().filter(|e| jeep(e)).count();
+    // 15.4 point 1: the pieces at or below their `cDecayedLife` post 10033 (10034 when electrified)
+    // in the next buffer, in entity list order.
+    let mut events = Vec::new();
+    for e in &zoo.entities {
+        let Some((c, f)) = e.common.as_ref().and_then(|c| Some((c, c.fence?))) else {
+            continue;
+        };
+        let ty = crate::place::bulldozer::type_of(cat, e);
+        let key = |name| {
+            ty.and_then(|t| crate::build::number(t, name))
+                .unwrap_or(0.0)
+        };
+        let kind = if f.life < 1 {
+            // A piece that can break is broken again.
+            ty.is_some_and(crate::world::deteriorates).then_some(10034)
+        } else if i64::from(f.life) <= key("cDecayedLife") as i64 {
+            Some(if key("cIsElectrified") != 0.0 {
+                10034
+            } else {
+                10033
+            })
+        } else {
+            None
+        };
+        if let Some(kind) = kind {
+            events.push(crate::world::piece_event(c.id, kind, 0));
+        }
+    }
+    // The engine's file holds those posted at load behind the stored ones. The pieces' events
+    // must be the rule's, in its order; the data word is an address in the original (15.4 point 2),
+    // and the dung (10032) and filter (10035, 10036) events of the other after-load steps are
+    // taken from the engine's file, their number pinned.
+    let queue = &mut zoo.clocks.queue;
+    let first = queue.next_is_first;
+    let next = if first {
+        &mut queue.first
+    } else {
+        &mut queue.second
+    };
+    let posted = &theirs.clocks.queue;
+    let posted = if first { &posted.first } else { &posted.second };
+    let posted = posted.get(next.len()..).unwrap_or_default().to_vec();
+    let pieces = |events: &[Event]| -> Vec<(u32, u16)> {
+        let pieces = events.iter().filter(|e| matches!(e.kind, 10033 | 10034));
+        pieces.map(|e| (e.sender, e.kind)).collect()
+    };
+    if pieces(&posted) != pieces(&events) {
+        return Err(format!(
+            "pieces: {:?}, the rule gives {:?}",
+            pieces(&posted),
+            pieces(&events)
+        ));
+    }
+    made.events = posted.len();
+    next.extend(posted);
+    // 15.5: the life is cut to the type's `cTimeDeath - 1`, then lengthened by every completion.
+    for e in &mut zoo.entities {
+        let ty = crate::place::bulldozer::type_of(cat, e);
+        let Some(animal) = e.common.as_mut().and_then(|c| c.animal.as_mut()) else {
+            continue;
+        };
+        let (Some(life), Some(death)) = (
+            animal.life,
+            ty.and_then(|t| crate::build::number(t, "cTimeDeath")),
+        ) else {
+            continue;
+        };
+        let mut life = life.min(death as i32 - 1);
+        let aquatic = ty.and_then(|t| crate::build::plain(t, "cExpansionID")) == Some(2.0);
+        for _ in 0..changes.lengthened * u32::from(aquatic) {
+            if life > 0 {
+                life = (i64::from(life) * i64::from(LONGEVITY) / 100) as i32 + life;
+            }
+        }
+        animal.life = Some(life);
+    }
+    // 15.6: the guests using a building (a grandstand seats them again at random places) are
+    // left at the places of the engine's file.
+    let places: BTreeMap<u32, (i32, i32, i32)> = theirs
+        .entities
+        .iter()
+        .filter_map(|e| e.common.as_ref())
+        .map(|c| (c.id, (c.x, c.y, c.z)))
+        .collect();
+    for c in zoo.entities.iter_mut().filter_map(|e| e.common.as_mut()) {
+        let using = c
+            .unit
+            .as_ref()
+            .is_some_and(|u| u.target.goal == i32::from(USE));
+        if let (true, Some(&at)) = (c.guest.is_some() && using, places.get(&c.id)) {
+            (c.x, c.y, c.z) = at;
+        }
+    }
+    // 15.7: the load adds two to the next show id per show tank (each has a show info).
+    let tanks = zoo.shows.infos.iter().flatten().count();
+    zoo.shows.next_show = zoo.shows.next_show.wrapping_add(2 * tanks as u16);
+    // 15.10: the original rewrites the research section and the scenario block.
+    zoo.kept.research = theirs.kept.research.clone();
+    zoo.kept.scenario = theirs.kept.scenario.clone();
+    Ok((zoo.write(&money)?, made))
 }
 
 /// Per section name, over the sections paired in order: the bytes that differ and the size change.
@@ -95,21 +312,34 @@ fn resaved_after(
     run.save()
 }
 
-/// A file of version 105 or 106 saved back: the report of its sections, the bytes that differ and
-/// the change of size; `Err` when the writer refuses it; `None` for another version.
+/// A file of version 105 or 106 saved back: the report of its sections, the bytes that differ
+/// from the expected file and the change of size; `Err` when the writer refuses it or the file
+/// does not have the changes of [`CHANGES`]; `None` for another version.
 fn measure(vfs: &crate::vfs::Vfs, member: &str) -> Option<Result<(String, usize, isize), String>> {
     let old = vfs.read(member).unwrap();
     let version = Zoo::parse(&old).map_or(0, |z| z.version);
     if !(105..=106).contains(&version) {
         return None;
     }
+    let cat = Catalogue::load(vfs).unwrap();
     let new = match resaved(vfs, Catalogue::load(vfs).unwrap(), member) {
         Ok(new) => new,
         Err(why) => return Some(Err(format!("{member}: v{version} refused: {why}"))),
     };
-    let by = compare(&old, &new);
+    let pinned = CHANGES.iter().find(|c| c.0 == member).map(|c| &c.1);
+    let (want, _) = (pinned.unwrap_or(&Changes::NONE), ());
+    let (expect, made) = match expected(&old, &cat, &new, want) {
+        Ok(done) => done,
+        Err(why) => return Some(Err(format!("{member}: v{version} no expected file: {why}"))),
+    };
+    if &made != want {
+        return Some(Err(format!(
+            "{member}: changes {made:?}, the spec says {want:?}"
+        )));
+    }
+    let by = compare(&expect, &new);
     let bytes = by.values().map(|v| v.0).sum::<usize>();
-    let size = new.len() as isize - old.len() as isize;
+    let size = new.len() as isize - expect.len() as isize;
     let mut report = format!("{member}: v{version} bytes {bytes} size {size:+}");
     let mut worst: Vec<_> = by.iter().filter(|(_, v)| v.0 > 0).collect();
     worst.sort_by_key(|(_, v)| std::cmp::Reverse(v.0));

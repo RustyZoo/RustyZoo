@@ -407,7 +407,7 @@ impl World {
 
 /// Whether a piece of this type can break (placing 7.4): an exhibit fence that is no zoo wall,
 /// zoo gate, tank wall or `cIndestructible` type.
-fn deteriorates(ty: &EntityType) -> bool {
+pub(crate) fn deteriorates(ty: &EntityType) -> bool {
     let habitat = (ty.config.as_deref()).is_some_and(|c| c.section("HabitatFence").is_some());
     let tank = (ty.config.as_deref()).is_some_and(|c| c.section("TankFence").is_some());
     let member = |name| crate::render::member(ty, name);

@@ -398,9 +398,13 @@ pub(crate) fn continued_save(
     let (zoo, money) = Zoo::parse_money_in(source, cat).map_err(|e| e.to_string())?;
     let renderer = crate::render::MapRenderer::new(vfs, cat);
     let ini = Config::parse(vfs.ini()).unwrap_or_default();
+    // The window's first game is the file itself, in a process that has played nothing: the AI
+    // clock held is 0 (zoo format 6.4).
+    let mut first = zoo.clone();
+    first.clocks.ai_ticks = 0;
     let mut app = App::new(
         renderer,
-        zoo.clone(),
+        first,
         Settings::from_config(&ini),
         Timers::from_config(&ini),
         size,
