@@ -66,7 +66,12 @@ fn encode(image: &Framebuffer, jpeg: bool, quality: i32) -> Result<Vec<u8>, Stri
     out.extend_from_slice(&[0; 24]);
     // Rows from the bottom up, blue first.
     for line in image.pixels.chunks_exact(w * 4).rev() {
-        out.extend(line.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]));
+        out.extend(
+            line.as_chunks::<4>()
+                .0
+                .iter()
+                .flat_map(|p| [p[2], p[1], p[0]]),
+        );
         out.resize(out.len() + row - w * 3, 0);
     }
     Ok(out)
@@ -94,7 +99,7 @@ mod tests {
 
     fn picture(w: u32, h: u32) -> Framebuffer {
         let mut f = Framebuffer::new(w, h);
-        for (i, p) in f.pixels.chunks_exact_mut(4).enumerate() {
+        for (i, p) in f.pixels.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             p.copy_from_slice(&[(i * 7) as u8, 200, (i * 3) as u8, 255]);
         }
         f
