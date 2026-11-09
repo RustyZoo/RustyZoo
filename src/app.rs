@@ -620,9 +620,12 @@ impl<'a> App<'a> {
             }
             self.acts();
         }
-        // What the start triggers left is done before the frame's step, as the start routine does it
-        // (the step of the start frame runs).
-        self.scenario_effects();
+        // What the start triggers left is done before the frame's step, as the start routine does it,
+        // so the step of the start frame runs; the answer of a modal popup is no start: its pass goes
+        // on after the step (scenarios 5.2, 8.5).
+        if !self.marks.waiting() {
+            self.scenario_effects();
+        }
         let modal = self.modal();
         let held = self.scenario_held();
         let mut month_end = false;
