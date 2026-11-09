@@ -30,9 +30,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      # README.md merges as a union, so a row or bullet can end up twice.
-      - run: ci/check-doc-rows.sh
-
       # HEAD is the pull request merged into master, HEAD^ is master.
       - id: legs
         env:

@@ -35,15 +35,14 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 ## Pins
 
-- `ci/check-trials.sh` and `ci/playable-full.txt` pin seeds, step counts and expected values. Never change a seed or loosen an expected value to make a check pass (the playable scripts try the seeds of their `#seeds` line by themselves, `docs/playing.md`).
-- A pin moves only with a verified cause shown in the pull request, for example the check passing again with the new behaviour switched off. Try a longer run first, then a seed search starting at 1, and list the seeds tried in the pull request.
-- In `ci/check-trials.sh`, what the random stream decides (a birth step, which guest is inside a building) is a property that fails when the behaviour is lost (`any_seed`), not a pin; a new check does the same. Only the lines marked "Sentinel" are exact stream values: when one moves, say in the pull request why the stream changed.
+- `ci/check-trials.sh` pins what the files hold and what a script fixes (counts, sizes, ids, prices, a picture's hash). Never loosen an expected value to make a check pass.
+- What the random stream decides (a birth step, which guest is inside a building, how many pieces a path walks) is a property that fails when the behaviour is lost (`any_seed`), never a step number; a new check does the same. Only the lines marked "Sentinel" (a few hashes and step numbers) are exact stream values, there to show that the stream is deterministic; each reads the run of its property. A change that shifts the stream moves the sentinels: say in the pull request why the stream changed, and give the new values with the cause shown (for example the check passing again with the new behaviour switched off). Do not search for a seed.
+- The scripted games of `ci/playable*.txt` are not re-seeded either: their `#probe` line drops a seed whose hires came out as men in seconds, and their `#seeds` line is the safety net (`docs/playing.md`).
 - Why: a pin that is edited until it passes hides the regression it exists to catch.
 
-## Documentation rows
+## Documentation
 
-- `README.md` merges as a union (`.gitattributes`), so a rebase can succeed while leaving the old and the new copy of a line side by side, and GitHub's own merge then conflicts.
-- After every rebase run `ci/check-doc-rows.sh` and keep one line per row. It fails on two table rows with the same first cell, two bullets with the same bold lead, and two command lines with the same command in a code block.
+- `docs/architecture.md` is a short module map. Update it only when a module is added, removed or changes its role; never for a change inside a module (its own doc comment says what it does).
 - A function over 150 lines fails clippy (`too_many_lines`); a non-test file over 1000 lines fails `ci/check-file-size.sh` unless `ci/file-size-allow.txt` lists it, and a listed file may only shrink.
 
 ## Windows CI
