@@ -53,6 +53,7 @@ pub fn interface_command(event: &Event) -> Option<Command> {
         // Only Ctrl+S and Ctrl+L act (input 10); typed letters come as characters.
         Scancode::S => Key::S,
         Scancode::L => Key::L,
+        Scancode::F1 => Key::F1,
         // The buttons of the main bar (input 10); typed, these letters come as characters.
         Scancode::B if ctrl => Key::B,
         Scancode::F if ctrl => Key::F,
@@ -332,7 +333,17 @@ mod tests {
             Some(Command::Key(Key::L, true, false))
         );
         assert_eq!(press(Scancode::Return, Mod::LALTMOD), None);
-        assert_eq!(press(Scancode::F1, Mod::NOMOD), None);
+        // F1 opens the help window; with Ctrl it is the game's own, and with Alt a system key.
+        assert_eq!(
+            press(Scancode::F1, Mod::NOMOD),
+            Some(Command::Key(Key::F1, false, false))
+        );
+        assert_eq!(
+            press(Scancode::F1, Mod::LCTRLMOD),
+            Some(Command::Key(Key::F1, true, false))
+        );
+        assert_eq!(press(Scancode::F1, Mod::LALTMOD), None);
+        assert_eq!(press(Scancode::F2, Mod::NOMOD), None);
         // The buttons of the main bar need Ctrl; typed, the letters are characters.
         for (key, name) in [
             (Scancode::B, Key::B),

@@ -520,11 +520,12 @@ field_use() {
 check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter;' "field_use maps/scn19.zoo"
 
 # The tooltip of the first main menu button: shown 30 pixels under the pointer after the update,
-# gone after its 3 seconds. The size follows the text of the install.
+# gone after its `tooltipDuration` (3 s in the expansion trial's ini, 5.5 s in the base trial's). The size
+# follows the text of the install.
 tooltip_use() {
   d=$(mktemp -d)
   printf '1 mouse 512 365\n5 mouse 513 366\n' >"$d/script"
-  rz run "$1" --seed 1 --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
+  rz run "$1" --seed 1 --headless --passes 60 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
     grep ' ui \(tooltip\|hide\)' | sed 's/^pass \([0-9]*\) .* ui /\1 /' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -537,7 +538,7 @@ question_use() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial '1tooltip51239527428;31hide7003;' "tooltip_use maps/default.zoo"
+check base-trial '1tooltip51239527428;56hide7003;' "tooltip_use maps/default.zoo"
 check expansion-trial '1tooltip51239537628;31hide7003;' "tooltip_use maps/scn19.zoo"
 
 # A question opened over the map: the game stands still until it is answered, by a click on a

@@ -52,6 +52,8 @@ use crate::ui::interface::{Action, Buttons, Interface};
 use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
 use crate::zoo::{Entity, Zoo};
+use ids::*;
+pub use options::Display;
 
 /// Binds `game` (and `ui`) of the zoo being played, or returns from the method without a game.
 /// A macro, not a method: the caller keeps borrowing the other fields of the app (the renderer).
@@ -303,6 +305,9 @@ pub struct App<'a> {
     bare: bool,
     /// What the scenario's triggers changed in the interface.
     marks: crate::scenario::Marks,
+    /// The game options window and the help window.
+    options: options::Options,
+    help: help::Help,
 }
 
 /// The layouts of the game screen that stopping or ending a game hides.
@@ -327,38 +332,9 @@ enum Asked {
     /// The objects a new tank does not allow: Yes sells and moves them, anything else undoes
     /// the operation.
     Tank,
+    /// The restart notice of the options window: its answer deselects the Options button.
+    Restart,
 }
-
-/// The string that starts the default name of a guest.
-const GUEST_NAME: i32 = 9507;
-/// The layout of the question boxes with a message, the main panel and the options panel, and the
-/// buttons of the options panel that leave the game.
-const QUESTION: i32 = 45000;
-/// The picture a question shows on its icon, and the exclamation picture of a research completion
-/// (research 5.4.1).
-const QUESTION_PICTURE: &str = "ui/sharedui/question/question";
-const EXCLAIM_PICTURE: &str = "ui/sharedui/exclaim/exclaim";
-const MAIN_PANEL: i32 = 2;
-/// The cash on the status bar, and its bars of animal happiness, guest happiness and zoo rating.
-const STATUS_MONEY: i32 = 1016;
-const STATUS_ANIMALS: i32 = 1011;
-const STATUS_GUESTS: i32 = 1013;
-const STATUS_ZOO: i32 = 1015;
-/// The date on the status bar (its tooltip is the string of the same number), and the strings of
-/// the patterns of the date and of the weekday in the tooltip.
-const STATUS_DATE: i32 = 1030;
-const DATE_PATTERN: i32 = 22012;
-const DAY_PATTERN: i32 = 22013;
-const OPTIONS_PANEL: i32 = 5;
-const MAIN_MENU_BUTTON: i32 = 1503;
-const EXIT_BUTTON: i32 = 1504;
-/// The questions: save before starting a new zoo, before exiting.
-const ASK_LEAVE: i32 = 153;
-const ASK_EXIT: i32 = 151;
-const ASK_LOAD: i32 = 152;
-/// The Load Game and Save Game buttons of the options panel.
-const LOAD_BUTTON: i32 = 1501;
-const SAVE_BUTTON: i32 = 1502;
 
 impl<'a> App<'a> {
     /// A game on `zoo` seen through a window of `size` pixels, with the camera the map stores.
@@ -390,6 +366,7 @@ impl<'a> App<'a> {
         app.set_interface(ui);
         app.menu = Some(menu);
         app.music = music;
+        app.options_start();
         Ok(app)
     }
 
@@ -405,6 +382,7 @@ impl<'a> App<'a> {
             Ok(economy) => sim.set_economy(&economy),
             Err(why) => eprintln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used"),
         }
+        let options = options::Options::new(renderer.vfs().ini());
         let last_file = Config::parse(renderer.vfs().ini())
             .ok()
             .and_then(|ini| menu::last_path(&ini, renderer.vfs().root()));
@@ -459,6 +437,8 @@ impl<'a> App<'a> {
             faded: false,
             bare: false,
             marks: Default::default(),
+            options,
+            help: Default::default(),
         })
     }
 
@@ -518,7 +498,7 @@ impl<'a> App<'a> {
     /// the frame when this pass painted one: a due draw paints only when the camera has moved
     /// since the last frame. A `Quit` ends the game before the rest of the pass: the commands
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
-    pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
+    fn run_pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.lines.begin_pass();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
@@ -875,10 +855,13 @@ mod exhibits;
 mod facts;
 mod gates;
 mod guest_panel;
+mod help;
 mod history;
+mod ids;
 mod kinds;
 mod log;
 mod main_buttons;
+mod options;
 mod paint;
 mod view_buttons;
 pub use paint::{frame_hash, frame_hashes};
@@ -952,6 +935,8 @@ mod terrain_tests;
 mod bulldozer_tests;
 #[cfg(test)]
 mod facts_tests;
+#[cfg(test)]
+mod options_tests;
 #[cfg(test)]
 mod unit_lists_tests;
 #[cfg(test)]

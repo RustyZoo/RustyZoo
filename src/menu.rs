@@ -293,7 +293,7 @@ impl Menu {
     }
 
     /// Writes `key` of `section` back, to the memory of the menu and to the settings of the user.
-    fn write_back(&mut self, section: &str, key: &str, value: &str) {
+    pub(crate) fn write_back(&mut self, section: &str, key: &str, value: &str) {
         self.ini.set(section, key, value);
         if let Some(dir) = &self.user
             && let Err(e) = userdir::save(dir, section, key, value)

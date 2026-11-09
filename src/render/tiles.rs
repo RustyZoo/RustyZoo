@@ -15,7 +15,24 @@ impl<'a> MapRenderer<'a> {
     }
 
     pub(super) fn blends(&self, kind: u8) -> bool {
-        self.blend.get(usize::from(kind)).copied().unwrap_or(true)
+        self.blending && self.blend.get(usize::from(kind)).copied().unwrap_or(true)
+    }
+
+    /// Whether the ground blends its neighbours.
+    #[cfg(test)]
+    pub(crate) fn blending(&self) -> bool {
+        self.blending
+    }
+
+    /// Switches the blending of the ground on or off: off, every tile shows its own type. The
+    /// staged grounds are dropped, as they were made with the other setting. Whether that changed
+    /// it.
+    pub(crate) fn set_blending(&mut self, on: bool) -> bool {
+        let changed = std::mem::replace(&mut self.blending, on) != on;
+        if changed {
+            self.grounds = None;
+        }
+        changed
     }
 
     /// Whether the way from tile `t` across the edge in map direction `d` is open for blending.

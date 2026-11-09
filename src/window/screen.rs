@@ -56,6 +56,12 @@ impl Screen {
     }
 }
 
+/// The desktop of the primary display: width, height and bits per pixel (ui layout 16.3).
+pub fn desktop(video: &sdl3::VideoSubsystem) -> Option<rustyzoo::app::Display> {
+    let mode = video.get_primary_display().ok()?.get_mode().ok()?;
+    Some((mode.w, mode.h, i32::from(mode.format.bits_per_pixel())))
+}
+
 /// Opens the window for the game size `size` (the ini file's, cut to the display, when `None`).
 pub fn open(
     video: &sdl3::VideoSubsystem,
