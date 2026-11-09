@@ -28,7 +28,7 @@ impl Strings for Texts {
             22007 => "too small".into(),
             22008 => "too shallow".into(),
             28101 => "About the game".into(),
-            28102 => "Technical Support".into(),
+            28102 => "Helpdesk".into(),
             28103 => "Quick start".into(),
             28120 => "Zebra".into(),
             28121 | 28122 => "Apple".into(),
@@ -616,7 +616,7 @@ fn the_help_topics_are_listed_once_from_the_versioned_files_in_order() {
         // file is skipped and the second "Apple" is the same topic as the first.
         let want = [
             "About the game",
-            "Technical Support",
+            "Helpdesk",
             "Quick start",
             "App",
             "Apple",
