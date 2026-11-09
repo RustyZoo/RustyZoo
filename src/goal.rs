@@ -250,17 +250,18 @@ impl std::fmt::Debug for Goals {
 
 impl Goals {
     /// A load (behaviours 4.7): from version 72 the object whose number the file holds as active is
-    /// built, and marked neither stale nor to be initialised, when it is the record's task (or job).
-    /// Any other case leaves the object to be built, init included, at the first update.
+    /// built, whatever the record's task (or job), and marked stale when it differs: the first
+    /// update replaces it, and a save before then writes the stored number back. A negative number
+    /// builds nothing: the object is built at the first update.
     pub(crate) fn built(&mut self, kind: Kind, active: i32, active_sub: i32) {
         let r = &self.record;
-        if active == i32::from(r.task) {
-            (self.object, self.stale) = (Goal::build(r.task, kind), false);
-            self.held.0 = self.object.map(|_| r.task);
+        if let Ok(n) = u8::try_from(active) {
+            (self.object, self.stale) = (Goal::build(n, kind), n != r.task);
+            self.held.0 = self.object.map(|_| n);
         }
-        if active_sub == i32::from(r.job) {
-            (self.sub, self.sub_stale) = (Sub::build(r.job, kind), false);
-            self.held.1 = self.sub.map(|_| r.job);
+        if let Ok(n) = u8::try_from(active_sub) {
+            (self.sub, self.sub_stale) = (Sub::build(n, kind), n != r.job);
+            self.held.1 = self.sub.map(|_| n);
         }
     }
 

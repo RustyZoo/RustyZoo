@@ -107,6 +107,7 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     let saved = block.map(|b| b.target.goal);
     let set = block.map(|b| b.behaviour.clone());
     let pending = block.map(|b| (b.pending.clone(), b.pending_flag));
+    let way = block.map(|b| crate::unit::resume::saved_way(world, b));
     let Some(u) = world.units.get_mut(unit) else {
         return;
     };
@@ -131,6 +132,10 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     if let (true, Some(set), Some((name, flag))) = (kept, &set, &pending) {
         u.runner.restore(set);
         u.runner.keep(name, *flag != 0);
+    }
+    // Its path and destination too: the record is left as it made them (save games 15.8).
+    if let (true, Some(way)) = (kept, way) {
+        (u.path, u.levels, u.destination) = way;
     }
     u.hidden = kind.hide;
     if kind.hide {
