@@ -147,7 +147,40 @@ impl Painter {
                 right,
                 bottom: rect.3,
             };
+            // The columns after the first start at the offsets of the `column` keys, the first of
+            // which is the icon's: a column ends where the next one starts.
+            let starts: Vec<i32> = l.columns.iter().skip(1).copied().collect();
+            let first_end = match row.cells.is_empty() {
+                true => right,
+                false => starts.get(1).map_or(right, |&s| s.min(right)),
+            };
+            let text_rect = Rect {
+                right: first_end,
+                ..text_rect
+            };
             self.text(e, strings, &row.text, canvas, text_rect, color, false);
+            for (n, cell) in row.cells.iter().enumerate() {
+                let Some(&left) = starts.get(n + 1) else {
+                    break;
+                };
+                let end = starts.get(n + 2).map_or(right, |&s| s.min(right));
+                let cell_rect = Rect {
+                    left,
+                    right: end,
+                    ..text_rect
+                };
+                let color = if selected {
+                    color
+                } else {
+                    cell.color.unwrap_or(color)
+                };
+                let style = Style {
+                    color,
+                    justify: cell.justify,
+                    shadow: e.look.shadow_text,
+                };
+                text::draw(canvas, self.font(e, strings), cell_rect, &cell.text, &style);
+            }
             y = rect.3.saturating_add(l.spacing);
         }
     }

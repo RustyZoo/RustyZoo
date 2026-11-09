@@ -186,7 +186,7 @@ fn parent(class: &str) -> Option<&'static str> {
 }
 
 /// Whether a type of class `own` is of class `asked`: the class itself or any class above it.
-fn is_of_class(own: &str, asked: &str) -> bool {
+pub(crate) fn is_of_class(own: &str, asked: &str) -> bool {
     let mut class = Some(own);
     while let Some(c) = class {
         if c == asked {

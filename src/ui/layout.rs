@@ -27,6 +27,7 @@ use crate::config::{Config, Section, to_flag, to_int};
 use crate::tga::Texture;
 use crate::vfs::{Vfs, normalise};
 
+use super::graph::Graph;
 use super::resolve::Placed;
 use super::widgets::{Bar, Caret, Rows};
 
@@ -338,7 +339,7 @@ pub enum Kind {
     StatusImage(Levels),
     ImageSet(Levels),
     ScrollingRegion(Region),
-    Graph,
+    Graph(Box<Graph>),
     MapView,
     MiniMap,
     MessageQueue,
@@ -361,7 +362,7 @@ impl Kind {
             Kind::StatusImage(_) => "UIStatusImage",
             Kind::ImageSet(_) => "UIImageSet",
             Kind::ScrollingRegion(_) => "UIScrollingRegion",
-            Kind::Graph => "UIGraph",
+            Kind::Graph(_) => "UIGraph",
             Kind::MapView => "ZTMapView",
             Kind::MiniMap => "ZTMiniMap",
             Kind::MessageQueue => "ZTMessageQueue",

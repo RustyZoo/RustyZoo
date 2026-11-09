@@ -141,6 +141,17 @@ pub struct Row {
     pub icon: Option<super::layout::Picture>,
     /// The picture a disabled row shows instead of `icon`, when it has one.
     pub grayed_icon: Option<super::layout::Picture>,
+    /// The cells of the columns after the first, which the `column` keys of the list place.
+    pub cells: Vec<Cell>,
+}
+
+/// A cell of a row after the first column.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cell {
+    pub text: Vec<u8>,
+    /// The colour of its text; none: the row's.
+    pub color: Option<[u8; 3]>,
+    pub justify: crate::text::Justify,
 }
 
 /// A key a list reads.
