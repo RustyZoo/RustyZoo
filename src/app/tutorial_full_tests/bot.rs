@@ -47,13 +47,43 @@ impl Play<'_, '_> {
                 self.press(1071);
                 self.press(a);
             }
+            // The undo button waits for something to undo: a bench.
+            (10, 1..) if a == 1075 && self.disabled(a) => self.supply(6050, 1),
             (10, 1..) => self.press(a),
+            // The bulldozer takes out a piece of fence.
+            (1, _) => self.delete_fence(),
             (2, 0) => self.supply(a, value),
             (3, 0) => {
                 self.exhibit("fences", 3);
             }
             _ => {}
         }
+    }
+
+    /// The bulldozer sweeps over a piece of fence and the tile beside it.
+    fn delete_fence(&mut self) {
+        let world = &self.app.game.as_ref().unwrap().world;
+        let zoo = &world.zoo;
+        let width = zoo.width as usize;
+        let inside = |x: i32, y: i32| {
+            let tile = world.tile_index(x / 64, y / 64);
+            let list = world.exhibits().list();
+            list.iter().any(|e| tile.is_some_and(|t| e.order.contains(&t)))
+        };
+        let _ = width;
+        let fence = zoo.entities.iter().find(|e| {
+            let c = e.common.as_ref();
+            e.class == "fences" && c.is_some_and(|c| inside(c.x, c.y))
+        });
+        let Some(c) = fence.and_then(|e| e.common.as_ref()) else {
+            return;
+        };
+        let (x, y) = (c.x, c.y);
+        if !self.app.game.as_ref().unwrap().build.bulldozing() {
+            self.press(1028);
+        }
+        self.look((x / 64, y / 64));
+        self.drag((x, y), (x + 64, y));
     }
 
     /// One more of the type with the name id `name_id`, as its panel puts it: an animal in the

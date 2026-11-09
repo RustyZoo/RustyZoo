@@ -190,12 +190,13 @@ impl<'a, 'b> Play<'a, 'b> {
     /// One pass of a step: a popup that is open gets its answer (OK), the end dialog none, else the
     /// player does what the first goal that is not done asks.
     fn step(&mut self) {
-        let ui = self.app.ui.as_mut().unwrap();
-        if ui.modal_open() {
-            if !self.ended {
-                ui.answer(1);
-            }
-        } else if let Some(goal) = self.next_goal() {
+        if self.app.ui.as_ref().unwrap().modal_open() {
+            // Enter answers Yes where the question has it, else OK.
+            let enter = [Command::Key(Key::Enter, false, false)];
+            self.tick(STEP, if self.ended { &[] } else { &enter });
+            return;
+        }
+        if let Some(goal) = self.next_goal() {
             self.act(&goal);
         }
         self.tick(STEP, &[]);
@@ -647,9 +648,14 @@ fn scratch() {
     let mut app = rig.app(&n);
     start(&mut app, &file);
     let mut play = Play::new(&mut app, layout.clone());
+    let mut last = None;
     for i in 0..400 {
         let g = play.next_goal().map(|g| g.name);
         play.step();
+        if g == last && !play.ended {
+            continue;
+        }
+        last = g.clone();
         let w = play.app.sim.scenario().map(|s| s.states().iter().filter(|&&w| w != 0).count());
         println!("{i} {:?} done {w:?} {}", g, play.ended);
         if std::env::var("V").is_ok() {
