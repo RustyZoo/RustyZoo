@@ -275,6 +275,18 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
         play.until(12, |p| {
             p.pass >= 3 && !p.app.ui.as_ref().unwrap().modal_open()
         });
+        if n == "scn01a" {
+            // Both popups were answered: the hint shows, and a click on it shows the last popup
+            // again, then the hint again (10.8 points 1 and 6).
+            let ui = play.app.ui.as_mut().unwrap();
+            assert!(ui.shown(45400) && !ui.modal_open());
+            let (x, y, w, h) = ui.tree.rect(ui.tree.find(45406).unwrap());
+            play.tick(100, &super::start_tests::click(x + w / 2, y + h / 2));
+            let ui = play.app.ui.as_mut().unwrap();
+            assert!(ui.modal_open() && !ui.shown(45400));
+            play.step();
+            assert!(play.app.ui.as_ref().unwrap().shown(45400));
+        }
         let off = blocked(&play);
         let on = ids_of(&play, "enable");
         assert!(off.len() > 20, "{n}: {off:?}");
@@ -296,8 +308,9 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
         play.tick(100, &keys);
         assert_eq!(play.lines("menu game save").len(), dialogs, "{n}");
         assert_eq!(play.lines("ui press").len(), presses, "{n}");
-        // 60 scenario passes, 90 s of the game.
-        play.until(60, |_| false);
+        // The first tutorial goes on for 60 scenario passes (90 s of the game), the others stop
+        // at the first goal that wants something built.
+        play.until(if n == "scn01a" { 60 } else { 20 }, |_| false);
         let asks = play.lines("ui ask 45100").len();
         let answers = play.lines("ui answer 1").len();
         assert!(asks >= 2 && answers + 1 >= asks, "{n}: {asks} {answers}");
@@ -310,6 +323,12 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
             .collect();
         assert!(at.windows(2).all(|w| w[0] < w[1]), "{n}: {names:?}");
         assert!(names.len() > 3, "{n}: {names:?}");
+        // The zoom, rotate and pause buttons are seen by the goals that ask for them.
+        if n == "scn01a" {
+            for goal in ["ZOOM_IN", "ROTATE_CCW", "PLAY"] {
+                assert!(names.contains(&goal), "{goal}: {names:?}");
+            }
+        }
         println!("{n}: {} triggers {}", names.len(), asks);
     }
 }
@@ -591,7 +610,7 @@ fn each_prepared_tutorial_ends_after_its_last_popup_and_yes_starts_the_next_one(
         match (full, again) {
             (true, Some(again)) => {
                 play.app.ui.as_mut().unwrap().answer(6);
-                play.until(3, |p| p.lines("sim scenario start").len() > 0);
+                play.until(3, |p| !p.lines("sim scenario start").is_empty());
                 let started = format!("sim scenario start {again} ");
                 let line = play
                     .log
