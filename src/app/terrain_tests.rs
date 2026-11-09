@@ -149,6 +149,8 @@ fn with_view(name: &str, brush: u32, body: impl FnOnce(&mut Session)) {
     app.set_money(money);
     let mut session = Session { app, now: 0 };
     session.pass(&[]);
+    // The window's start-up gave the tooltip the ini's duration; these tests want the layout's.
+    session.app.interface().unwrap().set_tooltip_duration(100);
     body(&mut session);
 }
 

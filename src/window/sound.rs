@@ -110,6 +110,12 @@ impl Sound {
         }
     }
 
+    /// The main volume: the global term of the sound rules from now on (sound 4.3). The loops take
+    /// it at their next refresh.
+    pub fn global(&mut self, term: i32) {
+        self.click_sum = term;
+    }
+
     /// Mutes the voices that are playing when the game becomes paused or a dialog opens, and
     /// gives them their volume back when it ends (sound 10.2). Sounds that start meanwhile are
     /// not muted. A dialog that closes over a pause does not mute twice: the original's bug

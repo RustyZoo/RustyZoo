@@ -217,6 +217,25 @@ impl Interface {
         true
     }
 
+    /// Deselects the button `id` if it is selected, telling it as a release would. Whether it was.
+    pub(crate) fn deselect_button(&mut self, id: i32) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let was = self.tree.elements[i].state & SELECTED != 0;
+        if was {
+            self.flag(i, SELECTED, false);
+            self.event(format!("deselect {id}"));
+        }
+        was
+    }
+
+    /// Whether the element `id` is enabled.
+    #[cfg(test)]
+    pub(crate) fn is_enabled(&self, id: i32) -> bool {
+        (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & DISABLED == 0)
+    }
+
     /// Enables or disables the element `id`, leaving the rest of its state; `false` if there is
     /// no such element.
     pub(crate) fn set_enabled(&mut self, id: i32, enabled: bool) -> bool {

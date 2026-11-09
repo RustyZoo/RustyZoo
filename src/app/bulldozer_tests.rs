@@ -96,7 +96,7 @@ const QUESTION: &str = "[LayoutInfo]\nid=45000\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\
     [a]\ntype=UIButton\nid=45010\ndx=8\ndy=8\ntarget=6\naction=5\ntransparent=0\n\
     [b]\ntype=UIButton\nid=45011\nx=10\ndx=8\ndy=8\ntarget=7\naction=5\ntransparent=0\n";
 
-fn map() -> Zoo {
+pub(super) fn map() -> Zoo {
     let (px, py) = project(0, 1280, 1280, 0);
     let mut zoo = tile_with(&[]);
     zoo.width = 40;
@@ -217,7 +217,7 @@ pub(super) fn catalogue() -> Catalogue {
     cat
 }
 
-fn install(
+pub(super) fn install(
     name: &str,
     ini: &str,
     root: &str,

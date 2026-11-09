@@ -736,6 +736,11 @@ impl World {
             .position(|e| e.common.as_ref().is_some_and(|c| c.id == id))
     }
 
+    /// Marks the picture as due again, though nothing in the world changed.
+    pub(crate) fn touch(&mut self) {
+        self.dirty = true;
+    }
+
     /// Whether anything changed since the last call, and clears the mark: the picture is due.
     pub(crate) fn take_dirty(&mut self) -> bool {
         std::mem::take(&mut self.dirty)
