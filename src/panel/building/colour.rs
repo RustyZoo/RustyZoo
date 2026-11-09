@@ -183,13 +183,12 @@ impl Panel {
         let swatch = group.swatches[*group.sorted().get(k)?];
         let position = (group.swatches.iter()).position(|&s| s == swatch);
         let position = position.unwrap_or(group.swatches.len());
-        let defaults: Vec<u8> = all.iter().map(|g| g.default as u8).collect();
-        let colors = &mut world.zoo.entities[at].common.as_mut()?.colors;
-        if colors.len() < defaults.len() {
-            let from = colors.len();
-            colors.extend_from_slice(&defaults[from..]);
-        }
+        // A building that stores fewer choices than the type has groups starts from the defaults.
+        let mut colors = world.zoo.entities[at].common.as_ref()?.colors.clone();
+        let from = colors.len();
+        colors.extend(all.iter().skip(from).map(|g| g.default as u8));
         colors[g] = u8::try_from(position).unwrap_or(u8::MAX);
+        world.set_colors(at, colors);
         ui.set_fore_color(BUTTONS[g], swatch);
         ui.set_hidden(PALETTE, true);
         self.choosing = None;
