@@ -356,13 +356,25 @@ fn review_heli_row_click_after_a_staff_member_leaves_no_row_selected() {
             Command::Mouse(Mouse::Up),
         ];
         s.pass(&click);
-        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[5]), "the base");
-        assert_eq!(s.app.interface().unwrap().selected_row(4205), None, "after the click");
+        assert_eq!(
+            s.app.game.as_ref().unwrap().selected,
+            Some(ids[5]),
+            "the base"
+        );
+        assert_eq!(
+            s.app.interface().unwrap().selected_row(4205),
+            None,
+            "after the click"
+        );
         s.app.lists.windows[STAFF].force = true;
         for _ in 0..4 {
             s.pass(&[]);
         }
-        assert_eq!(s.app.interface().unwrap().selected_row(4205), None, "after a refill");
+        assert_eq!(
+            s.app.interface().unwrap().selected_row(4205),
+            None,
+            "after a refill"
+        );
     });
 }
 
