@@ -87,6 +87,8 @@ pub(super) fn interface(install: &Install) -> Interface {
          [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
          [bg]\ntype=UIImage\nid=45001\nx=0\ny=0\ndx=40\ndy=24\nlayer=0\n\
          [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n\
+         [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
+         [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
          [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
     );
     let options = format!(
@@ -876,11 +878,11 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
             pass(app, &[]);
         }
         assert!(app.interface().unwrap().modal_open() && shown(app, 45000));
-        assert!(shown(app, 45400));
+        // The hint of a modal popup comes once the popup is answered (scenarios 8.3 point 1).
+        assert!(!shown(app, 45400));
         let ui = app.interface().unwrap();
-        assert_eq!(ui.text(45406), Some(b"text-151".to_vec()));
         assert_eq!(ui.text(45006), Some(b"text-153".to_vec()));
-        assert_eq!(lines.borrow()[3..], ["popup 45000 modal", "hint 45400"]);
+        assert_eq!(lines.borrow()[3..], ["popup 45000 modal"]);
         // The picture of the popup is in its image, which took its size.
         let ui = app.interface().unwrap();
         assert!(ui.shown(45004));
@@ -890,12 +892,17 @@ fn a_scenario_disables_an_element_shows_popups_and_a_hint_sees_presses_and_gives
         assert_eq!((dx, dy), (40, 24));
         // OK closes it; the hint's button shows it again, and OK closes it once more.
         pass(app, &key(Key::Enter));
-        assert!(!app.interface().unwrap().modal_open());
-        pass(app, &click(3, 3));
-        assert!(app.interface().unwrap().modal_open() && shown(app, 45400));
+        assert!(!app.interface().unwrap().modal_open() && shown(app, 45400));
+        assert_eq!(
+            app.interface().unwrap().text(45406),
+            Some(b"text-151".to_vec())
+        );
         assert_eq!(lines.borrow().last().unwrap(), "hint 45400");
+        pass(app, &click(3, 3));
+        assert!(app.interface().unwrap().modal_open() && !shown(app, 45400));
         pass(app, &key(Key::Enter));
-        assert!(!app.interface().unwrap().modal_open());
+        assert!(!app.interface().unwrap().modal_open() && shown(app, 45400));
+        assert_eq!(lines.borrow().last().unwrap(), "hint 45400");
         // A press of the other button is seen by the second goal, which enables the first.
         for _ in 0..2 {
             pass(app, &[]);

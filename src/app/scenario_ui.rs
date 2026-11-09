@@ -3,7 +3,7 @@
 
 use super::{Action, App, kinds};
 use crate::money::{SYMBOL, Symbol};
-use crate::scenario::{self, Act, Avail, Deed, Line, Tell, Which};
+use crate::scenario::{self, Act, Avail, Deed, Line, Popup, Tell, Which};
 use crate::text::{format, to_cp1252};
 
 impl App<'_> {
@@ -14,10 +14,11 @@ impl App<'_> {
             return;
         };
         let gui = scenario.gui();
+        let line = scenario.hint_line();
         for &id in buttons {
             gui.pressed(id, None);
             self.marks
-                .again(id, ui, self.renderer.vfs(), &mut self.lines.scenario);
+                .again(id, line, ui, self.renderer.vfs(), &mut self.lines.scenario);
         }
         for action in actions {
             if let &(Action::Row(id, row) | Action::Double(id, row)) = action
@@ -37,14 +38,28 @@ impl App<'_> {
         }
     }
 
-    /// Does what the triggers asked of the interface, in the order they ran: the award, its
-    /// popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
+    /// Does what the triggers asked of the interface, one after the other in the order they ran: the
+    /// award, its popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
+    /// A modal popup holds everything that comes after it until it is answered (`scenarios.md` 8.5).
     pub(super) fn scenario_effects(&mut self) {
         self.scenario_forced();
-        self.scenario_avail();
-        while let Some(act) = self.sim.scenario().and_then(|s| s.next_act()) {
+        loop {
+            if self.question_open() {
+                break;
+            }
+            if let Some(ui) = &mut self.ui {
+                self.marks.settle(ui, &mut self.lines.scenario);
+            }
+            let Some(act) = self.sim.scenario().and_then(|s| s.next_act()) else {
+                break;
+            };
             match act {
-                Act::Avail(made) => self.avail_run(made, false),
+                Act::Avail(made) => {
+                    let popups = self.avail_run(made, false);
+                    if let Some(s) = self.sim.scenario() {
+                        s.gui().popups_next(popups);
+                    }
+                }
                 Act::Deed(deeds) => self.scenario_deeds(deeds),
                 Act::Effects(effects) => {
                     if let Some(ui) = &mut self.ui {
@@ -63,6 +78,12 @@ impl App<'_> {
         for line in self.lines.scenario.drain(..) {
             self.sim.note(line);
         }
+    }
+
+    /// Whether the triggers of a pass have left something that waits for a modal popup: the
+    /// simulation stands still and the scenario does not end until it is done (`scenarios.md` 8.5).
+    pub(super) fn scenario_held(&self) -> bool {
+        self.sim.scenario().is_some_and(|s| s.gui().pending()) || self.marks.waiting()
     }
 
     /// Carries out trigger 10: every research program is completed (research 6.8).
@@ -88,6 +109,7 @@ impl App<'_> {
             self.renderer.catalogue(),
             &mut self.lines.scenario,
         );
+        let mut popups = Vec::new();
         for deed in deeds {
             let popup = match deed {
                 Deed::Say { kind, text, value } => {
@@ -171,10 +193,9 @@ impl App<'_> {
                     popup
                 }
             };
-            if let Some(popup) = popup {
-                gui.popup(popup);
-            }
+            popups.extend(popup);
         }
+        gui.popups_next(popups);
         self.sim.absorb(&mut game.world);
     }
 
@@ -182,7 +203,10 @@ impl App<'_> {
     /// popup, and an unlock (`truleb` 10) is stored with the rewards.
     pub(super) fn scenario_avail(&mut self) {
         let made = self.sim.scenario().map(|s| s.gui().take_avail());
-        self.avail_run(made.unwrap_or_default(), false);
+        let popups = self.avail_run(made.unwrap_or_default(), false);
+        if let Some(s) = self.sim.scenario() {
+            popups.into_iter().for_each(|p| s.gui().popup(p));
+        }
     }
 
     /// The ini rewards of a start, which come after the triggers and the start hook (research 7.4,
@@ -192,14 +216,14 @@ impl App<'_> {
     }
 
     /// [`scenario_avail`](Self::scenario_avail) for these changes; with `rewards`, the ini rewards
-    /// apply after them.
-    fn avail_run(&mut self, made: Vec<Avail>, rewards: bool) {
+    /// apply after them. The popups the changes tell are returned, to be shown next.
+    fn avail_run(&mut self, made: Vec<Avail>, rewards: bool) -> Vec<Popup> {
         let (Some(game), vfs, cat) = (
             &mut self.game,
             self.renderer.vfs(),
             self.renderer.catalogue(),
         ) else {
-            return;
+            return Vec::new();
         };
         let unlocks: Vec<i32> = made
             .iter()
@@ -233,10 +257,11 @@ impl App<'_> {
                 .after_triggers(cat, &reward_ini(&self.menu, vfs), &[]);
         }
         let Some(ui) = &mut self.ui else {
-            return;
+            return Vec::new();
         };
         let mut log = Vec::new();
         game.build.refill(changed, ui, vfs, cat, &mut log);
+        let mut popups = Vec::new();
         for tell in told {
             match tell {
                 Tell::Message(template, name) => {
@@ -246,16 +271,13 @@ impl App<'_> {
                     };
                     ui.message(&to_cp1252(&text), kinds::GENERAL);
                 }
-                Tell::Popup(popup) => {
-                    if let Some(s) = self.sim.scenario() {
-                        s.gui().popup(*popup);
-                    }
-                }
+                Tell::Popup(popup) => popups.push(*popup),
             }
         }
         for line in log {
             self.sim.note(line);
         }
+        popups
     }
 
     /// The lookup of the recorded rewards at a game load or a scenario start (entity types 10.4).

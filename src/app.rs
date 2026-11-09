@@ -620,12 +620,19 @@ impl<'a> App<'a> {
             }
             self.acts();
         }
+        // What the start triggers left is done before the frame's step, as the start routine does it,
+        // so the step of the start frame runs; the answer of a modal popup is no start: its pass goes
+        // on after the step (scenarios 5.2, 8.5).
+        if !self.marks.waiting() {
+            self.scenario_effects();
+        }
         let modal = self.modal();
+        let held = self.scenario_held();
         let mut month_end = false;
         self.scenario_sync();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
-            && !(game.paused || modal)
+            && !(game.paused || modal || held)
         {
             let data = Library {
                 catalogue: self.renderer.catalogue(),
@@ -665,9 +672,13 @@ impl<'a> App<'a> {
                 self.guest_created(trio);
             }
             self.research_done();
-            self.scenario_over();
         }
         self.scenario_effects();
+        // The end is decided at the end of the pass: its dialog comes after every popup of the pass
+        // was answered (scenarios 8.5 point 5).
+        if !self.scenario_held() && !self.question_open() {
+            self.scenario_over();
+        }
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);
@@ -943,6 +954,9 @@ mod saves_tests;
 
 #[cfg(test)]
 mod scenario_tests;
+
+#[cfg(test)]
+mod tutorial_tests;
 
 #[cfg(test)]
 mod award_tests;

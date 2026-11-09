@@ -214,8 +214,8 @@ fn exhibit_count(env: &Env, g: &Game, b: i32) -> i32 {
         all.iter().flat_map(f).collect::<BTreeSet<_>>().len() as i32
     };
     match b {
-        // The list holds the zoo grounds besides the exhibits (scenarios O2).
-        0 => all.len() as i32 + 1,
+        // The manager keeps the zoo grounds apart from its list (scenarios 10.4 point 6).
+        0 => all.len() as i32,
         1 => all.iter().filter(|x| x.animals > 0).count() as i32,
         2 => distinct(&|x| x.keys.clone()),
         3 => distinct(&|x| x.families.iter().map(i32::to_string).collect()),

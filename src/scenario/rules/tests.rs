@@ -283,10 +283,10 @@ fn rule_2_counts_a_colony_of_any_sex_age_and_state_by_the_species_name_id() {
 }
 
 #[test]
-fn rule_3_counts_the_exhibits_with_the_grounds_in_the_list() {
+fn rule_3_counts_the_exhibits_without_the_grounds() {
     let p = Parts::new(world(), zoo_types());
-    // The tank and the land exhibit, and the grounds.
-    assert_eq!(p.read([3, 0, 0, 0]), 3);
+    // The tank and the land exhibit; the zoo grounds are not in the list.
+    assert_eq!(p.read([3, 0, 0, 0]), 2);
     assert_eq!(p.read([3, 1, 0, 0]), 2);
     // Species: bear, shark, goat; families 1 and 2. Attractiveness: 5 + 1 and 5 + 1 over two.
     assert_eq!([2, 3, 4].map(|b| p.read([3, b, 0, 0])), [3, 2, 6]);
@@ -296,7 +296,7 @@ fn rule_3_counts_the_exhibits_with_the_grounds_in_the_list() {
     let empty = Parts::new(world_with((4, 4), |_| {}), zoo_types());
     assert_eq!(
         [0, 1, 2, 3, 4].map(|b| empty.read([3, b, 0, 0])),
-        [1, 0, 0, 0, 0]
+        [0, 0, 0, 0, 0]
     );
 }
 

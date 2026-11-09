@@ -377,7 +377,7 @@ fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
     assert_eq!(p.pictures, ["bg", "", "pic", ""]);
     assert_eq!((p.ok, p.cancel), (true, false));
     assert_eq!(p.hint.layout, 45400);
-    assert_eq!((p.hint.short, p.hint.button), (-1, 45406));
+    assert_eq!((p.hint.short, p.hint.button), (-1, false));
     // No section of its own: the default one alone; no default section: all defaults.
     let q = Popup::read(&cfg(POPUPS), 4).unwrap();
     assert_eq!((q.layout, q.long[0].as_str()), (45100, "BASE"));
@@ -386,10 +386,6 @@ fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
         none,
         Popup {
             ok: true,
-            hint: Hint {
-                button: 45406,
-                ..Hint::default()
-            },
             ..Popup::default()
         }
     );
@@ -601,6 +597,52 @@ fn a_hint_of_minus_1_is_the_line_of_the_first_goal_in_progress_with_a_text() {
         panic!()
     };
     assert_eq!((p.hint.short, p.hint.goal), (22, None));
+}
+
+#[test]
+fn the_hint_line_is_taken_when_the_trigger_runs_not_after_the_pass() {
+    // Goal a fires and b, after it, completes in the same pass: at the trigger b is the goal in
+    // progress, after the pass nothing is (scenarios 8.3 point 1, 8.5 point 6).
+    let text = |trigger: &str| {
+        format!(
+            "[goals]\ngoal=a\ngoal=b\n[a]\nrulea=99\narga=1\nvalue=1\ntext=11\n{trigger}\n\
+             [b]\nrulea=99\narga=1\nvalue=1\ntext=22\n{POPUPS}"
+        )
+    };
+    let line = Some(Line {
+        text: 22,
+        values: [1, 1, 0],
+        state: 0,
+    });
+    let goal_of = |trigger: &str| {
+        let mut s = build(&text(trigger), &[]);
+        pass(&mut s, &env(1, 0), &mut Vec::new());
+        assert_eq!(states(&s), [1, 1, 1]);
+        assert_eq!(s.hint_line(), None, "nothing is in progress after the pass");
+        s
+    };
+    // A trigger 2 popup, a deed's popup and an availability change's popup.
+    let s = goal_of("trulea=2\ntruleb=0\ntarga=9");
+    let [Effect::Popup(p)] = &s.effects()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
+    let s = goal_of("trulea=9\ntarga=1\ntargb=9");
+    let [Deed::Sale { popup: Some(p), .. }] = &s.gui().take_deeds()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
+    let s = goal_of("trulea=4\ntruleb=4\ntarga=5\ntargb=9");
+    let [
+        Avail {
+            tell: Some(Tell::Popup(p)),
+            ..
+        },
+    ] = &s.gui().take_avail()[..]
+    else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
 }
 
 #[test]
@@ -1368,7 +1410,7 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
 }
 
 #[test]
-fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popup() {
+fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_and_gives_no_award() {
     let goal = |body: &str| {
         format!("[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\n{body}\n[9]\nlayout=45200\n")
     };
@@ -1388,14 +1430,8 @@ fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popu
                 popup: None,
             }),
         ),
-        (
-            "trulea=6\ntarga=4\ntargb=9",
-            Some(Deed::Award {
-                give: true,
-                id: 4,
-                text: 0,
-            }),
-        ),
+        // The award is not given again: the file's list stands (awards 6.6 point 5).
+        ("trulea=6\ntarga=4\ntargb=9", None),
         ("trulea=1\ntarga=7", None),
         ("trulea=3\ntruleb=1\ntarga=5", None),
         ("trulea=5\ntarga=7\ntargb=9", None),
