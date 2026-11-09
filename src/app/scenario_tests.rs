@@ -246,6 +246,39 @@ fn yes_after_a_tutorial_starts_the_next_tutorial() {
 }
 
 #[test]
+fn the_script_command_starts_a_scenario_from_the_menu_and_a_missing_one_says_why() {
+    with_menu("script-start", "", |app, _| {
+        app.pass(0, &[]);
+        // The tutorial of the files has a map to start; the command starts it as Play does.
+        app.pass(66, &[Command::Scenario("scenario/scn01/scn01.scn")]);
+        let lines = said(app, 1, 66);
+        assert!(
+            lines.contains(&"menu game start scenario saved.zoo".to_string()),
+            "{lines:?}"
+        );
+        assert!(app.camera().is_some());
+        let file = app.sim.scenario().map(|s| s.file().to_string());
+        assert_eq!(file.as_deref(), Some("scenario/scn01/scn01.scn"));
+    });
+    // A file with no map, or none at all, starts nothing and the menu stays.
+    with_menu("script-missing", "", |app, _| {
+        app.pass(0, &[]);
+        app.pass(66, &[Command::Scenario("s/win.scn")]);
+        app.pass(132, &[Command::Scenario("s/nothere.scn")]);
+        assert!(app.camera().is_none() && app.sim.scenario().is_none());
+        let said_all: Vec<String> = [(1, 66), (2, 132)]
+            .into_iter()
+            .flat_map(|(p, t)| said(app, p, t))
+            .collect();
+        assert_eq!(
+            said_all.iter().filter(|l| l.starts_with("menu message")).count(),
+            2,
+            "{said_all:?}"
+        );
+    });
+}
+
+#[test]
 fn no_after_a_tutorial_shows_the_main_menu() {
     with_menu("end-tutorial-no", "", |app, _| {
         let now = play(app, "scenario/scn01a/scn01a.scn");
