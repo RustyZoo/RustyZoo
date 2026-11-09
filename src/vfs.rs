@@ -1,14 +1,20 @@
 //! A read-only virtual file system over the resource search path of an installation.
 //!
 //! The game reads `[resource] path` from `zoo.ini` (or `zoodemo.ini` in the base trial): a
-//! `;`-separated list of directories relative to the install folder. The directories make one
-//! ordered list of sources, and a name is served by the first source that has it:
+//! `;`-separated list of directories, relative to the install folder or not. The directories make
+//! one ordered list of sources, and a name is served by the first source that has it:
 //!
 //! - the directories in the order of the path, so a directory listed earlier wins;
 //! - inside a directory, first its loose files (every file below it, at any depth, by its path
 //!   relative to the directory), then its archives (`*.ztd` and `*.zip`, ZIP files) in descending
 //!   byte order of their lower-cased file names, so `magnet02.ztd` wins over `magnet01.ztd`,
 //!   which wins over `magnet.ztd`.
+//!
+//! Mods are only files that this search finds: archives or loose files in a folder of the path,
+//! typically `dlupdate` or `updates`, listed before the folders they override. An archive in a
+//! sub-folder of a listed folder is not opened (its name is a loose name), and the list is built
+//! once, so a file added while the game runs is seen after a restart. There is no limit on the
+//! number of archives: the original opens at most 509 and silently drops the rest.
 //!
 //! Names are matched after lower-casing the letters A to Z and turning `\` into `/`; nothing else
 //! is touched. The order never depends on the order in which the operating system lists a folder.
@@ -34,7 +40,6 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use flate2::read::DeflateDecoder;
 
@@ -99,10 +104,10 @@ struct Member {
 enum Source {
     /// Normalised name to the loose file, for every file below one search directory.
     Directory(HashMap<String, PathBuf>),
-    /// An archive, kept open: reading a member seeks to it. The lock serialises reads.
+    /// An archive, opened for each read, so that the number of archives is not bounded by the
+    /// limit of open files.
     Archive {
         path: PathBuf,
-        file: Mutex<File>,
         members: HashMap<String, Member>,
     },
 }
@@ -166,18 +171,13 @@ impl Source {
                     .map(Some)
                     .map_err(|f| f.within(&path.display().to_string(), name))
             }
-            Source::Archive {
-                path,
-                file,
-                members,
-            } => {
+            Source::Archive { path, members } => {
                 let Some(member) = members.get(name) else {
                     return Ok(None);
                 };
-                let mut file = file.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                read_member(&mut file, member)
-                    .map(Some)
-                    .map_err(|f| f.within(&path.display().to_string(), name))
+                let within = |f: Failure| f.within(&path.display().to_string(), name);
+                let mut file = File::open(path).map_err(|e| within(io_failure(e)))?;
+                read_member(&mut file, member).map(Some).map_err(within)
             }
         }
     }
@@ -229,22 +229,38 @@ impl Vfs {
         let search_path =
             resource_path(&crate::vfs::name_from_bytes(&ini)).unwrap_or(".".to_string());
 
-        let real_root = install_dir.canonicalize().map_err(|e| {
-            VfsError(
-                format!("cannot read folder {}: {e}", install_dir.display()),
-                false,
-            )
-        })?;
+        let mut vfs = Vfs {
+            root: install_dir.to_path_buf(),
+            ini,
+            sources: Vec::new(),
+            warnings: Vec::new(),
+        };
+        let (search_path, cut) = cut_path(search_path);
+        if cut {
+            vfs.warnings.push(format!(
+                "[resource] path is longer than {MAX_PATH_BYTES} bytes, the end is cut off"
+            ));
+        }
         let mut directories: Vec<PathBuf> = Vec::new();
-        for entry in search_path
-            .split(';')
-            .map(str::trim)
-            .filter(|entry| !entry.is_empty())
-        {
-            if let Some(directory) = resolve_directory(install_dir, &real_root, entry)?
-                && !directories.contains(&directory)
-            {
-                directories.push(directory);
+        for entry in search_path.split(';') {
+            // The original keeps an element as written, but Windows drops the spaces at the end
+            // of a path and cannot open one that starts with a space.
+            let entry = entry.trim_end();
+            if entry.is_empty() {
+                continue;
+            }
+            if entry.starts_with(char::is_whitespace) {
+                vfs.warnings.push(format!(
+                    "[resource] path entry \"{entry}\" starts with a space, skipped"
+                ));
+                continue;
+            }
+            match resolve_directory(install_dir, entry) {
+                Ok(Some(directory)) if !directories.contains(&directory) => {
+                    directories.push(directory);
+                }
+                Ok(_) => {}
+                Err(e) => vfs.warnings.push(format!("[resource] path entry \"{entry}\": {e}")),
             }
         }
         if directories.is_empty() {
@@ -254,12 +270,6 @@ impl Vfs {
             ));
         }
 
-        let mut vfs = Vfs {
-            root: install_dir.to_path_buf(),
-            ini,
-            sources: Vec::new(),
-            warnings: Vec::new(),
-        };
         for directory in &directories {
             let files = index_directory(directory, &mut vfs.warnings)?;
             // The archives are the files directly in the directory, last name first.
@@ -283,6 +293,16 @@ impl Vfs {
                     }
                 }
             }
+        }
+        let archives = vfs
+            .sources
+            .iter()
+            .filter(|s| matches!(s, Source::Archive { .. }))
+            .count();
+        if archives > OPEN_FILE_LIMIT {
+            vfs.warnings.push(format!(
+                "{archives} archives: the original game opens at most {OPEN_FILE_LIMIT} and silently drops the rest"
+            ));
         }
         Ok(vfs)
     }
@@ -538,9 +558,14 @@ fn read_member(file: &mut File, member: &Member) -> Result<Vec<u8>, Failure> {
         return Err(Failure::Stop(format!("unsupported method {method}")));
     }
     if compressed == 0 || size == 0 {
-        return Err(Failure::Stop(
-            "its local header declares size 0".to_string(),
-        ));
+        let streamed = if flags & 8 != 0 {
+            " (written in streaming mode: the sizes follow the data, and the original cannot read it)"
+        } else {
+            ""
+        };
+        return Err(Failure::Stop(format!(
+            "its local header declares size 0{streamed}"
+        )));
     }
     check_size(size)?;
     if member.offset + 30 + skip + compressed > length {
@@ -653,7 +678,6 @@ fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, Failu
     }
     Ok(Source::Archive {
         path: path.to_path_buf(),
-        file: Mutex::new(reader.into_inner()),
         members,
     })
 }
@@ -748,9 +772,14 @@ fn resource_path(ini: &str) -> Option<String> {
             continue;
         }
         if let Some(section) = line.strip_prefix('[') {
-            in_resource = section
+            let resource = section
                 .strip_suffix(']')
                 .is_some_and(|name| name.trim().eq_ignore_ascii_case("resource"));
+            // Only the first section of that name is read.
+            if in_resource {
+                return None;
+            }
+            in_resource = resource;
         } else if let Some((key, value)) = line.split_once('=')
             && in_resource
             && key.trim().eq_ignore_ascii_case("path")
@@ -771,6 +800,31 @@ fn resource_path(ini: &str) -> Option<String> {
     }
     None
 }
+
+/// The longest value the game reads for the search path: its buffer is 1,024 bytes.
+const MAX_PATH_BYTES: usize = 1023;
+
+/// The search path cut to [`MAX_PATH_BYTES`] bytes of the ini file, and whether it was cut. A
+/// byte that is not UTF-8 is one byte of the file (see `name_from_bytes`), though several of ours.
+fn cut_path(path: String) -> (String, bool) {
+    let mut bytes = 0;
+    for (at, c) in path.char_indices() {
+        let width = if ('\u{F700}'..='\u{F7FF}').contains(&c) {
+            1
+        } else {
+            c.len_utf8()
+        };
+        if bytes + width > MAX_PATH_BYTES {
+            return (path[..at].to_string(), true);
+        }
+        bytes += width;
+    }
+    (path, false)
+}
+
+/// What the C library inside the original allows to be open together: 512 streams, three of them
+/// the standard ones.
+const OPEN_FILE_LIMIT: usize = 509;
 
 /// The entry of `directory` called `name` in any letter case, of the given kind (directory or
 /// file). If several differ only in case, the first in sorted order is taken.
@@ -806,34 +860,31 @@ pub(crate) fn find_ignoring_case(
     Ok(found.into_iter().next())
 }
 
-/// Resolves one entry of the search path against the install folder. `None` if the directory
-/// does not exist. Entries that leave the install folder, by `..` or by a symbolic link, are an
-/// error.
-fn resolve_directory(
-    install_dir: &Path,
-    real_root: &Path,
-    entry: &str,
-) -> Result<Option<PathBuf>, VfsError> {
-    let entry = entry.replace('\\', "/");
-    let leaves = || {
-        error(format!(
-            "[resource] path entry \"{entry}\" leaves the install folder"
-        ))
-    };
+/// Resolves one entry of the search path: against the install folder when it is relative, as it
+/// stands when it is absolute. `None` if the directory does not exist. Like the original, an
+/// entry may leave the install folder (`..`, an absolute path).
+fn resolve_directory(install_dir: &Path, entry: &str) -> Result<Option<PathBuf>, VfsError> {
+    use std::path::Component;
     let mut directory = install_dir.to_path_buf();
-    for component in entry.split('/').filter(|c| !c.is_empty() && *c != ".") {
-        if component == ".." || component.contains(':') {
-            return leaves();
-        }
-        match find_ignoring_case(&directory, component, true)? {
-            Some(next) => directory = next,
-            None => return Ok(None),
+    for component in Path::new(&entry.replace('\\', "/")).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => directory.push(".."),
+            Component::RootDir => directory.push(component.as_os_str()),
+            Component::Prefix(_) => directory = PathBuf::from(component.as_os_str()),
+            Component::Normal(name) => {
+                let found = match name.to_str() {
+                    Some(name) => find_ignoring_case(&directory, name, true)?,
+                    None => None,
+                };
+                match found {
+                    Some(next) => directory = next,
+                    None => return Ok(None),
+                }
+            }
         }
     }
-    match directory.canonicalize() {
-        Ok(real) if real.starts_with(real_root) => Ok(Some(directory)),
-        _ => leaves(),
-    }
+    Ok(directory.is_dir().then_some(directory))
 }
 
 /// A loose file name with the bytes that are not UTF-8 kept apart (see `name_from_bytes`).
