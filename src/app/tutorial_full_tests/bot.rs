@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::place::Verdict;
+use crate::ui::layout::Kind;
 
 /// The panels of the building tools: the button of the left bar, the layout, the list and the
 /// tabs that list items.
@@ -12,6 +13,9 @@ const PANELS: [(i32, i32, i32, &[i32]); 4] = [
     (1000, 3, 2019, &[2075, 3255, 3254, 2076]),
     (1005, 10, 3602, &[]),
 ];
+
+/// The buttons that open the list of expansions of each panel, and the list.
+const SELECTORS: [i32; 4] = [3204, 3005, 2005, 3601];
 
 /// The offsets of the tiles around a tile, the nearest first.
 fn around(radius: i32) -> Vec<(i32, i32)> {
@@ -53,10 +57,50 @@ impl Play<'_, '_> {
             // The bulldozer takes out a piece of fence.
             (1, _) => self.delete_fence(),
             (2, 0) => self.supply(a, value),
+            (11, _) => self.pick_row(a, b, g.rule[3], value),
             (3, 0) => {
-                self.exhibit("fences", 3);
+                self.exhibit(3);
             }
+            (3, 1) => self.adopt(),
+            (16, _) => self.wall(b, a),
             _ => {}
+        }
+    }
+
+    /// A row of the list of expansions: row `value`, or with `b` not 0 the row that reads the
+    /// string `text`.
+    fn pick_row(&mut self, list: i32, b: i32, text: i32, value: i32) {
+        if !self.app.ui.as_ref().unwrap().shown(list) {
+            let shown = |p: &(i32, i32, i32, &[i32]), ui: &Interface| ui.shown(p.1);
+            let open = PANELS.iter().position(|p| shown(p, self.app.ui.as_ref().unwrap()));
+            let open = open.or_else(|| (0..4).find(|&n| !self.disabled(PANELS[n].0))).unwrap_or(0);
+            if !shown(&PANELS[open], self.app.ui.as_ref().unwrap()) {
+                self.press(PANELS[open].0);
+            }
+            self.press(SELECTORS[open]);
+        }
+        let ui = self.app.ui.as_mut().unwrap();
+        let i = ui.tree.find(list).unwrap();
+        let Kind::ListBox(l) = &ui.tree.elements[i].kind else {
+            return;
+        };
+        let want = crate::text::to_cp1252(&ui.string(text));
+        let row = if b == 0 {
+            Some(value as usize)
+        } else {
+            l.rows.rows.iter().position(|r| r.text == want)
+        };
+        let Some(row) = row else { return };
+        let (x, y, _, h) = ui.tree.rect(i);
+        for y in (y..y + h).step_by(2) {
+            ui.mouse(Mouse::Move(x + 5, y));
+            let Kind::ListBox(l) = &ui.tree.elements[i].kind else {
+                return;
+            };
+            if l.rows.hover == Some(row) {
+                let click = [Mouse::Move(x + 5, y), Mouse::Down, Mouse::Up];
+                return self.tick(50, &click.map(Command::Mouse));
+            }
         }
     }
 
@@ -99,15 +143,48 @@ impl Play<'_, '_> {
         let middle = self.middle();
         match class {
             "paths" => self.strip(tool, middle, 8),
-            "animals" => {
-                let width = game.world.zoo.width as usize;
-                let last = game.world.exhibits().list().last();
-                let tile = last.map_or(0, |x| x.order[0]);
-                self.put(((tile % width) as i32, (tile / width) as i32));
-            }
+            "animals" => self.house(),
             _ => {
                 self.put(middle);
             }
+        }
+    }
+
+    /// One wall button on the tank that is nearest to the wanted height: `b` 1 wants it at least
+    /// `height`, 2 exactly (rule 16).
+    fn wall(&mut self, b: i32, height: i32) {
+        let world = &self.app.game.as_ref().unwrap().world;
+        let tanks = world.exhibits().list().iter();
+        let tanks: Vec<(u32, i32)> = tanks
+            .filter_map(|x| Some((x.id, world.tank(x.id)?.height as i32)))
+            .filter(|&(_, h)| if b == 1 { h < height } else { h != height })
+            .collect();
+        let Some(&(id, h)) = tanks.iter().min_by_key(|t| (t.1 - height).abs()) else {
+            return;
+        };
+        self.app.open_exhibit(id);
+        self.press(crate::panel::exhibit::TANK_TAB);
+        self.press(if h < height { crate::panel::exhibit::WALL_UP } else { crate::panel::exhibit::WALL_DOWN });
+    }
+
+    /// The held animal goes in an exhibit with no animal, or the last one.
+    fn house(&mut self) {
+        let game = self.app.game.as_ref().unwrap();
+        let width = game.world.zoo.width as usize;
+        let list = game.world.exhibits().list();
+        let empty = list.iter().find(|x| x.rating.counts.1 == 0);
+        let tile = empty.or(list.last()).map_or(0, |x| x.order[0]);
+        self.put(((tile % width) as i32, (tile / width) as i32));
+    }
+
+    /// An animal of the first animals tab, in an exhibit.
+    fn adopt(&mut self) {
+        let want: Vec<usize> = {
+            let cat = self.app.renderer.catalogue();
+            (0..cat.types.len()).filter(|&i| cat.types[i].class == "animals").collect()
+        };
+        if self.choose(&want) {
+            self.house();
         }
     }
 
@@ -245,10 +322,10 @@ impl Play<'_, '_> {
     }
 
     /// A new exhibit: a square of `n` tiles fenced with four drags, then its name.
-    fn exhibit(&mut self, walls: &str, n: i32) -> bool {
+    fn exhibit(&mut self, n: i32) -> bool {
         let cat = self.app.renderer.catalogue();
         let want: Vec<usize> = (0..cat.types.len())
-            .filter(|&i| cat.types[i].class == walls)
+            .filter(|&i| matches!(cat.types[i].class, "fences" | "tankwall"))
             .collect();
         if !self.choose(&want) {
             return false;
