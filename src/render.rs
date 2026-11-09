@@ -148,9 +148,32 @@ impl Summary {
     }
 }
 
+/// What the main bar's buttons hide from the map view (map drawing 15.1): the foliage, the
+/// buildings of the purchase list `structures`, and the guests. Nothing by default.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Hide {
+    pub foliage: bool,
+    pub buildings: bool,
+    pub guests: bool,
+}
+
+impl Hide {
+    /// Whether an entity of this type is left out of the picture and cannot be picked.
+    pub(crate) fn hides(self, ty: &EntityType) -> bool {
+        match ty.class {
+            "guests" => self.guests,
+            "objects" => self.foliage && crate::build::number(ty, "cFoliage") == Some(1.0),
+            "building" => self.buildings && member(ty, "structures"),
+            _ => false,
+        }
+    }
+}
+
 /// The transient items of the map view, given to the staging (placing 4.5).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Extra {
+    /// What the buttons of the main bar hide.
+    pub hide: Hide,
     /// The pending objects: one, or a piece for each tile of a drag.
     pub ghosts: Vec<Ghost>,
     /// Entities of the zoo (positions in `zoo.entities`) drawn tinted, with their tint.

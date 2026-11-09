@@ -158,6 +158,9 @@ impl<'a> MapRenderer<'a> {
                 summary.objects_missing += 1;
                 continue;
             };
+            if extra.hide.hides(ty) {
+                continue;
+            }
             let [fx, fy, _] = ty.footprint;
             objects.list.push(Object {
                 kind: super::shape::kind_of(entity, ty),

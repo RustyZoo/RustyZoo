@@ -542,6 +542,12 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Press(0),
         Command::Press(-1),
         Command::Press(i32::MAX),
+        Command::Shift(true),
+        Command::Shift(false),
+        Command::Key(Key::P, true, true),
+        Command::Key(Key::B, true, false),
+        Command::Key(Key::F, true, false),
+        Command::Key(Key::V, true, false),
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -587,6 +593,10 @@ fn commands_have_a_text_form_that_reads_back() {
         "press 1 2",
         "press 2147483648",
         "press -2147483649",
+        "shift",
+        "shift 1",
+        "shift on off",
+        "key q",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }

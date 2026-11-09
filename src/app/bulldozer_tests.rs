@@ -41,6 +41,15 @@ impl UiStrings for Texts {
             11194 => "Frequent".into(),
             11195 => "Continuous".into(),
             9001 => "Shop".into(),
+            1065 => "foliage shown".into(),
+            1066 => "foliage hidden".into(),
+            1067 => "buildings hidden".into(),
+            1068 => "guests hidden".into(),
+            1069 => "buildings shown".into(),
+            1070 => "guests shown".into(),
+            10507 => "saved in %s".into(),
+            10508 => "not saved".into(),
+            22006 => "shots".into(),
             _ => String::new(),
         }
     }

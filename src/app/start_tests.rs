@@ -137,7 +137,10 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [rl]\ntype=UIButton\nid=1008\nx=48\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
                   [rr]\ntype=UIButton\nid=1009\nx=52\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
                   [pa]\ntype=UIButton\nid=1071\nx=56\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
-                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n"
+                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n\
+                  [hf]\ntype=UIButton\nid=1066\nx=40\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1066\n\
+                  [hb]\ntype=UIButton\nid=1067\nx=44\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1067\n\
+                  [hg]\ntype=UIButton\nid=1068\nx=48\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1068\n"
                     .to_vec(),
             ),
             (

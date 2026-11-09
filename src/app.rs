@@ -172,6 +172,8 @@ struct Game {
     vehicles: Vec<(u32, &'static str, i32)>,
     /// The global term of the sound rules, from the ini file (sound 4.3).
     global: i32,
+    /// What the hide/show buttons hide, and Shift (map drawing 15).
+    view: view_buttons::View,
 }
 
 impl Game {
@@ -184,28 +186,6 @@ impl Game {
             .common
             .as_ref()?;
         Some((c.x, c.y))
-    }
-
-    /// The animation and frame each unit holds, for the picture.
-    fn shown(&self) -> Vec<Shown> {
-        (self.world.units.iter())
-            .filter(|u| !u.animation.name.is_empty())
-            .map(|u| Shown {
-                id: u.id,
-                animation: u.animation.name.clone(),
-                frame: u.animation.shown(),
-            })
-            .chain(self.world.units.gate_frames().map(|(id, frame)| Shown {
-                id,
-                animation: "idle".into(),
-                frame,
-            }))
-            .chain(self.world.portal_frames().map(|(id, frame)| Shown {
-                id,
-                animation: "portal".into(),
-                frame,
-            }))
-            .collect()
     }
 
     /// Sets or clears the pause flag (the buttons are the app's, `main_buttons`).
@@ -910,6 +890,7 @@ mod kinds;
 mod log;
 mod main_buttons;
 mod paint;
+mod view_buttons;
 pub use paint::{frame_hash, frame_hashes};
 #[cfg(test)]
 mod cheat_staff_tests;
@@ -980,6 +961,8 @@ mod terrain_tests;
 mod bulldozer_tests;
 #[cfg(test)]
 mod unit_lists_tests;
+#[cfg(test)]
+mod view_buttons_tests;
 
 #[cfg(test)]
 mod filter_tests;

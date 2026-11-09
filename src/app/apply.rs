@@ -22,6 +22,21 @@ impl App<'_> {
                 }
             }
             (Command::Quit, _) => self.quit = true,
+            (Command::Shift(on), Some(game)) => game.view.set_shift(on),
+            // Ctrl+B, Ctrl+F, Ctrl+V and Ctrl+P press the buttons of the main bar (input 10);
+            // Ctrl+B is another key in the developer mode.
+            (Command::Key(Key::B, true, _), Some(_)) if keys && !self.timers.speed.developer() => {
+                self.press_view(view_buttons::BUILDINGS, None)
+            }
+            (Command::Key(Key::F, true, _), Some(_)) if keys => {
+                self.press_view(view_buttons::FOLIAGE, None)
+            }
+            (Command::Key(Key::V, true, _), Some(_)) if keys => {
+                self.press_view(view_buttons::GUESTS, None)
+            }
+            (Command::Key(Key::P, true, shift), Some(_)) if keys => {
+                self.press_view(view_buttons::SNAPSHOT, Some(shift))
+            }
             (Command::Mouse(mouse), _) => self.mouse(mouse, listing),
             (Command::Scroll(x, y), Some(game)) if keys && !following => {
                 game.camera.key_scroll(&game.world.zoo, (x, y));

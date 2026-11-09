@@ -54,6 +54,7 @@ impl App<'_> {
             }
             self.main_button(id);
         }
+        self.view_pressed();
     }
 
     /// The action of the button `id`, whatever pressed it (a game is shown).

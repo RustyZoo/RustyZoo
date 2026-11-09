@@ -166,18 +166,27 @@ fn rubble_price(cat: &Catalogue, e: &Entity) -> f32 {
 
 /// The entities a rectangle of tiles collects, each once (placing 7.1 area drag): for each tile
 /// of it that is on the map and in the zoo, its path, the holders of its four quarters and the
-/// fences in its four edge slots. Not all of them can be removed.
-pub(crate) fn area(world: &World, a: (i32, i32), b: (i32, i32)) -> Vec<usize> {
+/// fences in its four edge slots. Not all of them can be removed. A holder of a quarter that
+/// `hidden` tells of (foliage or a building the main bar hides, map drawing 15.1) is left out.
+pub(crate) fn area(
+    world: &World,
+    a: (i32, i32),
+    b: (i32, i32),
+    hidden: impl Fn(&Entity) -> bool,
+) -> Vec<usize> {
     let mut found = Vec::new();
     for ty in a.1.min(b.1)..=a.1.max(b.1) {
         for tx in a.0.min(b.0)..=a.0.max(b.0) {
             let Some(t) = world.tile_index(tx, ty).filter(|&t| world.in_zoo(t)) else {
                 continue;
             };
-            let objects = [world.path(t)]
-                .into_iter()
-                .chain((0..4).map(|q| world.quadrant(t, q)))
-                .chain([0, 2, 4, 6].map(|d| world.edge(t, d)));
+            let objects =
+                [world.path(t)]
+                    .into_iter()
+                    .chain((0..4).map(|q| {
+                        (world.quadrant(t, q)).filter(|&e| !hidden(&world.zoo.entities[e]))
+                    }))
+                    .chain([0, 2, 4, 6].map(|d| world.edge(t, d)));
             for e in objects.flatten() {
                 // The tied wall that has no wall height is collected before the piece.
                 let tied = tied(world, e).filter(|&q| !has_height(world, q));
