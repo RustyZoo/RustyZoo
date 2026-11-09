@@ -198,3 +198,15 @@ fn a_helicopter_loaded_in_the_air_starts_at_level_3000_then_sets_it_to_0() {
     assert!(!far.playing);
     assert!(Rotor::loaded_in_air().pending());
 }
+
+#[test]
+fn a_take_off_with_a_sound_already_there_does_nothing_to_it() {
+    // The object of a load that failed: the fade flag is down, and a take-off leaves it so.
+    let mut heli = Heli::default();
+    heli.rotor = Some(Rotor::start(None, POINT, &hearing(0, 0)));
+    assert!(!heli.set_flying(true));
+    assert!(!heli.rotor.as_ref().unwrap().rising);
+    // Landing raises it, whatever the sound is.
+    assert!(!heli.set_flying(false));
+    assert!(heli.rotor.as_ref().unwrap().rising);
+}

@@ -649,7 +649,16 @@ fn the_rotor_starts_with_the_take_off_fades_in_and_is_freed_after_the_landing() 
         (r.file.as_deref(), r.playing),
         (Some("sounds/helicopt.wav"), true)
     );
-    // It fades in over 4 s (the steps are 67 ms) and is not freed while it flies.
+    // It fades in over 4 s, 67 ms a step whatever the pace of the animation (a moving unit's
+    // animation runs at its speed percentage), and is not freed while it flies.
+    let mut last = r.level();
+    for _ in 0..20 {
+        w.units.get_mut(h).unwrap().anim_speed = 300;
+        step(&mut w, &cat, &mut rng, h, 67);
+        let level = rotor(&w, h).unwrap().level();
+        assert!((49..=51).contains(&(last - level)), "{last} then {level}");
+        last = level;
+    }
     until(&mut w, &cat, &mut rng, h, 90, |w| {
         rotor(w, h).is_some_and(|r| r.level() == 0)
     });
