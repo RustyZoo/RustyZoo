@@ -136,7 +136,9 @@ fn a_press_command_presses_a_shown_enabled_button_by_its_id_and_nothing_else() {
         }
         assert_eq!(game(app).camera.zoom, 0);
         // A question in the way takes the press: the button waits behind it.
-        app.interface().unwrap().ask(45000, b"?", crate::ui::interface::Buttons::OK);
+        app.interface()
+            .unwrap()
+            .ask(45000, b"?", crate::ui::interface::Buttons::OK);
         assert!(go(app, ZOOM_IN).is_empty());
         assert_eq!(game(app).camera.zoom, 0);
     });

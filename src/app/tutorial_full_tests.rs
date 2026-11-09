@@ -118,14 +118,16 @@ fn goals(cfg: &Config) -> Vec<Goal> {
     out
 }
 
-/// What a test sees of a game: the lines of the scenario, the questions and the menu, with the
-/// pass they came in.
+/// A game being played: the lines of the scenario, the questions and the menu, with the pass they
+/// came in.
 struct Play<'a, 'b> {
     app: &'a mut App<'b>,
     goals: Vec<Goal>,
     log: Vec<(u64, String)>,
+    /// The goals whose trigger ran, in order.
     fired: Vec<String>,
     pass: u64,
+    now: u64,
     ended: bool,
 }
 
@@ -137,15 +139,36 @@ impl<'a, 'b> Play<'a, 'b> {
             log: Vec::new(),
             fired: Vec::new(),
             pass: 0,
+            now: 0,
             ended: false,
         }
     }
 
-    /// One pass: a question that is open gets its answer (OK to a popup, none to the end
-    /// dialog), else the player presses the element of the first goal asking for a press that has
-    /// not fired.
+    /// One pass `ms` later with these commands; its lines are kept.
+    fn tick(&mut self, ms: u64, commands: &[Command]) {
+        (self.pass, self.now) = (self.pass + 1, self.now + ms);
+        self.app.pass(self.now, commands);
+        let lead = format!("pass {} t={} ", self.pass, self.now);
+        for line in self.app.log_lines(self.pass, self.now) {
+            let Some(rest) = line.strip_prefix(&lead) else {
+                continue;
+            };
+            if let Some(t) = rest.strip_prefix("sim scenario trigger ") {
+                self.fired.push(t.split(' ').next().unwrap().to_string());
+            }
+            if rest.starts_with("menu scenario dialog") {
+                self.ended = true;
+            }
+            let keep = ["sim scenario ", "ui ask", "ui answer", "ui press", "menu "];
+            if keep.iter().any(|k| rest.starts_with(k)) {
+                self.log.push((self.pass, rest.to_string()));
+            }
+        }
+    }
+
+    /// One pass of a step: a popup that is open gets its answer (OK), the end dialog none, else the
+    /// player presses the element of the first goal asking for a press that has not fired.
     fn step(&mut self) {
-        self.pass += 1;
         let mut commands = Vec::new();
         let ui = self.app.ui.as_mut().unwrap();
         if ui.modal_open() {
@@ -161,23 +184,7 @@ impl<'a, 'b> Play<'a, 'b> {
             }
             commands.push(Command::Press(g.rule[2]));
         }
-        let now = self.pass * STEP;
-        self.app.pass(now, &commands);
-        for line in self.app.log_lines(self.pass, now) {
-            let Some(rest) = line.strip_prefix(&format!("pass {} t={now} ", self.pass)) else {
-                continue;
-            };
-            if let Some(t) = rest.strip_prefix("sim scenario trigger ") {
-                self.fired.push(t.split(' ').next().unwrap().to_string());
-            }
-            if rest.starts_with("menu scenario dialog") {
-                self.ended = true;
-            }
-            let keep = ["sim scenario ", "ui ask", "ui answer", "menu "];
-            if keep.iter().any(|k| rest.starts_with(k)) {
-                self.log.push((self.pass, rest.to_string()));
-            }
-        }
+        self.tick(STEP, &commands);
     }
 
     /// Passes until `stop` holds, at most `limit`. Gives whether it did.
@@ -197,6 +204,11 @@ impl<'a, 'b> Play<'a, 'b> {
         (self.log.iter().filter(starts))
             .map(|l| l.1.as_str())
             .collect()
+    }
+
+    fn disabled(&mut self, id: i32) -> bool {
+        let ui = self.app.ui.as_mut().unwrap();
+        ui.tree.elements[ui.tree.find(id).unwrap()].state & DISABLED != 0
     }
 }
 
@@ -219,28 +231,65 @@ fn read(rig: &Rig, file: &str) -> Option<Config> {
     Config::parse(&rig.vfs.read(file).ok()?).ok()
 }
 
+/// The ids the scenario `did` ("disable", "enable") to, in the lines so far.
+fn ids_of(play: &Play, did: &str) -> Vec<i32> {
+    let lines = play.lines("sim scenario element");
+    let ids = lines.into_iter().filter_map(|l| l.strip_suffix(did));
+    let id = |l: &str| l.trim_end().rsplit(' ').next()?.parse().ok();
+    ids.filter_map(id).collect()
+}
+
+/// The ids the start disabled.
+fn blocked(play: &Play) -> Vec<i32> {
+    ids_of(play, "disable")
+}
+
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
-fn explore() {
-    let rig = rig("tutorial-prefix");
+fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
+    let rig = rig("tutorial-start");
     for n in SERIES {
         let file = path(n);
         let Some(cfg) = read(&rig, &file) else {
             eprintln!("skipped {n}: the install lacks it");
             continue;
         };
+        let layout = goals(&cfg);
         let mut app = rig.app(n);
         start(&mut app, &file);
-        let mut play = Play::new(&mut app, goals(&cfg));
+        let mut play = Play::new(&mut app, layout.clone());
+        // The first popups are answered. The start left every id of its block disabled, the
+        // triggers since enabled some; Ctrl+S saves nothing and the Scenario button does nothing
+        // (10.8 point 5).
+        play.until(12, |p| p.pass >= 3 && !p.app.ui.as_ref().unwrap().modal_open());
+        let off = blocked(&play);
+        let on = ids_of(&play, "enable");
+        assert!(off.len() > 20, "{n}: {off:?}");
+        let held: Vec<i32> = off.iter().copied().filter(|id| !on.contains(id)).collect();
+        let open: Vec<i32> = held.iter().copied().filter(|&id| !play.disabled(id)).collect();
+        assert!(open.is_empty(), "{n}: {open:?}");
+        let (a, b) = (play.disabled(1502), play.disabled(4107));
+        assert!(a && b, "{n}: {a} {b}");
+        play.tick(100, &[]);
+        let (dialogs, presses) = (play.lines("menu game save").len(), play.lines("ui press").len());
+        let keys = [Command::Key(Key::S, true, false), Command::Press(4107)];
+        play.tick(100, &keys);
+        assert_eq!(play.lines("menu game save").len(), dialogs, "{n}");
+        assert_eq!(play.lines("ui press").len(), presses, "{n}");
         // 60 scenario passes, 90 s of the game.
         play.until(60, |_| false);
-        println!(
-            "{n}: fired {} popups {}",
-            play.fired.len(),
-            play.lines("ui ask").len()
-        );
-        let ui = play.app.ui.as_mut().unwrap();
-        let off = [1502, 4107].map(|id| ui.tree.find(id).map(|i| ui.tree.elements[i].state & DISABLED != 0));
-        println!("disabled {off:?}");
+        let asks = play.lines("ui ask 45100").len();
+        let answers = play.lines("ui answer 1").len();
+        assert!(asks >= 2 && answers + 1 >= asks, "{n}: {asks} {answers}");
+        assert!(play.lines("ui answer 2").is_empty(), "{n}");
+        // Each trigger of a goal runs once, in the order of the file as far as the player gets.
+        let mut names: Vec<&str> = play.fired.iter().map(String::as_str).collect();
+        names.retain(|f| layout.iter().any(|g| g.name == *f));
+        let at: Vec<usize> = (names.iter())
+            .map(|f| layout.iter().position(|g| g.name == *f).unwrap())
+            .collect();
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "{n}: {names:?}");
+        assert!(names.len() > 3, "{n}: {names:?}");
+        println!("{n}: {} triggers {}", names.len(), asks);
     }
 }

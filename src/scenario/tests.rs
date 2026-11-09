@@ -833,7 +833,10 @@ fn the_pass_counter_belongs_to_the_program_and_a_new_game_keeps_what_the_last_on
             let data = &crate::behaviour::NoData;
             sim.step_game(data, &cat, &mut w, &mut money, ms, |_, _, _| {});
             let lines = sim.take_lines();
-            lines.iter().filter(|l| l.starts_with("scenario trigger")).count()
+            lines
+                .iter()
+                .filter(|l| l.starts_with("scenario trigger"))
+                .count()
         };
         sim.start_game(16, Clocks::default());
         sim.start_scenario(build(text, &[]));
