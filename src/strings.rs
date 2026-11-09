@@ -110,17 +110,17 @@ struct Library {
 }
 
 impl Library {
-    /// `None` if the file cannot be read as a library with resources.
-    fn load(name: &str, file: &[u8]) -> Option<Library> {
-        let resources = pe::resources(file).ok()?;
-        let strings = pe::strings(&resources).ok()?;
+    /// `Err` with the reason if the file cannot be read as a library with resources.
+    fn load(name: &str, file: &[u8]) -> Result<Library, String> {
+        let resources = pe::resources(file).map_err(|e| e.to_string())?;
+        let strings = pe::strings(&resources).map_err(|e| e.to_string())?;
         let mut texts = HashMap::new();
         for (text, language, data) in pe::texts(&resources) {
             texts
                 .entry(text.to_ascii_uppercase())
                 .or_insert_with(|| decode_text(language, data));
         }
-        Some(Library {
+        Ok(Library {
             name: name.to_string(),
             strings,
             texts,
@@ -145,9 +145,21 @@ pub(crate) fn library_names(install_dir: &Path, prefix: &str) -> Result<Vec<Stri
     Ok(names.into_iter().rev().collect())
 }
 
+/// One file of the install folder as a library.
+fn read_library(install_dir: &Path, name: &str) -> Result<Library, String> {
+    let path = install_dir.join(name);
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > MAX_MEMBER_SIZE {
+        return Err(format!("it is {size} bytes, more than the limit"));
+    }
+    Library::load(name, &std::fs::read(&path).map_err(|e| e.to_string())?)
+}
+
 /// The `lang*.dll` libraries of one install, in lookup order.
 pub struct StringTables {
     libraries: Vec<Library>,
+    /// The libraries that were left out, and why.
+    warnings: Vec<String>,
 }
 
 /// Whether a name id belongs to user-created content: the whole id is in 19000..=21999,
@@ -162,19 +174,21 @@ impl StringTables {
     /// Loads the libraries of the install folder `install_dir`.
     ///
     /// Fails if the folder cannot be read or holds no usable `lang*.dll`. A matching file that
-    /// is not a PE file with resources is skipped.
+    /// cannot be read or is not a PE file with resources is skipped, with a warning on standard
+    /// error and in [`warnings`](StringTables::warnings): like the original, the others load.
+    /// The original loads a library as a program, the engine only reads its resources.
     pub fn open(install_dir: &Path) -> Result<StringTables, StringsError> {
         let names = library_names(install_dir, "lang")?;
         let mut libraries = Vec::new();
+        let mut warnings = Vec::new();
         for name in &names {
-            let path = install_dir.join(name);
-            let size =
-                std::fs::metadata(&path).map_err(|e| StringsError(format!("{name}: {e}")))?;
-            if size.len() > MAX_MEMBER_SIZE {
-                continue;
+            match read_library(install_dir, name) {
+                Ok(library) => libraries.push(library),
+                Err(why) => {
+                    eprintln!("rustyzoo: warning: {name} is skipped: {why}");
+                    warnings.push(format!("{name} is skipped: {why}"));
+                }
             }
-            let file = std::fs::read(&path).map_err(|e| StringsError(format!("{name}: {e}")))?;
-            libraries.extend(Library::load(name, &file));
         }
         if libraries.is_empty() {
             return Err(StringsError(format!(
@@ -182,7 +196,15 @@ impl StringTables {
                 install_dir.display()
             )));
         }
-        Ok(StringTables { libraries })
+        Ok(StringTables {
+            libraries,
+            warnings,
+        })
+    }
+
+    /// The libraries that were left out, one line each.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// The file names of the libraries, in lookup order.
@@ -502,6 +524,95 @@ mod tests {
         let missing = std::env::temp_dir().join("rustyzoo-strings-does-not-exist");
         let err = StringTables::open(&missing).err().unwrap().to_string();
         assert!(err.contains("cannot read folder"), "{err}");
+    }
+
+    /// The libraries of the mod compatibility cases, in an install folder.
+    fn mod_install(name: &str) -> TempDir {
+        let dir = TempDir::new(name);
+        let put = |file: &str, strings: &[(u32, &str)], texts: &[(&str, &[u8])]| {
+            dir.write(file, &library(strings, texts));
+        };
+        put("lang0.dll", &[(100, "base"), (101, "base101")], &[]);
+        put("lang300.dll", &[(100, "cc")], &[]);
+        put("langZA01.dll", &[(100, "mod"), (102, "modnew")], &[]);
+        put("lang--extra.dll", &[(101, "tail"), (103, "tail103")], &[]);
+        put("LANG--ZTCDD.DLL", &[(103, "upper"), (104, "last")], &[]);
+        dir
+    }
+
+    #[test]
+    fn a_mod_library_that_sorts_first_overrides_and_one_that_sorts_last_only_adds() {
+        let dir = mod_install("mod-order");
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(
+            tables.libraries().collect::<Vec<_>>(),
+            [
+                "langZA01.dll",
+                "lang300.dll",
+                "lang0.dll",
+                "lang--extra.dll",
+                "LANG--ZTCDD.DLL"
+            ]
+        );
+        let found: Vec<&str> = (100..=104).map(|id| tables.string(id)).collect();
+        assert_eq!(found, ["mod", "base101", "modnew", "tail103", "last"]);
+        assert!(tables.warnings().is_empty());
+    }
+
+    #[test]
+    fn an_empty_entry_of_a_mod_library_does_not_blank_the_shipped_string() {
+        let dir = mod_install("mod-empty");
+        dir.write(
+            "langZA01.dll",
+            &library(&[(100, "mod"), (101, ""), (102, "modnew")], &[]),
+        );
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.string(101), "base101");
+    }
+
+    #[test]
+    fn a_library_that_does_not_load_is_skipped_with_a_warning_and_the_others_load() {
+        let dir = mod_install("mod-bad");
+        dir.write("langbad.dll", b"MZ");
+        std::fs::create_dir(dir.0.join("langdir.dll")).unwrap();
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.string(100), "mod");
+        assert_eq!(tables.libraries().count(), 5);
+        assert_eq!(tables.warnings().len(), 1, "{:?}", tables.warnings());
+        assert!(tables.warnings()[0].contains("langbad.dll"));
+    }
+
+    #[test]
+    fn a_library_in_a_search_folder_is_not_loaded() {
+        let dir = mod_install("mod-folder");
+        dir.write("dlupdate/lang999.dll", &library(&[(100, "nope")], &[]));
+        dir.write("updates/langZZ.dll", &library(&[(100, "nope")], &[]));
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.string(100), "mod");
+        assert_eq!(tables.libraries().count(), 5);
+    }
+
+    #[test]
+    fn a_mod_library_can_change_the_install_language_but_not_user_content() {
+        let dir = mod_install("mod-settings");
+        dir.write(
+            "langZA01.dll",
+            &library(&[(22015, "1036"), (19500, "user"), (100, "mod")], &[]),
+        );
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.install_language(), 1036);
+        assert_eq!(tables.string(19500), "");
+        assert_eq!(tables.string(100), "mod");
+    }
+
+    #[test]
+    fn a_present_text_entry_wins_even_when_it_is_empty() {
+        let dir = mod_install("mod-text");
+        dir.write("lang300.dll", &library(&[(100, "cc")], &[("FOO", b"")]));
+        dir.write("lang0.dll", &library(&[(100, "base")], &[("FOO", b"x")]));
+        let tables = StringTables::open(&dir.0).unwrap();
+        assert_eq!(tables.text_source("foo"), Some(("lang300.dll", "")));
+        assert_eq!(tables.text("FOO"), "");
     }
 
     /// The facts below were measured on Zoo Tycoon: Complete Collection.

@@ -6,6 +6,8 @@ use zip::{CompressionMethod, ZipWriter};
 use super::*;
 use crate::fixtures::TempDir;
 
+mod mods;
+
 impl TempDir {
     /// Writes an archive whose members are stored and deflated alternately.
     fn archive(&self, relative: &str, members: &[(&str, &str)]) {
@@ -444,8 +446,9 @@ fn encrypted_members_and_local_headers_of_size_zero_stop_the_search() {
 
 /// An archive `b.ztd` that sorts before `a.ztd` and wins, whose local headers `damage`
 /// changes. Its members are `x.txt` (stored) and `y.txt` (deflated), made of 2000 `w`s so that
-/// the deflated one is much smaller than it declares; `a.ztd` has `fallback` for both.
-fn damaged_winner(name: &str, damage: impl Fn(&mut [u8], &[usize])) -> Vfs {
+/// the deflated one is much smaller than it declares; `a.ztd` has `fallback` for both. The folder
+/// is returned so that it outlives the reads (archives are opened for each read).
+fn damaged_winner(name: &str, damage: impl Fn(&mut [u8], &[usize])) -> (Vfs, TempDir) {
     let dir = TempDir::new(name);
     dir.ini(".");
     dir.archive("a.ztd", &[("x.txt", "fallback"), ("y.txt", "fallback")]);
@@ -454,7 +457,7 @@ fn damaged_winner(name: &str, damage: impl Fn(&mut [u8], &[usize])) -> Vfs {
     let locals = find_all(&bytes, &LOCAL_SIGNATURE);
     damage(&mut bytes, &locals);
     dir.write("b.ztd", &bytes);
-    Vfs::open(&dir.0).unwrap()
+    (Vfs::open(&dir.0).unwrap(), dir)
 }
 
 fn put32(bytes: &mut [u8], at: usize, value: u32) {
@@ -465,7 +468,7 @@ fn put32(bytes: &mut [u8], at: usize, value: u32) {
 fn a_member_shorter_than_its_declared_size_falls_through() {
     // x.txt is stored and its compressed size says 1000 bytes, y.txt inflates to its 2000
     // bytes but declares 5000.
-    let vfs = damaged_winner("short", |bytes, locals| {
+    let (vfs, _dir) = damaged_winner("short", |bytes, locals| {
         put32(bytes, locals[0] + 18, 1000);
         put32(bytes, locals[1] + 22, 5000);
     });
@@ -475,7 +478,7 @@ fn a_member_shorter_than_its_declared_size_falls_through() {
 
 #[test]
 fn a_member_that_runs_past_the_end_of_the_file_falls_through() {
-    let vfs = damaged_winner("past-the-end", |bytes, locals| {
+    let (vfs, _dir) = damaged_winner("past-the-end", |bytes, locals| {
         put32(bytes, locals[0] + 18, 1_000_000);
         put32(bytes, locals[1] + 18, 1_000_000);
     });
@@ -486,7 +489,7 @@ fn a_member_that_runs_past_the_end_of_the_file_falls_through() {
 #[test]
 fn a_size_that_deflate_cannot_reach_falls_through() {
     // 20 bytes of data cannot inflate to 100000 bytes: the most is 1032 to 1.
-    let vfs = damaged_winner("ratio", |bytes, locals| {
+    let (vfs, _dir) = damaged_winner("ratio", |bytes, locals| {
         put32(bytes, locals[1] + 18, 20);
         put32(bytes, locals[1] + 22, 100_000);
     });
@@ -496,7 +499,7 @@ fn a_size_that_deflate_cannot_reach_falls_through() {
 
 #[test]
 fn a_size_over_the_limit_stops_the_search() {
-    let vfs = damaged_winner("limit", |bytes, locals| {
+    let (vfs, _dir) = damaged_winner("limit", |bytes, locals| {
         put32(bytes, locals[0] + 22, MAX_MEMBER_SIZE as u32 + 1);
         put32(bytes, locals[1] + 22, u32::MAX);
     });
@@ -619,9 +622,9 @@ fn symbolic_links_are_not_followed() {
     assert!(vfs.read("secret.txt").is_err());
     assert_eq!(vfs.warnings().len(), 3, "{:?}", vfs.warnings());
 
-    // A search directory that is a link out of the install folder is an error.
+    // A search directory may be a link out of the install folder, like any other element.
     std::os::unix::fs::symlink(&outside.0, dir.0.join("link")).unwrap();
-    assert!(message(Vfs::open(&dir.0)).contains("leaves the install folder"));
+    assert_eq!(text(&Vfs::open(&dir.0).unwrap(), "secret.txt"), "secret");
 }
 
 #[cfg(target_os = "linux")]
@@ -750,9 +753,6 @@ fn open_errors() {
 
     dir.write("zoo.ini", b"[resource]\npath=;\n");
     assert!(message(Vfs::open(&dir.0)).contains("lists no directory"));
-
-    dir.write("zoo.ini", b"[resource]\npath=./a;../b\n");
-    assert!(message(Vfs::open(&dir.0)).contains("leaves the install folder"));
 
     // Directories that do not exist are skipped, and a path of only those is an error.
     dir.write("zoo.ini", b"[resource]\npath=./a\n");
