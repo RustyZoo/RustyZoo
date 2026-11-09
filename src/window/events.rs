@@ -216,6 +216,27 @@ mod tests {
     }
 
     #[test]
+    fn a_shift_key_becomes_a_command_only_with_an_interface() {
+        let shift = Event::KeyDown {
+            timestamp: 0,
+            window_id: 1,
+            keycode: None,
+            scancode: Some(sdl3::keyboard::Scancode::LShift),
+            keymod: sdl3::keyboard::Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let mut state = State::default();
+        let mut commands = Vec::new();
+        state.note(shift.clone(), &mut commands);
+        assert!(commands.is_empty());
+        state.interface = true;
+        state.note(shift, &mut commands);
+        assert_eq!(commands, [Command::Shift(true)]);
+    }
+
+    #[test]
     fn with_an_interface_the_mouse_the_keys_and_the_text_become_commands() {
         let press = |mouse_btn, clicks, x, y| Event::MouseButtonDown {
             timestamp: 0,

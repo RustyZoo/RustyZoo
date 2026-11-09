@@ -17,6 +17,7 @@ SDL3 is used only there, built from source and linked statically.
 - `pe`: bounded reader for the resources of the game's DLLs.
 - `strings`, `usertext`: the game's texts from the language libraries; the texts of user-created content.
 - `userdir`: the per-user folder: settings, saved games, the `zoo.ini` laid over the game's.
+- `snapshot`: the numbered JPEG or BMP file the snapshot button writes.
 - `zoo`: maps and saved games (`.zoo`): parse, write, upgrade.
 - `entity`, `avail`: the catalogue of entity types and animations; which types can be bought.
 - `award`, `lists`: award definitions and held awards; the scenario and freeform lists of the menu.

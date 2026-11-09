@@ -6,6 +6,7 @@ use super::view_buttons::TEST_FOLDER;
 use super::*;
 use crate::entity::Catalogue;
 use crate::fixtures::TempDir;
+use crate::render::Hide;
 use crate::ui::layout::SELECTED;
 
 const FOLIAGE: i32 = 1066;
@@ -312,5 +313,37 @@ fn a_snapshot_that_cannot_be_written_says_so_and_the_game_goes_on() {
         s.pass(&click_on(SNAPSHOT));
         assert_eq!(snap_text(s), "Failed to write screenshot.");
         s.pass(&[]);
+    });
+}
+
+#[test]
+fn a_game_that_opens_starts_with_everything_shown_and_the_buttons_up() {
+    use super::start_tests::{CONTINUE, click, key, started, with_menu};
+    with_menu("view-reopen", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        let mut go = |app: &mut App, commands: &[Command]| {
+            now += 66;
+            app.pass(now, commands);
+        };
+        let state = |app: &mut App, id| {
+            let ui = app.interface().unwrap();
+            let e = &ui.tree.elements[ui.tree.find(id).unwrap()];
+            (e.state & SELECTED != 0, e.help_id[0])
+        };
+        go(app, &click(42, 46));
+        go(app, &click(50, 46));
+        assert_eq!(state(app, FOLIAGE), (true, 1065));
+        assert_eq!(state(app, GUESTS), (true, 1070));
+        assert_eq!(state(app, BUILDINGS), (false, BUILDINGS));
+        // Leave the game for the menu, and open it again.
+        go(app, &key(Key::Escape));
+        go(app, &key(Key::N));
+        assert!(app.camera().is_none());
+        go(app, &CONTINUE);
+        assert!(app.camera().is_some());
+        assert_eq!(app.game.as_ref().unwrap().view.hide, Hide::default());
+        for id in [FOLIAGE, BUILDINGS, GUESTS] {
+            assert_eq!(state(app, id), (false, id));
+        }
     });
 }

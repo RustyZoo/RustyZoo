@@ -333,5 +333,76 @@ mod tests {
         );
         assert_eq!(press(Scancode::Return, Mod::LALTMOD), None);
         assert_eq!(press(Scancode::F1, Mod::NOMOD), None);
+        // The buttons of the main bar need Ctrl; typed, the letters are characters.
+        for (key, name) in [
+            (Scancode::B, Key::B),
+            (Scancode::F, Key::F),
+            (Scancode::V, Key::V),
+            (Scancode::P, Key::P),
+        ] {
+            assert_eq!(press(key, Mod::NOMOD), None);
+            assert_eq!(
+                press(key, Mod::LCTRLMOD),
+                Some(Command::Key(name, true, false))
+            );
+        }
+        assert_eq!(
+            press(Scancode::P, Mod::RCTRLMOD | Mod::RSHIFTMOD),
+            Some(Command::Key(Key::P, true, true))
+        );
+        assert_eq!(press(Scancode::P, Mod::LCTRLMOD | Mod::LALTMOD), None);
+    }
+
+    #[test]
+    fn a_shift_key_tells_whether_a_shift_is_still_held() {
+        let event = |down, scancode, keymod| {
+            let (timestamp, window_id, keycode, repeat, which, raw) = (0, 1, None, false, 0, 0);
+            match down {
+                true => Event::KeyDown {
+                    timestamp,
+                    window_id,
+                    keycode,
+                    scancode: Some(scancode),
+                    keymod,
+                    repeat,
+                    which,
+                    raw,
+                },
+                false => Event::KeyUp {
+                    timestamp,
+                    window_id,
+                    keycode,
+                    scancode: Some(scancode),
+                    keymod,
+                    repeat,
+                    which,
+                    raw,
+                },
+            }
+        };
+        assert_eq!(
+            shift(&event(true, Scancode::LShift, Mod::LSHIFTMOD)),
+            Some(true)
+        );
+        assert_eq!(
+            shift(&event(true, Scancode::RShift, Mod::NOMOD)),
+            Some(true)
+        );
+        assert_eq!(
+            shift(&event(false, Scancode::LShift, Mod::NOMOD)),
+            Some(false)
+        );
+        assert_eq!(
+            shift(&event(false, Scancode::LShift, Mod::LSHIFTMOD)),
+            Some(false)
+        );
+        let both = Mod::LSHIFTMOD | Mod::RSHIFTMOD;
+        assert_eq!(
+            shift(&event(false, Scancode::LShift, both)),
+            Some(true),
+            "the right one is held"
+        );
+        assert_eq!(shift(&event(true, Scancode::A, Mod::LSHIFTMOD)), None);
+        assert_eq!(shift(&event(false, Scancode::Return, Mod::NOMOD)), None);
     }
 }
