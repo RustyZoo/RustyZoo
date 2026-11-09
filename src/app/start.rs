@@ -28,6 +28,23 @@ impl App<'_> {
             .map_err(|e| e.to_string())
     }
 
+    /// The `[UI] userAttenuation` global term of the sound rules.
+    fn global_term(&self) -> i32 {
+        crate::config::Config::parse(self.renderer.vfs().ini())
+            .map_or(0, |ini| crate::music::global_term(&ini))
+    }
+
+    /// The build panel of a game that opens, with the rewards its ini unlocks.
+    fn new_build(&self, stored: u32, exhibits: usize) -> Build {
+        Build::new(installed_expansions(self.renderer.vfs()))
+            .with_selector(expansion_entries(self.renderer.vfs()), stored)
+            .with_exhibits(exhibits)
+            .unlocked(
+                self.renderer.catalogue(),
+                &scenario_ui::reward_ini(&self.menu, self.renderer.vfs()),
+            )
+    }
+
     /// [`App::open_game`] for a saved game when `saved`: the scenario it names builds the research
     /// tree and its research section is read (research 7.2, before the entities' own steps). A
     /// saved game whose scenario block loads runs the start hook after the resume triggers
@@ -114,13 +131,7 @@ impl App<'_> {
             finances: Finances::default(),
             funding: Default::default(),
             awards_page: Awards::default(),
-            build: Build::new(installed_expansions(self.renderer.vfs()))
-                .with_selector(expansion_entries(self.renderer.vfs()), stored)
-                .with_exhibits(exhibits)
-                .unlocked(
-                    self.renderer.catalogue(),
-                    &scenario_ui::reward_ini(&self.menu, self.renderer.vfs()),
-                ),
+            build: self.new_build(stored, exhibits),
             placing: pending::Placing {
                 pending: None,
                 made: None,
@@ -155,8 +166,7 @@ impl App<'_> {
             carry: None,
             held: None,
             vehicles: Vec::new(),
-            global: crate::config::Config::parse(self.renderer.vfs().ini())
-                .map_or(0, |ini| crate::music::global_term(&ini)),
+            global: self.global_term(),
         });
         // The game screen's set-up: running, the pause button shown; the zoom buttons follow the
         // zoom of the file (camera 8.4 point 5, ui layout 7.11 point 4).
