@@ -133,16 +133,12 @@ impl Play<'_, '_> {
         let ui = self.app.ui.as_mut().unwrap();
         let i = ui.tree.find(list).unwrap();
         let (x, y, w, h) = ui.tree.rect(i);
-        println!("ROW {list} {row} rect {x} {y} {w} {h} shown {} layout41 {} 11115 {:?} sel {:?}", ui.shown(list), ui.shown(41), ui.selected_row(11115), ui.selected_row(11196));
         for y in (y..y + h).step_by(2) {
             ui.mouse(Mouse::Move(x + w / 2, y));
             let Kind::ListBox(l) = &ui.tree.elements[i].kind else {
-                println!("ROW not a list");
                 return;
             };
-            if (y - 361) % 10 == 0 { println!("ROW y {y} hover {:?} rows {} state {:x}", l.rows.hover, l.rows.rows.len(), ui.tree.elements[i].state); }
             if l.rows.hover == Some(row) {
-                println!("ROW found {y}");
                 let click = [Mouse::Move(x + w / 2, y), Mouse::Down, Mouse::Up];
                 return self.tick(50, &click.map(Command::Mouse));
             }
@@ -157,7 +153,8 @@ impl Play<'_, '_> {
         let inside = |x: i32, y: i32| {
             let tile = world.tile_index(x / 64, y / 64);
             let list = world.exhibits().list();
-            list.iter().any(|e| tile.is_some_and(|t| e.order.contains(&t)))
+            list.iter()
+                .any(|e| tile.is_some_and(|t| e.order.contains(&t)))
         };
         let _ = width;
         let fence = zoo.entities.iter().find(|e| {
@@ -209,17 +206,29 @@ impl Play<'_, '_> {
         };
         self.app.open_exhibit(id);
         self.press(crate::panel::exhibit::TANK_TAB);
-        self.press(if h < height { crate::panel::exhibit::WALL_UP } else { crate::panel::exhibit::WALL_DOWN });
+        self.press(if h < height {
+            crate::panel::exhibit::WALL_UP
+        } else {
+            crate::panel::exhibit::WALL_DOWN
+        });
     }
 
     /// The exhibit panel on a show tank, which opens the window of its show.
     fn show_window(&mut self) {
-        if self.app.ui.as_ref().unwrap().shown(crate::panel::show::LAYOUT) {
+        if self
+            .app
+            .ui
+            .as_ref()
+            .unwrap()
+            .shown(crate::panel::show::LAYOUT)
+        {
             return;
         }
         let world = &self.app.game.as_ref().unwrap().world;
         let list = world.exhibits().list();
-        let tank = list.iter().find(|x| crate::show::info_of(world, x.id).is_some());
+        let tank = list
+            .iter()
+            .find(|x| crate::show::info_of(world, x.id).is_some());
         if let Some(id) = tank.map(|x| x.id) {
             self.app.open_exhibit(id);
             self.tick(STEP, &[]);
@@ -243,7 +252,9 @@ impl Play<'_, '_> {
         let cat = self.app.renderer.catalogue();
         let mut homes = Vec::new();
         for (at, e) in world.zoo.entities.iter().enumerate() {
-            let is = kinds.iter().any(|&t| cat.types[t].type_name == e.type_name.as_bytes());
+            let is = kinds
+                .iter()
+                .any(|&t| cat.types[t].type_name == e.type_name.as_bytes());
             let home = crate::panel::exhibit::animals_exhibit(world, at);
             if let (true, Some(x)) = (is, home)
                 && !homes.contains(&(x, e.type_name.clone()))
@@ -292,9 +303,14 @@ impl Play<'_, '_> {
     /// The ground of exhibit `x` painted with the terrain the species `key` likes best.
     fn paint(&mut self, x: u32, key: &str) {
         let cat = self.app.renderer.catalogue();
-        let ty = cat.types.iter().find(|t| t.class == "animals" && t.type_name == key.as_bytes());
+        let ty = cat
+            .types
+            .iter()
+            .find(|t| t.class == "animals" && t.type_name == key.as_bytes());
         let likes = crate::exhibit::rating::Likes::of(ty.unwrap());
-        let kind = (0..likes.terrain.len()).max_by_key(|&k| likes.terrain[k]).unwrap_or(0);
+        let kind = (0..likes.terrain.len())
+            .max_by_key(|&k| likes.terrain[k])
+            .unwrap_or(0);
         if !self.app.ui.as_ref().unwrap().shown(8) {
             self.press(1002);
         }
@@ -306,7 +322,12 @@ impl Play<'_, '_> {
         }
         let game = self.app.game.as_ref().unwrap();
         let width = game.world.zoo.width as usize;
-        let order = game.world.exhibits().get(x).map(|e| e.order.clone()).unwrap_or_default();
+        let order = game
+            .world
+            .exhibits()
+            .get(x)
+            .map(|e| e.order.clone())
+            .unwrap_or_default();
         let tiles: Vec<(i32, i32)> = (order.iter())
             .map(|&t| ((t % width) as i32, (t / width) as i32))
             .collect();
@@ -324,11 +345,18 @@ impl Play<'_, '_> {
     /// offer, then the next ones in turn.
     fn plant(&mut self, x: u32, key: &str, now: i32) {
         let cat = self.app.renderer.catalogue();
-        let animal = cat.types.iter().find(|t| t.class == "animals" && t.type_name == key.as_bytes());
+        let animal = cat
+            .types
+            .iter()
+            .find(|t| t.class == "animals" && t.type_name == key.as_bytes());
         let likes = crate::exhibit::rating::Likes::of(animal.unwrap());
         let value = |t: &crate::entity::EntityType| {
             let (habitat, name) = crate::exhibit::rating::object(t);
-            let of = |id: i32| (likes.objects.iter().rev()).find(|p| p.0 == id).map_or(0, |p| p.1);
+            let of = |id: i32| {
+                (likes.objects.iter().rev())
+                    .find(|p| p.0 == id)
+                    .map_or(0, |p| p.1)
+            };
             of(habitat) + of(name)
         };
         let game = self.app.game.as_ref().unwrap();
@@ -354,7 +382,10 @@ impl Play<'_, '_> {
         }
         let world = &self.app.game.as_ref().unwrap().world;
         let width = world.zoo.width as usize;
-        let tile = world.exhibits().get(x).map_or(0, |e| e.order[e.order.len() / 2]);
+        let tile = world
+            .exhibits()
+            .get(x)
+            .map_or(0, |e| e.order[e.order.len() / 2]);
         self.last = Some((now, t));
         self.painted.push(0);
         self.put(((tile % width) as i32, (tile / width) as i32));
@@ -365,7 +396,9 @@ impl Play<'_, '_> {
         let game = self.app.game.as_ref().unwrap();
         let width = game.world.zoo.width as usize;
         let list = game.world.exhibits().list();
-        let show = list.iter().find(|x| crate::show::info_of(&game.world, x.id).is_some());
+        let show = list
+            .iter()
+            .find(|x| crate::show::info_of(&game.world, x.id).is_some());
         let empty = list.iter().find(|x| x.rating.counts.1 == 0);
         let tile = show.or(empty).or(list.last()).map_or(0, |x| x.order[0]);
         self.put(((tile % width) as i32, (tile / width) as i32));
@@ -375,7 +408,9 @@ impl Play<'_, '_> {
     fn adopt(&mut self) {
         let want: Vec<usize> = {
             let cat = self.app.renderer.catalogue();
-            (0..cat.types.len()).filter(|&i| cat.types[i].class == "animals").collect()
+            (0..cat.types.len())
+                .filter(|&i| cat.types[i].class == "animals")
+                .collect()
         };
         if self.choose(&want) {
             self.house();
@@ -390,7 +425,10 @@ impl Play<'_, '_> {
             .find(|&(x, y)| (0..n).all(|k| free(x + k, y)));
         if let Some((x, y)) = at {
             self.look((x + n / 2, y));
-            self.drag((x * 64 + 32, y * 64 + 32), ((x + n - 1) * 64 + 32, y * 64 + 32));
+            self.drag(
+                (x * 64 + 32, y * 64 + 32),
+                ((x + n - 1) * 64 + 32, y * 64 + 32),
+            );
         }
     }
 
@@ -432,7 +470,11 @@ impl Play<'_, '_> {
             return false;
         }
         for (bar, layout, list, tabs) in PANELS {
-            for tab in tabs.iter().map(|&t| Some(t)).chain(tabs.is_empty().then_some(None)) {
+            for tab in tabs
+                .iter()
+                .map(|&t| Some(t))
+                .chain(tabs.is_empty().then_some(None))
+            {
                 if !self.app.ui.as_ref().unwrap().shown(layout) {
                     self.press(bar);
                 }
@@ -477,7 +519,10 @@ impl Play<'_, '_> {
             self.tick(50, &[Command::Mouse(Mouse::Move(x, y))]);
             let pending = self.app.game.as_ref().unwrap().placing.pending.as_ref();
             if pending.is_some_and(|p| matches!(p.verdict, Verdict::Valid | Verdict::Overwrite)) {
-                self.tick(50, &[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
+                self.tick(
+                    50,
+                    &[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)],
+                );
                 let after = std::mem::take(&mut self.after);
                 self.tick(1, &after);
                 return true;
@@ -505,7 +550,16 @@ impl Play<'_, '_> {
         let game = self.app.game.as_ref().unwrap();
         let cat = self.app.renderer.catalogue();
         let point = (i64::from(point.0), i64::from(point.1));
-        let pending = crate::place::moved(&game.world, cat, &game.water, &|_| None, false, tool, 0, point);
+        let pending = crate::place::moved(
+            &game.world,
+            cat,
+            &game.water,
+            &|_| None,
+            false,
+            tool,
+            0,
+            point,
+        );
         pending.is_some_and(|p| p.verdict == Verdict::Valid)
     }
 
@@ -554,7 +608,12 @@ impl Play<'_, '_> {
 /// The four drags that fence a square of `n` tiles with its top corner at `at`: the first piece
 /// and the last of each side, in world points.
 fn sides(at: (i32, i32), n: i32) -> [((i32, i32), (i32, i32)); 4] {
-    let (x0, y0, x1, y1) = (at.0 * 64, at.1 * 64, (at.0 + n - 1) * 64, (at.1 + n - 1) * 64);
+    let (x0, y0, x1, y1) = (
+        at.0 * 64,
+        at.1 * 64,
+        (at.0 + n - 1) * 64,
+        (at.1 + n - 1) * 64,
+    );
     [
         ((x0 + 32, y0 + 6), (x1 + 32, y0 + 6)),
         ((x1 + 58, y0 + 32), (x1 + 58, y1 + 32)),

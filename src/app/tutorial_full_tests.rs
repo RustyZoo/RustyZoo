@@ -1,7 +1,7 @@
 //! The seven shipped tutorials played in the real interface of the full game (scenarios 10.8):
-//! from the start, as far as presses and answers take them, and from a save prepared at test time
-//! from the shipped map and the shipped scenario file, to the end dialog and the next tutorial.
-//! Ignored without `ZT_DATA_DIR`.
+//! the first passes with their locks, and each one from its first popup to the end dialog and the
+//! next tutorial by a script that presses, drags, places, adopts and hires as the goals ask
+//! (`bot`), with no goal preset. Ignored without `ZT_DATA_DIR`.
 
 use super::*;
 use crate::config::{Config, to_int};
@@ -192,9 +192,6 @@ impl<'a, 'b> Play<'a, 'b> {
             if rest.starts_with("menu scenario dialog") {
                 self.ended = true;
             }
-            if std::env::var("DBG").is_ok() && !rest.starts_with("frame") && !rest.starts_with("sim step") {
-                println!("      {rest}");
-            }
             let keep = ["sim scenario ", "ui ask", "ui answer", "ui press", "menu "];
             if keep.iter().any(|k| rest.starts_with(k)) {
                 self.log.push((self.pass, rest.to_string()));
@@ -327,8 +324,7 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
         play.tick(100, &keys);
         assert_eq!(play.lines("menu game save").len(), dialogs, "{n}");
         assert_eq!(play.lines("ui press").len(), presses, "{n}");
-        // The first tutorial goes on for 60 scenario passes (90 s of the game), the others stop
-        // at the first goal that wants something built.
+        // The play goes on for 20 scenario passes (30 s of the game), the first tutorial for 60.
         play.until(if n == "scn01a" { 60 } else { 20 }, |_| false);
         let asks = play.lines("ui ask 45100").len();
         let answers = play.lines("ui answer 1").len();
@@ -394,10 +390,17 @@ fn each_tutorial_is_played_by_script_to_its_end_dialog_and_yes_starts_the_next_o
         // The end: won, then the dialog with its text, after the last popup was answered.
         let at = |what: &str| play.log.iter().position(|l| l.1.starts_with(what));
         let last_answer = play.log.iter().rposition(|l| l.1 == "ui answer 1");
-        let (won, dialog) = (at("sim scenario end won").unwrap(), at("menu scenario dialog"));
+        let (won, dialog) = (
+            at("sim scenario end won").unwrap(),
+            at("menu scenario dialog"),
+        );
         let text = if n == "scn28b" { 16102 } else { 16104 };
         let dialog = dialog.unwrap();
-        assert_eq!(play.log[dialog].1, format!("menu scenario dialog {text}"), "{n}");
+        assert_eq!(
+            play.log[dialog].1,
+            format!("menu scenario dialog {text}"),
+            "{n}"
+        );
         // (The lines of one pass come by family: the end is told in the pass of the dialog.)
         assert!(play.log[won].0 <= play.log[dialog].0, "{n}");
         assert!(last_answer.unwrap() < dialog, "{n}");
@@ -428,37 +431,5 @@ fn each_tutorial_is_played_by_script_to_its_end_dialog_and_yes_starts_the_next_o
             }
             _ => {}
         }
-    }
-}
-
-#[test]
-#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
-fn scratch() {
-    let rig = rig("scratch");
-    let n = std::env::var("SCN").unwrap();
-    let file = path(&n);
-    let layout = goals(&read(&rig, &file).unwrap());
-    let mut app = rig.app(&n);
-    start(&mut app, &file);
-    let mut play = Play::new(&mut app, layout.clone());
-    let mut last = None;
-    for i in 0..std::env::var("N").map_or(400, |n| n.parse().unwrap()) {
-        let g = play.next_goal().map(|g| g.name);
-        play.step();
-        if g == last && !play.ended {
-            continue;
-        }
-        last = g.clone();
-        let w = play.app.sim.scenario().map(|s| s.states().iter().filter(|&&w| w != 0).count());
-        println!("{i} {:?} done {w:?} {}", g, play.ended);
-        if std::env::var("V").is_ok() {
-            for l in play.app.log_lines(play.pass, play.now).iter().take(0) { println!("   {l}"); }
-        }
-        if play.ended {
-            break;
-        }
-    }
-    for l in play.log.iter().filter(|l| l.1.starts_with("sim scenario end")) {
-        println!("{l:?}");
     }
 }
