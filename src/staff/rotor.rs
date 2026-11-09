@@ -48,12 +48,12 @@ pub(crate) struct Rotor {
     /// `B + F` and the distance term of the volume the sound was last given, and its pan.
     pub heard: (i32, i32),
     pub pan: i32,
-    /// Loaded in the air: the start of point 7 waits for the helicopter's first update.
+    /// Loaded in the air: the start of point 7 waits for the helicopter's first turn.
     pending: bool,
 }
 
 impl Rotor {
-    /// The sound of a helicopter loaded in the air (point 7), started at its first update.
+    /// The sound of a helicopter loaded in the air (point 7), started at its first turn, before its first movement.
     pub(crate) fn loaded_in_air() -> Rotor {
         Rotor {
             pending: true,

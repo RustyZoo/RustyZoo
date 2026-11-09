@@ -868,7 +868,7 @@ show_stand_window() { # show_stand_window <map>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
     printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
-  rz run "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 40 --clock 67 --seed 1 --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
 }
