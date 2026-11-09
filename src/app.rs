@@ -620,6 +620,9 @@ impl<'a> App<'a> {
             }
             self.acts();
         }
+        // What the start triggers left is done before the frame's step, as the start routine does it
+        // (the step of the start frame runs).
+        self.scenario_effects();
         let modal = self.modal();
         let held = self.scenario_held();
         let mut month_end = false;
