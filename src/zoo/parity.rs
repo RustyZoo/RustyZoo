@@ -287,7 +287,9 @@ fn check(
     // The sizes of the two sections the original rewrites are pinned (15.10).
     let engine = ranges(&new)?;
     let size_of = |name: &str| engine.iter().find(|s| s.0 == name).map(|s| s.1.len());
-    for (name, want) in [("research", Some(RESEARCH)), ("scenario", pin.scenario)] {
+    // The scenario sizes were observed on the English install.
+    let scenario = pin.scenario.filter(|_| language == 1033);
+    for (name, want) in [("research", Some(RESEARCH)), ("scenario", scenario)] {
         if want.is_some() && size_of(name) != want {
             bad = true;
             report += &format!(

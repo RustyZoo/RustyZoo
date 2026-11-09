@@ -264,9 +264,16 @@ fn life(cat: &Catalogue, e: &Entity, stored: i32, lengthened: u32) -> Option<i32
     Some(life as i32)
 }
 
-/// The end of the upkeep of each show info in the habitat records of a file of version 105, where
-/// the original inserts the sums of the info (15.9), with the sums.
-fn show_sums(habitats: &[u8], v: u32) -> Result<Vec<(usize, [u32; 6])>, String> {
+/// A habitat record of the source: where its name lies, its kind, and for a show info of
+/// version 105 where its upkeep ends and the sums the original inserts there (15.9).
+struct Habitat {
+    name: Range<usize>,
+    tank: bool,
+    show: bool,
+    sums: Option<(usize, [u32; 6])>,
+}
+
+fn habitats(habitats: &[u8], v: u32) -> Result<Vec<Habitat>, String> {
     let mut r = Reader::new(habitats, v);
     let bad = |_| "habitat records that do not read".to_string();
     let mut out = Vec::new();
@@ -274,79 +281,312 @@ fn show_sums(habitats: &[u8], v: u32) -> Result<Vec<(usize, [u32; 6])>, String> 
     r.skip(16).map_err(bad)?;
     for _ in 0..r.count(HABITAT_MIN).map_err(bad)? {
         r.skip(8).map_err(bad)?;
+        let from = r.pos();
         r.string().map_err(bad)?;
+        let name = from..r.pos();
         r.skip(8 + 4 + 36 + 16).map_err(bad)?;
         r.skip(4).map_err(bad)?;
         let tank = r.u8().map_err(bad)? != 0;
+        let mut habitat = Habitat {
+            name,
+            tank,
+            show: false,
+            sums: None,
+        };
         if r.u8().map_err(bad)? != 0 {
+            habitat.show = true;
             let start = r.pos();
-            // The info up to its upkeep, then the whole info to find where it ends.
-            let mut i = Reader::new(&habitats[start..], v);
-            i.skip(8).map_err(bad)?;
-            let schedule = i.count(4).map_err(bad)?;
-            i.skip(4 * schedule).map_err(bad)?;
-            let records = (0..i.count(44).map_err(bad)?)
-                .map(|_| TypeRecord::read(&mut i))
-                .collect::<R<Vec<_>>>()
-                .map_err(bad)?;
-            i.events().map_err(bad)?;
-            i.skip(4 + 2 + 12).map_err(bad)?;
-            let upkeep_end = start + i.pos();
-            let sum = |n: usize| {
-                let r = records
-                    .iter()
-                    .fold(0.0f32, |a, t| a + f32::from_bits(t.receipts[n]));
-                r.to_bits()
-            };
-            let count = |n: usize| {
-                records
-                    .iter()
-                    .fold(0u32, |a, t| a.wrapping_add(t.attendance[n]))
-            };
-            out.push((
-                upkeep_end,
-                [sum(0), sum(1), sum(2), count(0), count(1), count(2)],
-            ));
             let mut whole = Reader::new(&habitats[start..], v);
             ShowInfo::read(&mut whole).map_err(bad)?;
+            if v == 105 {
+                // The info up to its upkeep, then the sums of its type records.
+                let mut i = Reader::new(&habitats[start..], v);
+                i.skip(8).map_err(bad)?;
+                let schedule = i.count(4).map_err(bad)?;
+                i.skip(4 * schedule).map_err(bad)?;
+                let records = (0..i.count(44).map_err(bad)?)
+                    .map(|_| TypeRecord::read(&mut i))
+                    .collect::<R<Vec<_>>>()
+                    .map_err(bad)?;
+                i.events().map_err(bad)?;
+                i.skip(4 + 2 + 12).map_err(bad)?;
+                let receipts = |n: usize| {
+                    let sum = records
+                        .iter()
+                        .fold(0.0f32, |a, t| a + f32::from_bits(t.receipts[n]));
+                    sum.to_bits()
+                };
+                let visits = |n: usize| {
+                    records
+                        .iter()
+                        .fold(0u32, |a, t| a.wrapping_add(t.attendance[n]))
+                };
+                let six = [
+                    receipts(0),
+                    receipts(1),
+                    receipts(2),
+                    visits(0),
+                    visits(1),
+                    visits(2),
+                ];
+                habitat.sums = Some((start + i.pos(), six));
+            }
             r.skip(whole.pos()).map_err(bad)?;
         }
         if tank {
             r.skip(8 + 1 + 12).map_err(bad)?;
         }
+        out.push(habitat);
     }
     Ok(out)
 }
 
+/// The names the original gives when a file's language is not the install's (localisation 10),
+/// in the install's language: the entities, numbered by the counters of a new world in file order
+/// (the type's text, a space and the number for the numbered classes, the text alone for the
+/// others), and the habitats, by their word and their place in the file.
+struct Naming<'a> {
+    cat: &'a Catalogue,
+    tables: crate::strings::StringTables,
+    language: u32,
+    counters: std::collections::BTreeMap<String, u32>,
+    /// The numbers the engine's file gives its habitats, in the order of the records.
+    numbers: Vec<u32>,
+}
+
+impl Naming<'_> {
+    fn entity(&mut self, e: &Entity) -> Option<Vec<u8>> {
+        let ty = crate::place::bulldozer::type_of(self.cat, e)?;
+        let text = match ty.class {
+            "guests" => self.tables.string(9507),
+            _ => self.tables.string(ty.name_id as u32),
+        };
+        let bare = matches!(
+            ty.class,
+            "objects" | "fences" | "paths" | "tankwall" | "rubble" | "ambient" | "food"
+        );
+        let subtyped = matches!(ty.class, "building" | "filter");
+        let counted = crate::place::unit::is_unit(ty)
+            || subtyped
+            || matches!(ty.class, "helicopter" | "guests");
+        let numbered =
+            crate::build::plain(ty, "cUseNumbersInName").unwrap_or(f32::from(u8::from(counted)));
+        let name = if bare || numbered != 1.0 {
+            text.to_string()
+        } else if text.is_empty() {
+            String::new()
+        } else {
+            let key = match ty.class {
+                "guests" => b"guests".to_vec(),
+                _ if subtyped => ty.subtype.clone(),
+                _ => ty.type_name.clone(),
+            };
+            let counter = self
+                .counters
+                .entry(String::from_utf8_lossy(&key).into_owned())
+                .or_insert(0);
+            *counter += 1;
+            format!("{text} {counter}")
+        };
+        Some(crate::strings::encode_text(self.language, &name))
+    }
+
+    /// The name of habitat `n` of the file: its word, and a number. The counters go to the exhibits
+    /// in the order the load makes them, which is not the order of the records (open point of
+    /// save games 15.1 point 4): the engine's number is taken, and the numbers must be 1 to the
+    /// count, each once.
+    fn habitat(&self, h: &Habitat, n: usize) -> Result<Vec<u8>, String> {
+        let word = 6208 + u32::from(h.tank) * (1 + u32::from(h.show));
+        let name = format!("{} {}", self.tables.string(word), self.numbers[n]);
+        Ok(crate::strings::encode_text(self.language, &name))
+    }
+}
+
+/// The habitat records, named again when the file's language is not the install's (naming), with
+/// the sums a show info of version 105 gets.
+fn habitat_section(bytes: &[u8], v: u32, naming: Option<&Naming>) -> Result<Vec<u8>, String> {
+    let mut splices: Vec<(Range<usize>, Vec<u8>)> = Vec::new();
+    for (n, h) in habitats(bytes, v)?.iter().enumerate() {
+        if let Some(naming) = naming {
+            let name = naming.habitat(h, n)?;
+            let mut field = (name.len() as u32).to_le_bytes().to_vec();
+            field.extend(name);
+            splices.push((h.name.clone(), field));
+        }
+        if let Some((end, six)) = h.sums {
+            splices.push((end..end, six.iter().flat_map(|n| n.to_le_bytes()).collect()));
+        }
+    }
+    let (mut out, mut at) = (Vec::new(), 0);
+    for (range, with) in splices {
+        out.extend(&bytes[at..range.start]);
+        out.extend(with);
+        at = range.end;
+    }
+    out.extend(&bytes[at..]);
+    Ok(out)
+}
+
+/// The name counters above 0 only, in the order of the file (7).
+fn counter_section(bytes: &[u8]) -> Vec<u8> {
+    let (mut at, mut kept) = (4, Vec::new());
+    for _ in 0..u32_at(bytes, 0) {
+        let end = at + 4 + u32_at(bytes, at) as usize + 4;
+        if u32_at(bytes, end - 4) > 0 {
+            kept.push(&bytes[at..end]);
+        }
+        at = end;
+    }
+    let mut out = (kept.len() as u32).to_le_bytes().to_vec();
+    kept.iter().for_each(|k| out.extend(*k));
+    out
+}
+
+/// The thoughts, the AI clock and the event buffers with the events posted at load added to the
+/// next buffer; the offsets (in the section) of the data words of the added events.
+fn event_section(bytes: &[u8], events: &[(u32, u16)]) -> Result<(Vec<u8>, Vec<usize>), String> {
+    let first = 4 + 20 * u32_at(bytes, 0) as usize + 8;
+    let second = first + 4 + 20 * u32_at(bytes, first) as usize;
+    let end = second + 4 + 20 * u32_at(bytes, second) as usize;
+    if end + 1 != bytes.len() {
+        return Err("the events section does not frame".into());
+    }
+    let (count_at, buffer_end) = if bytes[end] != 0 {
+        (first, second)
+    } else {
+        (second, end)
+    };
+    let mut section = bytes.to_vec();
+    let count = u32_at(bytes, count_at) + events.len() as u32;
+    section[count_at..count_at + 4].copy_from_slice(&count.to_le_bytes());
+    let mut added = Vec::new();
+    for &(sender, kind) in events {
+        added.extend(sender.to_le_bytes());
+        added.extend([0u8; 8]); // the target, and the data word left out
+        added.extend(0u16.to_le_bytes());
+        added.extend(kind.to_le_bytes());
+        added.extend(1u16.to_le_bytes());
+        added.extend([0x45, 0x4d]);
+    }
+    section.splice(buffer_end..buffer_end, added);
+    let data = (0..events.len()).map(|k| buffer_end + 20 * k + 8).collect();
+    Ok((section, data))
+}
+
+/// The entity part (the count and the records) as the original writes it: the records of a type
+/// the game does not have dropped, the names made again, the life counters cut and lengthened.
+/// Returns the part, the records dropped, and the ranges of the positions of the users of a draw
+/// place in it.
+struct EntityPart {
+    bytes: Vec<u8>,
+    dropped: usize,
+    masked: Vec<Range<usize>>,
+}
+
+fn entity_part(
+    i: &Inputs,
+    zoo: &Zoo,
+    world: &World,
+    naming: &mut Option<Naming>,
+    part: &[u8],
+) -> Result<EntityPart, String> {
+    let v = u32_at(i.source, 4);
+    let records = records(part)?;
+    let jeep = |r: &Record| r.kind == ("objects".into(), "other".into(), "jeep1".into());
+    let kept: Vec<&Record> = records.iter().filter(|r| !jeep(r)).collect();
+    if kept.len() != zoo.entities.len() {
+        return Err(format!(
+            "{} records, {} entities",
+            kept.len(),
+            zoo.entities.len()
+        ));
+    }
+    let mut out = (kept.len() as u32).to_le_bytes().to_vec();
+    let (users, mut masked) = (seated(world, i.cat), Vec::new());
+    for (rec, e) in kept.iter().zip(&zoo.entities) {
+        let mut body = part[rec.body.clone()].to_vec();
+        let common = e.common.as_ref();
+        if let (Some(naming), Some(c)) = (&mut *naming, common) {
+            // The name of the base: after the position, the rotation and the id.
+            let at = base_offset(&body, c)? + 20;
+            let was = u32_at(&body, at) as usize;
+            if let Some(name) = naming.entity(e) {
+                let mut field = (name.len() as u32).to_le_bytes().to_vec();
+                field.extend(name);
+                body.splice(at..at + 4 + was, field);
+            }
+        }
+        if let Some(a) = common.and_then(|c| c.animal.as_ref())
+            && let Some(stored) = a.life
+            && let Some(want) = life(i.cat, e, stored, i.changes.lengthened)
+        {
+            let at = life_offset(&body, v)?;
+            body[at..at + 4].copy_from_slice(&want.to_le_bytes());
+        }
+        out.extend(&part[rec.start..rec.size_at]);
+        out.extend((body.len() as u32).to_le_bytes());
+        let body_at = out.len();
+        out.extend(&body);
+        // A user of a draw place: its position is random again.
+        if let Some(c) = common
+            && users.contains(&c.id)
+            && c.guest.is_some()
+        {
+            let at = body_at + base_offset(&body, c)?;
+            masked.push(at..at + 12);
+        }
+    }
+    Ok(EntityPart {
+        bytes: out,
+        dropped: records.len() - kept.len(),
+        masked,
+    })
+}
+
 pub(super) fn build(i: &Inputs) -> Result<Built, String> {
     let src = i.source;
-    let _ = i.language;
     let v = u32_at(src, 4);
     let (zoo, _) = Zoo::parse_money_in(src, i.cat).map_err(|e| e.to_string())?;
-    let language_world = || {
-        let renderer = crate::render::MapRenderer::new(i.vfs, i.cat);
-        let lang = crate::strings::Language::of(i.vfs.root());
-        let mut world = World::with_language(zoo.clone(), |e| renderer.shape(e), lang);
-        world.set_water(crate::place::water(&crate::terrain::types(i.vfs)));
-        world
-    };
-    let world = language_world();
-    let sections = ranges(src)?;
-    let engine_sections = ranges(i.engine)?;
-    let range = |name: &str| sections.iter().find(|s| s.0 == name).map(|s| s.1.clone());
+    let renderer = crate::render::MapRenderer::new(i.vfs, i.cat);
+    let lang = crate::strings::Language::of(i.vfs.root());
+    let mut world = World::with_language(zoo.clone(), |e| renderer.shape(e), lang);
+    world.set_water(crate::place::water(&crate::terrain::types(i.vfs)));
+    let mut naming = None;
+    if zoo.locale != i.language {
+        let tables = crate::strings::StringTables::open(i.vfs.root()).map_err(|e| e.to_string())?;
+        let (engine, _) = Zoo::parse_money_in(i.engine, i.cat).map_err(|e| e.to_string())?;
+        let numbers: Vec<u32> = (engine.habitat_info.iter())
+            .map(|h| {
+                h.name
+                    .rsplit(' ')
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(0)
+            })
+            .collect();
+        let mut sorted = numbers.clone();
+        sorted.sort_unstable();
+        if sorted != (1..=numbers.len() as u32).collect::<Vec<_>>() {
+            return Err(format!("the engine numbers its habitats {numbers:?}"));
+        }
+        naming = Some(Naming {
+            cat: i.cat,
+            tables,
+            language: i.language,
+            counters: Default::default(),
+            numbers,
+        });
+    }
+    let (sections, engine_sections) = (ranges(src)?, ranges(i.engine)?);
     let from_engine = |name: &str| {
         let s = engine_sections.iter().find(|s| s.0 == name);
         s.map(|s| i.engine[s.1.clone()].to_vec())
             .ok_or(format!("no {name} in the engine's file"))
     };
-    let entities_from = range("tiles").ok_or("no tiles")?.end;
-    let entities_to = range("entities end, view")
-        .ok_or("no end of entities")?
-        .start;
-    let records = records(&src[entities_from..entities_to])?;
-
+    let at = |name: &str| sections.iter().find(|s| s.0 == name).map(|s| s.1.clone());
+    let entities = at("tiles").ok_or("no tiles")?.end;
+    let entities = entities..at("entities end, view").ok_or("no end of entities")?.start;
     let mut out: Vec<u8> = Vec::new();
-    let mut masked = Vec::new();
     let mut built = Built {
         bytes: Vec::new(),
         masked: Vec::new(),
@@ -359,112 +599,32 @@ pub(super) fn build(i: &Inputs) -> Result<Built, String> {
             n if n.starts_with("entity/") => {}
             "tiles" => {
                 out.extend(bytes);
-                // The entity part: the count, then the records that the game has.
-                let part = &src[entities_from..entities_to];
-                let jeep =
-                    |r: &Record| r.kind == ("objects".into(), "other".into(), "jeep1".into());
-                let kept: Vec<&Record> = records.iter().filter(|r| !jeep(r)).collect();
-                built.dropped = records.len() - kept.len();
-                out.extend((kept.len() as u32).to_le_bytes());
-                if kept.len() != zoo.entities.len() {
-                    return Err(format!(
-                        "{} records, {} entities",
-                        kept.len(),
-                        zoo.entities.len()
-                    ));
-                }
-                let users = seated(&world, i.cat);
-                for (rec, e) in kept.iter().zip(&zoo.entities) {
-                    let mut body = part[rec.body.clone()].to_vec();
-                    let common = e.common.as_ref();
-                    if let Some(a) = common.and_then(|c| c.animal.as_ref())
-                        && let Some(stored) = a.life
-                        && let Some(want) = life(i.cat, e, stored, i.changes.lengthened)
-                    {
-                        let at = life_offset(&body, v)?;
-                        body[at..at + 4].copy_from_slice(&want.to_le_bytes());
-                    }
-                    out.extend(&part[rec.start..rec.size_at]);
-                    out.extend((body.len() as u32).to_le_bytes());
-                    let body_at = out.len();
-                    out.extend(&body);
-                    // A user of a draw place: its position is random again.
-                    if let Some(c) = common
-                        && users.contains(&c.id)
-                        && c.guest.is_some()
-                    {
-                        let at = body_at + base_offset(&body, c)?;
-                        masked.push(at..at + 12);
-                    }
-                }
+                let part = entity_part(i, &zoo, &world, &mut naming, &src[entities.clone()])?;
+                built.dropped = part.dropped;
+                built.masked.extend(
+                    part.masked
+                        .iter()
+                        .map(|m| out.len() + m.start..out.len() + m.end),
+                );
+                out.extend(part.bytes);
             }
-            "habitats" if v == 105 => {
-                let sums = show_sums(bytes, v)?;
-                let mut at = 0;
-                for (end, six) in sums {
-                    out.extend(&bytes[at..end]);
-                    out.extend(six.iter().flat_map(|n| n.to_le_bytes()));
-                    at = end;
-                }
-                out.extend(&bytes[at..]);
-            }
+            "habitats" => out.extend(habitat_section(bytes, v, naming.as_ref())?),
             "header" => {
                 out.extend(bytes);
                 out[4..8].copy_from_slice(&106u32.to_le_bytes());
+                // A save writes the install language (localisation 10).
+                out[8..12].copy_from_slice(&i.language.to_le_bytes());
             }
-            "name counters" => {
-                // Only the types above 0, in the order of the file (7).
-                let (mut at, mut kept) = (4, Vec::new());
-                for _ in 0..u32_at(bytes, 0) {
-                    let end = at + 4 + u32_at(bytes, at) as usize + 4;
-                    if u32_at(bytes, end - 4) > 0 {
-                        kept.push(&bytes[at..end]);
-                    }
-                    at = end;
-                }
-                out.extend((kept.len() as u32).to_le_bytes());
-                kept.iter().for_each(|k| out.extend(*k));
-            }
+            "name counters" => out.extend(counter_section(bytes)),
             "thoughts, ai clock, events" => {
-                let thoughts = 4 + 20 * u32_at(bytes, 0) as usize;
-                let first = thoughts + 8;
-                let second = first + 4 + 20 * u32_at(bytes, first) as usize;
-                let end = second + 4 + 20 * u32_at(bytes, second) as usize;
-                if end + 1 != bytes.len() {
-                    return Err("the events section does not frame".into());
-                }
-                let next_is_first = bytes[end] != 0;
                 let events = posted(&world, i.cat);
                 for &(_, kind) in &events {
                     *built.events.entry(kind).or_default() += 1;
                 }
-                let (count_at, buffer_end) = if next_is_first {
-                    (first, second)
-                } else {
-                    (second, end)
-                };
-                let mut section = bytes.to_vec();
-                let count = u32_at(bytes, count_at) + events.len() as u32;
-                section[count_at..count_at + 4].copy_from_slice(&count.to_le_bytes());
-                let added: Vec<u8> = events
-                    .iter()
-                    .flat_map(|&(sender, kind)| {
-                        let mut e = Vec::new();
-                        e.extend(sender.to_le_bytes());
-                        e.extend([0u8; 8]); // the target, the data word
-                        e.extend(0u16.to_le_bytes());
-                        e.extend(kind.to_le_bytes());
-                        e.extend(1u16.to_le_bytes());
-                        e.extend([0x45, 0x4d]);
-                        e
-                    })
-                    .collect();
-                section.splice(buffer_end..buffer_end, added);
-                let base = out.len();
-                for k in 0..events.len() {
-                    let at = base + buffer_end + 20 * k + 8;
-                    masked.push(at..at + 4);
-                }
+                let (section, data) = event_section(bytes, &events)?;
+                built
+                    .masked
+                    .extend(data.iter().map(|d| out.len() + d..out.len() + d + 4));
                 out.extend(section);
             }
             // The original rewrites both from its running game (15.10): the engine's, whose sizes
@@ -474,6 +634,5 @@ pub(super) fn build(i: &Inputs) -> Result<Built, String> {
         }
     }
     built.bytes = out;
-    built.masked = masked;
     Ok(built)
 }
