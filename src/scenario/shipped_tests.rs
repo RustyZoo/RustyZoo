@@ -204,32 +204,23 @@ fn a_full_game_freeform_map_lists_its_extra_goals_in_the_order_of_the_spec() {
     assert_eq!(names[65..], unlocks[..]);
     // Several files name their goals alike: the first pass shows the files' order, by the block each
     // `DEFAULT_ITEMS` makes available.
-    let blocks = |files: &[String]| -> Vec<String> {
-        files
-            .iter()
-            .filter_map(|f| {
-                let cfg = Config::parse(&vfs.read(f).unwrap()).unwrap();
-                let s = cfg.section("DEFAULT_ITEMS")?;
-                Some(
-                    ["trulea", "truleb", "targa", "targb"]
-                        .map(|k| int(Some(s), k).to_string())
-                        .join(" "),
-                )
-            })
-            .collect()
-    };
-    let mut log = Vec::new();
-    let mut s = Scenario::prepare(&vfs, map).unwrap();
-    s.update(PERIOD, &Env::new(1, 0, None), &mut log);
-    let first: Vec<String> = log
-        .iter()
-        .filter_map(|l| l.strip_prefix("scenario trigger DEFAULT_ITEMS "))
-        .map(|l| l.split_once(' ').unwrap().1.to_string())
-        .collect();
     let files: Vec<String> = ["freeform/unlock.scn".to_string()]
         .into_iter()
         .chain(numbered)
         .collect();
+    let blocks: Vec<Avail> = (files.iter())
+        .filter_map(|f| {
+            let cfg = Config::parse(&vfs.read(f).unwrap()).unwrap();
+            let s = cfg.section("DEFAULT_ITEMS");
+            let v = ["trulea", "truleb", "targa", "targb"].map(|k| int(s, k));
+            s.and(avail(&cfg, v))
+        })
+        .collect();
+    let mut s = Scenario::prepare(&vfs, map).unwrap();
+    s.update(PERIOD, &Env::new(1, 0, None), &mut Vec::new());
+    let first: Vec<Avail> = (s.gui().take_avail().into_iter())
+        .filter(|a| matches!(a.which, Which::Names(_)))
+        .collect();
     assert!(first.len() > 10, "{first:?}");
-    assert_eq!(first, blocks(&files));
+    assert_eq!(first, blocks);
 }
