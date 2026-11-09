@@ -28,14 +28,14 @@ type Way = (Vec<usize>, Vec<i32>, Option<(i32, i32, i32)>);
 /// The way a unit record stores (zoo format 6.14), as saved: the path's tiles and, when a depth
 /// search made it (from version 84), its levels, "none" being -1, the level 0 of a swimmer
 /// included; and the destination point of the record, kept whatever the path (nothing at load
-/// clears it, save games 15.8). A node off the map makes the whole path empty: nothing could walk it.
+/// clears it, save games 15.8). A node off the map makes the whole way empty: nothing could walk it.
 pub(crate) fn saved_way(world: &World, block: &UnitBlock) -> Way {
     let at = |n: u32| i32::try_from(n).ok();
     let tile = |r: &[u32; 3]| world.tile_index(at(r[0])?, at(r[1])?);
     let [x, y, z] = block.p3;
     let there = (x >= 0 && y >= 0).then_some((x, y, z));
     let Some(path) = (block.records.iter().map(tile)).collect::<Option<Vec<_>>>() else {
-        return (Vec::new(), Vec::new(), there);
+        return Default::default();
     };
     let levels = if world.zoo.version >= 84 {
         block.records.iter().map(|r| r[2] as i32).collect()
@@ -346,6 +346,29 @@ mod tests {
     }
 
     #[test]
+    fn a_stored_destination_is_kept_whatever_the_path_and_written_back() {
+        let at = (5 * 64 + 32, 64 + 32, 0);
+        for records in [Vec::new(), vec![[1, 1, 0], [2, 1, 0]]] {
+            let block = UnitBlock {
+                p3: [at.0, at.1, at.2],
+                records,
+                ..Default::default()
+            };
+            let w = saved_block_in(104, block);
+            assert_eq!(w.units.get(1).unwrap().destination, Some(at));
+            assert_eq!(saved_block(&w).p3, [at.0, at.1, at.2]);
+        }
+        // None stored: none kept, and (-1, -1, -1) written.
+        let block = UnitBlock {
+            p3: [-1; 3],
+            ..Default::default()
+        };
+        let w = saved_block_in(104, block);
+        assert_eq!(w.units.get(1).unwrap().destination, None);
+        assert_eq!(saved_block(&w).p3, [-1; 3]);
+    }
+
+    #[test]
     fn a_path_off_the_map_is_not_taken() {
         for off in [[900, 1, 0], [1, u32::MAX, 0], [u32::MAX, u32::MAX, 0]] {
             let w = walking(104, vec![[1, 1, 0], off], "");
@@ -472,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn the_objects_are_built_from_version_72_when_the_active_numbers_match_the_record() {
+    fn the_objects_are_built_from_version_72_whatever_the_record_says() {
         // Which of the two objects the load built: the goal's, the job's.
         let built = |version, active| {
             let w = saved_block_in(version, job_block(110, 2, active));
@@ -481,12 +504,29 @@ mod tests {
         assert_eq!(built(104, (110, 2)), (true, true));
         assert_eq!(built(72, (110, 2)), (true, true));
         assert_eq!(built(71, (110, 2)), (false, false));
-        // Only the job object differs: the goal object stays built (the original's slip is not kept).
-        assert_eq!(built(104, (110, 1)), (true, false));
+        // A number that differs from the record's builds its object too, stale until the first update.
+        assert_eq!(built(104, (110, 1)), (true, true));
         assert_eq!(built(104, (110, -1)), (true, false));
-        assert_eq!(built(104, (109, 2)), (false, true));
-        for active in [(-1, -1), (0, 0), (i32::MIN, i32::MAX), (110 + 256, 2 + 256)] {
+        assert_eq!(built(104, (0, 0)), (true, true));
+        for active in [(-1, -1), (i32::MIN, i32::MAX), (110 + 256, 2 + 256)] {
             assert_eq!(built(104, active), (false, false), "{active:?}");
+        }
+    }
+
+    #[test]
+    fn a_save_at_once_writes_the_active_numbers_the_file_stored() {
+        // The numbers differ from the task and the job (a unit that changed task just before the
+        // save, an active goal still up with task 0): they come back as stored (save games 15.8).
+        for (task, job, active) in [
+            (110, 5, (127, 23)),
+            (1, 0, (0, 0)),
+            (0, 0, (116, -1)),
+            (110, 5, (-1, -1)),
+            (110, 5, (110, 5)),
+        ] {
+            let w = saved_block_in(104, job_block(task, job, active));
+            let t = saved_block(&w).target;
+            assert_eq!((t.active, t.active_sub), active, "{task} {job}");
         }
     }
 
@@ -700,10 +740,10 @@ mod tests {
 
     #[test]
     fn a_unit_saved_before_its_goal_object_is_built_is_initialised_after_a_load() {
-        // The saved numbers differ from the record's: nothing is built at the load, the first update
-        // builds both objects and runs their init (behaviours 4.7).
+        // The saved numbers differ from the record's: the old objects are built and stale, the first
+        // update replaces them by the record's and runs their init (behaviours 4.7).
         let back = saved_block_in(104, saved_block(&keeper_that_changed_task(true)));
-        assert_eq!(back.units.get(1).unwrap().goal.built_pair(), (false, false));
+        assert_eq!(back.units.get(1).unwrap().goal.built_pair(), (true, true));
         // A unit that did not change task has its objects built, without init.
         let back = saved_block_in(104, saved_block(&keeper_that_changed_task(false)));
         assert_eq!(back.units.get(1).unwrap().goal.built_pair(), (true, true));

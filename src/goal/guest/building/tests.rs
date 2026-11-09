@@ -1959,6 +1959,13 @@ fn a_guest_saved_on_a_bench_leaves_it_at_once_after_the_load() {
 /// A bench file of version `version` that lists guest 1 on slot 0, saved in the task `task` with
 /// the need index `need`; the load has run.
 fn bench_loaded(version: u32, task: i32, need: u8) -> (World, Catalogue) {
+    let mut block = crate::zoo::UnitBlock::default();
+    (block.target.goal, block.need) = (task, need);
+    bench_loaded_with(version, block)
+}
+
+/// The same with the whole unit block of guest 1; `unit::resume::load` has run before the users.
+fn bench_loaded_with(version: u32, block: crate::zoo::UnitBlock) -> (World, Catalogue) {
     let (cat, mut w) = (types(), bench());
     w.zoo.version = version;
     let at = w.find(9).unwrap();
@@ -1974,15 +1981,34 @@ fn bench_loaded(version: u32, task: i32, need: u8) -> (World, Catalogue) {
         built: 0,
         upgrade: 0,
     });
-    let mut block = crate::zoo::UnitBlock::default();
-    (block.target.goal, block.need) = (task, need);
     let at = w.find(1).unwrap();
     w.zoo.entities[at].common.as_mut().unwrap().unit = Some(Box::new(block));
     for at in 0..w.zoo.entities.len() {
         crate::building::load(&mut w, &cat, at);
     }
+    crate::unit::resume::load(&mut w, 100);
     crate::building::users::restore(&mut w, &cat, 100);
     (w, cat)
+}
+
+#[test]
+fn a_user_of_a_building_that_is_there_keeps_its_path_and_destination() {
+    // Saved using the bench, with a path and a destination: both come back with the set (save games 15.8).
+    let mut block = crate::zoo::UnitBlock::default();
+    block.target.goal = i32::from(USE);
+    block.records = vec![[1, 1, 0], [2, 1, 0]];
+    block.p3 = [2 * 64 + 32, 64 + 32, 0];
+    let (w, _) = bench_loaded_with(106, block.clone());
+    let u = w.units.get(1).unwrap();
+    assert_eq!(w.units.buildings[&9].users.len(), 1);
+    assert_eq!(u.path.len(), 2);
+    assert_eq!(u.destination, Some((2 * 64 + 32, 64 + 32, 0)));
+    // No path: the destination is kept alone.
+    block.records.clear();
+    let (w, _) = bench_loaded_with(106, block);
+    let u = w.units.get(1).unwrap();
+    assert!(u.path.is_empty());
+    assert_eq!(u.destination, Some((2 * 64 + 32, 64 + 32, 0)));
 }
 
 #[test]

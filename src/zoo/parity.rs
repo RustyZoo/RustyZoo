@@ -16,6 +16,7 @@ const BUDGET: &[(&str, usize, usize)] = &[
     ("maps/lg_sub.zoo", 61463, 2808),
     ("maps/med_kids.zoo", 758, 56),
     ("maps/scn28.zoo", 397, 40),
+    ("maps/scn28b.zoo", 159, 44),
     ("maps/scn31.zoo", 5463, 69),
     ("maps/scn33.zoo", 717, 113),
     ("maps/scn36.zoo", 831, 166),
@@ -27,8 +28,8 @@ const BUDGET: &[(&str, usize, usize)] = &[
 /// What a file without a pin may differ by: the version word, counters and clocks.
 const DEFAULT: (usize, usize) = (64, 0);
 
-/// Files the writer refuses today; one that writes is measured against [`DEFAULT`] unless pinned.
-const REFUSED: &[&str] = &["maps/scn28b.zoo"];
+/// Files the writer refuses today (none); one that writes is measured against [`DEFAULT`] unless pinned.
+const REFUSED: &[&str] = &[];
 
 /// The sections of a file as (name, bytes); the name of an entity is `entity/CLASS`, and what
 /// follows the last section is `tail`. Equal names are paired in order across two files.
