@@ -2,9 +2,9 @@
 //! lifts from (the slot point, the exit point, its users and its dart count), its idle sets and
 //! the flight, one step of the free move kept in the height band of its type.
 
+use super::rotor::Rotor;
 use crate::behaviour::{Data, Env, Number};
 use crate::building::{self, place};
-use super::rotor::Rotor;
 use crate::entity::Catalogue;
 use crate::render::order::ground_height;
 use crate::unit::{Part, Unit};

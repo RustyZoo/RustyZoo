@@ -86,7 +86,11 @@ impl Rotor {
 
     /// Point 3: the object made with the sound `loaded` (its file and `B`; none for a load that
     /// failed, which keeps the object and does nothing more), at the helicopter's point `at`.
-    pub(crate) fn start(loaded: Option<(String, i32)>, at: (i32, i32, i32), hear: &Hearing) -> Rotor {
+    pub(crate) fn start(
+        loaded: Option<(String, i32)>,
+        at: (i32, i32, i32),
+        hear: &Hearing,
+    ) -> Rotor {
         let Some((file, base)) = loaded else {
             return Rotor::new(None, 0);
         };
@@ -115,7 +119,13 @@ impl Rotor {
     /// Point 4, after an update of `ms` milliseconds of a helicopter at `at` that `flying` or not:
     /// the position refresh, the fade with its volume refresh, the end of the fade. `false` when
     /// the sound was stopped and the object freed.
-    pub(crate) fn update(&mut self, flying: bool, ms: u32, at: (i32, i32, i32), hear: &Hearing) -> bool {
+    pub(crate) fn update(
+        &mut self,
+        flying: bool,
+        ms: u32,
+        at: (i32, i32, i32),
+        hear: &Hearing,
+    ) -> bool {
         let loaded = self.file.is_some();
         if loaded && self.playing {
             let (x, pan) = hear.of(at);

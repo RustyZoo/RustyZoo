@@ -94,12 +94,12 @@ impl Hooks for Standard<'_> {
         self.force(unit, world, at);
     }
 
-    fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
+    fn animate(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, ms: u32) {
         let entity = &world.zoo.entities[at];
         unit.animation
             .advance(ms, &|name| self.data.timing(entity, name));
         self.tell(unit, world, at);
-        crate::staff::heli::rotor(unit, world, self.data, at, ms);
+        crate::staff::heli::rotor(unit, world, self.data, at, ctx.step);
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {

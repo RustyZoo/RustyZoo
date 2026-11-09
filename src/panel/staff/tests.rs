@@ -168,9 +168,23 @@ fn a_helicopters_text_follows_its_task() {
     assert_eq!(heli(0x6f, 8), Some((10308, Some("Rex".into()))));
     assert_eq!(heli(0x6f, 9), None, "no such animal");
     assert_eq!(heli(0x6f, 0), None);
+    assert_eq!(
+        heli(0x6f, 7),
+        Some((10308, Some("Rex".into()))),
+        "an egg too"
+    );
     assert_eq!(heli(1, 0), None);
     assert_eq!(heli(0, 0), None);
     assert_eq!(heli(u8::MAX, 0), None);
+}
+
+#[test]
+fn a_helicopters_text_does_not_look_at_the_done_flag() {
+    for (task, want) in [(0x6a, Some(10316)), (0x69, Some(10318)), (0x6b, None)] {
+        let mut u = unit(Kind::Heli, task, 0, None, 0);
+        u.goal.record.done = true;
+        assert_eq!(text(&u, 9550).map(|t| t.0), want, "{task:#x}");
+    }
 }
 
 #[test]

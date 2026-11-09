@@ -457,7 +457,13 @@ fn an_egg_has_the_tooltips_of_its_keeper_kind_too() {
     };
     egg.egg = true;
     let mut cat = Catalogue::default();
-    cat.push(crate::fixtures::unit_ty("animals", "egg", "", 0, "cKeeper=9551"));
+    cat.push(crate::fixtures::unit_ty(
+        "animals",
+        "egg",
+        "",
+        0,
+        "cKeeper=9551",
+    ));
     let mut panel = Panel::default();
     panel.select(3);
     panel.refresh(&mut ui, &world, &cat, &vfs, 0);

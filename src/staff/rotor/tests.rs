@@ -26,7 +26,10 @@ fn started(d: i64, global: i32) -> Rotor {
 fn the_start_loads_the_sound_at_level_3000_and_fades_in_from_4000() {
     let r = started(0, 0);
     assert_eq!(r.file.as_deref(), Some("sounds/helicopt.wav"));
-    assert_eq!((r.level(), r.counter, r.rising, r.playing), (3000, 4000, true, true));
+    assert_eq!(
+        (r.level(), r.counter, r.rising, r.playing),
+        (3000, 4000, true, true)
+    );
     // B + F and no distance, centred.
     assert_eq!((r.heard, r.pan), ((4200, 0), 0));
 }
@@ -40,17 +43,32 @@ fn the_start_is_refused_over_6000_and_the_object_stays() {
     assert!(started(654, 2).playing);
     assert!(!started(654, 3).playing);
     // A huge global term, a huge distance: no start, and no panic.
-    for (d, g) in [(0, i32::MAX), (i64::MAX, 0), (i64::MIN, i32::MIN), (0, -5000)] {
+    for (d, g) in [
+        (0, i32::MAX),
+        (i64::MAX, 0),
+        (i64::MIN, i32::MIN),
+        (0, -5000),
+    ] {
         let r = started(d, g);
-        assert_eq!((r.counter, r.rising, r.level()), (4000, true, 3000), "{d} {g}");
+        assert_eq!(
+            (r.counter, r.rising, r.level()),
+            (4000, true, 3000),
+            "{d} {g}"
+        );
     }
-    assert!(started(0, -5000).playing, "a negative global term buys headroom");
+    assert!(
+        started(0, -5000).playing,
+        "a negative global term buys headroom"
+    );
 }
 
 #[test]
 fn a_load_that_fails_keeps_an_object_that_does_nothing() {
     let mut r = Rotor::start(None, POINT, &hearing(0, 0));
-    assert_eq!((r.file.clone(), r.playing, r.rising, r.counter), (None, false, false, 0));
+    assert_eq!(
+        (r.file.clone(), r.playing, r.rising, r.counter),
+        (None, false, false, 0)
+    );
     for flying in [true, false] {
         assert!(r.update(flying, 100_000, POINT, &hearing(0, 0)));
     }
@@ -66,7 +84,10 @@ fn an_update_refreshes_the_position_then_fades_and_leaves_the_distance_out_while
     assert!(r.update(true, 1000, POINT, &hear));
     assert_eq!((r.counter, r.level()), (3000, 2250));
     assert_eq!(r.heard, (1200 + 2250, 0));
-    assert_eq!(r.pan, -600, "the listener is to the right: the sound is panned left");
+    assert_eq!(
+        r.pan, -600,
+        "the listener is to the right: the sound is panned left"
+    );
     // Fully faded in: the fade flag is down, and the next update gives the distance back.
     assert!(r.update(true, 3000, POINT, &hear));
     assert_eq!((r.counter, r.level(), r.rising), (0, 0, false));
@@ -107,8 +128,16 @@ fn landing_raises_the_fade_and_the_end_of_it_stops_a_playing_sound_and_frees_the
     assert_eq!(r.level(), 2999);
     assert!(!r.update(false, 1, POINT, &hear), "stopped and freed");
     // A landed helicopter loaded has none; one loaded in the air has a pending one.
-    assert!(Heli::from_own(&[7, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0]).rotor.is_none());
-    assert!(Heli::from_own(&[7, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0]).rotor.is_some());
+    assert!(
+        Heli::from_own(&[7, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0])
+            .rotor
+            .is_none()
+    );
+    assert!(
+        Heli::from_own(&[7, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0])
+            .rotor
+            .is_some()
+    );
 }
 
 #[test]
@@ -154,7 +183,10 @@ fn a_helicopter_loaded_in_the_air_starts_at_level_3000_then_sets_it_to_0() {
     let hear = hearing(0, 0);
     let mut r = Rotor::start(sound(), POINT, &hear);
     r.settle();
-    assert_eq!((r.level(), r.rising, r.counter, r.playing), (0, false, 0, true));
+    assert_eq!(
+        (r.level(), r.rising, r.counter, r.playing),
+        (0, false, 0, true)
+    );
     // No volume refresh: the first position refresh applies the full level.
     assert_eq!(r.heard, (4200, 0));
     assert!(r.update(true, 40, POINT, &hear));
