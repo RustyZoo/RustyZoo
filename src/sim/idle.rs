@@ -22,7 +22,7 @@ use super::Rng;
 use crate::behaviour::{Data, Heard, Timing};
 use crate::building::Live;
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::render::fence_name;
 use crate::render::order::Kind;
 use crate::render::{bubble_key, rest_name, ripple_key};

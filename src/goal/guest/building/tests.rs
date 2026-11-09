@@ -1339,7 +1339,7 @@ fn a_picked_up_stand_pushes_its_customer_out_and_comes_back_with_its_figures_and
     assert!(crate::building::lift(&mut w, &cat, 7, &mut Rng::default()).is_none());
     // Set down elsewhere, facing another way: the same id, the same place in the list, the
     // price it had, and the figures the customer left.
-    let ty = crate::place::bulldozer::type_of(&cat, &stand).unwrap();
+    let ty = crate::entity::type_of(&cat, &stand).unwrap();
     crate::building::set_down(&mut w, ty, held, (352, 160, 0), 2);
     assert_eq!(w.find(7), Some(at));
     let c = w.zoo.entities[at].common.clone().unwrap();

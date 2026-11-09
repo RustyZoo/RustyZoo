@@ -378,7 +378,7 @@ fn rules_5_and_6_average_the_suitability_of_the_animals_of_each_exhibit() {
     let p = Parts::new(world(), zoo_types());
     let shown = |p: &Parts, id| {
         let at = p.world.find(id).unwrap();
-        i64::from(crate::panel::animal::suitability(&p.world, &p.cat, at))
+        i64::from(crate::exhibit::members::suitability(&p.world, &p.cat, at))
     };
     let (bear_tank, shark, bear_land, goat) =
         (shown(&p, 1), shown(&p, 2), shown(&p, 3), shown(&p, 4));
@@ -413,7 +413,7 @@ fn rules_5_and_6_average_the_suitability_of_the_animals_of_each_exhibit() {
     // against it.
     let (t, l) = exhibit_ids(&p);
     let rated = |id: u32, key: &str| {
-        i64::from(crate::panel::animal::suitability_in(
+        i64::from(crate::exhibit::members::suitability_in(
             &p.world, &p.cat, id, key,
         ))
     };
@@ -436,7 +436,7 @@ fn rules_5_and_6_average_eggs_and_crated_animals() {
     let mut p = Parts::new(world(), zoo_types());
     let shown = |p: &Parts, id| {
         let at = p.world.find(id).unwrap();
-        i64::from(crate::panel::animal::suitability(&p.world, &p.cat, at))
+        i64::from(crate::exhibit::members::suitability(&p.world, &p.cat, at))
     };
     let (tank, land) = (
         (shown(&p, 1) + shown(&p, 2)) / 2,
@@ -543,7 +543,11 @@ fn rules_5_and_6_read_the_stored_animal_lists_recomputed_first() {
     let mut p = Parts::new(world(), zoo_types());
     let (tank, _) = exhibit_ids(&p);
     let shark = p.world.find(2).unwrap();
-    let shown = |p: &Parts| i64::from(crate::panel::animal::suitability(&p.world, &p.cat, shark));
+    let shown = |p: &Parts| {
+        i64::from(crate::exhibit::members::suitability(
+            &p.world, &p.cat, shark,
+        ))
+    };
     let low = shown(&p);
     // The shark stands in the tank but is not in its stored list: rule 5 no longer sees it
     // and rule 6 gives the tank no animal, so only the land counts.

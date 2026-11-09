@@ -4,7 +4,7 @@
 use super::Sim;
 use crate::behaviour::Data;
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::world::World;
 
 impl Sim {

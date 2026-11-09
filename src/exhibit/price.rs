@@ -1,7 +1,7 @@
 //! The prices of the tank tools (exhibits and money 4.7): a wall step, the water of a fill.
 
 use crate::entity::Catalogue;
-use crate::panel::exhibit::type_at;
+use crate::exhibit::members::type_at;
 use crate::world::World;
 
 /// The numbers a tank's prices are made of, recomputed from the world whenever they are shown or

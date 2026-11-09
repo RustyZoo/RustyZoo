@@ -5,8 +5,8 @@
 use super::{AVOID, CHASE, Cx, GO_TO_SHOW, RETURN_FROM_SHOW};
 use crate::animal::home::home;
 use crate::behaviour::Target;
+use crate::entity::type_of;
 use crate::exhibit::rating::Likes;
-use crate::place::bulldozer::type_of;
 use crate::show::{abort_show_for, event, exhibit_of, in_show_now, info_of, portal};
 use crate::sim::{Event, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::staff::ladder::edge;

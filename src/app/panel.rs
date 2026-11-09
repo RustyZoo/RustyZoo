@@ -163,8 +163,8 @@ impl App<'_> {
         game.animal.select(id);
         ui.show(animal::LAYOUT);
         if ui.shown(LAYOUT) {
-            game.panel.current =
-                (game.world.find(id)).and_then(|at| exhibit::animals_exhibit(&game.world, at));
+            game.panel.current = (game.world.find(id))
+                .and_then(|at| crate::exhibit::members::animals_exhibit(&game.world, at));
             game.panel.clock.force = true;
         }
         if ui.is_down(animal::RECOMMENDATIONS) {
@@ -265,7 +265,8 @@ impl App<'_> {
             return;
         };
         let at = game.animal.selected.and_then(|id| game.world.find(id));
-        let Some(x) = at.and_then(|at| exhibit::animals_exhibit(&game.world, at)) else {
+        let Some(x) = at.and_then(|at| crate::exhibit::members::animals_exhibit(&game.world, at))
+        else {
             return;
         };
         if !ui.shown(LAYOUT) {

@@ -5,8 +5,8 @@
 use super::dropped::with_unit;
 use super::{AVOID, CHASE, Cx, IN_BUILDING};
 use crate::animal::Animal;
+use crate::entity::type_of;
 use crate::guest::view::tile_of;
-use crate::place::bulldozer::type_of;
 use crate::show::in_show_now;
 use crate::unit::predator::find_prey;
 use crate::unit::{Kind, Part, movement};

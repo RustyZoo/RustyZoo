@@ -4,8 +4,8 @@
 
 use super::{Kind, facing, place};
 use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::goal::{Record, USE};
-use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
 use crate::world::{Shape, World};
 use crate::zoo::{Common, Entity, fresh};

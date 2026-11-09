@@ -3,8 +3,8 @@
 use super::Params;
 use crate::building::kind_of;
 use crate::config::{Section, to_int};
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType, unit_prefixes};
-use crate::place::bulldozer::type_of;
 use crate::world::World;
 use crate::zoo::Item;
 

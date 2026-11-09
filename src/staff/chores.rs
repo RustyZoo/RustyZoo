@@ -5,10 +5,10 @@
 use crate::build::number;
 use crate::building;
 use crate::entity::Catalogue;
+use crate::entity::type_of;
+use crate::exhibit::members::animals_in;
 use crate::exhibit::rating::Rand;
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::panel::exhibit::animals_in;
-use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part};
 use crate::world::{World, piece_event};
 use crate::zoo::{Entity, Event};

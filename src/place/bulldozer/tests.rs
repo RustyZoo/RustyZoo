@@ -1,6 +1,7 @@
 //! The bulldozer on synthetic maps.
 
 use super::*;
+use crate::entity::EntityType;
 use crate::fixtures;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Common, Tile, Zoo};

@@ -213,7 +213,7 @@ impl App<'_> {
             (game.world.exhibits().region(tile)).filter(|&r| r != GROUNDS && r != EXTERIOR)?;
         let cat = self.renderer.catalogue();
         let at = game.world.find(id)?;
-        let who = crate::place::bulldozer::type_of(cat, &game.world.zoo.entities[at])?;
+        let who = crate::entity::type_of(cat, &game.world.zoo.entities[at])?;
         let good = assign::block_service(&game.world, cat, exhibit, who, (true, true)) == 0;
         Some((exhibit, good))
     }
