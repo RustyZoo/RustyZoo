@@ -496,12 +496,12 @@ const TUTORIALS: [&str; 7] = [
     "scn01a", "scn01", "scn02", "scn19", "scn27", "scn28", "scn28b",
 ];
 
-/// The name of a tutorial among the seven (9.1), from a scenario file path, or "".
+/// The name of a tutorial among the seven (9.1), from a scenario file path, or "". The path is
+/// compared byte for byte, as the end routine does (10.1 point 4).
 fn tutorial(file: &str) -> &'static str {
-    let name = file.replace('\\', "/").to_ascii_lowercase();
     TUTORIALS
         .into_iter()
-        .find(|t| name == format!("scenario/{t}/{t}.scn"))
+        .find(|t| file == format!("scenario/{t}/{t}.scn"))
         .unwrap_or("")
 }
 
@@ -528,8 +528,7 @@ pub(crate) fn next_tutorial(file: &str, expansions: i32) -> Option<String> {
 /// The string of the end dialog's text (9.1) for the scenario `file` and the expansion flags
 /// (bit 1 the first expansion, bit 2 the second), plus 1 when lost.
 pub(crate) fn end_text(file: &str, won: bool, expansions: i32) -> i32 {
-    let name = file.replace('\\', "/").to_ascii_lowercase();
-    let base = match name.as_str() {
+    let base = match file {
         "scenario/scn01/scn01.scn" | "scenario/scn01a/scn01a.scn" => 16104,
         "scenario/scn27/scn27.scn" | "scenario/scn28/scn28.scn" => 16104,
         "scenario/scn02/scn02.scn" if expansions != 0 => 16104,
@@ -756,6 +755,17 @@ impl Scenario {
     /// The ambient types the scenario's set-up adds to the spawn list, in the order listed.
     pub(crate) fn ambients(&self) -> &[i32] {
         &self.ambients
+    }
+
+    /// The pass counter (5.1) the manager had when the game began: it belongs to the program, not to
+    /// the scenario (5.2).
+    pub(crate) fn set_gathered(&mut self, ms: u32) {
+        self.gathered = ms;
+    }
+
+    /// The milliseconds gathered towards the next pass.
+    pub(crate) fn gathered(&self) -> u32 {
+        self.gathered
     }
 
     /// The start triggers fire, in the order listed.
