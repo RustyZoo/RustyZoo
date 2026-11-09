@@ -210,6 +210,10 @@ impl Animation {
             self.finish(timing);
         }
         let Some(mut now) = timing(&self.name).filter(|_| self.name == self.current()) else {
+            // An entry with no animation (the empty default one) still sounds.
+            if dt != 0 && timing(&self.name).is_none() {
+                self.notes.extend(self.sound.take().map(Note::Sound));
+            }
             self.finish(timing);
             return;
         };

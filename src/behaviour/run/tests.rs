@@ -401,13 +401,11 @@ fn the_dust_ball_plays_the_cloud_of_the_tank_mode_and_the_tile_with_its_fallback
         cloud(0, true, &["dustball"], &[]),
         Some(("dustball".into(), None))
     );
-    // No cloud animation at all, or only a sound: the call fails and the set ends.
-    assert_eq!(
-        cloud(0, true, &["waterball"], &all),
-        some("waterball", "waterball")
-    );
-    assert_eq!(cloud(0, false, &["waterball"], &all), None);
-    assert_eq!(cloud(0, false, &[], &all), None);
+    // A sound without a cloud animation plays on the empty default animation; neither fails.
+    let empty = |s: &str| Some((String::new(), Some(s.to_string())));
+    assert_eq!(cloud(0, false, &["waterball"], &all), empty("dustball"));
+    assert_eq!(cloud(0, false, &[], &all), empty("dustball"));
+    assert_eq!(cloud(0, true, &[], &["waterball"]), empty("waterball"));
     assert_eq!(cloud(0, false, &[], &[]), None);
 }
 

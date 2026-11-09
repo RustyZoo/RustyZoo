@@ -21,14 +21,17 @@ impl Runner {
             _ => "dustball",
         };
         let timing = |name: &str| env.data.timing(env.unit, name);
-        let (Some(idle), Some(name)) = (
-            self.idle(env),
-            [key, "dustball"].into_iter().find(|n| timing(n).is_some()),
-        ) else {
-            return false;
-        };
         let heard = |k: &&str| env.data.sound(env.unit, k).is_some();
         let sound = [key, "dustball"].into_iter().find(heard);
+        // A sound without an animation plays on the manager's empty default animation.
+        let name = match [key, "dustball"].into_iter().find(|n| timing(n).is_some()) {
+            Some(name) => name,
+            None if sound.is_some() => "",
+            None => return false,
+        };
+        let Some(idle) = self.idle(env) else {
+            return false;
+        };
         let entry = Entry {
             sound: sound.map(Into::into),
             ..Entry::new(name, false)
