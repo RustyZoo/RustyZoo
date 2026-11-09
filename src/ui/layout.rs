@@ -397,6 +397,9 @@ pub struct Element {
     pub y_border: i32,
     /// The tooltip string number first; the others are for the game's code.
     pub help_id: Vec<i32>,
+    /// Every `helpid` of the file in order, which the game's code picks the tooltip from (a
+    /// tooltip switched by it stays in `help_id`).
+    pub(crate) helps: Vec<i32>,
     pub action: i32,
     /// `-1` in the file is the id of the layout.
     pub target: i32,

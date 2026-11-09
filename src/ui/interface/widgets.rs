@@ -99,8 +99,8 @@ impl Interface {
         true
     }
 
-    /// Makes the image or image set `id` show its picture number `n` (an `animation` of the layout);
-    /// `false` if there is no such element or it has no such picture.
+    /// Makes the image, image set or button `id` show its picture number `n` (an `animation` of the
+    /// layout); `false` if there is no such element or it has no such picture.
     pub(crate) fn set_image(&mut self, id: i32, n: usize) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
@@ -111,7 +111,7 @@ impl Interface {
         }
         match &mut e.kind {
             Kind::ImageSet(levels) => levels.shown = n,
-            Kind::Image => e.look.shown = n,
+            Kind::Image | Kind::Button(_) => e.look.shown = n,
             _ => return false,
         }
         self.flag(i, DIRTY, true);

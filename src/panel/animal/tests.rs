@@ -178,6 +178,13 @@ fn tga() -> Vec<u8> {
     out
 }
 
+/// A button with a `helpid` per line of `helps` and `pictures` animations.
+fn tipped(id: i32, helps: &str, pictures: usize) -> String {
+    let helps: String = helps.lines().map(|h| format!("helpid={h}\n")).collect();
+    let pictures = "animation=ui/a/a\n".repeat(pictures);
+    format!("[k{id}]\ntype=UIButton\nid={id}\nx=0\ny=0\ndx=4\ndy=4\n{helps}{pictures}")
+}
+
 /// A panel with the elements the refresh fills, and a map with a zebra (1), a guest (2) and an
 /// egg (3).
 fn panel_in_game(name: &str) -> (Interface, Vfs, World) {
@@ -188,7 +195,12 @@ fn panel_in_game(name: &str) -> (Interface, Vfs, World) {
     let button = |id: i32| format!("[u{id}]\ntype=UIButton\nid={id}\nx=0\ny=0\ndx=4\ndy=4\n");
     let layout = [3104, 3108, 3106, 3110].map(bar).concat()
         + &[3176, 3177, 3178, 3179].map(text).concat()
-        + &[3111, 3115, 3197, 3114].map(button).concat()
+        + &[3111, 3115, 3114].map(button).concat()
+        // The icons and buttons whose tooltips and pictures follow the keeper kind.
+        + &[(3107, "3107\n3843\n3899"), (3109, "3109\n3844\n3898"), (3197, "3197\n3199")]
+            .map(|(id, helps)| tipped(id, helps, 0))
+            .concat()
+        + &tipped(3122, "3123\n3124\n3125", 3)
         + "[s]\ntype=UIImageSet\nid=3172\nx=0\ny=0\nimage=ui/g.tga\nimage=ui/g.tga\n";
     let layout = format!("[LayoutInfo]\nid=6\nx=0\ny=0\ndx=40\ndy=40\n{layout}");
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
@@ -343,4 +355,111 @@ fn the_follow_button_of_an_egg_or_a_crated_animal_shows_its_own_animation() {
     let boxed = icon(&mut ui, &mut world, false, true);
     assert!(idle.is_some() && egg.is_some() && boxed.is_some());
     assert!(idle != egg && idle != boxed && egg != boxed);
+}
+
+/// A catalogue whose zebra has the keeper `keeper`, none when it is 0.
+fn kept_by(keeper: i32) -> Catalogue {
+    let keys = if keeper == 0 {
+        String::new()
+    } else {
+        format!("cKeeper={keeper}")
+    };
+    let mut cat = Catalogue::default();
+    cat.push(crate::fixtures::unit_ty("animals", "zebra", "", 0, &keys));
+    cat
+}
+
+/// What the keeper-kind elements show: the tooltips of 3107, 3109, 3197 and 3122, and the picture
+/// of 3122.
+fn kind_view(ui: &Interface) -> ([i32; 4], usize) {
+    let el = |id| &ui.tree.elements[ui.tree.find(id).unwrap()];
+    let tips = [3107, 3109, 3197, 3122].map(|id| el(id).help_id[0]);
+    (tips, el(3122).look.shown)
+}
+
+#[test]
+fn the_tooltips_and_the_recommendations_picture_follow_the_keeper_kind() {
+    let (mut ui, vfs, world) = panel_in_game("animal-panel-kind");
+    let mut panel = Panel::default();
+    for (keeper, want) in [
+        (9500, ([3107, 3109, 3197, 3123], 0)),
+        (9551, ([3843, 3844, 3199, 3124], 1)),
+        // The exhibit button has no third tooltip: it keeps the scientist's.
+        (9552, ([3899, 3898, 3199, 3125], 2)),
+        // Any other value is the zookeeper's, and no value at all too.
+        (9553, ([3107, 3109, 3197, 3123], 0)),
+        (-1, ([3107, 3109, 3197, 3123], 0)),
+        (i32::MAX, ([3107, 3109, 3197, 3123], 0)),
+        (0, ([3107, 3109, 3197, 3123], 0)),
+    ] {
+        let cat = kept_by(keeper);
+        panel.select(1);
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+        assert_eq!(kind_view(&ui), want, "{keeper}");
+    }
+}
+
+#[test]
+fn an_index_outside_the_list_leaves_the_exhibit_tooltip_and_the_button_picture_alone() {
+    let (mut ui, _, _) = panel_in_game("animal-panel-outside");
+    for id in [3197, 3122] {
+        assert!(!ui.use_tooltip(id, 5), "{id}");
+        assert!(!ui.use_tooltip(id, usize::MAX), "{id}");
+    }
+    assert!(!ui.use_tooltip(9999, 0), "no such element");
+    assert!(ui.use_tooltip(3197, 1));
+    assert!(!ui.use_tooltip(3197, 2));
+    assert_eq!(kind_view(&ui).0[2], 3199, "kept");
+    assert!(ui.set_image(3122, 2));
+    assert!(!ui.set_image(3122, 3));
+    assert_eq!(kind_view(&ui).1, 2, "kept");
+    // The list is kept: an earlier entry can be used again.
+    assert!(ui.use_tooltip(3197, 0));
+    assert_eq!(kind_view(&ui).0[2], 3197);
+}
+
+#[test]
+fn a_marine_animal_keeps_the_exhibit_tooltip_of_the_animal_shown_before_it() {
+    let (mut ui, vfs, world) = panel_in_game("animal-panel-marine-bug");
+    let mut panel = Panel::default();
+    let mut tip = |keeper: i32| {
+        panel.select(1);
+        panel.refresh(&mut ui, &world, &kept_by(keeper), &vfs, 0);
+        kind_view(&ui).0[2]
+    };
+    assert_eq!(tip(9552), 3197, "never filled");
+    assert_eq!(tip(9551), 3199);
+    assert_eq!(tip(9552), 3199, "after a scientist's animal");
+    assert_eq!(tip(9500), 3197);
+    assert_eq!(tip(9552), 3197, "after a zookeeper's");
+}
+
+#[test]
+fn the_clocks_refreshes_leave_the_recommendations_button_alone() {
+    let (mut ui, vfs, world) = panel_in_game("animal-panel-kind-show");
+    let mut panel = Panel::default();
+    panel.select(1);
+    panel.refresh(&mut ui, &world, &kept_by(9551), &vfs, 0);
+    assert_eq!(kind_view(&ui), ([3843, 3844, 3199, 3124], 1));
+    // The same panel, now for a scientist's animal, without being shown again.
+    panel.refresh(&mut ui, &world, &kept_by(9552), &vfs, 0);
+    assert_eq!(kind_view(&ui), ([3899, 3898, 3199, 3124], 1));
+    panel.select(1);
+    panel.refresh(&mut ui, &world, &kept_by(9552), &vfs, 0);
+    assert_eq!(kind_view(&ui), ([3899, 3898, 3199, 3125], 2));
+}
+
+#[test]
+fn an_egg_has_the_tooltips_of_its_keeper_kind_too() {
+    let (mut ui, vfs, mut world) = panel_in_game("animal-panel-kind-egg");
+    let Part::Animal(egg) = &mut world.units.get_mut(3).unwrap().part else {
+        panic!("not an animal");
+    };
+    egg.egg = true;
+    let mut cat = Catalogue::default();
+    cat.push(crate::fixtures::unit_ty("animals", "egg", "", 0, "cKeeper=9551"));
+    let mut panel = Panel::default();
+    panel.select(3);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(kind_view(&ui).0[0], 3843);
 }

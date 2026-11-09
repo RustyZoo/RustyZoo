@@ -11,7 +11,7 @@ use crate::animal::{self, Animal, Keys};
 use crate::build::number;
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
-use crate::panel::exhibit::{Clock, animals_exhibit, type_at};
+use crate::panel::exhibit::{Clock, animals_exhibit, keeper_kind, type_at};
 use crate::panel::follow::{animal_animation, set_follow_icon};
 use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
@@ -29,6 +29,9 @@ pub(crate) const NAME: i32 = 3102;
 pub(crate) const FOLLOW: i32 = 3114;
 pub(crate) const EXHIBIT: i32 = 3197;
 pub(crate) const RECOMMENDATIONS: i32 = 3122;
+/// The hunger and suitability icons, whose tooltips, like the exhibit button's, follow the keeper
+/// kind of the animal (information panels 6.5).
+const KIND_TIPS: [i32; 3] = [3107, 3109, EXHIBIT];
 pub(crate) const TABS: [i32; 3] = [3162, 3164, 3165];
 const SELL: i32 = 3111;
 const PICK_UP: i32 = 3115;
@@ -177,6 +180,12 @@ impl Panel {
         let ty = type_at(world, cat, at);
         let (k, carried) = (animal::keys(world, cat, at), unit.carried);
         let shown = bars(a, &k, suitability(world, cat, at), carried);
+        let kind = ty.map_or(0, |t| {
+            keeper_kind(number(t, "cKeeper").map_or(9500, |v| v as i32))
+        });
+        for id in KIND_TIPS {
+            ui.use_tooltip(id, kind);
+        }
         let none = Words::new(|_| String::new());
         for (&bar, value) in BARS.iter().zip(shown.values) {
             ui.set_status(bar, value);
@@ -202,6 +211,9 @@ impl Panel {
         if fresh {
             ui.set_text(NAME, &to_cp1252(name));
             ui.set_button(FOLLOW, false, !carried);
+            // Only at show: the clock's refreshes leave the recommendations button as it is.
+            ui.set_image(RECOMMENDATIONS, kind);
+            ui.use_tooltip(RECOMMENDATIONS, kind);
         }
         if fresh || self.clock.forced {
             set_follow_icon(ui, vfs, FOLLOW, ty, animal_animation(a.egg, a.crated));
