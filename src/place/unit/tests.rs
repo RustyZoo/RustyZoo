@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::behaviour::NoData;
+use crate::sim::Rng;
 use crate::config::Config;
 use crate::fixtures;
 use crate::world::TankKind;
@@ -25,6 +26,9 @@ const RAY: usize = 12;
 /// The young of a species that lays eggs, a swimmer, and an adult of it.
 const YOUNG: usize = 13;
 const ADULT: usize = 14;
+const ADULT_F: usize = 15;
+/// A species that lays eggs and has no young type.
+const LONE: usize = 16;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     fixtures::ty("animals", name, subtype, ini)
@@ -83,6 +87,8 @@ fn catalogue() -> Catalogue {
                  cLaysEggs=1\ncSwims=1\ncUnderwater=1\n";
     cat.push(ty("y", "trike", trike));
     cat.push(ty("m", "trike", trike));
+    cat.push(ty("f", "trike", trike));
+    cat.push(ty("m", "lone", trike));
     cat
 }
 
@@ -1333,6 +1339,35 @@ fn an_egg_takes_the_slope_rule_by_its_egg_footprint() {
     assert_eq!(at(&w, ADULT, (2, 2)).verdict, Verdict::Valid);
     assert_eq!(at(&w, YOUNG, (2, 2)).verdict, Verdict::Invalid);
     assert_eq!(at(&w, YOUNG, (3, 2)).verdict, Verdict::Valid);
+}
+
+#[test]
+fn a_pending_animal_draws_its_creation_and_an_egg_layer_is_an_egg_of_the_sex_of_the_button() {
+    let (cat, w) = (catalogue(), world(Vec::new()));
+    // One draw for each counter that has a period.
+    let counters = w.units.class.periods.iter().filter(|&&p| p != 0).count() as u32;
+    let draws = |n: u32| {
+        let mut rng = Rng::default();
+        (0..n + counters).for_each(|_| _ = rng.rand());
+        rng
+    };
+    // The young of an egg layer draws its sex, which the button then overwrites, and is an egg.
+    for (button, female) in [(ADULT, false), (ADULT_F, true)] {
+        let mut rng = Rng::default();
+        let (ty, a) = crate::animal::breed::pending(&w, &cat, button, &mut rng).unwrap();
+        assert_eq!((ty, a.egg, a.female), (YOUNG, true, female));
+        assert_eq!(rng, draws(1));
+    }
+    // An adult that does not lay eggs is made as it is chosen, and draws nothing here.
+    let mut rng = Rng::default();
+    let (ty, a) = crate::animal::breed::pending(&w, &cat, ZEBRA, &mut rng).unwrap();
+    assert_eq!((ty, a.egg, a.female), (ZEBRA, false, false));
+    assert_eq!(rng, draws(0));
+    // No young type, nothing is made, nothing is drawn; a type that is not there neither.
+    for ty in [LONE, 999] {
+        assert!(crate::animal::breed::pending(&w, &cat, ty, &mut rng).is_none());
+    }
+    assert_eq!(rng, draws(0));
 }
 
 #[test]

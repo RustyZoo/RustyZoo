@@ -374,7 +374,9 @@ pub(crate) fn interface(name: &str) -> (Interface, Vfs, Install) {
          [sx]\ntype=UIRadioSet\nid=2040\nbutton=2000\nbutton=2001\n\
          [n]\ntype=UIText\nid=2043\ndx=50\ndy=10\n[k]\ntype=UIText\nid=2014\ndx=50\ndy=10\n\
          [e]\ntype=UIText\nid=2082\ndx=50\ndy=10\n[em]\ntype=UIText\nid=2009\ndx=50\ndy=10\n\
-         [li]\ntype=UIImage\nid=2045\n[hi]\ntype=UIImage\nid=2047\n[hb]\ntype=UIImage\nid=2046\n",
+         [li]\ntype=UIImage\nid=2045\n[hi]\ntype=UIImage\nid=2047\n[hb]\ntype=UIImage\nid=2046\n\
+         [cl]\ntype=UIText\nid=2090\ndx=50\ndy=10\n[cn]\ntype=UIText\nid=2091\ndx=50\ndy=10\n\
+         [yb]\ntype=UIButton\nid=2051\ndx=5\ndy=5\nstate=1\n",
     );
     let hire = panel(
         10,
@@ -1162,6 +1164,52 @@ fn the_adopt_panel_lists_each_species_once_as_the_sex_chosen_in_the_order_of_the
     build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
     assert_eq!(build.list, [6]);
     assert_eq!(state_of(&ui, 2009) & HIDDEN, HIDDEN);
+}
+
+#[test]
+fn a_shelter_shows_its_capacity_as_a_plain_number_until_the_unselect_or_a_rebuild() {
+    let (mut ui, vfs, _install) = interface("capacity");
+    let shelter = |name: &str, keys: &str, id: i32| {
+        let ini = format!("[Member]\nshelters\n[Characteristics/Integers]\ncPurchaseCost=50\n{keys}");
+        EntityType {
+            name_id: id,
+            ..ty("building", name, "", &ini)
+        }
+    };
+    let cat = catalogue(vec![
+        animal("zebra", "m", "cPurchaseCost=800\n", 101),
+        animal("zebra", "f", "cPurchaseCost=800\n", 101),
+        shelter("hut", "cCapacity=1234567\n", 102),
+        shelter("cave", "", 103),
+        shelter("den", "cCapacity=-5\n", 104),
+    ]);
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    assert!(ui.show(3));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    let shown = |ui: &Interface| [2090, 2091].map(|id| state_of(ui, id) & HIDDEN == 0);
+    assert_eq!(shown(&ui), [false, false], "an animal has no capacity");
+    // The Shelters tab: the label shows, and the number of the chosen shelter without grouping.
+    ui.set_button(2075, false, true);
+    ui.set_button(3255, true, true);
+    build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
+    assert_eq!(build.list, [2, 3, 4]);
+    assert_eq!((shown(&ui), text(&ui, 2091)), ([true, true], "1234567".into()));
+    // A building file with no key holds 1, and a negative number is written as it is.
+    for (at, want) in [(1, "1"), (2, "-5")] {
+        build.selected(&mut ui, &vfs, &cat, 1_000_000 + 2019 * 1000 + at, &mut log);
+        assert_eq!((shown(&ui), text(&ui, 2091)), ([true, true], want.into()));
+    }
+    // The unselect hides both; the Animals tab, another list built, does too.
+    assert!(build.cancel(&mut ui, &mut log));
+    assert_eq!(shown(&ui), [false, false]);
+    build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
+    assert_eq!(shown(&ui), [true, true]);
+    ui.set_button(3255, false, true);
+    ui.set_button(2075, true, true);
+    build.selected(&mut ui, &vfs, &cat, 2075, &mut log);
+    assert_eq!(shown(&ui), [false, false]);
+    // The Young button stays hidden whatever is chosen.
+    assert_ne!(state_of(&ui, 2051) & HIDDEN, 0);
 }
 
 /// A staff type of the Hire panel: the keys are in the section of its subtype.

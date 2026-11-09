@@ -310,6 +310,24 @@ fn an_egg_starts_with_the_health_and_time_of_the_species() {
 }
 
 #[test]
+fn an_egg_set_again_with_argument_0_keeps_its_countdown_and_recomputes_the_health() {
+    let k = Keys {
+        max_hits: 500,
+        time_to_hatch: 80,
+        ..keys()
+    };
+    let mut a = animal();
+    a.set_egg(&k, 10);
+    (a.hatch, a.health) = (7, 1);
+    a.refresh_egg(&k, 10);
+    // 300 less 1 plus the countdown 7; a spent countdown (0 or below) is kept as well.
+    assert_eq!((a.egg, a.hatch, a.health), (true, 7, 306));
+    a.hatch = -4;
+    a.refresh_egg(&k, 10);
+    assert_eq!((a.hatch, a.health), (-4, 295));
+}
+
+#[test]
 fn an_egg_counts_down_while_it_keeps_its_health_and_hatches_inside_an_exhibit() {
     let k = Keys {
         max_hits: 500,

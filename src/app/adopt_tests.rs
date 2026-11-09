@@ -506,3 +506,18 @@ fn a_species_with_no_young_type_makes_no_pending_unit_and_places_nothing() {
         assert!(app.game.as_ref().unwrap().placing.pending.is_none());
     });
 }
+
+#[test]
+fn a_keeper_hired_in_an_exhibit_starts_his_duties_there_at_once_and_one_on_the_grounds_does_not() {
+    with_app("app-hire-drop-rule", |app| {
+        let camera = app.camera().unwrap().clone();
+        let task = |app: &App, id: u32| app.game.as_ref().unwrap().world.units.get(id).unwrap().goal.record.task;
+        hold(app, 3);
+        let id = app.game.as_ref().unwrap().placing.made.as_ref().unwrap().id;
+        click(app, 10, point(&camera, 20 * 64 + 32, 20 * 64 + 32));
+        assert_eq!(task(app, id), crate::goal::DUTIES);
+        let id = app.game.as_ref().unwrap().placing.made.as_ref().unwrap().id;
+        click(app, 20, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
+        assert_ne!(task(app, id), crate::goal::DUTIES);
+    });
+}

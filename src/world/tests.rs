@@ -262,6 +262,22 @@ fn an_added_entity_takes_a_fresh_id_and_shows_in_the_index() {
 }
 
 #[test]
+fn a_pending_unit_takes_its_id_when_it_is_made_and_keeps_it_at_the_add() {
+    let mut world = World::new(zoo(8, 8, (0, 0)), shape);
+    let made = world.take_id();
+    assert_eq!((made, world.zoo.id_counter), (Some(101), 101));
+    // Another entity is added meanwhile: it takes the next id; the unit still has its own.
+    assert_eq!(world.add(entity("path", 32, 32, 0), None), Some(102));
+    let unit = world.add_made(entity("animals", 96, 96, 0), None, true, made);
+    assert_eq!((unit, world.zoo.id_counter), (Some(101), 102));
+    assert!(world.find(101).is_some() && world.find(102).is_some());
+    // The counter at its largest takes no more ids.
+    world.zoo.id_counter = u32::MAX;
+    assert_eq!(world.take_id(), None);
+    assert_eq!(world.add(entity("path", 32, 32, 0), None), None);
+}
+
+#[test]
 fn an_entity_without_a_body_is_not_added_and_one_without_a_shape_is_not_indexed() {
     let mut world = World::new(zoo(2, 2, (0, 0)), shape);
     let mut bodyless = entity("fences", 0, 0, 0);
