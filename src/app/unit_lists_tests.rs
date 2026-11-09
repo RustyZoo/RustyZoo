@@ -335,3 +335,65 @@ fn a_mouse_click_on_a_row_runs_the_same_selection() {
         assert_ne!(s.app.camera().unwrap().scroll, before);
     });
 }
+
+#[test]
+fn review_heli_row_click_after_a_staff_member_leaves_no_row_selected() {
+    with_lists("rv-heli-row", |s, ids| {
+        let game = s.app.game.as_mut().unwrap();
+        match &mut game.world.units.get_mut(ids[4]).unwrap().part {
+            crate::unit::Part::Staff(st) => st.heli.base = ids[5],
+            _ => unreachable!(),
+        }
+        s.app.interface().unwrap().show(31);
+        s.pass(&[]);
+        s.app.list_row(STAFF, 0);
+        s.pass(&[]);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[3]));
+        assert_eq!(s.app.interface().unwrap().selected_row(4205), Some(0));
+        let click = [
+            Command::Mouse(Mouse::Move(5, 14)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ];
+        s.pass(&click);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[5]), "the base");
+        assert_eq!(s.app.interface().unwrap().selected_row(4205), None, "after the click");
+        s.app.lists.windows[STAFF].force = true;
+        for _ in 0..4 {
+            s.pass(&[]);
+        }
+        assert_eq!(s.app.interface().unwrap().selected_row(4205), None, "after a refill");
+    });
+}
+
+#[test]
+fn review_a_helicopter_row_without_a_base_still_deselects_the_bulldozer() {
+    with_lists("rv-heli-nobase", |s, _| {
+        s.app.interface().unwrap().show(31);
+        s.pass(&[]);
+        s.app.interface().unwrap().set_button(1028, true, true);
+        s.app.list_row(STAFF, 1);
+        assert!(!s.app.interface().unwrap().is_down(1028));
+    });
+}
+
+#[test]
+fn review_the_selected_animal_row_is_in_view_when_the_list_first_opens() {
+    with_lists("rv-scroll", |s, _| {
+        let mut last = 0;
+        for (n, name) in ["Cy", "Di", "Ed", "Flo"].into_iter().enumerate() {
+            last = s.add(13, (30 + 3 * n as i32) * 64 + 32, 10 * 64 + 32, 0);
+            let game = s.app.game.as_mut().unwrap();
+            let at = game.world.find(last).unwrap();
+            game.world.zoo.entities[at].common.as_mut().unwrap().name = name.into();
+        }
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().selected = Some(last);
+        s.pass(&[]);
+        s.app.interface().unwrap().show(16);
+        s.pass(&[]);
+        let ui = s.app.interface().unwrap();
+        assert_eq!(ui.selected_row(3805), Some(5));
+        assert!(ui.list_top(3805) >= 3, "top {}", ui.list_top(3805));
+    });
+}

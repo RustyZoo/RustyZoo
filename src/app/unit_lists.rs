@@ -85,6 +85,7 @@ impl App<'_> {
         let Some(id) = (w.unit_of(row)).filter(|&id| game.world.find(id).is_some()) else {
             return;
         };
+        ui.set_button(BULLDOZER, false, true);
         let base = game.world.units.get(id).and_then(|u| match &u.part {
             crate::unit::Part::Staff(s) if u.kind == Kind::Heli => Some(s.heli.base),
             _ => None,
@@ -99,7 +100,6 @@ impl App<'_> {
             None => Some(id),
         };
         let Some(target) = target else { return };
-        ui.set_button(BULLDOZER, false, true);
         let stay = heli && following && game.selected == Some(target);
         if game.selected != Some(target) {
             game.selected = Some(target);

@@ -297,6 +297,10 @@ pub(crate) struct Window {
     due: u64,
     /// The entity of each row, and the name each had.
     pub ids: Vec<u32>,
+    /// Which rows are the helicopter's.
+    helis: Vec<bool>,
+    /// A refill ran once: before it the list box has no rows to select.
+    filled: bool,
     names: Vec<Vec<u8>>,
     rows: Vec<Row>,
     hidden: Vec<bool>,
@@ -380,6 +384,7 @@ impl Window {
         }
         // The unit each row stands for in the selection: a helicopter's base, when it shows it.
         let mut targets: Vec<u32> = list.iter().map(|e| e.id).collect();
+        let mut helis = vec![false; list.len()];
         let mut counts = vec![0; spec.filters.len()];
         for (k, e) in list.iter().enumerate() {
             let results: Vec<bool> = (0..counts.len()).map(|i| tests.pass(which, i, e)).collect();
@@ -395,6 +400,7 @@ impl Window {
             let base = heli
                 .and_then(|b| world.find(b))
                 .filter(|&b| world.zoo.entities[b].class == "building");
+            helis[k] = heli.is_some();
             match (heli.is_some(), passes, base) {
                 // The helicopter's row shows its base; with none it stays as it was (20.3 point 4).
                 (true, true, Some(b)) => {
@@ -410,9 +416,15 @@ impl Window {
                 }
             }
         }
+        // The row selected before the refill, by its unit: a refill of the guest and staff lists
+        // leaves the selection as it is (20.3 point 3), the helicopter's row included.
+        let kept = (ui.selected_row(spec.list)).and_then(|r| self.ids.get(r).copied());
         self.ids = list.iter().map(|e| e.id).collect();
+        self.helis = helis;
         self.names = list.into_iter().map(|e| e.name).collect();
-        let row = (0..self.ids.len()).find(|&k| !self.hidden[k] && Some(targets[k]) == selected);
+        let row = (0..self.ids.len())
+            .find(|&k| !self.hidden[k] && Some(targets[k]) == selected)
+            .filter(|&k| targets[k] == self.ids[k] || kept == Some(self.ids[k]));
         let top = ui.list_top(spec.list);
         ui.fill_rows(
             spec.list,
@@ -420,13 +432,17 @@ impl Window {
             self.hidden.clone(),
             (row, top),
         );
+        // A unit selected while the list was never shown has its row in view when it opens.
+        if !std::mem::replace(&mut self.filled, true) && row.is_some() {
+            ui.select_row(spec.list, row);
+        }
         for (f, n) in spec.filters.iter().zip(counts) {
             ui.set_text(f.count, n.to_string().as_bytes());
         }
     }
 
-    /// The selected entity changed (20.6 point 5): the old unit's row is unselected and the new
-    /// one's selected and scrolled into view, whether the window is shown or not. Only a staff
+    /// The selected entity changed (20.6 point 5): the old unit's list is unselected and the new
+    /// one's row selected and scrolled into view, whether the window is shown or not. Only a staff
     /// member's own row follows, not its base.
     pub(crate) fn follow(&mut self, which: usize, ui: &mut Interface, selected: Option<u32>) {
         let old = std::mem::replace(&mut self.seen, selected);
@@ -437,8 +453,9 @@ impl Window {
         let row_of = |this: &Window, id: Option<u32>| {
             id.and_then(|id| this.ids.iter().position(|&i| i == id))
         };
-        let now = ui.selected_row(spec.list);
-        if row_of(self, old).is_some_and(|r| now == Some(r)) {
+        // The old animal, guest or staff member clears the whole selection of its list; the
+        // helicopter and what is not in the list leave it alone.
+        if row_of(self, old).is_some_and(|r| !self.helis[r]) {
             ui.select_row(spec.list, None);
         }
         let new = row_of(self, selected).filter(|&r| !self.hidden[r]);
