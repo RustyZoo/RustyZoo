@@ -600,6 +600,46 @@ fn a_hint_of_minus_1_is_the_line_of_the_first_goal_in_progress_with_a_text() {
 }
 
 #[test]
+fn the_hint_line_is_taken_when_the_trigger_runs_not_after_the_pass() {
+    // Goal a fires and b, after it, completes in the same pass: at the trigger b is the goal in
+    // progress, after the pass nothing is (scenarios 8.3 point 1, 8.5 point 6).
+    let text = |trigger: &str| {
+        format!(
+            "[goals]\ngoal=a\ngoal=b\n[a]\nrulea=99\narga=1\nvalue=1\ntext=11\n{trigger}\n\
+             [b]\nrulea=99\narga=1\nvalue=1\ntext=22\n{POPUPS}"
+        )
+    };
+    let line = Some(Line {
+        text: 22,
+        values: [1, 1, 0],
+        state: 0,
+    });
+    let goal_of = |trigger: &str| {
+        let mut s = build(&text(trigger), &[]);
+        pass(&mut s, &env(1, 0), &mut Vec::new());
+        assert_eq!(states(&s), [1, 1, 1]);
+        assert_eq!(s.hint_line(), None, "nothing is in progress after the pass");
+        s
+    };
+    // A trigger 2 popup, a deed's popup and an availability change's popup.
+    let s = goal_of("trulea=2\ntruleb=0\ntarga=9");
+    let [Effect::Popup(p)] = &s.effects()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
+    let s = goal_of("trulea=9\ntarga=1\ntargb=9");
+    let [Deed::Sale { popup: Some(p), .. }] = &s.gui().take_deeds()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
+    let s = goal_of("trulea=4\ntruleb=4\ntarga=5\ntargb=9");
+    let [Avail { tell: Some(Tell::Popup(p)), .. }] = &s.gui().take_avail()[..] else {
+        panic!()
+    };
+    assert_eq!(p.hint.goal, line);
+}
+
+#[test]
 fn a_goal_of_an_extra_file_reads_the_popup_of_its_own_file() {
     let main = "[goals]\ngoal=a\n[a]\nrulea=99\narga=1\nvalue=1\ntrulea=2\ntruleb=0\ntarga=1\n[1]\nlayout=1\n";
     let extra = main

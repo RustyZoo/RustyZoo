@@ -87,6 +87,8 @@ pub(super) fn interface(install: &Install) -> Interface {
          [d]\nid=45013\nx=30\ny=0\ntarget=2\naction=5\n{button}\
          [bg]\ntype=UIImage\nid=45001\nx=0\ny=0\ndx=40\ndy=24\nlayer=0\n\
          [i]\ntype=UIImage\nid=45004\nx=0\ny=0\nlayer=1\n\
+         [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
+         [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
          [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
     );
     let options = format!(
