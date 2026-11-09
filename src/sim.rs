@@ -6,8 +6,7 @@
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
 //! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the shows, the spawn list of the ambient creatures, and the research and marketing
-//! managers, which are empty until M7. The scenario manager is [`crate::scenario`]'s (most of its rules and
+//! so far: the shows and the spawn list of the ambient creatures. The scenario manager is [`crate::scenario`]'s (most of its rules and
 //! triggers are stubs).
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
@@ -48,6 +47,7 @@ use crate::config::{self, Config};
 use crate::entity::Catalogue;
 use crate::exhibit::rating;
 use crate::guest;
+use crate::marketing::Marketing;
 use crate::money::{self, Money};
 use crate::research::{Done, Life, Overlay, Tree};
 use crate::scenario::{Env, Game, Scenario};
@@ -203,6 +203,9 @@ pub(crate) struct Sim {
     research: Option<Tree>,
     /// The programs the research step completed, for the caller to apply.
     research_done: Vec<Done>,
+    /// The marketing of the game: it outlives a game, only a scenario set-up rebuilds it
+    /// (marketing 3.3).
+    marketing: Marketing,
     arrived: bool,
     /// The ambient sounds of the game being played, if it has them (sound 8.1).
     soundscape: Option<Soundscape>,
@@ -246,6 +249,7 @@ impl Sim {
             scenario: None,
             research: None,
             research_done: Vec::new(),
+            marketing: Marketing::default(),
             arrived: false,
             soundscape: None,
             calls: Calls::default(),
@@ -353,6 +357,21 @@ impl Sim {
     /// its programs from the next check on.
     pub(crate) fn set_research(&mut self, tree: Tree) {
         self.research = Some(tree);
+    }
+
+    /// The set-up of a scenario rebuilt the marketing (marketing 3.2).
+    pub(crate) fn set_marketing(&mut self, marketing: Marketing) {
+        self.marketing = marketing;
+    }
+
+    /// The marketing, for the panel and the file.
+    pub(crate) fn marketing(&self) -> &Marketing {
+        &self.marketing
+    }
+
+    /// The marketing the player's clicks and a load change.
+    pub(crate) fn marketing_mut(&mut self) -> &mut Marketing {
+        &mut self.marketing
     }
 
     /// The research tree, for the research panel.
@@ -917,7 +936,7 @@ impl Sim {
             let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);
         }
-        // The research manager; marketing has nothing to do before M7.
+        // The research manager, then the marketing manager.
         if let Some(tree) = &mut self.research {
             let done = tree.step(step, money, &mut || self.rng.rand());
             for d in &done {
@@ -925,6 +944,7 @@ impl Sim {
             }
             self.research_done.extend(done);
         }
+        self.marketing.step(step, money);
         Report {
             arrived: std::mem::take(&mut self.arrived),
             month_end,

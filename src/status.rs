@@ -12,7 +12,7 @@ use crate::ui::interface::Interface;
 use std::collections::HashMap;
 
 /// The zoo status window, its Finances layout, and the button the Z key presses to open it.
-const WINDOW: i32 = 14;
+pub(crate) const WINDOW: i32 = 14;
 const FINANCES: i32 = 110;
 pub(crate) const STATUS_BUTTON: i32 = 1014;
 
@@ -31,7 +31,7 @@ const INCOME_CELL: i32 = 3931;
 const EXPENSE_CELL: i32 = 3932;
 
 /// The clock time (ms) between two runs of the table's update while the window is shown.
-const GAP: u64 = 10_000;
+pub(crate) const GAP: u64 = 10_000;
 
 const ZOO_VALUE_CATEGORY: usize = 15;
 const NET: usize = crate::money::NET;

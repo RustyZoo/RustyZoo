@@ -200,6 +200,21 @@ impl App<'_> {
         }
     }
 
+    /// The set-up of the scenario `file` rebuilds the marketing at level 0 (marketing 3.2).
+    pub(super) fn marketing_set_up(&mut self, file: &str) {
+        let marketing = crate::marketing::Marketing::of_scenario(self.renderer.vfs(), file);
+        self.sim.set_marketing(marketing);
+    }
+
+    /// A button of the marketing panel (marketing 6.3): the level moves one step and the panel
+    /// is written at once.
+    pub(super) fn marketing_fund(&mut self, up: bool) {
+        if let Some(game) = &mut self.game {
+            self.sim.marketing_mut().fund(up);
+            game.funding.force = true;
+        }
+    }
+
     /// A funding button of the panel (8.5): the level of the tab's branch moves one step.
     pub(super) fn research_fund(&mut self, up: bool) {
         let branch = self.ui.as_ref().and_then(branch_of_tab);

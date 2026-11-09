@@ -93,6 +93,9 @@ impl App<'_> {
                         game.panel.clock.force = true;
                     }
                 }
+                marketing_panel::LESS | marketing_panel::MORE if self.game.is_some() => {
+                    self.marketing_fund(id == marketing_panel::MORE);
+                }
                 research_panel::LESS | research_panel::MORE if self.game.is_some() => {
                     self.research_fund(id == research_panel::MORE);
                 }

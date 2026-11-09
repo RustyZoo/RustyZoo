@@ -85,9 +85,12 @@ pub(crate) const LION: i32 = 5006;
 pub(crate) const TIGER: i32 = 5007;
 
 impl Flags {
-    /// What the effective rating of the guest arrival check gains from the flags (zoo status 8).
-    pub(crate) fn rating_points(&self) -> i32 {
-        if self.rating_bonus { 30 } else { 0 }
+    /// What the effective rating of the guest arrival check gains (zoo status 8): the marketing
+    /// `benefit` (again with the doubling flag), then 30 with the rating flag. The additions wrap
+    /// around as the original's do.
+    pub(crate) fn rating_points(&self, benefit: i32) -> i32 {
+        let marketing = benefit.wrapping_add(if self.marketing_double { benefit } else { 0 });
+        marketing.wrapping_add(if self.rating_bonus { 30 } else { 0 })
     }
 }
 
@@ -656,9 +659,9 @@ mod tests {
     #[test]
     fn the_rating_bonus_is_thirty_points_once_the_flag_is_up() {
         let mut flags = Flags::default();
-        assert_eq!(flags.rating_points(), 0);
+        assert_eq!(flags.rating_points(0), 0);
         flags.rating_bonus = true;
-        assert_eq!(flags.rating_points(), 30);
+        assert_eq!(flags.rating_points(0), 30);
     }
 
     #[test]

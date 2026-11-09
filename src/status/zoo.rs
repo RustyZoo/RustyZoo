@@ -595,7 +595,7 @@ impl Status {
             [(0, false), (1, false), (3, false), (3, false), (4, true)],
             [(0, false), (0, false), (1, false), (2, false), (3, false)],
         ];
-        let row = match self.rating.saturating_add(bonus) {
+        let row = match self.rating.wrapping_add(bonus) {
             81.. => 0,
             60..=80 => 1,
             30..=59 => 2,

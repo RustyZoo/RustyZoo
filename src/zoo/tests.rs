@@ -1164,6 +1164,23 @@ fn the_research_section_written_is_the_one_given_and_reads_back() {
 }
 
 #[test]
+fn the_marketing_word_reads_back_as_written_and_a_file_that_ends_before_it_is_refused() {
+    let (mut zoo, money) = Zoo::parse_money(&file(106, 2, 2, &[], &[])).unwrap();
+    assert_eq!(zoo.marketing(), Some(0));
+    for level in [0, 3, u32::MAX] {
+        zoo.set_marketing(level);
+        let bytes = zoo.write(&money).unwrap();
+        assert_eq!(parse(&bytes).marketing(), Some(level));
+        // The word lies between the awards and the cheats, 4 bytes in all.
+        let at = bytes.len() - (8 + 13 + 4);
+        assert_eq!(&bytes[at..at + 4], level.to_le_bytes());
+    }
+    // A file cut inside the word fails to load.
+    let bytes = file(106, 2, 2, &[], &[]);
+    assert!(Zoo::parse(&bytes[..bytes.len() - (8 + 13 + 2)]).is_err());
+}
+
+#[test]
 fn research_and_movement_with_unknown_types_are_refused() {
     let mut bytes = file(106, 1, 1, &[], &[]);
     // The type of the last research record, counted back from the end: the terminator, the
