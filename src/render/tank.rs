@@ -420,7 +420,7 @@ impl MapRenderer<'_> {
     }
 
     /// The underwater picture of an afloat object (sprite drawing 7.8).
-    fn under(&mut self, scene: &Scene, meta: &Meta, o: usize, out: &mut Vec<Placed>) {
+    pub(super) fn under(&mut self, scene: &Scene, meta: &Meta, o: usize, out: &mut Vec<Placed>) {
         let obj = scene.objects[o];
         if (obj.kind == Kind::Unit && meta.mode != 3) || !flag(meta.ty, "cHasUnderwaterSection") {
             return;
@@ -441,6 +441,9 @@ impl MapRenderer<'_> {
             return;
         }
         let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z);
+        // The frame of the held animation (sprite drawing 3.7 point 3).
+        let last = under.sprites[view.file].0.frames.len().saturating_sub(1);
+        let frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
         let palette = under
             .sprites
             .get(view.file)
@@ -451,7 +454,7 @@ impl MapRenderer<'_> {
             piece: None,
             grid: false,
             lift: 0,
-            pic: Pic::Anim(under, view, palette, 0),
+            pic: Pic::Anim(under, view, palette, frame),
         });
     }
 

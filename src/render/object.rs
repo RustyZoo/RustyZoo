@@ -82,16 +82,6 @@ impl<'a> MapRenderer<'a> {
                 let tile = scene.tile_at(obj.x, obj.y).map(|t| &scene.tiles[t]);
                 fence_name(ty, meta.life, tile, obj.facing)
             }
-            // An animal inside a tank swims: below the water it shows `subidle`, at the surface
-            // `surfidle` (sprite drawing 3.6).
-            "animals" if meta.mode == 3 => {
-                let t = scene.tile_at(obj.x, obj.y);
-                match t.and_then(|t| scene.surface(t)) {
-                    Some(surface) if obj.z >= surface => "surfidle".to_string(),
-                    Some(_) => "subidle".to_string(),
-                    None => "idle".to_string(),
-                }
-            }
             "animals" | "guests" | "keeper" | "maint" | "tour" => {
                 meta.shown.map_or("idle", |(name, _)| name).to_string()
             }
@@ -99,11 +89,9 @@ impl<'a> MapRenderer<'a> {
                 // A building in use or dead shows that animation.
                 .unwrap_or_else(|| meta.look.unwrap_or("").into()),
         };
-        // Without the swimming pictures an animal in a tank shows its rest picture.
-        let tank = ty.class == "animals" && meta.mode == 3;
         let found = [wanted.as_str(), "idle"]
             .into_iter()
-            .take(if tank || meta.shown.is_some() { 2 } else { 1 })
+            .take(if meta.shown.is_some() { 2 } else { 1 })
             .filter(|w| !w.is_empty())
             .find_map(|w| ty.animation_named(w));
         found.or_else(|| ty.base_animation()).and_then(|a| a.member)

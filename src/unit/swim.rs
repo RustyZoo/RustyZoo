@@ -10,7 +10,7 @@
 //! sends the animal ([`crate::animal::tank::switch`]).
 
 use super::{Kind, Part, Unit, movement};
-use crate::behaviour::{Place, Target};
+use crate::behaviour::{Place, Rest, Target};
 use crate::render::order::ground_height;
 use crate::sim::Rng;
 use crate::staff::ladder::Ladder;
@@ -148,7 +148,31 @@ pub(crate) fn wet(world: &World, at: usize) -> bool {
 /// 9.5: what the nesting calls of the unit at position `at` choose by: its tank mode and whether
 /// its tile is a water tile, whatever its type and even for an egg.
 pub(crate) fn nesting(unit: &mut Unit, world: &World, at: usize) {
-    (unit.runner.tank_mode, unit.runner.wet) = (unit.tank, wet(world, at));
+    let wet = wet(world, at);
+    (unit.runner.tank_mode, unit.runner.wet) = (unit.tank, wet);
+    unit.runner.rest = rest(unit, wet);
+}
+
+/// The idle animation of the unit, the base of its play calls (behaviours 5.10), in the order of
+/// the tests: an egg, a crate, a swimmer on water, then the tank modes (or a helicopter's flight).
+fn rest(unit: &Unit, wet: bool) -> Rest {
+    let forced = match &unit.part {
+        Part::Animal(a) if a.egg => Some("egg_idle"),
+        Part::Animal(a) if a.crated => Some("box_idle"),
+        _ if unit.mover.swims && wet => Some("water_idle"),
+        _ => None,
+    };
+    let named = match &unit.part {
+        Part::Staff(s) if unit.kind == Kind::Heli => {
+            if s.heli.flying {
+                "level"
+            } else {
+                "idle"
+            }
+        }
+        _ => idle_name(unit),
+    };
+    Rest { forced, named }
 }
 
 /// 9.1: the idle animation of the unit by its tank mode.
