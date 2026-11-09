@@ -271,7 +271,10 @@ fn the_script_command_starts_a_scenario_from_the_menu_and_a_missing_one_says_why
             .flat_map(|(p, t)| said(app, p, t))
             .collect();
         assert_eq!(
-            said_all.iter().filter(|l| l.starts_with("menu message")).count(),
+            said_all
+                .iter()
+                .filter(|l| l.starts_with("menu message"))
+                .count(),
             2,
             "{said_all:?}"
         );
