@@ -1835,3 +1835,25 @@ fn full_game_research_lengthens_the_animals_after_they_are_read() {
         .collect();
     assert_eq!(grown.len(), 3, "{before:?} {after:?}");
 }
+
+#[test]
+fn a_file_opened_as_continue_is_saved_back_with_its_next_flag_and_its_clock() {
+    let install = cache_install("continued-save", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let cat = Catalogue::load(&vfs).unwrap();
+    for flag in [false, true] {
+        let mut source = Zoo::parse(&crate::zoo::tests::naming(
+            crate::zoo::tests::file(106, 2, 2, &[], &[]),
+            None,
+        ))
+        .unwrap();
+        source.clocks.queue.next_is_first = flag;
+        source.clocks.ai_ticks = 1193;
+        let bytes = source.write(&Money::default()).unwrap();
+        let saved = start::continued_save(&vfs, &cat, &bytes).unwrap();
+        let saved = Zoo::parse(&saved).unwrap();
+        assert_eq!(saved.clocks.queue.next_is_first, flag);
+        assert_eq!(saved.clocks.queue.first, source.clocks.queue.first);
+        assert_eq!(saved.clocks.ai_ticks, 1193);
+    }
+}

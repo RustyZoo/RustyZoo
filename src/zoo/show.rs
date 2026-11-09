@@ -481,7 +481,7 @@ impl TypeRecord {
         }
     }
 
-    fn read(r: &mut Reader) -> R<TypeRecord> {
+    pub(super) fn read(r: &mut Reader) -> R<TypeRecord> {
         let (key, script) = (r.u32()?, r.u16()?);
         let mut record = TypeRecord::new(key, script, 0);
         if r.v >= 99 {

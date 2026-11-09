@@ -1,77 +1,204 @@
-//! Re-save parity of the shipped files (issue 1037): each map and saved game of version 105 or 106
-//! is loaded as `sim` does and written back before the first step, and the file is compared with
-//! the original section by section. The differences are pinned in [`BUDGET`]; a file may differ
-//! less, never more, so lower a pin when a section is fixed.
+//! Re-save parity of the shipped files (issues 1037, 1439): each map and saved game of version 105
+//! or 106 is opened as Continue does and written back before the first step, and the file is
+//! compared section by section with the file the original would write (save games 15): the source
+//! with the changes the original makes too, built from its bytes by [`expected`] (not by the
+//! engine's writer). Nothing may differ but what [`allowed`] names.
 
 use super::*;
 use crate::{animal::Class, exhibit::TankConfig, place, sim::drive::Run, terrain, world::Decay};
-use std::collections::BTreeMap;
+use expected::{Changes, Inputs, build, ranges};
+use std::ops::Range;
 
-/// Per file: the most bytes that differ (section by section, a section that changed its size
-/// counting the bytes added or lost) and the most the size may change by, measured on the full
-/// game and on the French install (the larger of the two).
-const BUDGET: &[(&str, usize, usize)] = &[
-    ("maps/lg_resrt.zoo", 115, 80),
-    ("maps/lg_sandy.zoo", 8689, 108),
-    ("maps/lg_sub.zoo", 61463, 2808),
-    ("maps/med_kids.zoo", 758, 56),
-    ("maps/scn28.zoo", 397, 40),
-    ("maps/scn28b.zoo", 449, 44),
-    ("maps/scn31.zoo", 5463, 69),
-    ("maps/scn33.zoo", 717, 113),
-    ("maps/scn36.zoo", 831, 166),
-    ("maps/scn37.zoo", 2310, 452),
-    ("maps/scn42.zoo", 1602, 1517),
-    ("saved games/test.zoo", 353, 78),
+mod expected;
+
+/// What the spec says the original changes in a file, per file (the rest hold none): the records
+/// of a type the game does not have (15.2), the events posted at load by kind (15.4), the times the
+/// longevity research lengthens the animals (15.5) and the size of the scenario block the original
+/// writes (15.10).
+struct Pin {
+    dropped: usize,
+    events: &'static [(u16, usize)],
+    lengthened: u32,
+    scenario: Option<usize>,
+}
+
+const NONE: Pin = Pin {
+    dropped: 0,
+    events: &[],
+    lengthened: 0,
+    scenario: None,
+};
+
+const PINS: &[(&str, Pin)] = &[
+    (
+        "maps/lg_resrt.zoo",
+        Pin {
+            events: &[(10033, 4)],
+            ..NONE
+        },
+    ),
+    ("maps/lg_sandy.zoo", Pin { dropped: 1, ..NONE }),
+    (
+        "maps/lg_sub.zoo",
+        Pin {
+            dropped: 26,
+            ..NONE
+        },
+    ),
+    (
+        "maps/med_kids.zoo",
+        Pin {
+            lengthened: 1,
+            ..NONE
+        },
+    ),
+    (
+        "maps/scn28.zoo",
+        Pin {
+            events: &[(10032, 2)],
+            ..NONE
+        },
+    ),
+    (
+        "maps/scn28b.zoo",
+        Pin {
+            events: &[(10030, 1)],
+            scenario: Some(885),
+            ..NONE
+        },
+    ),
+    (
+        "maps/scn31.zoo",
+        Pin {
+            dropped: 2,
+            events: &[(10030, 1), (10034, 7)],
+            ..NONE
+        },
+    ),
+    (
+        "maps/scn33.zoo",
+        Pin {
+            dropped: 1,
+            scenario: Some(885),
+            ..NONE
+        },
+    ),
+    (
+        "maps/scn36.zoo",
+        Pin {
+            events: &[(10030, 2), (10033, 1), (10036, 5)],
+            scenario: Some(889),
+            ..NONE
+        },
+    ),
+    ("maps/scn37.zoo", Pin { dropped: 4, ..NONE }),
+    (
+        "saved games/test.zoo",
+        Pin {
+            events: &[(10030, 1), (10032, 1)],
+            lengthened: 2,
+            ..NONE
+        },
+    ),
 ];
 
-/// What a file without a pin may differ by: the version word, counters and clocks.
-const DEFAULT: (usize, usize) = (64, 0);
+/// The size of the research section the original writes after a load, in every file (15.10).
+const RESEARCH: usize = 1694;
 
-/// Files the writer refuses today (none); one that writes is measured against [`DEFAULT`] unless pinned.
-const REFUSED: &[&str] = &[];
+/// A section of one file against the same section of the other: the offsets of the bytes that
+/// differ, and the change of size.
+struct Diff {
+    name: String,
+    at: Vec<usize>,
+    size: isize,
+}
 
-/// The sections of a file as (name, bytes); the name of an entity is `entity/CLASS`, and what
-/// follows the last section is `tail`. Equal names are paired in order across two files.
-fn sections(bytes: &[u8]) -> Vec<(String, &[u8])> {
-    let mut at = 0;
+/// The sections of both files side by side, with the ranges of `masked` (in `expect`) zeroed in
+/// both. `Err` when the two files do not have the same sections.
+fn diff(expect: &[u8], engine: &[u8], masked: &[Range<usize>]) -> Result<Vec<Diff>, String> {
+    let (a, b) = (ranges(expect)?, ranges(engine)?);
+    let names = |s: &[(String, Range<usize>)]| s.iter().map(|s| s.0.clone()).collect::<Vec<_>>();
+    if names(&a) != names(&b) {
+        let sizes = |s: &[(String, Range<usize>)]| {
+            let sizes: Vec<_> = s.iter().map(|s| (s.0.clone(), s.1.len())).collect();
+            format!(
+                "{} sections {:?}",
+                sizes.len(),
+                sizes.iter().find(|n| n.0.starts_with("entity"))
+            )
+        };
+        return Err(format!(
+            "the sections differ: {} against {}",
+            sizes(&a),
+            sizes(&b)
+        ));
+    }
     let mut out = Vec::new();
-    for (name, end) in Zoo::sections(bytes).unwrap() {
-        out.push((name, &bytes[at..end]));
-        at = end;
+    for ((name, ra), (_, rb)) in a.iter().zip(&b) {
+        let (mut x, mut y) = (expect[ra.clone()].to_vec(), engine[rb.clone()].to_vec());
+        for m in masked
+            .iter()
+            .filter(|m| m.start >= ra.start && m.end <= ra.end)
+        {
+            let rel = m.start - ra.start..m.end - ra.start;
+            x[rel.clone()].fill(0);
+            if let Some(y) = y.get_mut(rel) {
+                y.fill(0);
+            }
+        }
+        let at: Vec<usize> = (0..x.len().min(y.len()))
+            .filter(|&i| x[i] != y[i])
+            .collect();
+        let size = y.len() as isize - x.len() as isize;
+        out.push(Diff {
+            name: name.clone(),
+            at,
+            size,
+        });
     }
-    out.push(("tail".into(), &bytes[at..]));
-    out
+    Ok(out)
 }
 
-/// Per section name, over the sections paired in order: the bytes that differ and the size change.
-fn compare(old: &[u8], new: &[u8]) -> BTreeMap<String, (usize, isize)> {
-    let (old, mut new) = (sections(old), sections(new));
-    let mut out: BTreeMap<String, (usize, isize)> = BTreeMap::new();
-    let mut take = |name: &str| {
-        let at = new.iter().position(|(n, _)| n == name);
-        at.map_or(&[][..], |i| new.remove(i).1)
-    };
-    for (name, a) in &old {
-        let b = take(name);
-        let same = a.iter().zip(b).filter(|(x, y)| x == y).count();
-        let e = out.entry(name.clone()).or_default();
-        e.0 += a.len().max(b.len()) - same;
-        e.1 += b.len() as isize - a.len() as isize;
+/// Whether the byte `at` of section `name` of the expected file `section` may differ (save games
+/// 15.1 point 3): the show id counter, the last two bytes of `shows`; and in `finances` the load's
+/// own rating check: the first status timer, the rating, and the current month, the current year
+/// and the total of the zoo value, the rating, the animal happiness, the guest happiness and the
+/// guest count.
+fn allowed(name: &str, section: &[u8], at: usize) -> bool {
+    match name {
+        "shows" => at + 2 >= section.len(),
+        "finances" => {
+            let word = |o: usize| u32_at(section, o) as usize;
+            let (rows, columns) = (word(45), word(49));
+            let (month, year) = (word(37).clamp(1, 12) - 1, word(41).min(columns - 1));
+            let cell = |table: usize, n: usize| 53 + 4 * (table + n);
+            (4..8).contains(&at)
+                || (17..21).contains(&at)
+                || [15, 16, 17, 18, 25].iter().any(|&r| {
+                    let cells = [
+                        cell(0, r * 12 + month),
+                        cell(rows * 12, r * columns + year),
+                        cell(rows * (12 + columns), r),
+                    ];
+                    cells.iter().any(|&c| (c..c + 4).contains(&at))
+                })
+        }
+        _ => false,
     }
-    for (name, b) in new {
-        let e = out.entry(name).or_default();
-        (e.0, e.1) = (e.0 + b.len(), e.1 + b.len() as isize);
-    }
-    out
 }
 
-/// The file `member` of the install saved back by a run started on it, or why it is refused.
+fn u32_at(b: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(b[at..at + 4].try_into().unwrap())
+}
+
+/// The file `member` of the install opened as Continue does and saved back at once, or why it is
+/// refused.
 fn resaved(vfs: &crate::vfs::Vfs, cat: Catalogue, member: &str) -> Result<Vec<u8>, String> {
-    resaved_after(vfs, cat, member, |_| {})
+    crate::app::continued_save(vfs, &cat, &vfs.read(member).unwrap())
 }
 
-/// [`resaved`] after `before` has changed the started run (the parity measure steps no run).
+/// The file `member` saved back by a run started on it (a new game's start) after `before` has
+/// changed the run: the parity measure steps no run, a test of a step does.
 fn resaved_after(
     vfs: &crate::vfs::Vfs,
     cat: Catalogue,
@@ -93,28 +220,85 @@ fn resaved_after(
     run.save()
 }
 
-/// A file of version 105 or 106 saved back: the report of its sections, the bytes that differ and
-/// the change of size; `Err` when the writer refuses it; `None` for another version.
-fn measure(vfs: &crate::vfs::Vfs, member: &str) -> Option<Result<(String, usize, isize), String>> {
+/// A file of version 105 or 106 saved back: the report of what differs from the expected file
+/// outside what [`allowed`] names, and whether anything does; `Err` when the writer refuses the
+/// file or it does not have the changes of [`PINS`]; `None` for another version.
+fn measure(vfs: &crate::vfs::Vfs, member: &str) -> Option<Result<(String, bool), String>> {
     let old = vfs.read(member).unwrap();
     let version = Zoo::parse(&old).map_or(0, |z| z.version);
     if !(105..=106).contains(&version) {
         return None;
     }
-    let new = match resaved(vfs, Catalogue::load(vfs).unwrap(), member) {
-        Ok(new) => new,
-        Err(why) => return Some(Err(format!("{member}: v{version} refused: {why}"))),
+    Some(check(vfs, member, &old, version))
+}
+
+fn check(
+    vfs: &crate::vfs::Vfs,
+    member: &str,
+    old: &[u8],
+    version: u32,
+) -> Result<(String, bool), String> {
+    let cat = Catalogue::load(vfs).unwrap();
+    let language = crate::strings::Language::of(vfs.root()).number;
+    let new = resaved(vfs, Catalogue::load(vfs).unwrap(), member)
+        .map_err(|why| format!("{member}: v{version} refused: {why}"))?;
+    let pin = PINS.iter().find(|p| p.0 == member).map_or(&NONE, |p| &p.1);
+    let inputs = Inputs {
+        vfs,
+        cat: &cat,
+        source: old,
+        engine: &new,
+        language,
+        changes: Changes {
+            lengthened: pin.lengthened,
+        },
     };
-    let by = compare(&old, &new);
-    let bytes = by.values().map(|v| v.0).sum::<usize>();
-    let size = new.len() as isize - old.len() as isize;
-    let mut report = format!("{member}: v{version} bytes {bytes} size {size:+}");
-    let mut worst: Vec<_> = by.iter().filter(|(_, v)| v.0 > 0).collect();
-    worst.sort_by_key(|(_, v)| std::cmp::Reverse(v.0));
-    for (name, (bytes, size)) in worst {
-        report += &format!("\n    {name}: bytes {bytes} size {size:+}");
+    let built =
+        build(&inputs).map_err(|why| format!("{member}: v{version} no expected file: {why}"))?;
+    let events: Vec<(u16, usize)> = built.events.iter().map(|(k, n)| (*k, *n)).collect();
+    if (built.dropped, &events[..]) != (pin.dropped, pin.events) {
+        return Err(format!(
+            "{member}: {} records dropped and the events {events:?}, the spec says {} and {:?}",
+            built.dropped, pin.dropped, pin.events
+        ));
     }
-    Some(Ok((report, bytes, size)))
+    let by = diff(&built.bytes, &new, &built.masked).map_err(|why| format!("{member}: {why}"))?;
+    let expect = ranges(&built.bytes)?;
+    let mut report = format!("{member}: v{version}");
+    let mut bad = false;
+    for (d, (_, range)) in by.iter().zip(&expect) {
+        let section = &built.bytes[range.clone()];
+        let loose: Vec<usize> =
+            d.at.iter()
+                .copied()
+                .filter(|&at| !allowed(&d.name, section, at))
+                .collect();
+        if !loose.is_empty() || d.size != 0 {
+            bad = true;
+            report += &format!(
+                "\n    {}: {} bytes differ, first at {:?}, size {:+}",
+                d.name,
+                loose.len(),
+                &loose[..loose.len().min(8)],
+                d.size
+            );
+        }
+    }
+    // The sizes of the two sections the original rewrites are pinned (15.10).
+    let engine = ranges(&new)?;
+    let size_of = |name: &str| engine.iter().find(|s| s.0 == name).map(|s| s.1.len());
+    // The scenario sizes were observed on the English install.
+    let scenario = pin.scenario.filter(|_| language == 1033);
+    for (name, want) in [("research", Some(RESEARCH)), ("scenario", scenario)] {
+        if want.is_some() && size_of(name) != want {
+            bad = true;
+            report += &format!(
+                "\n    {name}: {:?} bytes, the original writes {want:?}",
+                size_of(name)
+            );
+        }
+    }
+    Ok((report, bad))
 }
 
 #[test]
@@ -127,9 +311,9 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
         .into_iter()
         .filter(|m| m.ends_with(".zoo"))
         .collect();
-    // The budgets were measured on the English and French installs: the files of the others
-    // differ in what they store (their language, for one), and a base-only install has few
-    // of version 105 and 106. They are measured and printed, not held to the budgets.
+    // The files of the English and French installs are measured; the others differ in what they
+    // store (their language, for one), and a base-only install has few of version 105 and 106:
+    // they are measured and printed.
     let measured = crate::fixtures::is_measured(&dir);
     let (mut failed, mut checked) = (Vec::new(), 0);
     // Four files at a time: a run loads the whole catalogue.
@@ -138,38 +322,40 @@ fn every_shipped_file_is_saved_back_within_its_budget() {
             let jobs: Vec<_> = group.iter().map(|m| s.spawn(|| measure(&vfs, m))).collect();
             jobs.into_iter().map(|j| j.join().unwrap()).collect()
         });
-        for (member, done) in group.iter().zip(done) {
+        for done in done.into_iter().flatten() {
             match done {
-                None => {}
-                Some(Err(why)) => {
+                Err(why) => {
                     println!("{why}");
-                    if measured && !REFUSED.contains(&member.as_str()) {
-                        failed.push(why);
-                    }
+                    failed.push(why);
                 }
-                Some(Ok((report, bytes, size))) => {
+                Ok((report, bad)) => {
                     println!("{report}");
                     checked += 1;
-                    let pin = BUDGET.iter().find(|b| b.0 == member.as_str());
-                    let (max_bytes, max_size) = pin.map_or(DEFAULT, |b| (b.1, b.2));
-                    if measured && (bytes > max_bytes || size.unsigned_abs() > max_size) {
-                        failed.push(format!(
-                            "{report}\n  budget: bytes {max_bytes} size +-{max_size}"
-                        ));
+                    if bad {
+                        failed.push(report);
                     }
                 }
             }
         }
     }
     assert!(checked >= 10 || !measured, "{checked} files measured");
-    assert!(failed.is_empty(), "over budget:\n{}", failed.join("\n"));
+    assert!(
+        failed.is_empty() || !measured,
+        "differs:\n{}",
+        failed.join("\n")
+    );
 }
 
 #[test]
-fn what_differs_is_counted_by_section() {
+fn what_differs_is_found_by_section_and_the_masked_bytes_are_left_out() {
     let file = super::tests::lean(106);
-    assert!(compare(&file, &file).values().all(|v| *v == (0, 0)));
-    let names: Vec<_> = sections(&file).into_iter().map(|s| s.0).collect();
+    assert!(
+        diff(&file, &file, &[])
+            .unwrap()
+            .iter()
+            .all(|d| d.at.is_empty() && d.size == 0)
+    );
+    let names: Vec<_> = ranges(&file).unwrap().into_iter().map(|s| s.0).collect();
     assert!(names.contains(&"tiles".into()) && names.last().unwrap() == "tail");
     let at = Zoo::sections(&file)
         .unwrap()
@@ -181,9 +367,29 @@ fn what_differs_is_counted_by_section() {
     let mut other = file.clone();
     other[at - 1] ^= 1;
     other.extend([0, 0]);
-    let by = compare(&file, &other);
-    assert_eq!((by["tiles"], by["tail"]), ((1, 0), (2, 2)));
-    assert_eq!(by.values().map(|v| v.0).sum::<usize>(), 3);
+    let by = diff(&file, &other, &[]).unwrap();
+    let find = |name: &str| by.iter().find(|d| d.name == name).unwrap();
+    assert_eq!(
+        (find("tiles").at.clone(), find("tiles").size),
+        (
+            vec![
+                file[..at].len()
+                    - 1
+                    - ranges(&file)
+                        .unwrap()
+                        .iter()
+                        .find(|s| s.0 == "tiles")
+                        .unwrap()
+                        .1
+                        .start
+            ],
+            0
+        )
+    );
+    assert_eq!(find("tail").size, 2);
+    // The byte is left out when it is masked.
+    let masked = diff(&file, &other, std::slice::from_ref(&(at - 1..at))).unwrap();
+    assert!(masked.iter().all(|d| d.at.is_empty()));
 }
 
 #[test]

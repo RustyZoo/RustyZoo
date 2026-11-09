@@ -76,6 +76,19 @@ impl App<'_> {
     /// Writes the game to `path` through a file beside it that is renamed when it is whole, so a
     /// failed save keeps the file that was there.
     fn write_zoo(&mut self, path: &Path) -> Result<(), String> {
+        let bytes = self.saved_bytes()?;
+        let mut aside = path.as_os_str().to_owned();
+        aside.push(".tmp");
+        let aside = PathBuf::from(aside);
+        let done = std::fs::write(&aside, bytes).and_then(|()| std::fs::rename(&aside, path));
+        if done.is_err() {
+            let _ = std::fs::remove_file(&aside);
+        }
+        done.map_err(|e| e.to_string())
+    }
+
+    /// The file the game saves as it is.
+    pub(super) fn saved_bytes(&mut self) -> Result<Vec<u8>, String> {
         let game = self.game.as_mut().ok_or("no game to save")?;
         self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
@@ -90,15 +103,7 @@ impl App<'_> {
         if let Some(scenario) = self.sim.scenario() {
             zoo.set_scenario(scenario.file(), &scenario.states());
         }
-        let bytes = zoo.write(&game.money)?;
-        let mut aside = path.as_os_str().to_owned();
-        aside.push(".tmp");
-        let aside = PathBuf::from(aside);
-        let done = std::fs::write(&aside, bytes).and_then(|()| std::fs::rename(&aside, path));
-        if done.is_err() {
-            let _ = std::fs::remove_file(&aside);
-        }
-        done.map_err(|e| e.to_string())
+        zoo.write(&game.money)
     }
 
     /// Makes `path` the last file: `[user] lastfile` of the menu, or without the menu the file of
