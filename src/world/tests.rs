@@ -117,6 +117,10 @@ fn shape(e: &Entity) -> Option<Shape> {
             kind: Kind::Unit,
             ..NOTHING
         }),
+        "wave" => Some(Shape {
+            kind: Kind::Sparkle,
+            ..NOTHING
+        }),
         "tent" => Some(Shape {
             kind: Kind::Fixed,
             footprint: (4, 2),
@@ -1158,4 +1162,17 @@ fn a_typed_name_replaces_the_old_one_only_with_a_visible_character() {
     }
     world.rename_entity(0, b" New ");
     assert_eq!(name(&world), " New ");
+}
+
+#[test]
+fn a_water_sparkle_holds_no_slot_and_is_no_unit() {
+    let mut world = World::new(zoo(4, 4, (0, 0)), shape);
+    let tile = world.tile_index(1, 1).unwrap();
+    let wave = world.add(entity("wave", 96, 96, 3), None);
+    assert!(wave.is_some());
+    assert!((0..4).all(|q| world.quadrant(tile, q).is_none()));
+    assert!(world.is_empty(tile) && world.units_on(tile).next().is_none());
+    // The slots stay free for an object placed on the same tile.
+    assert!(world.add(entity("tent", 96, 96, 0), None).is_some());
+    assert!(!world.is_empty(tile));
 }

@@ -95,4 +95,22 @@ mod tests {
             assert!(shape(class, "").is_none_or(|s| !s.rubbleable), "{class}");
         }
     }
+
+    #[test]
+    fn a_transient_type_holds_no_slot_whatever_its_class() {
+        let kind = |class, ini| shape(class, ini).map(|s| s.kind);
+        assert_eq!(kind("objects", "cIsTransient=1\n"), Some(Kind::Sparkle));
+        for ini in [
+            "",
+            "cIsTransient=0\n",
+            "cIsTransient=-1\n",
+            "cIsTransient=99999999\n",
+        ] {
+            assert_eq!(kind("objects", ini), Some(Kind::Fixed), "{ini:?}");
+        }
+        // The flag moves no unit, no edge piece and no tank wall.
+        assert_eq!(kind("animals", "cIsTransient=1\n"), Some(Kind::Unit));
+        assert_eq!(kind("fences", "cIsTransient=1\n"), Some(Kind::Edge));
+        assert_eq!(kind("tankwall", "cIsTransient=1\n"), Some(Kind::Wall));
+    }
 }
