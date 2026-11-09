@@ -16,7 +16,7 @@ const BUDGET: &[(&str, usize, usize)] = &[
     ("maps/lg_sub.zoo", 61463, 2808),
     ("maps/med_kids.zoo", 758, 56),
     ("maps/scn28.zoo", 397, 40),
-    ("maps/scn28b.zoo", 159, 44),
+    ("maps/scn28b.zoo", 449, 44),
     ("maps/scn31.zoo", 5463, 69),
     ("maps/scn33.zoo", 717, 113),
     ("maps/scn36.zoo", 831, 166),

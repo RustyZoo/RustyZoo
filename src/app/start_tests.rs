@@ -1818,7 +1818,10 @@ fn full_game_research_lengthens_the_animals_after_they_are_read() {
         .filter(|(b, a)| b.1 > 16000 && a.1 == 16198)
         .collect();
     assert_eq!(grown.len(), 8, "{before:?} {after:?}");
-    // The saved game: its longevity program is complete too, so a second quarter of 16 198.
+    // The saved game (not in every edition): its longevity program is complete too, so a second quarter of 16 198.
+    if !vfs.contains("saved games/test.zoo") {
+        return;
+    }
     let [before, after] = resaved_lives(&dir, "saved games/test.zoo");
     let grown: Vec<_> = (before.iter().zip(&after))
         .filter(|(b, a)| b.1 > 12959 && a.1 == 20247)
