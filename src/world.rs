@@ -50,7 +50,9 @@ pub(crate) use portal::Portal;
 pub(crate) use sparkle::Sparkles;
 pub(crate) use water::Draw;
 pub use wear::Decay;
-pub(crate) use wear::{deteriorates, piece_event};
+#[cfg(test)]
+pub(crate) use wear::deteriorates;
+pub(crate) use wear::piece_event;
 
 /// How an entity takes its place on the map, from its type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
