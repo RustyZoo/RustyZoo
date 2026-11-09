@@ -52,6 +52,7 @@ pub fn interface_command(event: &Event) -> Option<Command> {
         // Only Ctrl+S and Ctrl+L act (input 10); typed letters come as characters.
         Scancode::S => Key::S,
         Scancode::L => Key::L,
+        Scancode::F1 => Key::F1,
         _ => return None,
     };
     let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);

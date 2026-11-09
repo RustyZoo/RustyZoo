@@ -565,7 +565,7 @@ fn commands_have_a_text_form_that_reads_back() {
         "double 1",
         "close now",
         "key",
-        "key f1",
+        "key f2",
         "key enter alt",
         "char",
         "char 256",

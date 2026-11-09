@@ -9,7 +9,7 @@ use crate::timing::ini_whole;
 use crate::ui::layout::DISABLED;
 
 pub(super) const OPTIONS_BUTTON: i32 = 1004;
-pub(super) const HELP_BUTTON: i32 = 1509;
+const HELP_BUTTON: i32 = 1509;
 const FILE_TAB: i32 = 1506;
 const SHORT: i32 = 1520;
 const LONG: i32 = 1521;
@@ -19,8 +19,11 @@ const SCROLL: i32 = 1515;
 const MUSIC: i32 = 1513;
 const VOLUME: i32 = 1511;
 /// The resolution buttons and the sizes they ask for.
-const RESOLUTIONS: [(i32, (i32, i32)); 3] =
-    [(1517, (800, 600)), (1518, (1024, 768)), (1519, (1280, 1024))];
+const RESOLUTIONS: [(i32, (i32, i32)); 3] = [
+    (1517, (800, 600)),
+    (1518, (1024, 768)),
+    (1519, (1280, 1024)),
+];
 const WINDOW_MODE: i32 = 1587;
 const FULL_SCREEN: i32 = 1588;
 /// The terrain blending buttons, the first being level 0.
@@ -128,9 +131,10 @@ fn preset(level: i32) -> (bool, i32, i32, i32) {
 
 impl App<'_> {
     /// Writes `key` of `section` to the settings, to the copy of the ini file and to the user
-    /// folder; with `only_changed`, a value the ini already has is left alone.
-    fn put(&mut self, section: &str, key: &str, value: i32, only_changed: bool) {
-        if only_changed && ini_whole(&self.options.ini, section, key) == Some(value) {
+    /// folder; with a `default`, a value the ini already has (or, with no key, the default) is
+    /// left alone.
+    fn put(&mut self, section: &str, key: &str, value: i32, default: Option<i32>) {
+        if default.is_some_and(|d| self.options.get(section, key, d) == value) {
             return;
         }
         let text = value.to_string();
@@ -183,12 +187,13 @@ impl App<'_> {
         self.tooltip_delay((i64::from(delay) - 1) / 10);
         self.tooltip_duration((i64::from(duration) - 500) / 100);
         self.set_scroll(scroll);
-        self.put("UI", "mouseScrollY", scroll, true);
-        self.put("UI", "mouseScrollX", scroll, true);
+        self.put("UI", "mouseScrollY", scroll, Some(32));
+        self.put("UI", "mouseScrollX", scroll, Some(32));
         self.options.global = crate::music::user_term(volume);
         if (0..4).contains(&level) {
             self.terrain_level(level, true);
         }
+        self.help_build();
     }
 
     /// The tooltip's delay for the slider position `s` (16.2): `10 s + 1` ms.
@@ -216,19 +221,26 @@ impl App<'_> {
 
     /// The terrain preset of `level` (16.5): the renderer blends or not, the map is drawn again
     /// at once, and the four keys are written.
-    fn terrain_level(&mut self, level: i32, only_changed: bool) {
+    fn terrain_level(&mut self, level: i32, start: bool) {
         let (blend, normal, click, drag) = preset(level);
         self.renderer.set_blending(blend);
         if let Some(game) = &mut self.game {
             game.world.touch();
         }
-        for (key, value) in [("level", level), ("drag", drag), ("click", click), ("normal", normal)] {
-            self.put("advanced", key, value, only_changed);
+        let keys = [
+            ("level", level, 2),
+            ("drag", drag, 3),
+            ("click", click, 1),
+            ("normal", normal, 2),
+        ];
+        for (key, value, default) in keys {
+            self.put("advanced", key, value, start.then_some(default));
         }
     }
 
     /// The window shown or hidden since the last look (16.1), and a change of mode or display.
     pub(super) fn options_pass(&mut self) {
+        self.options_start();
         let Some(ui) = self.ui.as_mut().filter(|_| self.game.is_some()) else {
             return;
         };
@@ -239,7 +251,10 @@ impl App<'_> {
             for id in HIDDEN_PANELS {
                 ui.set_hidden(id, true);
             }
-            let enabled = ui.tree.find(FILE_TAB).is_some_and(|i| ui.tree.elements[i].state & DISABLED == 0);
+            let enabled = ui
+                .tree
+                .find(FILE_TAB)
+                .is_some_and(|i| ui.tree.elements[i].state & DISABLED == 0);
             if enabled {
                 ui.select_member(FILE_TAB);
             }
@@ -267,6 +282,8 @@ impl App<'_> {
     fn notice(&mut self, string: i32) {
         let Some(ui) = &mut self.ui else { return };
         let text = to_cp1252(&ui.string(string));
+        self.menu_events
+            .push(format!("options notice {}", ui.string(string)));
         if ui.ask(QUESTION, &text, Buttons::OK) {
             research::exclaim(ui, self.renderer.vfs());
         }
@@ -291,6 +308,16 @@ impl App<'_> {
         }
         ui.reveal(WINDOW_MODE, full);
         ui.reveal(FULL_SCREEN, !full);
+    }
+
+    /// One pass (see `run_pass`). A pass that ends the program saves the main volume as
+    /// `[UI] userAttenuation` (sound 4.3).
+    pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
+        let drew = self.run_pass(now, commands).is_some();
+        if self.quit {
+            self.put("UI", "userAttenuation", self.options.global, Some(0));
+        }
+        drew.then_some(&self.frame)
     }
 
     /// The desktop of the display, as the shell sees it (16.3).
@@ -319,7 +346,7 @@ impl App<'_> {
         if std::mem::replace(&mut self.options.alternate, on) == on {
             return;
         }
-        self.put("UI", "useAlternateCursors", i32::from(on), false);
+        self.put("UI", "useAlternateCursors", i32::from(on), None);
         if let Some(ui) = &mut self.ui {
             ui.pick(if on { MONO } else { COLORED });
         }
@@ -328,8 +355,20 @@ impl App<'_> {
     /// The buttons and sliders of the window that the player used since the last look.
     pub(super) fn options_acted(&mut self) {
         let Some(ui) = &mut self.ui else { return };
-        let buttons = [SHORT, LONG, HIGH, LOW, BIT16, BIT8, COLORED, MONO, WINDOW_MODE, FULL_SCREEN];
+        let buttons = [
+            SHORT,
+            LONG,
+            HIGH,
+            LOW,
+            BIT16,
+            BIT8,
+            COLORED,
+            MONO,
+            WINDOW_MODE,
+            FULL_SCREEN,
+        ];
         let ids: Vec<i32> = (buttons.into_iter())
+            .chain([HELP_BUTTON])
             .chain(RESOLUTIONS.map(|r| r.0))
             .chain(TERRAIN..TERRAIN + 4)
             .collect();
@@ -340,8 +379,20 @@ impl App<'_> {
                 _ => None,
             })
             .collect();
+        let rows: Vec<i32> = (self.ui_actions[self.acted..].iter())
+            .filter_map(|a| match *a {
+                Action::Row(help::LIST, row) => Some(row),
+                _ => None,
+            })
+            .collect();
         for id in pressed {
             self.option_pressed(id);
+        }
+        // A row of the help window's list: its topic.
+        for row in rows {
+            if self.game.is_some() {
+                self.help_show(usize::try_from(row).unwrap_or(usize::MAX));
+            }
         }
         for (id, s) in moved {
             self.option_moved(id, s);
@@ -351,12 +402,12 @@ impl App<'_> {
     fn option_pressed(&mut self, id: i32) {
         let restart = |this: &mut Self, key: &str, value: i32| {
             if this.options.get("advanced", key, 0) != value {
-                this.put("advanced", key, value, false);
+                this.put("advanced", key, value, None);
             }
         };
         match id {
             SHORT | LONG => {
-                self.put("UI", "helpType", i32::from(id == LONG), false);
+                self.put("UI", "helpType", i32::from(id == LONG), None);
                 if let Some(ui) = &mut self.ui {
                     let mut settings = ui.settings();
                     settings.long_help = id == LONG;
@@ -367,14 +418,15 @@ impl App<'_> {
             BIT16 | BIT8 => restart(self, "use8BitSound", i32::from(id == BIT8)),
             COLORED | MONO => self.set_alternate_cursors(id == MONO),
             WINDOW_MODE | FULL_SCREEN => self.mode_pressed(id == FULL_SCREEN),
+            HELP_BUTTON if self.game.is_some() => self.help_open(true),
             t if (TERRAIN..TERRAIN + 4).contains(&t) => self.terrain_level(t - TERRAIN, false),
             _ => {
                 // The sizes are kept for the next start: the game keeps its size while it runs.
                 let Some((_, (w, h))) = RESOLUTIONS.into_iter().find(|r| r.0 == id) else {
                     return;
                 };
-                self.put("user", "screenwidth", w, false);
-                self.put("user", "screenheight", h, false);
+                self.put("user", "screenwidth", w, None);
+                self.put("user", "screenheight", h, None);
                 self.options.checked = None;
             }
         }
@@ -383,7 +435,7 @@ impl App<'_> {
     /// Window Mode or Full Screen: the switch is asked of the shell, only if the display is in
     /// the other state; to a window it is refused when the desktop is not larger than the game
     /// or has 8 bits per pixel (16.3 point 5).
-    fn mode_pressed(&mut self, full: bool) {
+    pub(super) fn mode_pressed(&mut self, full: bool) {
         if full == self.fullscreen {
             return;
         }
@@ -416,16 +468,19 @@ impl App<'_> {
                 }
             }
             MUSIC => {
-                let value = self.options.max_attenuation.saturating_add((100 - s).saturating_mul(50));
-                self.put("UI", "menuMusicAttenuation", value, false);
+                let value = self
+                    .options
+                    .max_attenuation
+                    .saturating_add((100 - s).saturating_mul(50));
+                self.put("UI", "menuMusicAttenuation", value, None);
             }
             DELAY => self.tooltip_delay(s.into()),
             DURATION => self.tooltip_duration(s.into()),
             SCROLL => {
                 let step = scroll_step(s);
                 self.set_scroll(step);
-                self.put("UI", "mouseScrollX", step, false);
-                self.put("UI", "mouseScrollY", step, false);
+                self.put("UI", "mouseScrollX", step, None);
+                self.put("UI", "mouseScrollY", step, None);
             }
             _ => {}
         }

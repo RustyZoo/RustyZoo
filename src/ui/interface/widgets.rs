@@ -206,6 +206,12 @@ impl Interface {
         true
     }
 
+    /// Whether the element `id` is enabled.
+    #[cfg(test)]
+    pub(crate) fn is_enabled(&self, id: i32) -> bool {
+        (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & DISABLED == 0)
+    }
+
     /// Enables or disables the element `id`, leaving the rest of its state; `false` if there is
     /// no such element.
     pub(crate) fn set_enabled(&mut self, id: i32, enabled: bool) -> bool {

@@ -324,6 +324,7 @@ impl App<'_> {
         self.show_pass(now, ticking);
         self.lists_pass(now, ticking);
         self.options_pass();
+        self.help_pass();
         playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         if ui.shown(LAYOUT) && game.panel.clock.due(now, ticking, exhibit::PERIOD) {

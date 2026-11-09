@@ -148,6 +148,15 @@ impl Interface {
         moved.is_some()
     }
 
+    /// The position of the scroll bar `id`.
+    #[cfg(test)]
+    pub(crate) fn slider(&self, id: i32) -> Option<i32> {
+        match &self.tree.elements[self.tree.find(id)?].kind {
+            Kind::ScrollBar(s) => Some(s.bar.position),
+            _ => None,
+        }
+    }
+
     /// The part of bar `i` at a point of the screen.
     pub(super) fn spot(&self, i: usize, (x, y): (i32, i32)) -> Option<Spot> {
         let Kind::ScrollBar(s) = &self.tree.elements[i].kind else {

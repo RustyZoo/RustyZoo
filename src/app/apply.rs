@@ -128,6 +128,13 @@ impl App<'_> {
     fn intercept(&mut self, command: Command) -> bool {
         match command {
             Command::Close => self.close(),
+            // Escape closes the help window first (input 3.2); F1 without Ctrl opens it.
+            Command::Key(Key::Escape, ..) if self.help_shown() && !self.question_open() => {
+                self.help_close();
+            }
+            Command::Key(Key::F1, false, _) if self.game.is_some() && !self.question_open() => {
+                self.help_open(false);
+            }
             // Escape closes the expansion selector's list without a choice (entity types 10.5).
             Command::Key(Key::Escape, ..) if self.selector_open() && !self.question_open() => {
                 if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {

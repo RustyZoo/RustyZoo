@@ -40,7 +40,6 @@ use crate::render::{
 use crate::scenario::Scenario;
 use crate::sim::Sim;
 pub use crate::soundscape::SceneLoop;
-pub use options::Display;
 use crate::soundscape::Soundscape;
 use crate::status::{Finances, STATUS_BUTTON, Words, awards::Awards};
 use crate::terrain::{Tool, habit};
@@ -54,6 +53,7 @@ use crate::ui::layout::{expansion_entries, installed_expansions};
 use crate::world::World;
 use crate::zoo::{Entity, Zoo};
 use ids::*;
+pub use options::Display;
 
 /// Binds `game` (and `ui`) of the zoo being played, or returns from the method without a game.
 /// A macro, not a method: the caller keeps borrowing the other fields of the app (the renderer).
@@ -337,8 +337,9 @@ pub struct App<'a> {
     bare: bool,
     /// What the scenario's triggers changed in the interface.
     marks: crate::scenario::Marks,
-    /// The game options window.
+    /// The game options window and the help window.
     options: options::Options,
+    help: help::Help,
 }
 
 /// The layouts of the game screen that stopping or ending a game hides.
@@ -364,7 +365,6 @@ enum Asked {
     /// the operation.
     Tank,
 }
-
 
 impl<'a> App<'a> {
     /// A game on `zoo` seen through a window of `size` pixels, with the camera the map stores.
@@ -468,6 +468,7 @@ impl<'a> App<'a> {
             bare: false,
             marks: Default::default(),
             options,
+            help: Default::default(),
         })
     }
 
@@ -494,10 +495,6 @@ impl<'a> App<'a> {
             game.funding = Default::default();
             game.world.units.names = names;
             game.awards_page = Awards::default();
-        }
-        // The menu is not there yet when its interface is made: its constructor goes on.
-        if self.menu.is_some() || self.user.is_some() {
-            self.options_start();
         }
     }
 
@@ -530,7 +527,7 @@ impl<'a> App<'a> {
     /// the frame when this pass painted one: a due draw paints only when the camera has moved
     /// since the last frame. A `Quit` ends the game before the rest of the pass: the commands
     /// after it and the timers do not run (main loop 3.1), and neither does any later pass.
-    pub fn pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
+    fn run_pass(&mut self, now: u64, commands: &[Command]) -> Option<&Framebuffer> {
         (self.applied, self.fired, self.drew) = (Vec::new(), IDLE, false);
         self.lines.begin_pass();
         (self.ui_events, self.ui_sounds, self.ui_actions) = (Vec::new(), Vec::new(), Vec::new());
@@ -886,6 +883,7 @@ mod command;
 mod exhibits;
 mod gates;
 mod guest_panel;
+mod help;
 mod history;
 mod ids;
 mod kinds;
@@ -961,6 +959,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod options_tests;
 #[cfg(test)]
 mod unit_lists_tests;
 

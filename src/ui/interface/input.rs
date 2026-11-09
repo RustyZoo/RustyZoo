@@ -461,6 +461,10 @@ impl Interface {
                 .filter_map(|&m| self.tree.find(m))
                 .filter(|&m| self.is_button(m))
                 .collect();
+            // Only the tabs of a window are settled: a set of plain choices keeps what it shows.
+            if members.iter().all(|&m| self.tree.elements[m].action != 3) {
+                continue;
+            }
             let selected = |this: &Self, m: usize| this.tree.elements[m].state & SELECTED != 0;
             let Some(at) = members.iter().position(|&m| selected(self, m)) else {
                 continue;

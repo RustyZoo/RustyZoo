@@ -18,6 +18,12 @@ impl<'a> MapRenderer<'a> {
         self.blending && self.blend.get(usize::from(kind)).copied().unwrap_or(true)
     }
 
+    /// Whether the ground blends its neighbours.
+    #[cfg(test)]
+    pub(crate) fn blending(&self) -> bool {
+        self.blending
+    }
+
     /// Switches the blending of the ground on or off: off, every tile shows its own type.
     pub(crate) fn set_blending(&mut self, on: bool) {
         self.blending = on;

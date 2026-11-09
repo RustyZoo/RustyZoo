@@ -24,9 +24,10 @@ pub enum Key {
     N,
     S,
     L,
+    F1,
 }
 
-const KEY_NAMES: [(&str, Key); 17] = [
+const KEY_NAMES: [(&str, Key); 18] = [
     ("enter", Key::Enter),
     ("escape", Key::Escape),
     ("tab", Key::Tab),
@@ -44,6 +45,7 @@ const KEY_NAMES: [(&str, Key); 17] = [
     ("n", Key::N),
     ("s", Key::S),
     ("l", Key::L),
+    ("f1", Key::F1),
 ];
 
 impl Key {
@@ -74,7 +76,7 @@ pub enum Mouse {
 /// `zoom out`, `grid` (toggle the tile grid), `devmode` (Ctrl+D), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
-/// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
+/// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape, f1,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n, s, l; Ctrl+S saves and Ctrl+L loads) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// `press ID` presses the button with that id as a click would, when it is shown and enabled and no
