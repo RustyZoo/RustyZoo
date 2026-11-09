@@ -5,6 +5,16 @@ use super::{habitat_fence, member, tank_kind};
 use crate::entity::Catalogue;
 use crate::world::Shape;
 
+/// How the entity of type `ty` takes its place: a transient one (a water sparkle or ripple) joins
+/// its tile's list and holds no quadrant (map drawing 9.7.10 point 4.5); a transient tank wall
+/// piece stays an edge.
+pub(crate) fn kind_of(entity: &crate::zoo::Entity, ty: &crate::entity::EntityType) -> Kind {
+    match Kind::of_class(&entity.class) {
+        Kind::Fixed if tank_kind(ty).transient => Kind::Sparkle,
+        kind => kind,
+    }
+}
+
 /// How an entity takes its place on the map, if its type is known.
 pub(crate) fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Option<Shape> {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
@@ -14,7 +24,7 @@ pub(crate) fn shape_of(catalogue: &Catalogue, entity: &crate::zoo::Entity) -> Op
         &bytes(&entity.subtype),
     )?;
     Some(Shape {
-        kind: Kind::of_class(&entity.class),
+        kind: kind_of(entity, ty),
         footprint: (ty.footprint[0], ty.footprint[1]),
         fence: habitat_fence(ty),
         wall: member(ty, "zoowall"),

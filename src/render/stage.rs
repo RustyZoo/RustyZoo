@@ -142,14 +142,7 @@ impl<'a> MapRenderer<'a> {
                 summary.objects_skipped += 1;
                 continue;
             };
-            let kind = match (entity.class.as_str(), entity.type_name.as_str()) {
-                ("objects", "other")
-                    if matches!(entity.subtype.as_str(), "twaterwv" | "frshwav") =>
-                {
-                    Kind::Sparkle
-                }
-                _ => Kind::of_class(&entity.class),
-            };
+            let kind = Kind::of_class(&entity.class);
             if no_units && matches!(kind, Kind::Unit | Kind::Overlay | Kind::Flight) {
                 continue;
             }
@@ -167,7 +160,7 @@ impl<'a> MapRenderer<'a> {
             };
             let [fx, fy, _] = ty.footprint;
             objects.list.push(Object {
-                kind,
+                kind: super::shape::kind_of(entity, ty),
                 x: c.x,
                 y: c.y,
                 z: c.z.clamp(-4096, 4096),
