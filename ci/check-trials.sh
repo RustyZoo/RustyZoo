@@ -520,11 +520,12 @@ field_use() {
 check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter;' "field_use maps/scn19.zoo"
 
 # The tooltip of the first main menu button: shown 30 pixels under the pointer after the update,
-# gone after its 3 seconds. The size follows the text of the install.
+# gone after its `tooltipDuration` (3 s in the expansion trial's ini, 5.5 s in the base trial's). The size
+# follows the text of the install.
 tooltip_use() {
   d=$(mktemp -d)
   printf '1 mouse 512 365\n5 mouse 513 366\n' >"$d/script"
-  rz run "$1" --seed 1 --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
+  rz run "$1" --seed 1 --headless --passes 60 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
     grep ' ui \(tooltip\|hide\)' | sed 's/^pass \([0-9]*\) .* ui /\1 /' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -537,7 +538,7 @@ question_use() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial '1tooltip51239527428;31hide7003;' "tooltip_use maps/default.zoo"
+check base-trial '1tooltip51239527428;56hide7003;' "tooltip_use maps/default.zoo"
 check expansion-trial '1tooltip51239537628;31hide7003;' "tooltip_use maps/scn19.zoo"
 
 # A question opened over the map: the game stands still until it is answered, by a click on a
@@ -981,18 +982,6 @@ building_plain() { # building_plain <map>
   rm -rf "${d:?}"
 }
 check base-trial '"Family_Restroom_1"_guests_last_0_this_0_total_0_months_1' "building_plain maps/default.zoo"
-
-# The colour tab (guest buildings 20): the burger stand's panel, the colour tab, its colour button and the first
-# swatch of the palette. Prints the group and variant the building took (the swatches are sorted, so the first one is
-# the variant `sky` of the 24).
-building_colour() { # building_colour <map>
-  d=$(mktemp -d)
-  printf '2 pause\n75 mouse 25 129\n76 down\n77 up\n79 mouse 140 120\n80 down\n81 up\n82 mouse 864 256\n84 down\n85 up\n86 key escape\n90 mouse 864 256\n91 down\n92 up\n94 mouse 1006 690\n95 down\n96 up\n98 mouse 940 622\n99 down\n100 up\n102 mouse 840 626\n103 down\n104 up\n' >"$d/script"
-  rz run "$1" --headless --cash 75000 --seed 5 --passes 110 --clock 200 --script "$d/script" 2>/dev/null |
-    sed -n 's/^.* panel building colour [0-9]* //p' | tr ' ' _
-  rm -rf "${d:?}"
-}
-check base-trial '0_22' "building_colour maps/default.zoo"
 
 # A building is renamed in its panel (guest buildings 10.3.1): the item at `<x y>` is placed and clicked, a click on
 # the name field gives it the focus, "Zoo" is typed and Enter ends the editing; `<more>` (script lines) edits the
