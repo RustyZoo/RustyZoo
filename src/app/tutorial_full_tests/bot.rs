@@ -55,7 +55,7 @@ impl Play<'_, '_> {
             // It is taken back in the pass of the click, before the goals see the bench.
             (10, 1..) if a == 1075 && self.disabled(a) => {
                 self.after = vec![Command::Press(a)];
-                self.supply(6050, 1);
+                self.supply(6050);
                 self.after.clear();
             }
             // The window of a show opens on the exhibit of a show tank.
@@ -77,12 +77,10 @@ impl Play<'_, '_> {
             // The bulldozer takes out a piece of fence.
             (1, _) => self.delete_fence(),
             // The DRT workers come with the base.
-            (2, 0) if a == 9550 => self.supply(8031, value),
-            (2, 0) => self.supply(a, value),
+            (2, 0) if a == 9550 => self.supply(8031),
+            (2, 0) => self.supply(a),
             (11, _) => self.pick_row(a, b, g.rule[3], value),
-            (3, 0) => {
-                self.exhibit(6);
-            }
+            (3, 0) => self.exhibit(6),
             (3, 1) => self.adopt(),
             (5, 1..=3) => self.improve(b, a, value),
             (6, 1..=3) => self.improve(b, g.rule[3], value),
@@ -174,7 +172,7 @@ impl Play<'_, '_> {
 
     /// One more of the type with the name id `name_id`, as its panel puts it: an animal in the
     /// last exhibit, a path as a strip, the rest near the middle.
-    fn supply(&mut self, name_id: i32, _value: i32) {
+    fn supply(&mut self, name_id: i32) {
         let want = self.types(name_id);
         if !self.choose(&want) {
             return;
@@ -580,28 +578,27 @@ impl Play<'_, '_> {
     }
 
     /// A new exhibit: a square of `n` tiles fenced with four drags, then its name.
-    fn exhibit(&mut self, n: i32) -> bool {
+    fn exhibit(&mut self, n: i32) {
         let cat = self.app.renderer.catalogue();
         let want: Vec<usize> = (0..cat.types.len())
             .filter(|&i| matches!(cat.types[i].class, "fences" | "tankwall"))
             .collect();
         if !self.choose(&want) {
-            return false;
+            return;
         }
         let Some(tool) = self.app.game.as_ref().unwrap().build.tool() else {
-            return false;
+            return;
         };
         let middle = self.middle();
         let spot = around(20)
             .into_iter()
             .map(|(x, y)| (middle.0 + x, middle.1 + y))
             .find(|&at| self.fits(tool, at, n));
-        let Some(at) = spot else { return false };
+        let Some(at) = spot else { return };
         self.look((at.0 + n / 2, at.1 + n / 2));
         for (from, to) in sides(at, n) {
             self.drag(from, to);
         }
-        true
     }
 }
 
