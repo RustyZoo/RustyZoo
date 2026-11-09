@@ -307,6 +307,7 @@ impl Interface {
     }
 
     /// The style of a graph.
+    #[cfg(test)]
     pub(crate) fn graph_style(&self, id: i32) -> Option<GraphStyle> {
         match &self.tree.elements[self.tree.find(id)?].kind {
             Kind::Graph(g) => Some(g.style),

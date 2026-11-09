@@ -987,9 +987,9 @@ mod show_panel_tests;
 #[cfg(test)]
 mod marketing_tests;
 #[cfg(test)]
-mod zoo_window_tests;
-#[cfg(test)]
 mod money_tests;
+#[cfg(test)]
+mod zoo_window_tests;
 
 #[cfg(test)]
 mod undo_tests;

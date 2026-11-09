@@ -92,6 +92,29 @@ impl App<'_> {
         }
     }
 
+    /// An action of a list or a field of the tabs (21.2, 21.4); whether it is one of them.
+    pub(super) fn zoo_window_action(&mut self, action: Action) -> bool {
+        match action {
+            Action::Edited(info::NAME) => self.zoo_rename(),
+            Action::Edited(info::PRICE) => self.zoo_price_typed(),
+            Action::Row(commerce::LIST, row) => self.commerce_row(row),
+            Action::Double(commerce::LIST, _) => self.commerce_double(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// A button of the tabs (the price, the graph switches, the sort); whether it is one of them.
+    pub(super) fn zoo_window_pressed(&mut self, button: i32) -> bool {
+        match button {
+            info::UP | info::DOWN => self.zoo_price_step(button == info::UP),
+            b if graphs::switched(b).is_some() => self.graph_switch(b),
+            b if commerce::BUTTONS.contains(&b) => self.commerce_sorted(b),
+            _ => return false,
+        }
+        true
+    }
+
     /// The zoo name field shows the name of the entrance building and takes the length limit of
     /// the name fields; with no such building it keeps its text (21.2 step 2).
     fn zoo_name_fill(&mut self) {

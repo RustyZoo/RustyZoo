@@ -51,7 +51,8 @@ const RESEARCH_LAYOUT: &str = "[LayoutInfo]\nid=804\nlayer=1\nx=0\ny=0\ndx=300\n
 
 /// The sorted names of the commerce types: 20 and 21 sell, 22 satisfies a need without selling, 23
 /// is an attraction, 24 is the entrance hall.
-const SELLS: &str = "[Characteristics/Integers]\ncCommerce=1\ncPurchaseCost=200\n[Satisfies]\nbuilding\n";
+const SELLS: &str =
+    "[Characteristics/Integers]\ncCommerce=1\ncPurchaseCost=200\n[Satisfies]\nbuilding\n";
 
 fn ty(name: &[u8], ini: &str) -> EntityType {
     let ini = format!("{ini}[Animations]\nidle=dozer/obj.ani\n");
@@ -231,12 +232,18 @@ fn editing_the_zoo_name_renames_the_entrance_building_and_a_blank_name_puts_the_
         // Blank: the field goes back to the last name, the building keeps it.
         for blank in ["", "   "] {
             edit(s, blank);
-            assert_eq!((name_of(s, id), text(s, 4199)), ("Bear Land".into(), "Bear Land".into()));
+            assert_eq!(
+                (name_of(s, id), text(s, 4199)),
+                ("Bear Land".into(), "Bear Land".into())
+            );
         }
         // A tab is a character, which the name setter does not accept as a visible one: the
         // building keeps its name and the field keeps the tab, which a blank text then restores.
         edit(s, "\t");
-        assert_eq!((name_of(s, id), text(s, 4199)), ("Bear Land".into(), "\t".into()));
+        assert_eq!(
+            (name_of(s, id), text(s, 4199)),
+            ("Bear Land".into(), "\t".into())
+        );
         edit(s, "");
         assert_eq!(text(s, 4199), "\t");
     });
@@ -286,7 +293,10 @@ fn the_price_buttons_move_the_price_by_a_quarter_inside_the_range() {
         assert_eq!(price(s), 21.75);
         assert_eq!(text(s, 4190), "$21.75");
         // At the maximum the up button is disabled, at the minimum the down button.
-        let (min, max) = (s.app.sim.status.settings.min_price, s.app.sim.status.settings.max_price);
+        let (min, max) = (
+            s.app.sim.status.settings.min_price,
+            s.app.sim.status.settings.max_price,
+        );
         let off = |s: &mut Session, id| {
             let ui = s.app.interface().unwrap();
             ui.tree.elements[ui.tree.find(id).unwrap()].state & DISABLED != 0
@@ -313,7 +323,10 @@ fn a_typed_price_is_limited_but_the_field_shows_the_typed_number_until_the_next_
         type_in(s, "500");
         // The original's bug: the price and the labels use the limit, the field the typed number.
         assert_eq!(price(s), max);
-        assert_eq!((text(s, 4193), text(s, 4190)), (format!("${max:.2}"), "$500.00".into()));
+        assert_eq!(
+            (text(s, 4193), text(s, 4190)),
+            (format!("${max:.2}"), "$500.00".into())
+        );
         // The refresh writes the field again.
         passes(s, 520);
         assert_eq!(text(s, 4190), format!("${max:.2}"));
@@ -363,7 +376,10 @@ fn the_switch_buttons_give_their_graph_line_or_bar_and_the_graphs_hold_the_accou
         let crate::ui::layout::Kind::Graph(g) = &ui.tree.elements[i].kind else {
             panic!("not a graph");
         };
-        assert_eq!(g.points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(), [(11, 61)]);
+        assert_eq!(
+            g.points.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+            [(11, 61)]
+        );
         assert_eq!(g.symbol, "$");
     });
 }
@@ -382,7 +398,10 @@ fn rows(s: &mut Session) -> Vec<Vec<u8>> {
 }
 
 fn names(s: &mut Session) -> Vec<String> {
-    rows(s).into_iter().map(|r| String::from_utf8(r).unwrap()).collect()
+    rows(s)
+        .into_iter()
+        .map(|r| String::from_utf8(r).unwrap())
+        .collect()
 }
 
 fn show_commerce(s: &mut Session) {
@@ -427,7 +446,10 @@ fn a_sort_button_re_sorts_flips_the_current_key_and_highlights_its_header() {
         // Guests: descending first.
         s.pass(&[Command::Press(4177)]);
         assert_eq!(names(s), ["Amy", "Zed", "Bob"]);
-        assert_eq!((colour(s, 4186), colour(s, 4184)), ([255, 217, 90], [255, 228, 173]));
+        assert_eq!(
+            (colour(s, 4186), colour(s, 4184)),
+            ([255, 217, 90], [255, 228, 173])
+        );
         // The same key again flips it.
         s.pass(&[Command::Press(4177)]);
         assert_eq!(names(s), ["Bob", "Zed", "Amy"]);
@@ -481,7 +503,11 @@ fn a_double_click_hides_the_window_with_a_building_selected_and_a_single_click_d
         let amy = shop(s, BURGER, 5, "Amy", (9, 10.0, 40.0));
         show_commerce(s);
         let move_to = Command::Mouse(Mouse::Move(160, 106));
-        s.pass(&[move_to, Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
+        s.pass(&[
+            move_to,
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ]);
         assert!(s.app.interface().unwrap().shown(14));
         s.pass(&[Command::Mouse(Mouse::Double), Command::Mouse(Mouse::Up)]);
         assert!(!s.app.interface().unwrap().shown(14));
@@ -595,7 +621,10 @@ fn a_completion_adds_a_row_to_the_research_list_once_whether_the_window_is_shown
         completed(s).add(&tree, 2);
         s.pass(&[]);
         assert_eq!(research_rows(s), 2);
-        assert_eq!(completed(s).rows.iter().map(|r| r.0).collect::<Vec<_>>(), [2, 1]);
+        assert_eq!(
+            completed(s).rows.iter().map(|r| r.0).collect::<Vec<_>>(),
+            [2, 1]
+        );
     });
 }
 

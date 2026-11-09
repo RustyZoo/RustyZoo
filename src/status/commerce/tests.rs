@@ -116,8 +116,10 @@ fn sorted(key: usize, ascending: bool) -> Vec<u32> {
         row(3, "a", "w", 5, 20, -5.0),
         row(4, "ab", "x", 2, 20, 50.0),
     ];
-    let mut sort = Sort::default();
-    sort.key = key;
+    let mut sort = Sort {
+        key,
+        ..Sort::default()
+    };
     sort.ascending[key] = ascending;
     order(&mut rows, &sort);
     ids(&rows)
@@ -185,7 +187,7 @@ fn a_click_on_the_current_key_flips_it_and_another_key_keeps_the_direction_it_ha
     assert!(sort.press(4178));
     assert_eq!((sort.key, sort.ascending[3]), (3, false));
     assert!(sort.press(4178));
-    assert_eq!(sort.ascending[3], true);
+    assert!(sort.ascending[3]);
     // Back to the first key: it keeps the direction the flip gave it.
     assert!(sort.press(4175));
     assert_eq!((sort.key, sort.ascending[0]), (0, false));

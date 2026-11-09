@@ -27,7 +27,7 @@ Press pause again and let the game run. A month of 28 to 31 days at 12 s a day l
 
 ## What to look at
 
-- The money bar shows the cash. The zoo status button of the bar along the bottom (or the Z key) opens its window; its first tab is the Finances table, one column per month: admissions, admissions income, construction, animal purchases, upkeep, concessions, wages, donations and the totals.
+- The money bar shows the cash. The zoo status button of the bar along the bottom (or the Z key) opens its window; its first tab is the Finances table, one column per month: admissions, admissions income, construction, animal purchases, upkeep, concessions, wages, donations and the totals. The other tabs hold the zoo name and the admission price (the arrows change it), the history graphs, the list of the shops with their profit and the finished research.
 - Click an animal to see its happiness, hunger, health and how well the exhibit suits it. The exhibit list button shows the exhibits with their recommendations.
 - The status bar shows the happiness of the animals, of the guests and the rating of the zoo, which moves as the zoo grows.
 
