@@ -68,6 +68,8 @@ impl Play<'_, '_> {
                 self.exhibit(3);
             }
             (3, 1) => self.adopt(),
+            (5, 3) => self.improve(a, value),
+            (6, 3) => self.improve(g.rule[3], value),
             (16, _) => self.wall(b, a),
             _ => {}
         }
@@ -212,6 +214,120 @@ impl Play<'_, '_> {
         }
     }
 
+    /// The exhibits where the species with the name id `name_id` lives and the key of its type.
+    fn homes(&self, name_id: i32) -> Vec<(u32, String)> {
+        let world = &self.app.game.as_ref().unwrap().world;
+        let cat = self.app.renderer.catalogue();
+        let species = |t: &crate::entity::EntityType| t.class == "animals" && t.name_id == name_id;
+        let mut homes = Vec::new();
+        for (at, e) in world.zoo.entities.iter().enumerate() {
+            let is = cat.types.iter().any(|t| species(t) && t.type_name == e.type_name.as_bytes());
+            let home = crate::panel::exhibit::animals_exhibit(world, at);
+            if let (true, Some(x)) = (is, home) {
+                if !homes.contains(&(x, e.type_name.clone())) {
+                    homes.push((x, e.type_name.clone()));
+                }
+            }
+        }
+        homes
+    }
+
+    /// One step towards a suitability of `target` for the species `name_id`: the ground painted
+    /// with what it likes best, then a plant or a rock at a time, taken back when it lowered the
+    /// rating.
+    fn improve(&mut self, name_id: i32, target: i32) {
+        let game = self.app.game.as_ref().unwrap();
+        let cat = self.app.renderer.catalogue();
+        let rate = |&(x, ref key): &(u32, String)| {
+            crate::panel::animal::suitability_in(&game.world, cat, x, key)
+        };
+        let low: Vec<_> = (self.homes(name_id).into_iter()).filter(|h| rate(h) < target).collect();
+        let Some((x, key)) = low.first().cloned() else {
+            return;
+        };
+        let now = rate(&low[0]);
+        println!("IMPROVE {name_id} {now}");
+        if let Some((before, t)) = self.last.take() {
+            if now < before {
+                self.press(1075);
+                self.bad.push(t);
+            }
+        }
+        if self.painted.contains(&x) {
+            self.plant(x, &key, now);
+        } else {
+            self.painted.push(x);
+            self.paint(x, &key);
+        }
+    }
+
+    /// The ground of exhibit `x` painted with the terrain the species `key` likes best.
+    fn paint(&mut self, x: u32, key: &str) {
+        let cat = self.app.renderer.catalogue();
+        let ty = cat.types.iter().find(|t| t.class == "animals" && t.type_name == key.as_bytes());
+        let likes = crate::exhibit::rating::Likes::of(ty.unwrap());
+        let kind = (0..likes.terrain.len()).max_by_key(|&k| likes.terrain[k]).unwrap_or(0);
+        if !self.app.ui.as_ref().unwrap().shown(8) {
+            self.press(1002);
+        }
+        self.press(3362);
+        let at = (self.app.game.as_ref().unwrap().terrain.listed().iter())
+            .position(|t| usize::from(t.kind) == kind);
+        if let Some(n) = at {
+            self.press(1_000_000 + 3350 * 1000 + n as i32);
+        }
+        let game = self.app.game.as_ref().unwrap();
+        let width = game.world.zoo.width as usize;
+        let list = game.world.exhibits().get(x).map(|e| e.order.clone()).unwrap_or_default();
+        let tiles: Vec<(i32, i32)> = list.iter().map(|&t| ((t % width) as i32, (t / width) as i32)).collect();
+        let (cx, cy) = tiles.first().copied().unwrap_or((0, 0));
+        self.look((cx, cy));
+        let mut commands = Vec::new();
+        for (tx, ty) in tiles {
+            let (px, py) = self.win(tx * 64 + 32, ty * 64 + 32);
+            commands.extend([Mouse::Move(px, py), Mouse::Down, Mouse::Up].map(Command::Mouse));
+        }
+        self.tick(50, &commands);
+        self.press(3302);
+    }
+
+    /// A plant or a rock the species `key` likes, in exhibit `x`: the best of those on offer,
+    /// then the next ones in turn.
+    fn plant(&mut self, x: u32, key: &str, now: i32) {
+        let cat = self.app.renderer.catalogue();
+        let animal = cat.types.iter().find(|t| t.class == "animals" && t.type_name == key.as_bytes());
+        let likes = crate::exhibit::rating::Likes::of(animal.unwrap());
+        let value = |t: &crate::entity::EntityType| {
+            let (habitat, name) = crate::exhibit::rating::object(t);
+            let of = |id: i32| (likes.objects.iter().rev()).find(|p| p.0 == id).map_or(0, |p| p.1);
+            of(habitat) + of(name)
+        };
+        let game = self.app.game.as_ref().unwrap();
+        let mut want: Vec<(i32, usize)> = (0..cat.types.len())
+            .filter(|&i| matches!(cat.types[i].class, "objects" | "building"))
+            .filter(|&i| game.build.is_available(cat, i))
+            .map(|i| (value(&cat.types[i]), i))
+            .filter(|&(v, i)| {
+                let plain = |key| crate::build::number(&cat.types[i], key) == Some(1.0);
+                v > 0 || (v == 0 && (plain("cFoliage") || plain("cRock")))
+            })
+            .collect();
+        want.sort();
+        want.reverse();
+        want.retain(|w| !self.bad.contains(&w.1));
+        let Some(&(_, t)) = want.get(self.painted.len() % want.len().max(1)) else {
+            return;
+        };
+        let world = &game.world;
+        let width = world.zoo.width as usize;
+        let tile = world.exhibits().get(x).map_or(0, |e| e.order[e.order.len() / 2]);
+        if self.choose(&[t]) {
+            self.last = Some((now, t));
+            self.painted.push(0);
+            self.put(((tile % width) as i32, (tile / width) as i32));
+        }
+    }
+
     /// The held animal goes in an exhibit with no animal, or the last one.
     fn house(&mut self) {
         let game = self.app.game.as_ref().unwrap();
@@ -274,6 +390,14 @@ impl Play<'_, '_> {
     /// Chooses an item of one of `want` (positions in the catalogue) in the panels: the bar
     /// button, the tab, the item. Gives whether one was listed.
     fn choose(&mut self, want: &[usize]) -> bool {
+        let game = self.app.game.as_ref().unwrap();
+        let cat = self.app.renderer.catalogue();
+        let want: Vec<usize> = (want.iter().copied())
+            .filter(|&t| game.build.is_available(cat, t))
+            .collect();
+        if want.is_empty() {
+            return false;
+        }
         for (bar, layout, list, tabs) in PANELS {
             for tab in tabs.iter().map(|&t| Some(t)).chain(tabs.is_empty().then_some(None)) {
                 if !self.app.ui.as_ref().unwrap().shown(layout) {

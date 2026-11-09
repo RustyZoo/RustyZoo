@@ -147,6 +147,12 @@ struct Play<'a, 'b> {
     pass: u64,
     now: u64,
     ended: bool,
+    /// The exhibits whose ground the player painted.
+    painted: Vec<u32>,
+    /// The last plant or rock put in an exhibit, with the rating before it, and those that
+    /// lowered a rating.
+    last: Option<(i32, usize)>,
+    bad: Vec<usize>,
 }
 
 impl<'a, 'b> Play<'a, 'b> {
@@ -159,6 +165,9 @@ impl<'a, 'b> Play<'a, 'b> {
             pass: 0,
             now: 0,
             ended: false,
+            painted: Vec::new(),
+            last: None,
+            bad: Vec::new(),
         }
     }
 
@@ -649,7 +658,7 @@ fn scratch() {
     start(&mut app, &file);
     let mut play = Play::new(&mut app, layout.clone());
     let mut last = None;
-    for i in 0..400 {
+    for i in 0..std::env::var("N").map_or(400, |n| n.parse().unwrap()) {
         let g = play.next_goal().map(|g| g.name);
         play.step();
         if g == last && !play.ended {
