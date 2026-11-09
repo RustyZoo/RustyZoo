@@ -405,6 +405,9 @@ impl MapRenderer<'_> {
             return;
         }
         let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z);
+        // The frame of the held animation (sprite drawing 3.7 point 3).
+        let last = under.sprites[view.file].0.frames.len().saturating_sub(1);
+        let frame = meta.shown.map_or(0, |(_, frame)| frame.min(last));
         let palette = under
             .sprites
             .get(view.file)
@@ -415,7 +418,7 @@ impl MapRenderer<'_> {
             piece: None,
             grid: false,
             lift: 0,
-            pic: Pic::Anim(under, view, palette, 0),
+            pic: Pic::Anim(under, view, palette, frame),
         });
     }
 

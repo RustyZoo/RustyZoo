@@ -369,7 +369,7 @@ fn a_new_base_waits_for_the_loop_in_progress_and_a_cut_ends_it() {
     // With the base showing and nothing queued the cut stays, and takes the next queued sequence.
     anim.cut();
     anim.advance(10, &timing);
-    anim.queue(vec![Entry::new("c", false)]);
+    anim.queue(vec![Entry::new("c", false)], "idle");
     anim.advance(10, &timing);
     assert_eq!(anim.name, "c");
 }
@@ -576,7 +576,7 @@ fn a_stop_at_end_hold_is_never_left() {
     let mut held = Animation::default();
     held.advance(0, &timing);
     held.stop = true;
-    held.queue(vec![Entry::new("a", false)]);
+    held.queue(vec![Entry::new("a", false)], "idle");
     held.advance(5000, &timing);
     held.advance(5000, &timing);
     assert_eq!((held.shown(), held.stopped), (2, true));
@@ -592,7 +592,7 @@ fn set_base_lasts_until_the_next_play() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![Entry::new("a", false)]);
+    anim.queue(vec![Entry::new("a", false)], "idle");
     anim.advance(200, &timing);
     assert_eq!(anim.name, "a");
     // `fSetBase` cuts the sequence and shows the new base at once, from its first frame.
@@ -606,7 +606,7 @@ fn set_base_lasts_until_the_next_play() {
         assert_eq!(anim.name, "b");
     }
     // A play call makes the idle animation the base again.
-    anim.queue(vec![Entry::new("c", false)]);
+    anim.queue(vec![Entry::new("c", false)], "idle");
     anim.advance(200, &timing);
     assert_eq!(anim.name, "c");
     anim.advance(200, &timing);
@@ -631,7 +631,7 @@ fn a_sound_starts_at_the_next_advance() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![sounding("a"), Entry::new("b", false)]);
+    anim.queue(vec![sounding("a"), Entry::new("b", false)], "idle");
     // The entry becomes current at the end of this advance: no sound yet, and none for a step of 0.
     anim.advance(300, &timing);
     assert_eq!(anim.name, "a");
@@ -647,11 +647,14 @@ fn a_sound_starts_at_the_next_advance() {
     // An entry that a long step skips whole never sounds.
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![
-        Entry::new("a", false),
-        sounding("b"),
-        Entry::new("c", false),
-    ]);
+    anim.queue(
+        vec![
+            Entry::new("a", false),
+            sounding("b"),
+            Entry::new("c", false),
+        ],
+        "idle",
+    );
     anim.advance(300, &timing);
     anim.advance(650, &timing);
     assert_eq!((anim.name.as_str(), anim.entry), ("c", 2));
@@ -772,11 +775,14 @@ fn an_animation_a_sequence_names_but_the_type_lacks_ends_it() {
         })
     };
     anim.advance(0, &timing);
-    anim.queue(vec![
-        Entry::new("a", false),
-        Entry::new("zz", false),
-        Entry::new("a", false),
-    ]);
+    anim.queue(
+        vec![
+            Entry::new("a", false),
+            Entry::new("zz", false),
+            Entry::new("a", false),
+        ],
+        "idle",
+    );
     // The type has no base animation: the player takes the sequence at once.
     anim.advance(0, &timing);
     assert_eq!(anim.name, "a");
@@ -798,7 +804,7 @@ fn a_huge_time_is_cut_and_a_huge_step_skips_whole_animations() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue((0..5).map(|_| Entry::new("d", false)).collect());
+    anim.queue((0..5).map(|_| Entry::new("d", false)).collect(), "idle");
     anim.advance(0, &timing);
     // 5 entries of 200 ms; 450 ms skips two and lands 50 ms into the third.
     anim.advance(450, &timing);

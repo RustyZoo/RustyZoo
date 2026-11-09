@@ -320,11 +320,12 @@ impl Animation {
     }
 
     /// Drops the queued sequences and queues `seq` behind the one playing, the base loop
-    /// included: the player takes it when that ends (behaviours 5.2).
-    fn queue(&mut self, seq: Vec<Entry>) {
+    /// included: the player takes it when that ends. `base` is the unit's idle animation
+    /// (behaviours 5.2, 5.10).
+    fn queue(&mut self, seq: Vec<Entry>, base: &str) {
         self.queue.clear();
         self.queue.push_back(seq);
-        self.base = "idle".to_string();
+        self.base = base.to_string();
     }
 
     /// Clears the player and shows `name` from its first frame as the base (`fSetBase`).
@@ -360,6 +361,24 @@ struct Level {
     own: Option<Arc<[Call]>>,
 }
 
+/// The two names the idle animation of a unit is chosen from (behaviours 5.10): `forced` is the
+/// one an egg, a crate or the water gives, which has no fallback; else the type's animation
+/// `named` is taken, and the plain `idle` when the type has none of that name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Rest {
+    pub forced: Option<&'static str>,
+    pub named: &'static str,
+}
+
+impl Default for Rest {
+    fn default() -> Self {
+        Rest {
+            forced: None,
+            named: "idle",
+        }
+    }
+}
+
 /// What a unit needs to run its set.
 pub(crate) struct Env<'a> {
     pub data: &'a dyn Data,
@@ -389,6 +408,9 @@ pub(crate) struct Runner {
     /// a nesting call (tank fauna 9.5): set by the unit before each run.
     pub tank_mode: u8,
     pub wet: bool,
+    /// What the idle animation of the unit depends on (behaviours 5.10): set by the unit before
+    /// each run; not in the state hash.
+    pub rest: Rest,
     /// The guide's task is the talk and not done: its routine does not make idle the base
     /// (behaviours 5.5). Set by the unit before each run.
     pub talking: bool,
@@ -466,6 +488,7 @@ impl Default for Runner {
             place: Place::Land,
             tank_mode: 0,
             wet: false,
+            rest: Rest::default(),
             talking: false,
             moving: None,
             rampage: false,
@@ -931,13 +954,28 @@ impl Runner {
         if entries.is_empty() {
             return false;
         }
+        // The base of the call is the unit's idle animation; without one the call fails.
+        let Some(idle) = self.idle(env) else {
+            return false;
+        };
         let base = anim.shows_base();
-        anim.queue(entries);
+        anim.queue(entries, idle);
         if self.fresh && base {
             anim.finish(&timing);
         }
         (self.playing, self.ready) = (true, false);
         true
+    }
+
+    /// The idle animation of the unit (behaviours 5.10): the forced one when the type has it, else
+    /// the named one, else the plain `idle`; none when the type has none of them.
+    fn idle(&self, env: &Env) -> Option<&'static str> {
+        let has = |name: &str| env.data.timing(env.unit, name).is_some();
+        let Rest { forced, named } = self.rest;
+        match forced {
+            Some(name) => has(name).then_some(name),
+            None => [named, "idle"].into_iter().find(|n| has(n)),
+        }
     }
 
     /// A set picked at random among the rows (behaviours 5.3): one draw, and another after every
