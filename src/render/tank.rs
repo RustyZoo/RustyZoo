@@ -384,7 +384,7 @@ impl MapRenderer<'_> {
     }
 
     /// The underwater picture of an afloat object (sprite drawing 7.8).
-    fn under(&mut self, scene: &Scene, meta: &Meta, o: usize, out: &mut Vec<Placed>) {
+    pub(super) fn under(&mut self, scene: &Scene, meta: &Meta, o: usize, out: &mut Vec<Placed>) {
         let obj = scene.objects[o];
         if (obj.kind == Kind::Unit && meta.mode != 3) || !flag(meta.ty, "cHasUnderwaterSection") {
             return;

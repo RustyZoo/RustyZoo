@@ -1017,6 +1017,118 @@ fn a_unit_is_drawn_with_the_animation_and_frame_it_holds() {
 }
 
 #[test]
+fn a_tank_animal_is_drawn_with_the_animation_and_frame_its_player_holds() {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani =
+        |dir: &str| format!("[animation]\ndir0 = a\ndir1 = {dir}\nanimation = N\n").into_bytes();
+    let names = ["idle", "subidle", "surfidle", "surfswim", "undersurfswim"];
+    let mut files = vec![
+        ("animals.cfg", b"[animals]\nlion = lion.ai\n".to_vec()),
+        (
+            "lion.ai",
+            b"[Animations]\nidle = idle\nsubidle = subidle\nsurfidle = surfidle\nsurfswim = surfswim\nundersurfswim = undersurfswim\n\n[Characteristics/Integers]\ncHasUnderwaterSection = 1\n"
+                .to_vec(),
+        ),
+    ];
+    let paths: Vec<_> = names
+        .iter()
+        .map(|n| (format!("{n}/{n}.ani"), format!("a/{n}/N")))
+        .collect();
+    for (name, (ani_path, sprite_path)) in names.iter().zip(&paths) {
+        files.push((ani_path.as_str(), ani(name)));
+        files.push((
+            sprite_path.as_str(),
+            sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+        ));
+    }
+    let install = Install::new("render-tank-held", &files);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut zoo = tile_with(&[("animals", "lion", "")]);
+    // In a tank (mode 3), at a height that is neither the floor nor the surface.
+    let common = zoo.entities[0].common.as_mut().unwrap();
+    (common.movement_mode, common.z) = (3, 20);
+    let drawn = |shown: Option<(&str, u32)>| {
+        let extra = Extra {
+            shown: (shown.into_iter())
+                .map(|(animation, frame)| Shown {
+                    id: 1,
+                    animation: animation.into(),
+                    frame,
+                })
+                .collect(),
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        let pics: Vec<_> = staged
+            .pictures()
+            .filter_map(|(p, _)| match &p.pic {
+                Pic::Anim(anim, _, _, frame) => Some((anim.set.files[0].clone(), *frame)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pics.len(), 1);
+        pics[0].clone()
+    };
+    let at = |file: &str, frame| (file.to_string(), frame);
+    // What the player holds, whatever the height: its move animation, or its base.
+    assert_eq!(drawn(Some(("surfswim", 2))), at("a/surfswim/N", 2));
+    assert_eq!(drawn(Some(("subidle", 1))), at("a/subidle/N", 1));
+    assert_eq!(drawn(Some(("surfidle", 0))), at("a/surfidle/N", 0));
+    // Nothing held: the plain idle, no rest picture chosen by the height.
+    assert_eq!(drawn(None), at("a/idle/N", 0));
+    // The under picture is named from the directory of the held animation's file, with its frame.
+    let scene = Scene::new(
+        4,
+        4,
+        0,
+        &flat_map(4, 4),
+        vec![Object {
+            z: 20,
+            ..unit_on(1, 1)
+        }],
+    );
+    let under = |name: &str, frame| {
+        let meta = Meta {
+            ty: &catalogue.types[0],
+            colors: &[],
+            life: None,
+            off: false,
+            clock: None,
+            mode: 3,
+            portal: false,
+            food: 0,
+            tint: None,
+            wall: 0,
+            shown: Some((name, frame)),
+            idle: None,
+            look: None,
+        };
+        let mut out = Vec::new();
+        MapRenderer::new(&vfs, &catalogue).under(&scene, &meta, 0, &mut out);
+        out.into_iter()
+            .map(|p| match p.pic {
+                Pic::Anim(anim, _, _, frame) => (anim.set.files[0].clone(), frame),
+                _ => panic!("not an animation"),
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(under("surfswim", 2), [at("a/undersurfswim/N", 2)]);
+    assert_eq!(under("surfswim", 99), [at("a/undersurfswim/N", 2)]);
+    assert!(
+        under("surfidle", 1).is_empty(),
+        "this type has no undersurfidle"
+    );
+}
+
+#[test]
 fn a_trash_can_shows_empty_up_to_12_pieces_and_half_from_13_and_never_full() {
     use crate::sprite::tests::{sized, sprite_file};
     let mut frame = Vec::new();

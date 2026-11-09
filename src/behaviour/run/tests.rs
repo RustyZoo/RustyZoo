@@ -1057,3 +1057,62 @@ fn a_nested_set_is_saved_inside_its_parent() {
         ["fNoSuchCall(a)"]
     );
 }
+
+/// The base a play call of `rest` leaves, `None` when the call fails.
+fn played_base(extra: &[&str], rest: Rest) -> Option<String> {
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    for name in extra {
+        rig.data.timings.insert(
+            name.to_string(),
+            Timing {
+                count: 1,
+                delay: 100,
+            },
+        );
+    }
+    rig.runner.rest = rest;
+    rig.tick(100);
+    (!rig.anim.queue.is_empty()).then(|| rig.anim.base.clone())
+}
+
+#[test]
+fn a_play_call_makes_the_idle_animation_of_the_unit_the_base() {
+    let rest = |forced, named| Rest { forced, named };
+    let base = |extra: &[&str], r| played_base(extra, r);
+    // The plain idle on land.
+    assert_eq!(base(&[], rest(None, "idle")).as_deref(), Some("idle"));
+    // The named idle, or the plain idle when the type has no animation of that name.
+    assert_eq!(
+        base(&["subidle"], rest(None, "subidle")).as_deref(),
+        Some("subidle")
+    );
+    assert_eq!(base(&[], rest(None, "surfidle")).as_deref(), Some("idle"));
+    // The forced idle of an egg, a crate or the water.
+    assert_eq!(
+        base(&["egg_idle", "subidle"], rest(Some("egg_idle"), "subidle")).as_deref(),
+        Some("egg_idle")
+    );
+    assert_eq!(
+        base(&["water_idle"], rest(Some("water_idle"), "idle")).as_deref(),
+        Some("water_idle")
+    );
+}
+
+#[test]
+fn a_play_call_fails_when_the_unit_has_no_idle_animation() {
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)", "fPlay(c)"])]);
+    rig.runner.rest = Rest {
+        forced: Some("box_idle"),
+        named: "idle",
+    };
+    // The type has `idle` but not the crate idle: no fallback, the call fails and ends the set.
+    rig.tick(100);
+    rig.tick(100);
+    assert!(!rig.runner.running() && rig.anim.queue.is_empty());
+    // With no idle at all the call fails too.
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    rig.data.timings.remove("idle");
+    rig.tick(100);
+    rig.tick(100);
+    assert!(!rig.runner.running() && rig.anim.queue.is_empty());
+}
