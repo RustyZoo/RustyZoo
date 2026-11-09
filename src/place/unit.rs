@@ -48,7 +48,7 @@ const NOT_FOR_STAFF: i32 = 10563;
 const NOT_ON_WATER_UNIT: i32 = 10569;
 /// The tank point looks `48 + maximumTankHeight` steps toward the viewer (unit placing 5.1).
 const TANK_STEPS: i32 = 48;
-/// Eggs must be placed on land.
+/// The message of an egg on water or in a tank.
 const EGG_ON_LAND: i32 = 10570;
 /// The crate search goes this far, in tiles of Manhattan distance (unit placing 9.3).
 const CRATE_RANGE: i32 = 50;
