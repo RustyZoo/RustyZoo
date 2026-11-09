@@ -22,7 +22,14 @@ export RUSTYZOO_ENGLISH_DATES=1 # the same dates (and frames) whatever the syste
 # trial ships (the trials keep only the folder of its animation): the picture is left out, as the
 # game does, and that one warning is dropped here. Every other warning is printed.
 missing_update_picture='rustyzoo: warning: picture ui/sharedui/updatbck.tga: no such member: ui/sharedui/updatbck.tga'
-rz() { "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_picture" >&2); }
+# A `run` without --seed takes its seed from the wall clock, so a rare seed can fail the line: it is refused
+# (the script fails at the end), except a replay (the seed is in the log) and `wallclock=1 rz run ...`.
+rz() {
+  if [ "${1:-}" = run ] && [ -z "${wallclock:-}" ]; then
+    case " $* " in *" --seed "* | *" --replay "*) ;; *) echo "FAILED: run without --seed: $*" >&2; : >"$tmp/unseeded" ;; esac
+  fi
+  "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_picture" >&2)
+}
 
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
 # scrolls, a rotation and the zoom in and out (-2, 0 and 2), the game paused so that the units
@@ -31,7 +38,7 @@ rz() { "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_pict
 same_frames() {
   d=$(mktemp -d)
   printf '0 pause\n1 scroll 1 1\n2 rotate cw\n3 scroll -1 0\n4 zoom in\n5 scroll 1 0\n6 zoom out\n7 zoom out\n8 scroll 0 1\n' >"$d/script"
-  rz run "$1" --headless --bare --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
+  rz run --seed 1 "$1" --headless --bare --passes 9 --clock 20 --script "$d/script" --png-every 1 --out "$d" |
     sed -n 's/^pass \([0-9]*\) .* draw [0-9a-f]\{16\} view=\(-*[0-9]*\),\(-*[0-9]*\) rotation=\([0-3]\) zoom=\(-*[0-9]*\).*/\1 \2 \3 \4 \5/p' |
     while read -r pass x y rotation zoom; do
       rz render-map "$1" "$d/ref.png" --rotation "$rotation" --zoom "$zoom" --view "$x" "$y" 1024 768 >/dev/null || { echo failed; continue; }
@@ -48,7 +55,7 @@ same_frames() {
 windowed() {
   d=$(mktemp -d)
   printf '4 scroll 1 1\n12 rotate cw\n20 scroll -1 0\n' >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" |
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 "$1" --passes 30 --script "$d/script" --log "$d/log" |
     sed -n -e 's/^game \([0-9x]*\) factor \([0-9]*\)$/\1,\2/p' \
       -e 's/^window \([0-9x]*\) pixels \([0-9x]*\) output \([0-9x]*\)$/\1,\2,\3/p' | tr '\n' ,
   awk '/ draw [0-9a-f]{16} /{n++} END{printf (n >= 4 ? "frames," : "few,")}' "$d/log"
@@ -63,7 +70,7 @@ windowed() {
 fullscreen() {
   d=$(mktemp -d)
   printf '3 fullscreen on\n8 zoom in\n14 fullscreen off\n18 zoom in\n' >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 30 --script "$d/script" --log "$d/log" >/dev/null
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 "$1" --passes 30 --script "$d/script" --log "$d/log" >/dev/null
   sed -n -E 's/^pass [0-9]+ t=[0-9]+ fullscreen (on|off)$/\1/p' "$d/log" | tr '\n' ,
   awk '/ draw /{z=$NF} END{printf "%s,", z}' "$d/log"
   if rz run "$1" --headless --replay "$d/log" | cmp -s - "$d/log"; then echo same; else echo different; fi
@@ -200,7 +207,7 @@ done
 menu_click() {
   d=$(mktemp -d)
   printf '1 mouse 512 365\n2 down\n3 mouse 5 5\n4 mouse 512 365\n5 up\n' >"$d/script"
-  rz run "$1" --headless --passes 8 --clock 20 --show 26 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 8 --clock 20 --show 26 --script "$d/script" 2>/dev/null |
     grep ' ui ' | cut -d' ' -f4- | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -217,7 +224,7 @@ startup() {
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini" # the movies are checked below
   printf '1 mouse 512 %s\n2 down\n3 up\n' "$1" >"$tmp/exit"
-  rz run --headless --passes 6 --clock 20 --script "$tmp/exit" 2>/dev/null |
+  rz run --seed 1 --headless --passes 6 --clock 20 --script "$tmp/exit" 2>/dev/null |
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
   sed -n 's/^progresscalls=//p' "$tmp/user/zoo.ini"
 }
@@ -229,7 +236,7 @@ last() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
-  rz run --headless --passes 1 --clock 20 2>/dev/null | sed -n 's/^pass 0 t=0 menu continue //p'
+  rz run --seed 1 --headless --passes 1 --clock 20 2>/dev/null | sed -n 's/^pass 0 t=0 menu continue //p'
   sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
 }
 check base-trial 'enableddefault.zoo,maps\default.zoo' 'last "maps\\default.zoo" | tr -d " \n" | sed "s/maps/,maps/"'
@@ -303,7 +310,7 @@ scenario_screen() { # scenario_screen <script after the click on the button>
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n%b\n' "$1" >"$tmp/scn"
-  rz run --headless --passes 12 --clock 100 --script "$tmp/scn" 2>/dev/null |
+  rz run --seed 1 --headless --passes 12 --clock 100 --script "$tmp/scn" 2>/dev/null |
     awk '/ menu scenarios /{n=$6} / menu scenario [a-z][a-z] /{s=s","$7} / menu scenario select /{if(!p)p=$8":"$NF} / menu play scenario /{y=$NF} END{print n s","p","y}'
 }
 check base-trial '2,playable,playable,playable:enabled,' 'scenario_screen ""'
@@ -320,7 +327,7 @@ tutorial_start() {
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n4 mouse 146 438\n5 down\n6 up\n7 double\n8 up\n25 key enter\n40 key enter\n' >"$tmp/tut"
-  rz run --headless --passes 46 --clock 100 --script "$tmp/tut" 2>/dev/null |
+  rz run --seed 1 --headless --passes 46 --clock 100 --script "$tmp/tut" 2>/dev/null |
     awk '/ sim scenario popup 45100 modal/{if(!first)first=$2}
       / ui ask 45100/{asks++}
       / ui answer 1/{n++; if(n==2)last=$2}
@@ -341,7 +348,7 @@ freeform_screen() {
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n' >"$tmp/free"
-  rz run --headless --passes 5 --clock 100 --script "$tmp/free" 2>/dev/null |
+  rz run --seed 1 --headless --passes 5 --clock 100 --script "$tmp/free" 2>/dev/null |
     awk '/ menu freeform /{n=$NF} / menu cash /{c=$6":"$7} END{print n","c}'
 }
 check base-trial '1,75000:middle' 'freeform_screen'
@@ -350,16 +357,16 @@ check expansion-trial '1,75000:middle' 'freeform_screen'
 # Play on the freeform screen (its button at y 405, Play at 831,657) starts the map of the list with the
 # cash of the screen: the map and the cash the game starts with. With --seed, the game started there
 # is a test run too: the seconds of the seedings, at the start of the program and of the map.
-freeform_play() { # freeform_play [flags]: the log
+freeform_play() { # freeform_play <seed>: the log
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n' >"$tmp/play"
-  rz run --headless --passes 8 --clock 100 --script "$tmp/play" "$@" 2>/dev/null
+  rz run --headless --passes 8 --clock 100 --script "$tmp/play" --seed "$1" 2>/dev/null
 }
-check base-trial 'freeformcash75000maps/default.zoo' "freeform_play | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
-check expansion-trial 'freeformcash75000maps/sm_aqua.zoo' "freeform_play | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
-check base-trial '5,6' "freeform_play --seed 5 | sed -n 's/^pass [0-9]* t=[0-9]* sim seed //p' | paste -sd, -"
+check base-trial 'freeformcash75000maps/default.zoo' "freeform_play 1 | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
+check expansion-trial 'freeformcash75000maps/sm_aqua.zoo' "freeform_play 1 | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p'"
+check base-trial '5,6' "freeform_play 5 | sed -n 's/^pass [0-9]* t=[0-9]* sim seed //p' | paste -sd, -"
 
 # From the menu into a game and back: Continue (at y) opens `[user] lastfile` as a saved game,
 # Escape asks (leave), No shows the menu again (the music starts again), Continue once more, then
@@ -370,12 +377,12 @@ game_round() { # game_round <y of Continue> <last file>
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n10 key escape\n12 key n\n20 mouse 512 %s\n21 down\n22 up\n30 close\n32 key n\n' "$1" "$1" >"$tmp/round"
-  rz run --headless --passes 40 --clock 100 --script "$tmp/round" 2>/dev/null |
+  rz run --seed 1 --headless --passes 40 --clock 100 --script "$tmp/round" 2>/dev/null |
     awk '/ menu game /{g=g (g?";":"") $6" "$7} / step 200 /{c++} / menu music restart/{m++} END{print g","c","m}'
 }
 # --bare is for a run of a map.
-check base-trial 2 'rz run --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
-check base-trial 0 'rz run maps/default.zoo --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
+check base-trial 2 'rz run --seed 1 --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
+check base-trial 0 'rz run --seed 1 maps/default.zoo --headless --bare --passes 1 --clock 1 >/dev/null 2>&1; echo $?'
 check base-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'game_round 489 "maps\\default.zoo"'
 # The expansion trial's maps all name freeform/ff01.scn, which the trial does not ship: a saved game
 # whose scenario file is missing is refused (the original refuses them through Continue too), so the
@@ -391,7 +398,7 @@ saved_round() { # saved_round <y of Continue>
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n10 save %s\n' "$saved" >"$tmp/make"
-  rz run --headless --passes 12 --clock 100 --script "$tmp/make" >/dev/null
+  rz run --seed 1 --headless --passes 12 --clock 100 --script "$tmp/make" >/dev/null
   game_round "$1" "$saved"
 }
 check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,1' 'saved_round 474'
@@ -402,7 +409,7 @@ play_map() { # play_map <y of the menu button>
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' 'maps\\default.zoo' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n' "$1" >"$tmp/play"
-  rz run --headless --passes 10 --clock 100 --script "$tmp/play" 2>/dev/null | awk '/ menu game start /{print $7" "$8" "$NF}'
+  rz run --seed 1 --headless --passes 10 --clock 100 --script "$tmp/play" 2>/dev/null | awk '/ menu game start /{print $7" "$8" "$NF}'
   sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
 }
 check base-trial 'scenarioaamaps/scn01a.zoo,' 'play_map 365 | paste -sd, -'
@@ -410,13 +417,13 @@ check base-trial 'freeformcashmaps/default.zoo,' 'play_map 405 | paste -sd, -'
 check expansion-trial 'freeformcashmaps/sm_aqua.zoo,' 'play_map 405 | paste -sd, -'
 # A run of a map ends in the same state as a Continue: Escape asks, and No ends the run, there being
 # no menu to go back to.
-check base-trial 'askleave;exit' 'printf "3 key escape\n5 key n\n" > "$tmp/esc"; rz run maps/default.zoo --headless --passes 8 --clock 100 --script "$tmp/esc" 2>/dev/null | awk "/ menu game /{g=g (g?\";\":\"\") \$6\" \"\$7} END{print g}"'
+check base-trial 'askleave;exit' 'printf "3 key escape\n5 key n\n" > "$tmp/esc"; rz run --seed 1 maps/default.zoo --headless --passes 8 --clock 100 --script "$tmp/esc" 2>/dev/null | awk "/ menu game /{g=g (g?\";\":\"\") \$6\" \"\$7} END{print g}"'
 # The same in a window of the dummy video driver: the log replays headless to the same lines.
 windowed_game() { # windowed_game <y of Continue> <last file>
   d=$(mktemp -d)
   printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
   printf '3 mouse 512 %s\n5 down\n6 up\n12 key escape\n14 key n\n24 mouse 512 %s\n25 down\n26 up\n32 close\n34 key n\n' "$1" "$1" >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 60 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 --size 1024x768 --passes 60 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   grep -c 'menu game start' "$d/log"
   if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
@@ -430,7 +437,7 @@ check expansion-trial 0,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -
 windowed_menu() {
   d=$(mktemp -d)
   printf '3 mouse 512 %s\n5 down\n6 up\n' "$1" >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   grep -c 'menu exit' "$d/log"
   if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
@@ -447,7 +454,7 @@ check expansion-trial 1,same 'windowed_menu 600 | paste -sd, -'
 intro() {
   rm -rf "$tmp/user"
   printf '12 %s\n' "${1:-pause}" >"$tmp/skip"
-  rz run --headless --passes 400 --clock 20 --script "$tmp/skip" 2>/dev/null |
+  rz run --seed 1 --headless --passes 400 --clock 20 --script "$tmp/skip" 2>/dev/null |
     awk '/^startup movie/{m=$3","$4","$6} / movie [A-Z.]* frame [0-9]/{n++; if(!h)h=$NF} / movie [A-Z.]* frame 40 /{f=$NF} / movie .* (end|skipped)$/{e=$2"@"$NF} /menu continue/{c=$2} END{print m","h","n","f","e","c}'
 }
 check expansion-trial 'BFLOGO.AVI,82,6833,face601842022325,3,,12@skipped,13' 'intro "key enter"'
@@ -459,7 +466,7 @@ check base-trial ',,,,,0' 'intro "key enter"'
 windowed_intro() {
   d=$(mktemp -d)
   printf '10 skip\n' >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   grep -c 'movie BFLOGO.AVI skipped' "$d/log"
   if rz run --headless --replay "$d/log" 2>/dev/null | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
@@ -477,7 +484,7 @@ credits() { # credits <y of the button> <passes> <pass of the click on Exit>
   mkdir -p "$tmp/user"
   printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n%s mouse 512 664\n%s down\n%s up\n' "$1" "$3" "$3" "$3" >"$tmp/credits"
-  rz run --headless --passes "$2" --clock 66 --script "$tmp/credits" 2>/dev/null |
+  rz run --seed 1 --headless --passes "$2" --clock 66 --script "$tmp/credits" 2>/dev/null |
     awk '/menu credits page/{n++; if(n==1)f=$2; if(n==2)p=$2; if(n==3)q=$2} /menu credits (end|closed)/{e=$2"@"$NF} END{print n","f","p","q","e}'
 }
 check expansion-trial '16,3,125,247,1955@end' 'credits 559 2200 9999'
@@ -490,7 +497,7 @@ check base-trial ',,,,' 'credits 574 300 131'
 list_use() {
   d=$(mktemp -d)
   printf '1 mouse 474 600\n2 down\n3 up\n4 mouse 474 400\n5 down\n6 up\n7 mouse 474 140\n8 down\n9 up\n10 mouse 132 146\n11 wheel 1\n12 down\n13 up\n14 key down\n' >"$d/script"
-  rz run "$1" --headless --passes 16 --clock 100 --show 39 --rows 11504 40 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 16 --clock 100 --show 39 --rows 11504 40 --script "$d/script" 2>/dev/null |
     grep ' ui \(scroll\|row\|select\|focus\)' | cut -d' ' -f5- | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -505,7 +512,7 @@ check expansion-trial "$list" "list_use maps/scn19.zoo"
 field_use() {
   d=$(mktemp -d)
   printf '2 mouse 418 652\n3 down\n4 up\n5 char 55\n6 char 120\n7 key left\n8 key left shift\n9 char 57\n10 key enter\n' >"$d/script"
-  rz run "$1" --headless --passes 12 --clock 100 --show 39 --text 11510 1234 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 12 --clock 100 --show 39 --text 11510 1234 --script "$d/script" 2>/dev/null |
     grep ' ui \(focus\|text\|unfocus\|key\)' | cut -d' ' -f5- | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -517,7 +524,7 @@ check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter
 tooltip_use() {
   d=$(mktemp -d)
   printf '1 mouse 512 365\n5 mouse 513 366\n' >"$d/script"
-  rz run "$1" --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
     grep ' ui \(tooltip\|hide\)' | sed 's/^pass \([0-9]*\) .* ui /\1 /' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -525,7 +532,7 @@ tooltip_use() {
 question_use() {
   d=$(mktemp -d)
   printf '%b\n' "$2" >"$d/script"
-  rz run "$1" --headless --passes 8 --clock 100 --ask 45000 "$3" --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 8 --clock 100 --ask 45000 "$3" --script "$d/script" 2>/dev/null |
     grep ' ui \(ask\|answer\)\|^pass [0-9]* t=[0-9]* step ' | sed 's/^pass \([0-9]*\) t=[0-9]* \(ui \)\{0,1\}/\1 /' | sed 's/step [0-9]* [-0-9]* [:.0-9]*/step/' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
@@ -548,14 +555,14 @@ check expansion-trial 9same "same_frames maps/scn19.zoo"
 check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
 # A run on the wall clock (no --seed) tells the seconds that seeded its generator, and its replay uses
 # them: the animals draw, and the replay gives the same log.
-check base-trial same 'g=$(mktemp); rz run maps/scn01a.zoo --headless --passes 600 --clock 67 >"$g"; grep -q "sim seed" "$g" && rz run maps/scn01a.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$g"'
+check base-trial same 'g=$(mktemp); wallclock=1 rz run maps/scn01a.zoo --headless --passes 600 --clock 67 >"$g"; grep -q "sim seed" "$g" && rz run maps/scn01a.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$g"'
 
 # The dummy video driver has no pointer: a scripted pointer inside the map, away from the edge
 # bands, leaves the view where the map stores it for every pass. Prints the distinct views drawn.
 windowed_view() {
   d=$(mktemp -d)
   printf '1 pointer 500 400\n' >"$d/script"
-  SDL_VIDEO_DRIVER=dummy rz run "$1" --passes 8 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 "$1" --passes 8 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   sed -n 's/.* draw [0-9a-f]\{16\} view=\([-0-9]*,[-0-9]*\) .*/\1/p' "$d/log" | sort -u | paste -sd' ' -
   rm -rf "${d:?}"
 }
@@ -568,7 +575,7 @@ windowed_save() {
   d=$(mktemp -d)
   printf '20 key s ctrl\n25 char N\n26 char u\n27 char i\n28 char t\n40 key enter\n80 quit\n' >"$d/script"
   rm -rf "$tmp/user"
-  SDL_VIDEO_DRIVER=dummy rz run "$1" --size 800x600 --passes 120 --script "$d/script" --log "$d/log" >/dev/null 2>&1
+  SDL_VIDEO_DRIVER=dummy rz run --seed 1 "$1" --size 800x600 --passes 120 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   sed -n 's|^lastfile=.*[/\\]||p' "$tmp/user/zoo.ini"
   rm -rf "${d:?}"
 }
@@ -580,11 +587,11 @@ check base-trial on,off,zoom=2,same "fullscreen maps/default.zoo"
 check expansion-trial on,off,zoom=2,same "fullscreen maps/scn19.zoo"
 # The read-back of the presented pixels runs on the dummy video driver; the values are information,
 # so only the size of the picture read back is checked.
-check base-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
-check expansion-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
+check base-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run --seed 1 maps/default.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
+check expansion-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run --seed 1 maps/scn19.zoo --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
 # No sound system is silence with a warning, not a failed run; no pass at all is refused.
-check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run maps/default.zoo --passes 3 >/dev/null 2>&1; echo $?'
-check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 0 >/dev/null 2>&1; echo $?'
+check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run --seed 1 maps/default.zoo --passes 3 >/dev/null 2>&1; echo $?'
+check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run --seed 1 maps/default.zoo --passes 0 >/dev/null 2>&1; echo $?'
 
 # WAV files decoded: files, ok, failed; the counts per format (sample type, rate, channels).
 check base-trial 48,48,0 "rz check-wavs | tail -1 | grep -o '[0-9]*' | paste -sd, -"
@@ -606,13 +613,13 @@ check expansion-trial sounds/mainmenu.wav:U822050Hz2ch,gain0.999,queued940914byt
 # steps of 0.33 dB and the music stops at the next one; headless, then in a window (800 passes of
 # the real clock outlast the fade of 6.3 s), where the music is really stopped. After 30 passes a
 # window still plays it and has queued more of it.
-fade='rz run $map --headless --passes 100 --clock 66 | awk "/ music fade/{n++; g=\$NF} / music stopped/{s=\$2} END{print n\"steps,gain\"g\",stopped@\"s}"'
+fade='rz run --seed 1 $map --headless --passes 100 --clock 66 | awk "/ music fade/{n++; g=\$NF} / music stopped/{s=\$2} END{print n\"steps,gain\"g\",stopped@\"s}"'
 for trial in base-trial expansion-trial; do
   map=maps/default.zoo; [ $trial = expansion-trial ] && map=maps/scn19.zoo
   check $trial 90steps,gain0.104,stopped@95 "$fade"
 done
-check base-trial musicstopped "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 800 | tail -1 | sed 's/^music /music/'"
-check base-trial musicgain0.999 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --passes 30 | tail -1 | cut -d' ' -f1-3 | sed 's/ //'"
+check base-trial musicstopped "SDL_VIDEO_DRIVER=dummy rz run --seed 1 maps/default.zoo --passes 800 | tail -1 | sed 's/^music /music/'"
+check base-trial musicgain0.999 "SDL_VIDEO_DRIVER=dummy rz run --seed 1 maps/default.zoo --passes 30 | tail -1 | cut -d' ' -f1-3 | sed 's/ //'"
 
 # Text drawn without game data: a wrapped, centred, shadowed message (smoothed bold glyphs) and a
 # smoothed bold one with a 2 pixel shadow have the same pixels, so the same hash, on every system.
@@ -692,7 +699,7 @@ check expansion-trial 6,49250,06b9062d07380ef5 "fence_drag maps/scn19.zoo '878 3
 reference_drag() { # reference_drag <map>
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n8 mouse 760 330\n9 down\n10 mouse 792 346\n11 mouse 824 362\n12 mouse 888 362\n13 mouse 920 346\n14 up\n15 mouse 920 346\n" >"$d/script"
-  rz run "$1" --headless --passes 17 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 17 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world add /{printf "%s,%s,%s;", $7, $8, $9} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print c "," h}'
   rm -rf "$d"
 }
@@ -705,7 +712,7 @@ check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side
 exhibit_close() { # exhibit_close <map> [key] [grep pattern]: the key is the answer to the question of a tank, Enter by default
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 char L\n33 char i\n34 char o\n35 char n\n36 key ${2:-enter}\n" >"$d/script"
-  rz run "$1" --headless --passes 41 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 41 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     grep "${3:-t=[0-9]* exhibit \| tool tank }" | cut -d' ' -f5- | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
@@ -723,7 +730,7 @@ check expansion-trial 'tank_ask;tank_2_height_5_level_0_show_0_salt_1_purity_100
 tank_water() { # tank_water <map>: the levels the log tells
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 key enter\n" >"$d/script"
-  rz run "$1" --headless --passes 80 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 80 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ exhibit tank /{printf "%s%s", n++ ? "," : "", $10} END{print ""}'
   rm -rf "$d"
 }
@@ -760,7 +767,7 @@ check expansion-trial "building/building/bounce,35,46,4;message10555;49900;e638f
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
   printf '1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n7 mouse 400 380\n8 down\n9 up\n' >"$d/script"
-  rz run "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null | awk '/ world add /{print $6 "," $7}'
+  rz run --seed 1 "$1" --headless --passes 12 --clock 20 --script "$d/script" 2>/dev/null | awk '/ world add /{print $6 "," $7}'
   rm -rf "$d"
 }
 check expansion-trial "building/building/bounce,33,42" "walkable_place maps/scn19.zoo"
@@ -777,7 +784,7 @@ gate_move() { # gate_move <map> [yes]: with `yes` the square is a tank and its q
   printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n" >"$d/script"
   if [ $s = 1 ]; then printf "32 key enter\n" >>"$d/script"; fi
   printf "$((32 + s)) char L\n$((33 + s)) char i\n$((34 + s)) char o\n$((35 + s)) char n\n$((36 + s)) key enter\n$((38 + s)) mouse 110 282\n$((39 + s)) down\n$((40 + s)) up\n$((42 + s)) mouse 727 308\n$((43 + s)) down\n$((44 + s)) up\n" >>"$d/script"
-  rz run "$1" --headless --passes $((48 + s)) --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes $((48 + s)) --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     grep ' world ungate \| world gate \| exhibit gate ' | cut -d' ' -f4- | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
@@ -791,7 +798,7 @@ check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal
 undo_path() { # undo_path <map>
   d=$(mktemp -d)
   printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 mouse 185 100\n20 key backspace\n" >"$d/script"
-  rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world remove .* undo$/{n++} / money cash /{c=$6} / draw [0-9a-f]/{if ($2 == 6) a=$5; b=$5} END{print n "," c "," (a == b ? "same" : "different")}'
   rm -rf "$d"
 }
@@ -800,7 +807,7 @@ check expansion-trial "7,50000,same" "undo_path maps/scn19.zoo"
 undo_area() { # undo_area <map>
   d=$(mktemp -d)
   printf "0 pause\n1 mouse 25 35\n2 down\n3 up\n4 mouse 185 100\n5 down\n6 up\n8 mouse 600 400\n9 down\n10 mouse 632 384\n11 mouse 824 384\n12 up\n13 key delete\n14 mouse 580 380\n15 down\n16 mouse 700 360\n17 mouse 800 400\n18 up\n19 key backspace\n" >"$d/script"
-  rz run "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 24 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     awk '/ world add .* undo$/{n++} / money cash /{c=$6} END{print n "," c}'
   rm -rf "$d"
 }
@@ -814,7 +821,7 @@ check expansion-trial "14,49920" "undo_area maps/scn19.zoo"
 panel_gate() { # panel_gate <map>
   d=$(mktemp -d)
   printf "1 mouse 25 35\n2 down\n3 up\n4 mouse 130 75\n5 down\n6 up\n10 mouse 613 324\n11 down\n12 mouse 677 292\n13 up\n14 mouse 677 292\n15 mouse 695 292\n16 down\n17 mouse 759 324\n18 up\n19 mouse 759 324\n20 mouse 759 332\n21 down\n22 mouse 695 364\n23 up\n24 mouse 695 364\n25 mouse 677 364\n26 down\n27 mouse 613 332\n28 up\n29 mouse 613 332\n32 char L\n33 char i\n34 char o\n35 char n\n36 key enter\n38 key escape\n40 mouse 608 296\n41 down\n42 up\n" >"$d/script"
-  rz run "$1" --headless --passes 46 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 46 --clock 20 --cash 50000 --script "$d/script" 2>/dev/null |
     sed -n 's/^pass [0-9]* t=[0-9]* panel //p' | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
@@ -842,7 +849,7 @@ check expansion-trial "1,0,1" "panel_plaque maps/scn28b.zoo"
 panel_animal() { # panel_animal <map>
   d=$(mktemp -d)
   printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1004 668\n9 down\n10 up\n11 mouse 880 610\n12 down\n13 up\n' >"$d/script"
-  rz run "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 18 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel animal [0-9]/{sub(/^.* panel animal /, ""); gsub(/ /, "_"); print}'
   rm -rf "$d"
 }
@@ -855,7 +862,7 @@ check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_s
 show_panel() { # show_panel <map>
   d=$(mktemp -d)
   printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 512\n5 down\n6 up\n8 mouse 900 445\n9 down\n10 up\n12 mouse 900 512\n13 down\n14 up\n16 mouse 1008 411\n17 down\n18 up\n' >"$d/script"
-  rz run "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
 }
@@ -868,7 +875,7 @@ show_stand_window() { # show_stand_window <map>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
     printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
-  rz run "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
 }
@@ -884,7 +891,7 @@ panel_tab() { # panel_tab <map>
   printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n12 mouse 500 300\n' >"$d/a"
   printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 455\n5 down\n6 up\n8 mouse 1005 645\n9 down\n10 up\n12 mouse 1005 614\n13 down\n14 up\n16 mouse 500 300\n' >"$d/b"
   for s in a b; do
-    rz run "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass [0-9]+ .* draw [0-9a-f]/{h=$5} END{print h}'
+    rz run --seed 1 "$1" --headless --passes 24 --clock 67 --script "$d/$s" 2>/dev/null | awk '/^pass [0-9]+ .* draw [0-9a-f]/{h=$5} END{print h}'
   done | sort -u | awk 'END{ if (NR == 1) print "same"; else print "different" }'
   rm -rf "$d"
 }
@@ -998,7 +1005,7 @@ check base-trial '"Burger_Stand_1";"Zoo";"Zed"' "building_rename maps/default.zo
 building_fixed() { # building_fixed <map> <x y of the stand>
   d=$(mktemp -d)
   printf '1 pause\n3 mouse %s\n4 down\n5 up\n' "$2" >"$d/script"
-  rz run "$1" --headless --passes 10 --clock 200 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 10 --clock 200 --script "$d/script" 2>/dev/null |
     sed -n 's/^.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) \(fixed\) .*/\1 \2 \3/p' | head -1 | tr ' ' _
   rm -rf "${d:?}"
 }
@@ -1050,7 +1057,7 @@ loaded_building() { # loaded_building <map> <presses> <dx> <dy> <x> <y>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
     echo "20 mouse $5 $6"; echo '21 down'; echo '22 up'; } >"$d/script"
-  rz run "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
     sed -n 's/.* panel building [0-9]* .* \(income .*\) sells.*/\1/p' | head -1 | tr ' ' _
   rm -rf "${d:?}"
 }
@@ -1125,12 +1132,12 @@ building_put_back() { # building_put_back <map>
 check expansion-trial 'carry,29780,;putback,29780,31,41;carry,29780,;' "building_put_back maps/scn19.zoo"
 
 # Runs the game headless with a script given as printf text (a file in a scratch folder: the native Windows
-# program cannot open a process substitution) and prints the log. scripted <script> <rz run arguments...>
+# program cannot open a process substitution) and prints the log. scripted <script> <rz run --seed 1 arguments...>
 scripted() {
   d=$(mktemp -d)
   printf "$1" >"$d/script"
   shift
-  rz run "$@" --script "$d/script" 2>/dev/null
+  rz run --seed 1 "$@" --script "$d/script" 2>/dev/null
   rm -rf "${d:?}"
 }
 
@@ -1164,7 +1171,7 @@ loaded_price() { # loaded_price <map> <presses> <dx> <dy> <x> <y>
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 "$2"); do echo "$((2 + i)) scroll $3 $4"; done
     echo "20 mouse $5 $6"; echo '21 down'; echo '22 up'; } >"$d/script"
-  rz run "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run --seed 1 "$1" --headless --passes 30 --clock 67 --script "$d/script" 2>/dev/null |
     sed -n 's/.* panel building [0-9]* \("[^"]*"\) price \([^ ]*\) .*/\1 \2/p' | head -1 | tr ' ' _
   rm -rf "${d:?}"
 }
@@ -1485,4 +1492,5 @@ check expansion-trial "109491,0,143e249c532a4e6c" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
 check expansion-trial 227408,0 "save_load maps/scn19.zoo | cut -d, -f1,2"
 
+[ -e "$tmp/unseeded" ] && failed=1
 exit $failed
