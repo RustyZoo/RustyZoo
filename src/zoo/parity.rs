@@ -145,6 +145,7 @@ fn expected(
     source: &[u8],
     cat: &Catalogue,
     engine: &[u8],
+    language: u32,
     changes: &Changes,
 ) -> Result<(Vec<u8>, Changes), String> {
     let (mut zoo, money) = Zoo::parse_money_in(source, cat).map_err(|e| e.to_string())?;
@@ -252,6 +253,24 @@ fn expected(
             (c.x, c.y, c.z) = at;
         }
     }
+    // A file of another language than the install's has every entity and habitat named again in the
+    // install's (localisation 10): the names are the engine's.
+    if zoo.locale != language {
+        let names: BTreeMap<u32, &str> = (theirs.entities.iter())
+            .filter_map(|e| e.common.as_ref())
+            .map(|c| (c.id, &*c.name))
+            .collect();
+        for c in zoo.entities.iter_mut().filter_map(|e| e.common.as_mut()) {
+            if let Some(name) = names.get(&c.id) {
+                c.name = name.to_string();
+            }
+        }
+    }
+    if zoo.locale != language && zoo.habitat_info.len() == theirs.habitat_info.len() {
+        for (a, b) in zoo.habitat_info.iter_mut().zip(&theirs.habitat_info) {
+            a.name = b.name.clone();
+        }
+    }
     // 15.7: the load adds two to the next show id per show tank (each has a show info).
     let tanks = zoo.shows.infos.iter().flatten().count();
     zoo.shows.next_show = zoo.shows.next_show.wrapping_add(2 * tanks as u16);
@@ -322,13 +341,14 @@ fn measure(vfs: &crate::vfs::Vfs, member: &str) -> Option<Result<(String, usize,
         return None;
     }
     let cat = Catalogue::load(vfs).unwrap();
+    let language = crate::strings::Language::of(vfs.root()).number;
     let new = match resaved(vfs, Catalogue::load(vfs).unwrap(), member) {
         Ok(new) => new,
         Err(why) => return Some(Err(format!("{member}: v{version} refused: {why}"))),
     };
     let pinned = CHANGES.iter().find(|c| c.0 == member).map(|c| &c.1);
     let (want, _) = (pinned.unwrap_or(&Changes::NONE), ());
-    let (expect, made) = match expected(&old, &cat, &new, want) {
+    let (expect, made) = match expected(&old, &cat, &new, language, want) {
         Ok(done) => done,
         Err(why) => return Some(Err(format!("{member}: v{version} no expected file: {why}"))),
     };
