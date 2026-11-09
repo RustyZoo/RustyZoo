@@ -661,7 +661,7 @@ fn same_member(a: &[u8], b: &[u8]) -> bool {
 
 /// The position of `default` among the `pal` variants of a colour group, 0 when it is not there
 /// (sprite drawing 8.1).
-fn default_choice(group: Option<&Section>, default: Option<&Vec<u8>>) -> u8 {
+pub(crate) fn default_choice(group: Option<&Section>, default: Option<&Vec<u8>>) -> u8 {
     group
         .zip(default)
         .and_then(|(group, d)| group.get_all("pal").iter().position(|v| same_member(v, d)))

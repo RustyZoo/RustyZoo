@@ -122,6 +122,12 @@ impl App<'_> {
                 t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
                     self.building_upgrade(t);
                 }
+                t if panel_building::COLOUR_BUTTONS.contains(&t) && self.game.is_some() => {
+                    self.building_colour(t);
+                }
+                t if panel_building::SWATCHES.contains(&t) && self.game.is_some() => {
+                    self.building_swatch(t);
+                }
                 t if panel_building::TABS.contains(&t) && self.game.is_some() => {
                     if let Some(game) = &mut self.game {
                         game.building.clock.force = true;

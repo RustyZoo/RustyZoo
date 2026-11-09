@@ -41,7 +41,7 @@ impl App<'_> {
     /// Hides the building panels: the next look clears the selection.
     pub(super) fn close_building(&mut self) {
         if let Some(ui) = &mut self.ui {
-            for layout in LAYOUTS {
+            for layout in LAYOUTS.into_iter().chain([panel::PALETTE]) {
                 ui.set_hidden(layout, true);
             }
         }
@@ -66,6 +66,10 @@ impl App<'_> {
             for layout in LAYOUTS {
                 ui.set_hidden(layout, true);
             }
+        }
+        // Hiding the colour page hides the palette with it (guest buildings 20 point 7).
+        if ui.shown(panel::PALETTE) && !ui.shown(panel::COLOURS) {
+            ui.set_hidden(panel::PALETTE, true);
         }
         let above = ui.shown(exhibit::LAYOUT) || lists::any_shown(ui);
         for layout in LAYOUTS {
@@ -144,6 +148,28 @@ impl App<'_> {
             game.world.units.building_note(format!("upgrade {id} {n}"));
         }
         game.building.clock.force = true;
+    }
+
+    /// A colour button of the colour page (guest buildings 20 point 4): its palette opens.
+    pub(super) fn building_colour(&mut self, button: i32) {
+        playing!(self, game, ui);
+        let group = panel::COLOUR_BUTTONS.iter().position(|&b| b == button);
+        if let Some(g) = group {
+            let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
+            game.building.pick(ui, &game.world, cat, vfs, g);
+        }
+    }
+
+    /// A swatch of the palette (guest buildings 20 point 5): the building takes that colour for
+    /// the group. Logs `building colour ID GROUP VARIANT`.
+    pub(super) fn building_swatch(&mut self, button: i32) {
+        playing!(self, game, ui);
+        let k = usize::try_from(button - *panel::SWATCHES.start()).unwrap_or(0);
+        let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
+        let line = game.building.choose(ui, &mut game.world, cat, vfs, k);
+        self.lines
+            .panel
+            .extend(line.map(|l| format!("building {l}")));
     }
 
     /// The sell button (placing 7): the selected building goes as the bulldozer removes it, after

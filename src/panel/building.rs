@@ -9,10 +9,12 @@
 //!
 //! [`Panel`] holds the selected building and the clock; [`Panel::refresh`] writes the layout from
 //! the world and returns the `panel` log line when what it shows changed. The tank filter's panel
-//! is a third layout of the same [`Panel`], written by [`filter`].
+//! is a third layout of the same [`Panel`], written by [`filter`]; the colour tab is [`colour`].
 
+mod colour;
 mod filter;
 
+pub(crate) use colour::{BUTTONS as COLOUR_BUTTONS, LAYOUT as COLOURS, PALETTE, SWATCHES};
 pub(crate) use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SELL};
 
 use crate::building::{Kind, Live, moveable, upgrade};
@@ -136,6 +138,8 @@ pub(crate) struct Panel {
     /// Just selected: the next refresh also sets the name field and the buttons.
     fresh: bool,
     told: String,
+    /// The colour group whose palette is open (guest buildings 20 point 4).
+    choosing: Option<usize>,
 }
 
 impl Panel {
@@ -146,6 +150,7 @@ impl Panel {
         self.fresh = true;
         self.clock.force = true;
         self.told.clear();
+        self.choosing = None;
     }
 
     /// Fills the panel again from the start: the name field shows the building's name.
@@ -205,6 +210,11 @@ impl Panel {
             }
             ui.set_hidden(PICK_UP, !moveable(ty));
             ui.set_enabled(PICK_UP, moveable(ty));
+            let colors = world.zoo.entities[at]
+                .common
+                .as_ref()
+                .map(|c| &c.colors[..]);
+            self.colours(ui, vfs, (ty, colors.unwrap_or_default()), charging);
         }
         let told = if charging {
             self.charging(ui, world, cat, vfs, (&kind, &live), now)
