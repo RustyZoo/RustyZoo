@@ -917,6 +917,8 @@ mod scenario_ui;
 mod show_panel;
 mod staff_panel;
 mod start;
+#[cfg(test)]
+pub(crate) use start::continued_save;
 mod tank_panel;
 mod terrain;
 mod told;

@@ -385,3 +385,55 @@ impl App<'_> {
         }
     }
 }
+
+/// The file `source` of the install `vfs` opened as Continue does, with the interface the
+/// window builds, and saved before any step.
+#[cfg(test)]
+pub(crate) fn continued_save(
+    vfs: &crate::vfs::Vfs,
+    cat: &crate::entity::Catalogue,
+    source: &[u8],
+) -> Result<Vec<u8>, String> {
+    let size = (800, 600);
+    let (zoo, money) = Zoo::parse_money_in(source, cat).map_err(|e| e.to_string())?;
+    let renderer = crate::render::MapRenderer::new(vfs, cat);
+    let ini = Config::parse(vfs.ini()).unwrap_or_default();
+    let mut app = App::new(
+        renderer,
+        zoo.clone(),
+        Settings::from_config(&ini),
+        Timers::from_config(&ini),
+        size,
+    )
+    .map_err(|e| e.to_string())?;
+    // The window's interface, as `load_interface` of the program builds it (none when the install has none).
+    if let Ok(tables) = crate::strings::StringTables::open(vfs.root()) {
+        let mut tree =
+            crate::ui::layout::Tree::load(vfs, "ui/gamescrn.lyt", installed_expansions(vfs));
+        let mut fonts = crate::text::Fonts::default();
+        tree.resolve(size.0 as i32, size.1 as i32, |font| {
+            let (face, points) = font.map_or(("Arial", "8"), |(face, points)| {
+                let string = |n: i32| u32::try_from(n).map_or("", |n| tables.string(n));
+                (string(face), string(points))
+            });
+            fonts.get(face, points).line_height()
+        });
+        if tree.failure.is_none() {
+            app.set_interface(Interface::new(tree, Box::new(tables)));
+        }
+    }
+    let start = Start {
+        path: String::new(),
+        label: "load".to_string(),
+        forget_last: false,
+        freeform: false,
+        cash: Default::default(),
+        reset: false,
+        reset_fences: false,
+        scenario: None,
+    };
+    if !app.open(&start, Ok((zoo, money))) {
+        return Err("the file did not open".to_string());
+    }
+    app.saved_bytes()
+}

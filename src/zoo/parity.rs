@@ -66,12 +66,14 @@ fn compare(old: &[u8], new: &[u8]) -> BTreeMap<String, (usize, isize)> {
     out
 }
 
-/// The file `member` of the install saved back by a run started on it, or why it is refused.
+/// The file `member` of the install opened as Continue does and saved back at once, or why it is
+/// refused.
 fn resaved(vfs: &crate::vfs::Vfs, cat: Catalogue, member: &str) -> Result<Vec<u8>, String> {
-    resaved_after(vfs, cat, member, |_| {})
+    crate::app::continued_save(vfs, &cat, &vfs.read(member).unwrap())
 }
 
-/// [`resaved`] after `before` has changed the started run (the parity measure steps no run).
+/// The file `member` saved back by a run started on it (a new game's start) after `before` has
+/// changed the run: the parity measure steps no run, a test of a step does.
 fn resaved_after(
     vfs: &crate::vfs::Vfs,
     cat: Catalogue,
