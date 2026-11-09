@@ -491,9 +491,13 @@ fn a_click_on_a_row_selects_the_building_and_a_second_click_on_it_does_nothing()
         // Clicking the selected building's row again leaves the view where it is.
         let scroll_after = s.app.game.as_ref().unwrap().camera.scroll;
         assert_ne!(scroll, scroll_after, "the view centred on the building");
+        s.app.game.as_mut().unwrap().camera.scroll = (7, 7);
         s.pass(&click(118));
-        assert_eq!(s.app.game.as_ref().unwrap().camera.scroll, scroll_after);
-        assert_eq!(selected_text(s, 4172), Some(1));
+        assert_eq!(s.app.game.as_ref().unwrap().camera.scroll, (7, 7));
+        // Another row centres the view again.
+        s.pass(&click(106));
+        assert_ne!(s.app.game.as_ref().unwrap().camera.scroll, (7, 7));
+        assert_eq!(selected_text(s, 4172), Some(0));
     });
 }
 
