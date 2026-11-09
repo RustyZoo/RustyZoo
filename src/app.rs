@@ -977,6 +977,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod view_buttons_tests;
 
 #[cfg(test)]
 mod filter_tests;

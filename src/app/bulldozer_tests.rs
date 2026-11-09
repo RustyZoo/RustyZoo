@@ -41,6 +41,15 @@ impl UiStrings for Texts {
             11194 => "Frequent".into(),
             11195 => "Continuous".into(),
             9001 => "Shop".into(),
+            1065 => "Show Foliage".into(),
+            1066 => "Hide Foliage".into(),
+            1067 => "Hide Buildings".into(),
+            1068 => "Hide Guests".into(),
+            1069 => "Show Buildings".into(),
+            1070 => "Show Guests".into(),
+            10507 => "Wrote screenshot in %s.".into(),
+            10508 => "Failed to write screenshot.".into(),
+            22006 => "shots".into(),
             _ => String::new(),
         }
     }
@@ -97,7 +106,13 @@ fn map() -> Zoo {
     zoo
 }
 
-fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3]) -> EntityType {
+pub(super) fn ty(
+    class: &'static str,
+    name: &[u8],
+    subtype: &[u8],
+    ini: &str,
+    fp: [i32; 3],
+) -> EntityType {
     // A type without pictures of its own is the square of `obj.ani`.
     let ini = match ini.contains("[Animations]") {
         true => ini.to_string(),
