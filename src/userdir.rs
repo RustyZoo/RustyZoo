@@ -5,8 +5,9 @@
 //! The folder of the settings is `$XDG_CONFIG_HOME/RustyZoo` (else `~/.config/RustyZoo`) on
 //! Linux, `%APPDATA%\RustyZoo` on Windows and `~/Library/Application Support/RustyZoo` on macOS.
 //! The saved games go in `Saved Games` in `$XDG_DATA_HOME/RustyZoo` (else
-//! `~/.local/share/RustyZoo`) on Linux, and in the folder of the settings elsewhere. The
-//! environment variable `RUSTYZOO_USER_DIR` replaces both folders, for tests and CI.
+//! `~/.local/share/RustyZoo`) on Linux, and in the folder of the settings elsewhere; the
+//! snapshots go in a folder next to it. The environment variable `RUSTYZOO_USER_DIR` replaces
+//! both folders, for tests and CI.
 
 use std::ffi::OsString;
 use std::io;
@@ -35,6 +36,19 @@ pub(crate) fn saved_games() -> Option<PathBuf> {
 fn saved_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     let base = folder(os, env, "XDG_DATA_HOME", ".local/share")?;
     Some(base.join("Saved Games"))
+}
+
+/// The folder where the snapshots go, named `name` (string 22006) next to the saved games, or
+/// `None` if the system does not say where. A name that is empty or holds a path separator, `:`
+/// or `.` at its start is replaced by `Screenshots`.
+pub(crate) fn screenshots(name: &str) -> Option<PathBuf> {
+    saved_games().map(|saved| beside(&saved, name))
+}
+
+/// The folder `name` next to the saved games folder `saved`.
+fn beside(saved: &Path, name: &str) -> PathBuf {
+    let bad = name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', ':']);
+    saved.with_file_name(if bad { "Screenshots" } else { name })
 }
 
 /// The user folder of `os`: the override, else the base of the system (on Linux `$xdg`, else
@@ -132,6 +146,22 @@ mod tests {
             paths("windows", &[("APPDATA", "C:/a")]),
             path("C:/a/RustyZoo")
         );
+    }
+
+    #[test]
+    fn the_snapshot_folder_is_next_to_the_saved_games_and_never_leaves_the_user_folder() {
+        let saved = Path::new("/u/RustyZoo/Saved Games");
+        assert_eq!(
+            beside(saved, "screenshots"),
+            Path::new("/u/RustyZoo/screenshots")
+        );
+        for bad in ["", ".", "..", "a/b", "a\\b", "c:", "../x"] {
+            assert_eq!(
+                beside(saved, bad),
+                Path::new("/u/RustyZoo/Screenshots"),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

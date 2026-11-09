@@ -167,11 +167,13 @@ impl App<'_> {
             held: None,
             vehicles: Vec::new(),
             global: self.global_term(),
+            view: Default::default(),
         });
         // The game screen's set-up: running, the pause button shown; the zoom buttons follow the
         // zoom of the file (camera 8.4 point 5, ui layout 7.11 point 4).
         self.pause_to(false);
         self.zoom_check();
+        self.view_sync();
         let scenario = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f));
         // The scenario resumes first (its triggers, then the goal states), then the research
         // section completes the programs over their availability, then the ini rewards (7.3).

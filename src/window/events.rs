@@ -66,6 +66,9 @@ impl State {
         if let Some(command) = input::command(&event) {
             commands.push(command);
         }
+        if let Some(on) = input::shift(&event).filter(|_| self.interface) {
+            commands.push(Command::Shift(on));
+        }
         self.toggle |= input::alt_enter(&event);
         self.alternate ^= input::ctrl_c(&event);
         if self.interface {

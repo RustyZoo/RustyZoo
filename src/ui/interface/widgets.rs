@@ -181,6 +181,16 @@ impl Interface {
         (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & SELECTED != 0)
     }
 
+    /// Puts the button `id` down (selected) or up, as the program has it, without its action;
+    /// `false` if there is none.
+    pub(crate) fn set_down(&mut self, id: i32, down: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, SELECTED, down);
+        true
+    }
+
     /// Hides or shows an element on its own; `false` if there is none.
     pub(crate) fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {

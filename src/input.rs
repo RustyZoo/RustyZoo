@@ -33,6 +33,7 @@ pub fn interface_command(event: &Event) -> Option<Command> {
     if keymod.intersects(Mod::LALTMOD | Mod::RALTMOD) {
         return None;
     }
+    let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let key = match key {
         Scancode::Return | Scancode::KpEnter => Key::Enter,
         Scancode::Escape => Key::Escape,
@@ -52,11 +53,40 @@ pub fn interface_command(event: &Event) -> Option<Command> {
         // Only Ctrl+S and Ctrl+L act (input 10); typed letters come as characters.
         Scancode::S => Key::S,
         Scancode::L => Key::L,
+        // The buttons of the main bar (input 10); typed, these letters come as characters.
+        Scancode::B if ctrl => Key::B,
+        Scancode::F if ctrl => Key::F,
+        Scancode::V if ctrl => Key::V,
+        Scancode::P if ctrl => Key::P,
         _ => return None,
     };
-    let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
     let shift = keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD);
     Some(Command::Key(key, ctrl, shift))
+}
+
+/// Whether a Shift key went down (`true`) or up and no other is held (`false`) with this event;
+/// `None` for any other event. The snapshot button reads the state (map drawing 15.2).
+pub fn shift(event: &Event) -> Option<bool> {
+    let both = Mod::LSHIFTMOD | Mod::RSHIFTMOD;
+    match *event {
+        Event::KeyDown {
+            scancode: Some(Scancode::LShift | Scancode::RShift),
+            ..
+        } => Some(true),
+        Event::KeyUp {
+            scancode: Some(key @ (Scancode::LShift | Scancode::RShift)),
+            keymod,
+            ..
+        } => {
+            let this = if key == Scancode::LShift {
+                Mod::LSHIFTMOD
+            } else {
+                Mod::RSHIFTMOD
+            };
+            Some(!(keymod & both).difference(this).is_empty())
+        }
+        _ => None,
+    }
 }
 
 /// Whether the event is the release of Enter with Alt held: the switch between window and full

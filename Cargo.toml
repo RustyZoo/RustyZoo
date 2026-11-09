@@ -20,6 +20,7 @@ flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] 
 fontdue = { version = "0.9.4", default-features = false }
 # The code pages of the double-byte `TEXT` entries (Japanese, Chinese, Korean).
 encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
+jpeg-encoder = { version = "0.7", default-features = false }
 
 # The month and weekday names of the user's time locale (text::format::date).
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]

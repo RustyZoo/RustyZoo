@@ -523,6 +523,7 @@ impl Interface {
 
     fn deselect(&mut self, b: usize) {
         let id = self.id(b);
+        self.deselected.push(id);
         self.event(format!("deselect {id}"));
         let e = &self.tree.elements[b];
         if e.action == 3 {

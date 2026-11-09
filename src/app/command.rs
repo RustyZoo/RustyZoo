@@ -24,9 +24,13 @@ pub enum Key {
     N,
     S,
     L,
+    B,
+    F,
+    V,
+    P,
 }
 
-const KEY_NAMES: [(&str, Key); 17] = [
+const KEY_NAMES: [(&str, Key); 21] = [
     ("enter", Key::Enter),
     ("escape", Key::Escape),
     ("tab", Key::Tab),
@@ -44,6 +48,10 @@ const KEY_NAMES: [(&str, Key); 17] = [
     ("n", Key::N),
     ("s", Key::S),
     ("l", Key::L),
+    ("b", Key::B),
+    ("f", Key::F),
+    ("v", Key::V),
+    ("p", Key::P),
 ];
 
 impl Key {
@@ -71,11 +79,11 @@ pub enum Mouse {
 
 /// What the player does (input 4). The text form is the script format of a headless run:
 /// `scroll DX DY`, `pointer X Y`, `pointer none`, `rotate cw`, `rotate ccw`, `zoom in`,
-/// `zoom out`, `grid` (toggle the tile grid), `devmode` (Ctrl+D), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
+/// `zoom out`, `grid` (toggle the tile grid), `devmode` (Ctrl+D), `shift on` and `shift off` (a Shift key goes down or up), `fullscreen on`, `fullscreen off`, `pause`, `space`, `quit` (end the run), `close` (the
 /// window is closed) for the map view, `skip` (any key
 /// or button press, which stops an intro movie), and for the
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
-/// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n, s, l; Ctrl+S saves and Ctrl+L loads) and
+/// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n, s, l, b, f, v, p; Ctrl+S saves, Ctrl+L loads, Ctrl+B, Ctrl+F and Ctrl+V press the buttons that hide buildings, foliage and guests and Ctrl+P the snapshot button) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
 /// `press ID` presses the button with that id as a click would, when it is shown and enabled and no
 /// question is open (a script does not need the pixel of an element).
@@ -106,6 +114,9 @@ pub enum Command {
     /// The space bar: presses the pause button, so it toggles the pause only while the map view
     /// is shown and no element has the keyboard focus (a field types the space).
     Space,
+    /// A Shift key went down or up: `true` while one is held. The snapshot button reads it
+    /// (map drawing 15.2).
+    Shift(bool),
     /// End the run at once.
     Quit,
     /// The player closed the window: the program ends at once from the menu, and asks first in a
@@ -141,6 +152,7 @@ impl fmt::Display for Command {
             Command::Fullscreen(on) => write!(f, "fullscreen {}", if on { "on" } else { "off" }),
             Command::Pause => f.write_str("pause"),
             Command::Space => f.write_str("space"),
+            Command::Shift(on) => write!(f, "shift {}", if on { "on" } else { "off" }),
             Command::Quit => f.write_str("quit"),
             Command::Close => f.write_str("close"),
             Command::Mouse(Mouse::Move(x, y)) => write!(f, "mouse {x} {y}"),
@@ -203,6 +215,8 @@ impl FromStr for Command {
             ["devmode"] => Command::DevMode,
             ["fullscreen", "on"] => Command::Fullscreen(true),
             ["fullscreen", "off"] => Command::Fullscreen(false),
+            ["shift", "on"] => Command::Shift(true),
+            ["shift", "off"] => Command::Shift(false),
             ["pause"] => Command::Pause,
             ["space"] => Command::Space,
             ["quit"] => Command::Quit,

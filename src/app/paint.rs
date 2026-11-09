@@ -88,6 +88,7 @@ impl App<'_> {
         };
         want.ghosts.iter_mut().for_each(|g| g.anim = anim);
         want.marks.clone_from(&game.marks);
+        want.hide = game.view.hide;
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.hidden.extend_from_slice(game.world.hidden_sparkles());

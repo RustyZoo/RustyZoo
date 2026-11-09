@@ -172,6 +172,8 @@ struct Game {
     vehicles: Vec<(u32, &'static str, i32)>,
     /// The global term of the sound rules, from the ini file (sound 4.3).
     global: i32,
+    /// What the hide/show buttons hide, and Shift (map drawing 15).
+    view: view_buttons::View,
 }
 
 impl Game {
@@ -907,6 +909,7 @@ mod kinds;
 mod log;
 mod main_buttons;
 mod paint;
+mod view_buttons;
 pub use paint::{frame_hash, frame_hashes};
 #[cfg(test)]
 mod cheat_staff_tests;
