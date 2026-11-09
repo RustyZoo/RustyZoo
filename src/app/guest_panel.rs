@@ -3,6 +3,7 @@
 //! it. The panel itself is [`crate::panel::guest`].
 
 use super::*;
+use crate::panel::unitlist as lists;
 use crate::panel::guest;
 
 impl App<'_> {
@@ -34,7 +35,7 @@ impl App<'_> {
             game.guest.deselect();
             ui.set_hidden(guest::LAYOUT, true);
         }
-        ui.set_alt(guest::LAYOUT, ui.shown(exhibit::LAYOUT));
+        ui.set_alt(guest::LAYOUT, ui.shown(exhibit::LAYOUT) || lists::any_shown(ui));
     }
 
     /// The pick-up button: the selected guest is picked up as a second click does.

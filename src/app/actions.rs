@@ -2,6 +2,7 @@
 //! act on, and what the menu asked of the game.
 
 use super::*;
+use crate::panel::unitlist as lists;
 use crate::ui::interface::HISTORY_LIST;
 
 impl App<'_> {
@@ -48,6 +49,9 @@ impl App<'_> {
                 Action::Row(research_panel::LIST, row) if self.game.is_some() => {
                     self.research_tick(row);
                 }
+                Action::Row(l, r) if self.game.is_some() && lists::list_of(l).is_some() => {
+                    self.list_row(lists::list_of(l).unwrap_or_default(), r);
+                }
                 Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
@@ -85,6 +89,7 @@ impl App<'_> {
                     self.ask(kind);
                 }
                 undo::UNDO if self.game.is_some() => self.undo(),
+                t if lists::button_of(t).is_some() && self.game.is_some() => self.list_filter(t),
                 t if show::BUTTONS.contains(&t) && self.game.is_some() => self.show_pressed(t),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
                 animal::SELL if self.game.is_some() => self.animal_sell(),

@@ -253,7 +253,7 @@ pub(crate) fn bonus(ty: &EntityType) -> [f32; 4] {
 
 /// The limit above which a guest need counts (`cUIThreshold`, a class key of the guest file;
 /// 50 built in).
-fn ui_threshold(catalogue: &Catalogue, guest: &Entity) -> i32 {
+pub(crate) fn ui_threshold(catalogue: &Catalogue, guest: &Entity) -> i32 {
     let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
     (catalogue.find(
         &guest.class,

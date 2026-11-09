@@ -4,6 +4,7 @@
 //! refresh on the interface clock (information panels 4, 5, 6, 10).
 
 use super::*;
+use crate::panel::unitlist as lists;
 use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
 use crate::panel::{animal, guest, research, staff};
@@ -200,7 +201,7 @@ impl App<'_> {
             game.animal.deselect();
             ui.set_hidden(animal::LAYOUT, true);
         }
-        ui.set_alt(animal::LAYOUT, ui.shown(LAYOUT));
+        ui.set_alt(animal::LAYOUT, ui.shown(LAYOUT) || lists::any_shown(ui));
         let selected = game.animal.selected;
         let (down, shown) = (ui.is_down(animal::RECOMMENDATIONS), ui.shown(PLAQUE));
         match (selected, down, shown) {
@@ -320,6 +321,7 @@ impl App<'_> {
         self.building_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
         self.show_pass(now, ticking);
+        self.lists_pass(now, ticking);
         playing!(self, game, ui);
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         if ui.shown(LAYOUT) && game.panel.clock.due(now, ticking, exhibit::PERIOD) {

@@ -4,6 +4,7 @@
 //! rules of the assignment [`crate::staff::assign`].
 
 use super::*;
+use crate::panel::unitlist as lists;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::panel::{guest, staff};
 use crate::staff::assign::{self, Outcome};
@@ -182,7 +183,7 @@ impl App<'_> {
             ui.help_tip(0);
             ui.touch();
         }
-        ui.set_alt(staff::LAYOUT, ui.shown(exhibit::LAYOUT));
+        ui.set_alt(staff::LAYOUT, ui.shown(exhibit::LAYOUT) || lists::any_shown(ui));
     }
 
     /// The staff member the assign mode works for: the selected one while the assign button is

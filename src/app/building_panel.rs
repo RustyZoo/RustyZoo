@@ -3,6 +3,7 @@
 //! and pick-up buttons, and the look at what the player did to them. The panels themselves are [`crate::panel::building`].
 
 use super::*;
+use crate::panel::unitlist as lists;
 use crate::building::Kind;
 use crate::panel::building as panel;
 use crate::place::bulldozer::type_of;
@@ -66,7 +67,7 @@ impl App<'_> {
                 ui.set_hidden(layout, true);
             }
         }
-        let above = ui.shown(exhibit::LAYOUT);
+        let above = ui.shown(exhibit::LAYOUT) || lists::any_shown(ui);
         for layout in LAYOUTS {
             ui.set_alt(layout, above);
         }

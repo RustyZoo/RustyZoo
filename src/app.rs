@@ -162,6 +162,8 @@ struct Game {
     building: crate::panel::building::Panel,
     /// The show panel (Marine Mania).
     show: crate::panel::show::Panel,
+    /// The animal, guest and staff list windows.
+    lists: crate::panel::unitlist::Lists,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -924,6 +926,7 @@ mod tank_panel;
 mod terrain;
 mod told;
 mod undo;
+mod unit_lists;
 
 #[cfg(test)]
 mod adopt_tests;
