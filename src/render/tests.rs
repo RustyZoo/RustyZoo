@@ -3467,7 +3467,6 @@ fn a_connector_wall_takes_the_connector_keys_for_its_top_and_single_pieces() {
     assert_eq!(names("lr", 1, &none), ["idle"]);
 }
 
-
 fn ripple_install() -> (Install, Zoo) {
     use crate::sprite::tests::{sized, sprite_file};
     let mut frame = Vec::new();
@@ -3485,7 +3484,8 @@ fn ripple_install() -> (Install, Zoo) {
             ),
             (
                 "wave.ai",
-                b"[Characteristics/Integers]\ncIsTransient = 1\n[Animations]\nidle = idle\n".to_vec(),
+                b"[Characteristics/Integers]\ncIsTransient = 1\n[Animations]\nidle = idle\n"
+                    .to_vec(),
             ),
             ("objects/waterwv1/idle/idle.ani", ani),
             (
