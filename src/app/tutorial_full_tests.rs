@@ -17,6 +17,9 @@ use std::path::Path;
 
 mod bot;
 
+/// The seed of every game of the test.
+const SEED: u32 = 1;
+
 /// One pass of the test is one pass of the scenario: a step of 1500 ms.
 const STEP: u64 = 1500;
 
@@ -80,6 +83,7 @@ impl Rig {
         )
         .unwrap();
         app.set_user_folder(Some(user));
+        app.set_seed(SEED);
         app.pass(0, &[]);
         app
     }

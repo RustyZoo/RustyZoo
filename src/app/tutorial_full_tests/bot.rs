@@ -59,6 +59,15 @@ impl Play<'_, '_> {
                 self.click_row(11111, 0);
                 self.press(a);
             }
+            // The research panel: a branch tab, a category, then more funding.
+            (10, 1..) if a == 4004 => {
+                if !self.app.ui.as_ref().unwrap().shown(15) {
+                    self.press(1019);
+                }
+                self.press(4009);
+                self.click_row(4022, 0);
+                self.press(a);
+            }
             (10, 1..) => self.press(a),
             // The bulldozer takes out a piece of fence.
             (1, _) => self.delete_fence(),
@@ -346,13 +355,14 @@ impl Play<'_, '_> {
         self.put(((tile % width) as i32, (tile / width) as i32));
     }
 
-    /// The held animal goes in an exhibit with no animal, or the last one.
+    /// The held animal goes in a show tank, else an exhibit with no animal, else the last one.
     fn house(&mut self) {
         let game = self.app.game.as_ref().unwrap();
         let width = game.world.zoo.width as usize;
         let list = game.world.exhibits().list();
+        let show = list.iter().find(|x| crate::show::info_of(&game.world, x.id).is_some());
         let empty = list.iter().find(|x| x.rating.counts.1 == 0);
-        let tile = empty.or(list.last()).map_or(0, |x| x.order[0]);
+        let tile = show.or(empty).or(list.last()).map_or(0, |x| x.order[0]);
         self.put(((tile % width) as i32, (tile / width) as i32));
     }
 
