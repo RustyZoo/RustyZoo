@@ -234,7 +234,7 @@ pub(crate) fn call(
     if c.flight.is_none_or(|f| f.speed == 0) {
         return;
     }
-    let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
+    let Some(ty) = crate::entity::type_of(cat, e) else {
         return;
     };
     calls.play(&sound_name(ty), &|n| data.read(n), (c.x, c.y), step, rng);

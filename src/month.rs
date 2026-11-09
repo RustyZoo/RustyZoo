@@ -3,9 +3,9 @@
 
 use crate::building::{Kind, Live, upgrade};
 use crate::config::to_float;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::{BUILDING_UPKEEP, Money};
-use crate::place::bulldozer::type_of;
 use crate::staff;
 use crate::unit::Units;
 use crate::world::World;

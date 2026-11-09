@@ -4,9 +4,9 @@
 //! the water of a tank with a gate shows its message in the message line (`tool message N`).
 
 use super::*;
+use crate::exhibit::members::type_at;
 use crate::exhibit::price::Prices;
 use crate::money::CONSTRUCTION;
-use crate::panel::exhibit::type_at;
 use crate::place::NO_FUNDS;
 
 /// The strings that tell the water of a tank cannot be filled (the object's name goes in) and

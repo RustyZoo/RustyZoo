@@ -599,11 +599,11 @@ fn bits(w: &World, id: u32) -> (u64, u64) {
 
 fn home(w: &World, cat: &Catalogue, id: u32) -> Option<u32> {
     let at = w.find(id).unwrap();
-    let likes = rating::Likes::of(crate::panel::exhibit::type_at(w, cat, at)?);
+    let likes = rating::Likes::of(crate::exhibit::members::type_at(w, cat, at)?);
     crate::animal::home::home(
         w,
         cat,
-        crate::panel::exhibit::animals_exhibit(w, at)?,
+        crate::exhibit::members::animals_exhibit(w, at)?,
         &likes,
     )
 }
@@ -689,7 +689,7 @@ fn the_panel_shows_the_best_neighbour_rating() {
     assert_eq!(home(&w, &cat, 1), Some(east));
     let at = w.find(1).unwrap();
     assert_eq!(
-        crate::panel::animal::suitability(&w, &cat, at),
+        crate::exhibit::members::suitability(&w, &cat, at),
         o.shown() as i32
     );
     assert!(o.shown() as i32 > e.shown() as i32);

@@ -4,7 +4,7 @@
 use crate::behaviour::Heard;
 use crate::config::to_int;
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::unit::Part;
 use crate::world::World;
 

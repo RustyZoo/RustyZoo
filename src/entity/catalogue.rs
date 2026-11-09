@@ -28,8 +28,8 @@ pub struct Catalogue {
     /// listed again with another file, a staff entry of an unknown kind. Names from the game
     /// files are escaped. At most [`MAX_WARNINGS`] lines and a last one that counts the rest.
     pub warnings: Vec<String>,
-    /// The positions in `types` by (type name, subtype name); a few classes can share a pair.
-    index: HashMap<(Vec<u8>, Vec<u8>), Vec<usize>>,
+    /// The positions in `types` by type name, then subtype name; a few classes can share a pair.
+    index: HashMap<Vec<u8>, HashMap<Vec<u8>, Vec<usize>>>,
     /// Every definition file asked for so far, by normalised name, with the outcome.
     files: HashMap<String, Definition>,
     /// The item types guests buy, by lower-case name.
@@ -380,8 +380,12 @@ impl Catalogue {
     /// Adds a type that a test made, findable by its names.
     #[cfg(test)]
     pub(crate) fn push(&mut self, ty: EntityType) {
-        let key = (ty.type_name.clone(), ty.subtype.clone());
-        self.index.entry(key).or_default().push(self.types.len());
+        self.index
+            .entry(ty.type_name.clone())
+            .or_default()
+            .entry(ty.subtype.clone())
+            .or_default()
+            .push(self.types.len());
         self.types.push(ty);
     }
 
@@ -423,7 +427,8 @@ impl Catalogue {
     /// The position in `types` of the type of this class, name and subtype.
     pub(crate) fn position(&self, class: &str, type_name: &[u8], subtype: &[u8]) -> Option<usize> {
         self.index
-            .get(&(type_name.to_vec(), subtype.to_vec()))?
+            .get(type_name)?
+            .get(subtype)?
             .iter()
             .copied()
             .find(|&at| is_of_class(self.types[at].class, class))
@@ -575,7 +580,9 @@ impl Catalogue {
             read_values(&mut ty, &config);
         }
         self.index
-            .entry((ty.type_name.clone(), ty.subtype.clone()))
+            .entry(ty.type_name.clone())
+            .or_default()
+            .entry(ty.subtype.clone())
             .or_default()
             .push(self.types.len());
         self.types.push(ty);

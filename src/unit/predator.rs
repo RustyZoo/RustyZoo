@@ -5,10 +5,10 @@
 //! unit with no region under it only keeps its kept predator (O12).
 
 use crate::config::to_int;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::guest::view::tile_of;
-use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part, Unit};
 use crate::world::World;
 

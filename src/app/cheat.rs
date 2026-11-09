@@ -41,7 +41,7 @@ impl App<'_> {
         let cat = self.renderer.catalogue();
         let found = self.game.as_ref().and_then(|g| {
             let e = &g.world.zoo.entities[g.world.find(selected?)?];
-            let ty = crate::place::bulldozer::type_of(cat, e);
+            let ty = crate::entity::type_of(cat, e);
             let first = |s: &str| s.bytes().next().unwrap_or(0);
             let (class, subtype) = match e.class.as_str() {
                 "animals" => (Subject::Animal, first(&e.subtype)),

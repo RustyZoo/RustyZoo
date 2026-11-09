@@ -893,7 +893,7 @@ fn a_carried_animal_counts_in_no_exhibit() {
             crate::exhibit::rating::input(w, &cat, exhibit)
                 .animals
                 .len(),
-            crate::panel::exhibit::animals_in(w, exhibit).len(),
+            crate::exhibit::members::animals_in(w, exhibit).len(),
         )
     };
     assert_eq!(counted(&w), (1, 1));

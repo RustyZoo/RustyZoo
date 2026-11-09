@@ -50,6 +50,8 @@ pub(crate) use portal::Portal;
 pub(crate) use sparkle::Sparkles;
 pub(crate) use water::Draw;
 pub use wear::Decay;
+#[cfg(test)]
+pub(crate) use wear::deteriorates;
 pub(crate) use wear::piece_event;
 
 /// How an entity takes its place on the map, from its type.
@@ -339,7 +341,7 @@ impl World {
             if same && !blank {
                 continue;
             }
-            let name = match crate::place::bulldozer::type_of(cat, e) {
+            let name = match crate::entity::type_of(cat, e) {
                 Some(t) => crate::place::unit::named(self, t),
                 None => String::new(),
             };

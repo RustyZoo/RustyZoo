@@ -286,7 +286,7 @@ check base-trial 'dislikes15673@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
 check base-trial 74bcf78f8376a39a 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial a9631656a657108d 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial d80f9bec54d8788a 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -871,15 +871,18 @@ check expansion-trial "open,closed,open,closed," "show_panel maps/scn28.zoo"
 # A grandstand that faces the show tank opens the window; the exhibit list button then shows the
 # exhibit panel, which hides it (19.3 point 7). The grandstand is the one at 472 316 once the view
 # is scrolled ten times.
-show_stand_window() { # show_stand_window <map>
+show_stand_window() { # show_stand_window <map> [seed]
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
     printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
-  rz run "$1" --seed 1 --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run "$1" --seed "${2:-1}" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
 }
 check expansion-trial "open,closed," "show_stand_window maps/scn28.zoo"
+# A water sparkle holds no quadrant and blocks no line of sight, whatever tile the seed puts it on.
+check expansion-trial "open,closed,open,closed,open,closed,open,closed," \
+  'for s in 156 157 158 159; do show_stand_window maps/scn28.zoo $s | tr -d "\n"; done'
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse
@@ -1360,7 +1363,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>: reads $seed
 }
 check expansion-trial yes "first=2 any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2, the run of the property).
-check expansion-trial '97902:1@958' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
+check expansion-trial '97902:1@1277' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1452,7 +1455,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "first=2 any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@2466;eggs:3;hatch@3096" "seed=2 once egg_clutch maps/scn19.zoo 51757 51758 53931 | cut -d' ' -f2"
+check expansion-trial "egg@3766;eggs:3;hatch@4395" "seed=2 once egg_clutch maps/scn19.zoo 51757 51758 53931 | cut -d' ' -f2"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

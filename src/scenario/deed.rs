@@ -2,8 +2,8 @@
 
 use crate::build::number;
 use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::money::{self, Money};
-use crate::place::bulldozer::type_of;
 use crate::place::unit::{crate_spot_in, named};
 use crate::render::order::ground_height;
 use crate::world::{Shape, World};

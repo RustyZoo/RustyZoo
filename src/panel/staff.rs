@@ -8,9 +8,10 @@
 
 use crate::config::to_int;
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::members::type_at;
 use crate::goal;
 use crate::money::{SYMBOL, Symbol};
-use crate::panel::exhibit::{Clock, type_at};
+use crate::panel::exhibit::Clock;
 use crate::panel::follow::set_follow_icon;
 use crate::show;
 use crate::staff;

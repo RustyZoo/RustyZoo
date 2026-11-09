@@ -3,8 +3,8 @@
 
 use super::service;
 use crate::build::number;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
-use crate::place::bulldozer::type_of;
 use crate::unit::Part;
 use crate::world::World;
 
