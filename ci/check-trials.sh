@@ -552,7 +552,7 @@ check base-trial 9same "same_frames maps/default.zoo"
 check expansion-trial 9same "same_frames maps/scn19.zoo"
 # A log replayed gives the same log, so the same frame hashes: its commands and the clock of each
 # pass that did something are read back, at the size of the window. The clock here is irregular.
-check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
+check base-trial same 'f=$(mktemp); g=$(mktemp); printf "1 scroll 1 0\n3 rotate cw\n5 pointer 0 0\n9 pause\n11 quit\n" >"$f"; rz run maps/default.zoo --seed 1 --headless --passes 12 --clock 23 --size 640x480 --script "$f" >"$g"; rz run maps/default.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$f" "$g"'
 # A run on the wall clock (no --seed) tells the seconds that seeded its generator, and its replay uses
 # them: the animals draw, and the replay gives the same log.
 check base-trial same 'g=$(mktemp); wallclock=1 rz run maps/scn01a.zoo --headless --passes 600 --clock 67 >"$g"; grep -q "sim seed" "$g" && rz run maps/scn01a.zoo --headless --replay "$g" | cmp -s - "$g" && echo same; rm -f "$g"'
