@@ -106,6 +106,7 @@ fn fit(n: usize, visible: i32) -> Heights {
         rows: vec![12; n],
         spacing: 0,
         inner: 12 * visible,
+        map: Vec::new(),
     }
 }
 
@@ -126,6 +127,7 @@ fn the_rows_that_fit_and_the_row_under_a_point() {
         rows: vec![10, 20, 8, 8, 40],
         spacing: 2,
         inner: 30,
+        map: Vec::new(),
     };
     assert_eq!((h.fit_from(0), h.fit_from(1), h.fit_from(4)), (1, 2, 1));
     assert_eq!(h.max_top(), 4, "the last row alone is taller than the list");
@@ -140,12 +142,14 @@ fn the_rows_that_fit_and_the_row_under_a_point() {
         rows: vec![20, 20],
         spacing: 0,
         inner: 41,
+        map: Vec::new(),
     };
     assert_eq!((wide.fit_from(0), wide.max_top()), (2, 0));
     let huge = Heights {
         rows: vec![i32::MAX; 3],
         spacing: i32::MAX,
         inner: i32::MAX,
+        map: Vec::new(),
     };
     assert_eq!((huge.fit_from(0), huge.max_top()), (1, 2));
     assert_eq!(huge.row_at(0, i32::MAX), None);

@@ -161,6 +161,9 @@ pub(crate) struct Rows {
     /// The colour of the text of a row that is neither selected nor disabled, where the game's
     /// code gives it one instead of the list's own.
     pub colors: Vec<Option<super::layout::Rgb>>,
+    /// The rows the game's code hides (the first for the first row): they keep their place in the
+    /// numbering but take no room and are not drawn. `top` counts shown rows only.
+    pub hidden: Vec<bool>,
     pub top: usize,
     pub selected: Option<usize>,
     pub hover: Option<usize>,
@@ -170,12 +173,28 @@ pub(crate) struct Rows {
 /// borders: how many whole rows are shown from a first one, and which row is at a distance.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Heights {
+    /// The heights of the rows that are shown, in order.
     pub rows: Vec<i32>,
     pub spacing: i32,
     pub inner: i32,
+    /// The number of each shown row among all the rows; empty when none is hidden.
+    pub map: Vec<usize>,
 }
 
 impl Heights {
+    /// The number among all the rows of the shown row `n`.
+    fn full(&self, n: usize) -> usize {
+        self.map.get(n).copied().unwrap_or(n)
+    }
+
+    /// The place among the shown rows of row `row`; none for a hidden one.
+    fn place(&self, row: usize) -> Option<usize> {
+        match self.map.is_empty() {
+            true => Some(row),
+            false => self.map.iter().position(|&m| m == row),
+        }
+    }
+
     /// How many whole rows fit from `top` on, at least one.
     pub(crate) fn fit_from(&self, top: usize) -> usize {
         self.fit(self.rows.get(top..).unwrap_or_default().iter())
@@ -208,7 +227,7 @@ impl Heights {
         }
         for (n, &h) in self.rows.iter().enumerate().skip(top) {
             if y < i64::from(h) {
-                return Some(n);
+                return Some(self.full(n));
             }
             y -= i64::from(h) + i64::from(self.spacing);
             if y < 0 {
@@ -220,9 +239,14 @@ impl Heights {
 }
 
 impl Rows {
-    /// Scrolls the least that shows the selected row.
+    /// Whether row `n` is hidden.
+    pub(crate) fn hidden(&self, n: usize) -> bool {
+        self.hidden.get(n).copied().unwrap_or(false)
+    }
+
+    /// Scrolls the least that shows the selected row (a hidden one is not shown).
     pub(crate) fn show_selection(&mut self, fit: &Heights) {
-        if let Some(row) = self.selected {
+        if let Some(row) = self.selected.and_then(|r| fit.place(r)) {
             if row < self.top {
                 self.top = row;
             }
@@ -237,11 +261,15 @@ impl Rows {
     /// With nothing selected, Down and the page keys down start at the first row, Up and End at
     /// the last. Returns whether the selection changed.
     pub(crate) fn select_by_key(&mut self, key: ListKey, fit: &Heights) -> bool {
-        let Some(last) = self.rows.len().checked_sub(1) else {
+        let shown = match fit.map.is_empty() {
+            true => self.rows.len(),
+            false => fit.map.len(),
+        };
+        let Some(last) = shown.checked_sub(1) else {
             return false;
         };
         let page = fit.fit_from(self.top).saturating_sub(1).max(1);
-        let to = match (key, self.selected) {
+        let to = match (key, self.selected.and_then(|r| fit.place(r))) {
             (ListKey::Home, _) | (ListKey::Down | ListKey::PageDown, None) => 0,
             (ListKey::End, _) | (ListKey::Up | ListKey::PageUp, None) => last,
             (ListKey::Up, Some(r)) => r.saturating_sub(1),
@@ -249,8 +277,8 @@ impl Rows {
             (ListKey::PageUp, Some(r)) => r.saturating_sub(page),
             (ListKey::PageDown, Some(r)) => r.saturating_add(page).min(last),
         };
-        let changed = self.selected != Some(to);
-        self.selected = Some(to);
+        let changed = self.selected != Some(fit.full(to));
+        self.selected = Some(fit.full(to));
         self.show_selection(fit);
         changed
     }

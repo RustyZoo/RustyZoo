@@ -65,6 +65,11 @@ impl Interface {
         true
     }
 
+    /// The colour of the text of an element.
+    pub(crate) fn fore_color(&self, id: i32) -> Option<crate::ui::layout::Rgb> {
+        Some(self.tree.elements[self.tree.find(id)?].look.fore_color)
+    }
+
     /// The text of an element as it is shown now; `None` if there is no such element.
     pub(crate) fn text(&self, id: i32) -> Option<Vec<u8>> {
         let e = &self.tree.elements[self.tree.find(id)?];
@@ -251,6 +256,44 @@ impl Interface {
     /// new rows allow.
     pub(crate) fn refill_rows(&mut self, id: i32, rows: Vec<Row>) -> bool {
         self.put_rows(id, rows, true)
+    }
+
+    /// Replaces the rows of a list box, some of them hidden (`hidden`, the first for the first
+    /// row), with row `selected` selected and `top` the first shown row to show, in shown rows, as
+    /// far as they allow: no scroll to the selection, no select action. `false` if the element is
+    /// not a list box.
+    pub(crate) fn fill_rows(
+        &mut self,
+        id: i32,
+        rows: Vec<Row>,
+        hidden: Vec<bool>,
+        (selected, top): (Option<usize>, usize),
+    ) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::ListBox(list) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        let selected = selected.filter(|&r| r < rows.len());
+        list.rows = crate::ui::widgets::Rows {
+            rows,
+            hidden,
+            top,
+            selected,
+            ..Default::default()
+        };
+        self.flag(i, DIRTY, true);
+        self.sync_owner(i);
+        true
+    }
+
+    /// The first row shown of a list box, in shown rows.
+    pub(crate) fn list_top(&self, id: i32) -> usize {
+        match self.tree.find(id).map(|i| &self.tree.elements[i].kind) {
+            Some(Kind::ListBox(list)) => list.rows.top,
+            _ => 0,
+        }
     }
 
     fn put_rows(&mut self, id: i32, rows: Vec<Row>, keep_top: bool) -> bool {
