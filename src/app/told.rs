@@ -184,6 +184,8 @@ impl App<'_> {
                 let updated = self.fired.interface.is_some();
                 let lines = game.finances.refresh(&game.money, ui, now, updated);
                 self.money_events.extend(lines);
+                let line = (game.funding).refresh(ui, self.sim.marketing(), now, updated);
+                self.money_events.extend(line);
             }
         }
         self.lines.money = std::mem::take(&mut self.money_events);

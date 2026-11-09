@@ -32,7 +32,7 @@ impl UiStrings for Texts {
     }
 }
 
-fn map() -> Zoo {
+pub(super) fn map() -> Zoo {
     let mut zoo = tile_with(&[]);
     zoo.width = 4;
     zoo.height = 4;
@@ -125,7 +125,7 @@ fn with_game(name: &str, body: impl FnOnce(&mut App)) {
 }
 
 /// As [`with_game`], with more members in the install.
-fn with_members(name: &str, extra: &[(&str, Vec<u8>)], body: impl FnOnce(&mut App)) {
+pub(super) fn with_members(name: &str, extra: &[(&str, Vec<u8>)], body: impl FnOnce(&mut App)) {
     let install = cache_install_with(&format!("app-money-{name}"), frame_file(), extra);
     let vfs = Vfs::open(&install.0).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();

@@ -142,7 +142,14 @@ impl<'a> MapRenderer<'a> {
                 summary.objects_skipped += 1;
                 continue;
             };
-            let kind = Kind::of_class(&entity.class);
+            let kind = match (entity.class.as_str(), entity.type_name.as_str()) {
+                ("objects", "other")
+                    if matches!(entity.subtype.as_str(), "twaterwv" | "frshwav") =>
+                {
+                    Kind::Sparkle
+                }
+                _ => Kind::of_class(&entity.class),
+            };
             if no_units && matches!(kind, Kind::Unit | Kind::Overlay | Kind::Flight) {
                 continue;
             }
@@ -184,6 +191,7 @@ impl<'a> MapRenderer<'a> {
                 clock: None,
                 mode: c.movement_mode,
                 portal: c.fence.is_some_and(|f| f.portal),
+                connector: extra.connectors.binary_search(&c.id).is_ok(),
                 food: c.food,
                 tint: extra
                     .tinted
@@ -230,6 +238,7 @@ impl<'a> MapRenderer<'a> {
                 clock: None,
                 mode: 0,
                 portal: false,
+                connector: false,
                 food: 0,
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
@@ -263,6 +272,7 @@ impl<'a> MapRenderer<'a> {
             clock,
             mode: 0,
             portal: false,
+            connector: false,
             food: 0,
             tint: None,
             wall: 0,

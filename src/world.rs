@@ -36,6 +36,7 @@ mod portal;
 mod portal_anim;
 mod save;
 mod settle;
+mod sparkle;
 mod tank;
 mod undo;
 mod water;
@@ -46,6 +47,7 @@ pub(crate) use filter::{
     sell_rate as filter_sell_rate, wear as filter_wear,
 };
 pub(crate) use portal::Portal;
+pub(crate) use sparkle::Sparkles;
 pub(crate) use water::Draw;
 pub use wear::Decay;
 pub(crate) use wear::piece_event;
@@ -167,6 +169,12 @@ pub struct World {
     paused: bool,
     /// The ids of the water effects the world manager made (simulation 7.2), which no save keeps.
     waves: std::collections::HashSet<u32>,
+    /// The water sparkles of each tank (map drawing 9.7.10), not saved.
+    sparkles: BTreeMap<u32, Sparkles>,
+    /// The sparkles flagged for removal at the next removal pass.
+    doomed: Vec<u32>,
+    /// Those of them that aged out: hidden at once.
+    hidden: Vec<u32>,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
@@ -255,6 +263,9 @@ impl World {
             edits: 0,
             paused: false,
             waves: Default::default(),
+            sparkles: BTreeMap::new(),
+            doomed: Vec::new(),
+            hidden: Vec::new(),
             told_water: BTreeMap::new(),
             wet: Vec::new(),
             draws: Vec::new(),

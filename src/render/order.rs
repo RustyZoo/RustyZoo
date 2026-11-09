@@ -40,6 +40,9 @@ pub(crate) enum Kind {
     /// An ambient creature: on no tile, painted after the whole map in list order (ambients 5.2),
     /// with a shadow that goes with the tile under its shadow point (ambients 5.3).
     Flight,
+    /// A water sparkle of a tank: in the tile's transient list, painted after its water (map
+    /// drawing 9.7.10).
+    Sparkle,
 }
 
 impl Kind {
@@ -346,6 +349,10 @@ impl Scene {
             }
             Kind::Flight => {
                 self.flights.push(o);
+                true
+            }
+            Kind::Sparkle => {
+                self.transient[t].push(o);
                 true
             }
             Kind::Path | Kind::Edge | Kind::Wall => false,

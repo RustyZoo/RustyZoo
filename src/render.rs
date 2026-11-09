@@ -177,6 +177,8 @@ pub(crate) struct Extra {
     /// The animation of the buildings that show `used` or `idledead` (entity id); the others show
     /// `idle`.
     pub looks: HashMap<u32, &'static str>,
+    /// The tank walls (ids, ascending) that connect a tank to a land exhibit (tank fauna 12.1).
+    pub connectors: Vec<u32>,
 }
 
 /// The key of the clock of the bubbles of the filter `id` in [`Extra::idle`]: the filter's own
@@ -653,6 +655,8 @@ struct Meta<'a> {
     mode: u32,
     /// A tank wall that is a portal.
     portal: bool,
+    /// A tank wall that is the connector of a combined exhibit (tank fauna 12.4).
+    connector: bool,
     /// The units left of a food entity.
     food: i32,
     /// A tank filter that is switched off.

@@ -4,7 +4,7 @@
 //! The goal list is the timer, the goals of the file's `[goals]`, then those of each `[start]
 //! extragoals` file. A goal is simple, complex (all children) or chain (children in order).
 //! The rules a simple goal reads are in [`rules`]: the accounts, the zoo status, the exhibits, the
-//! entities and the interface (rules 10 and 11); the research and shows rules read 0. The
+//! entities, the research tree (rule 13), the shows (rule 15) and the interface (rules 10 and 11). The
 //! triggers 1 to 10 do their work (messages, popups and elements, cash, availability, a
 //! boxed animal, an award, removal, the sell switch, forced research), and every trigger is also logged as
 //! `scenario trigger`. The objectives list (4.5) and the end (5.4, 9) are here, and so are the
@@ -259,6 +259,8 @@ struct Simple {
     hidden: bool,
     /// `rulea`, `ruleb`, `arga`, `argb`.
     rule: [i32; 4],
+    /// Every `arga` value of the section, which rule 13 reads as research ids.
+    ids: Vec<i32>,
     kind: i32,
     value: i32,
     sticky: bool,
@@ -287,6 +289,14 @@ fn int(s: Option<&Section>, key: &str) -> i32 {
 }
 
 impl Simple {
+    /// The value of the rule (6): rule 13 reads the ids of the section, the others `rule`.
+    fn read(&self, env: &Env, states: &[u8], gui: &Gui) -> i32 {
+        match self.rule[0] {
+            13 => rules::research(&self.ids, env),
+            _ => rules::eval(&self.rule, self.value, env, states, gui),
+        }
+    }
+
     /// The state the rule value gives (4.2), or none for a type that is not 0 to 8.
     fn judge(&self, r: i32) -> Option<u8> {
         let (met, yes, no) = match self.kind {
@@ -328,6 +338,9 @@ impl Goal {
                 text: int(s, "text"),
                 hidden: int(s, "hidden") != 0,
                 rule: ["rulea", "ruleb", "arga", "argb"].map(|k| int(s, k)),
+                ids: (s.map_or(&[][..], |s| s.get_all("arga")).iter())
+                    .map(|v| to_int(v).unwrap_or(0))
+                    .collect(),
                 kind: int(s, "type"),
                 value: int(s, "value"),
                 sticky: int(s, "sticky") != 0,
@@ -429,7 +442,7 @@ impl Goal {
                 if s.sticky && self.state != 0 {
                     return;
                 }
-                s.judge(rules::eval(&s.rule, s.value, env, states, gui))
+                s.judge(s.read(env, states, gui))
             }
             Body::Complex(children) => {
                 for c in children.iter_mut() {

@@ -29,6 +29,7 @@ use crate::menu::{self, Menu, Request, Start};
 use crate::money::{DOLLAR_KEY, DONATIONS, Money, SYMBOL, Symbol, Tone};
 use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
+use crate::panel::marketing as marketing_panel;
 use crate::panel::research as research_panel;
 use crate::panel::{animal, exhibit, guest, show, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
@@ -115,6 +116,8 @@ struct Game {
     bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
+    /// What the marketing part of the zoo status window holds.
+    funding: crate::panel::marketing::Funding,
     /// Whether the status window was shown at the last look, for the Awards page.
     awards_page: Awards,
     /// The building panels and the tool they choose.
@@ -506,6 +509,7 @@ impl<'a> App<'a> {
         self.ui = Some(ui);
         if let Some(game) = &mut self.game {
             game.finances = Finances::default();
+            game.funding = Default::default();
             game.world.units.names = names;
             game.awards_page = Awards::default();
         }
@@ -954,6 +958,8 @@ mod filter_tests;
 #[cfg(test)]
 mod show_panel_tests;
 
+#[cfg(test)]
+mod marketing_tests;
 #[cfg(test)]
 mod money_tests;
 
