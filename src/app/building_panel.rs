@@ -6,6 +6,7 @@ use super::*;
 use crate::building::Kind;
 use crate::entity::type_of;
 use crate::panel::building as panel;
+use crate::panel::unitlist as lists;
 use crate::text::to_cp1252;
 
 /// The layouts the building panel shows: the two building panels and the filter panel.
@@ -66,7 +67,7 @@ impl App<'_> {
                 ui.set_hidden(layout, true);
             }
         }
-        let above = ui.shown(exhibit::LAYOUT);
+        let above = ui.shown(exhibit::LAYOUT) || lists::any_shown(ui);
         for layout in LAYOUTS {
             ui.set_alt(layout, above);
         }
