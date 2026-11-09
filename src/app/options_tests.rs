@@ -212,6 +212,11 @@ fn written(dir: &Path, section: &str, key: &str) -> Option<i32> {
 
 /// A game with the options window (800 x 600, in a window) and the user folder of the test.
 fn with_options(name: &str, ini: &str, body: impl FnOnce(&mut T, &Path)) {
+    with_options_at(name, ini, true, body);
+}
+
+/// The same; with `passed` false the first pass, which starts the window, is left to the test.
+fn with_options_at(name: &str, ini: &str, passed: bool, body: impl FnOnce(&mut T, &Path)) {
     let root = ROOT.to_string()
         + "[o]\ntype=UIButton\nid=1004\nx=0\ny=500\ndx=8\ndy=8\naction=3\ntarget=5\nstate=2048\n\
            [w]\ntype=UILayout\nlayout=ui/opt.lyt\nstate=1\n[hh]\ntype=UILayout\nlayout=ui/help.lyt\nstate=1\n\
@@ -244,7 +249,9 @@ fn with_options(name: &str, ini: &str, body: impl FnOnce(&mut T, &Path)) {
         now: 0,
         lines: Vec::new(),
     };
-    t.pass(&[]);
+    if passed {
+        t.pass(&[]);
+    }
     body(&mut t, &user.0);
 }
 
@@ -311,9 +318,9 @@ fn a_missing_key_takes_the_built_in_value_and_odd_values_are_quantised() {
             assert!(t.down(id), "{id}");
         }
         assert_eq!(t.app.user_term(), 0);
-        // No tooltipDuration: the tooltip keeps the 3 s of its layout.
+        // No tooltipDuration: the built-in 5000.
         let tip = t.ui().tree.find(7003).unwrap();
-        assert_eq!(t.ui().tree.elements[tip].timer_duration, 3000);
+        assert_eq!(t.ui().tree.elements[tip].timer_duration, 5000);
     });
     for (volume, slider, term) in [
         (37, 98, 30),
@@ -330,6 +337,22 @@ fn a_missing_key_takes_the_built_in_value_and_odd_values_are_quantised() {
             assert_eq!(t.ui().settings().tooltip_delay, 0);
         });
     }
+}
+
+#[test]
+fn the_rows_from_the_scroll_speed_on_wait_for_a_map_view() {
+    let ini = "[UI]\ntooltipDelay=101\nuserAttenuation=600\nmouseScrollX=40\n";
+    with_options_at("mapview", ini, false, |t, dir| {
+        let game = t.app.game.take();
+        t.app.options_start();
+        assert_eq!(t.slider(1523), 10, "the tooltip rows are set");
+        assert_eq!(t.slider(1511), 0, "the volume waits");
+        assert_eq!(written(dir, "UI", "mouseScrollY"), None);
+        t.app.game = game;
+        t.pass(&[]);
+        assert_eq!(t.slider(1511), 60);
+        assert_eq!(written(dir, "UI", "mouseScrollY"), Some(40));
+    });
 }
 
 #[test]
