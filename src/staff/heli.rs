@@ -2,6 +2,7 @@
 //! lifts from (the slot point, the exit point, its users and its dart count), its idle sets and
 //! the flight, one step of the free move kept in the height band of its type.
 
+use super::rotor::Rotor;
 use crate::behaviour::{Data, Env, Number};
 use crate::building::{self, place};
 use crate::entity::Catalogue;
@@ -9,18 +10,6 @@ use crate::render::order::ground_height;
 use crate::unit::{Part, Unit};
 use crate::world::World;
 use crate::zoo::Entity;
-
-/// The rotor sound's counter at its start and its end, in milliseconds (point 8.2).
-const FADE_MS: i32 = 4000;
-/// The sound level (0 is full volume) the counter stands for: `counter * 0.00025 * 3000`.
-const LEVEL: f64 = 0.00025 * 3000.0;
-
-/// The rotor sound of a helicopter: how far it has faded, and whether it is fading.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Rotor {
-    pub counter: i32,
-    pub fade: bool,
-}
 
 /// The three own words of a helicopter (zoo format 6.13), the band it flies in and its sound.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +21,7 @@ pub(crate) struct Heli {
     pub dir: i32,
     /// `cMinHeight` and `cMaxHeight` of the type.
     pub band: (i32, i32),
-    /// Not saved: a flying helicopter loaded starts it again at full volume.
+    /// Not saved: a flying helicopter loaded starts it again at full volume (staff 7.11.2).
     pub rotor: Option<Rotor>,
 }
 
@@ -62,11 +51,8 @@ impl Heli {
             base: word(0),
             flying,
             dir: if own.len() < 12 { -1 } else { word(2) as i32 },
-            // A flying helicopter restarts its sound at full level.
-            rotor: flying.then_some(Rotor {
-                counter: 0,
-                fade: false,
-            }),
+            // A flying helicopter restarts its sound at its first turn.
+            rotor: flying.then(Rotor::loaded_in_air),
             ..Heli::default()
         }
     }
@@ -79,48 +65,25 @@ impl Heli {
             .collect()
     }
 
-    /// Point 8.2: setting the word to what it is does nothing. Landing lets the sound fade out;
-    /// taking off starts the sound, unless it has one, and fades it in.
-    pub(crate) fn set_flying(&mut self, on: bool) {
+    /// Point 8.2: setting the word to what it is does nothing. Landing raises the fade flag of the
+    /// sound; taking off needs a new sound when there is none (the answer is true; staff 7.11.2
+    /// point 3), and does nothing to one that exists.
+    pub(crate) fn set_flying(&mut self, on: bool) -> bool {
         if self.flying == on {
-            return;
+            return false;
         }
         self.flying = on;
         match (&mut self.rotor, on) {
-            (Some(r), _) => r.fade = true,
-            (None, true) => {
-                self.rotor = Some(Rotor {
-                    counter: FADE_MS,
-                    fade: true,
-                })
-            }
-            (None, false) => {}
-        }
-    }
-
-    /// Point 8.3: the sound after an update of `ms` milliseconds. The counter runs down while
-    /// flying and up after the landing; at the end of the climb the fading stops, and at the
-    /// other end the sound is freed.
-    pub(crate) fn tick(&mut self, ms: u32) {
-        let Some(r) = self.rotor.as_mut().filter(|r| r.fade) else {
-            return;
-        };
-        let k = if self.flying { -1 } else { 1 };
-        r.counter = r
-            .counter
-            .saturating_add(k * i32::try_from(ms).unwrap_or(i32::MAX))
-            .clamp(0, FADE_MS);
-        match (self.flying, r.counter) {
-            (true, 0) => r.fade = false,
-            (false, FADE_MS) => self.rotor = None,
+            (Some(r), false) => r.raise(),
+            (None, true) => return true,
             _ => {}
         }
+        false
     }
 
-    /// The level of the sound (0 is full volume), when there is one.
+    /// The fade term of the sound (0 is full volume), when there is one.
     pub(crate) fn level(&self) -> Option<i32> {
-        self.rotor
-            .map(|r| (f64::from(r.counter) * LEVEL).round() as i32)
+        self.rotor.as_ref().map(Rotor::level)
     }
 }
 
@@ -160,10 +123,56 @@ pub(crate) fn idle_set(unit: &mut Unit, env: &Env) {
     }
 }
 
-/// Point 8.3: the sound follows the update.
-pub(crate) fn rotor(unit: &mut Unit, ms: u32) {
-    if let Part::Staff(s) = &mut unit.part {
-        s.heli.tick(ms);
+/// The helicopter's position and the sound it has, for the sound rules.
+fn sounding(unit: &Unit, world: &World, at: usize) -> Option<((i32, i32, i32), bool)> {
+    let c = world.zoo.entities[at].common.as_ref()?;
+    let Part::Staff(s) = &unit.part else {
+        return None;
+    };
+    Some(((c.x, c.y, c.z), s.heli.flying))
+}
+
+/// Point 7 of staff 7.11.2: a helicopter loaded in the air starts its sound at its first turn,
+/// before its first movement.
+pub(crate) fn settle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    let Some((point, _)) = sounding(unit, world, at) else {
+        return;
+    };
+    if let Part::Staff(s) = &mut unit.part
+        && s.heli.rotor.as_ref().is_some_and(Rotor::pending)
+    {
+        let loaded = data.loop_sound(&world.zoo.entities[at]);
+        let mut r = Rotor::start(loaded, point, &world.units.hearing);
+        r.settle();
+        s.heli.rotor = Some(r);
+    }
+}
+
+/// Setting the flying word (point 8.2): the sound starts when the helicopter has none (staff
+/// 7.11.2 point 3).
+pub(crate) fn set_flying(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, on: bool) {
+    settle(unit, world, data, at);
+    let Some((point, _)) = sounding(unit, world, at) else {
+        return;
+    };
+    if let Part::Staff(s) = &mut unit.part
+        && s.heli.set_flying(on)
+    {
+        let loaded = data.loop_sound(&world.zoo.entities[at]);
+        s.heli.rotor = Some(Rotor::start(loaded, point, &world.units.hearing));
+    }
+}
+
+/// Staff 7.11.2 point 4: the sound after an update of `ms` milliseconds.
+pub(crate) fn rotor(unit: &mut Unit, world: &World, at: usize, ms: u32) {
+    let Some((point, flying)) = sounding(unit, world, at) else {
+        return;
+    };
+    if let Part::Staff(s) = &mut unit.part
+        && let Some(r) = &mut s.heli.rotor
+        && !r.update(flying, ms, point, &world.units.hearing)
+    {
+        s.heli.rotor = None;
     }
 }
 

@@ -170,6 +170,8 @@ struct Game {
     /// The loops the date hook holds for the sleigh and the biplane: the flight, the file and the
     /// base term (ambients 6). The game's end and a file load drop them with the game.
     vehicles: Vec<(u32, &'static str, i32)>,
+    /// The global term of the sound rules, from the ini file (sound 4.3).
+    global: i32,
 }
 
 impl Game {
@@ -641,6 +643,7 @@ impl<'a> App<'a> {
             };
             // The session flags go in with the step, and come back as the rules left them.
             game.world.units.cheat = self.cheats.flags;
+            game.world.units.hearing = game.hearing();
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
             let (season, cat) = (&mut self.cheats.season, self.renderer.catalogue());
             let (vehicles, mut trio) = (&mut game.vehicles, false);
@@ -957,6 +960,9 @@ mod scenario_tests;
 
 #[cfg(test)]
 mod tutorial_tests;
+
+#[cfg(test)]
+mod tutorial_full_tests;
 
 #[cfg(test)]
 mod award_tests;

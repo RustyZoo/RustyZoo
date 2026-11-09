@@ -374,6 +374,7 @@ pub mod chores;
 pub(crate) mod heli;
 pub mod ladder;
 pub mod pool;
+pub(crate) mod rotor;
 pub mod service;
 
 #[cfg(test)]

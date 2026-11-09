@@ -538,6 +538,10 @@ fn commands_have_a_text_form_that_reads_back() {
         Command::Award(8),
         Command::Award(0),
         Command::Award(-1),
+        Command::Press(1007),
+        Command::Press(0),
+        Command::Press(-1),
+        Command::Press(i32::MAX),
     ] {
         assert_eq!(command.to_string().parse(), Ok(command));
     }
@@ -577,6 +581,12 @@ fn commands_have_a_text_form_that_reads_back() {
         "award add x",
         "award add 2147483648",
         "award 8",
+        "press",
+        "press x",
+        "press 1.5",
+        "press 1 2",
+        "press 2147483648",
+        "press -2147483649",
     ] {
         assert!(bad.parse::<Command>().is_err(), "{bad:?}");
     }
