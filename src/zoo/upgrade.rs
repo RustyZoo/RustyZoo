@@ -7,8 +7,9 @@ use super::{Bad, HABITAT_MIN, R, Reader, ShowInfo, Shows, bad};
 /// The date the original puts in a date field that has none: 1 January 2000.
 pub(crate) const NEVER: u64 = 125_911_584_000_000_000;
 
-/// The habitat records of a file of version `v`. A habitat that holds a show is refused below 106,
-/// where the show's record differs.
+/// The habitat records of a file of version `v`. A habitat that holds a show is refused below 97,
+/// where the info lacks fields the reader cannot make; from 97 the show info in `kept` is already
+/// written in the form of 106 (the writer splices it from the model).
 pub(super) fn habitats(v: u32, kept: &[u8]) -> Result<Vec<u8>, String> {
     let mut r = Reader::new(kept, v);
     (r.want, r.copy) = (true, true);
@@ -37,10 +38,12 @@ fn habitat_records(r: &mut Reader) -> R<()> {
         if v < 90 {
             r.put(&[0]);
         } else if r.u8()? != 0 {
-            if v < 106 {
+            if v < 97 {
                 return bad("a show cannot be written yet");
             }
+            r.v = 106;
             ShowInfo::read(r)?;
+            r.v = v;
         }
         if tank {
             r.skip(8)?;
