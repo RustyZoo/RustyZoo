@@ -6,6 +6,8 @@ use zip::{CompressionMethod, ZipWriter};
 use super::*;
 use crate::fixtures::TempDir;
 
+mod mods;
+
 impl TempDir {
     /// Writes an archive whose members are stored and deflated alternately.
     fn archive(&self, relative: &str, members: &[(&str, &str)]) {
@@ -619,9 +621,9 @@ fn symbolic_links_are_not_followed() {
     assert!(vfs.read("secret.txt").is_err());
     assert_eq!(vfs.warnings().len(), 3, "{:?}", vfs.warnings());
 
-    // A search directory that is a link out of the install folder is an error.
+    // A search directory may be a link out of the install folder, like any other element.
     std::os::unix::fs::symlink(&outside.0, dir.0.join("link")).unwrap();
-    assert!(message(Vfs::open(&dir.0)).contains("leaves the install folder"));
+    assert_eq!(text(&Vfs::open(&dir.0).unwrap(), "secret.txt"), "secret");
 }
 
 #[cfg(target_os = "linux")]
@@ -750,9 +752,6 @@ fn open_errors() {
 
     dir.write("zoo.ini", b"[resource]\npath=;\n");
     assert!(message(Vfs::open(&dir.0)).contains("lists no directory"));
-
-    dir.write("zoo.ini", b"[resource]\npath=./a;../b\n");
-    assert!(message(Vfs::open(&dir.0)).contains("leaves the install folder"));
 
     // Directories that do not exist are skipped, and a path of only those is an error.
     dir.write("zoo.ini", b"[resource]\npath=./a\n");
