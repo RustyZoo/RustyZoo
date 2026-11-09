@@ -257,7 +257,6 @@ fn the_helicopter_row_shows_its_base_and_stays_as_it_was_without_one() {
     fill(&w, &mut ui, &mut win, Some(8));
     assert_eq!(ui.row_text(4205, 0), Some(&b"Base"[..]));
     assert_eq!(ui.selected_row(4205), Some(0), "the base is the selected entity of the row");
-    assert_eq!(win.target_of(0), Some(8));
     // The base goes: the row is as it was. A filter it fails gives it its own name, hidden.
     base(&mut w, 0);
     fill(&w, &mut ui, &mut win, None);

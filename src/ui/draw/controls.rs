@@ -194,10 +194,7 @@ impl Painter {
             rows,
             spacing: l.spacing.max(0),
             inner: dy.saturating_sub(e.y_border.saturating_mul(2)),
-            map: match l.rows.hidden.iter().any(|&h| h) {
-                true => shown.iter().map(|&(n, _)| n).collect(),
-                false => Vec::new(),
-            },
+            map: (l.rows.hidden.iter().any(|&h| h)).then(|| shown.iter().map(|&(n, _)| n).collect()),
         }
     }
 

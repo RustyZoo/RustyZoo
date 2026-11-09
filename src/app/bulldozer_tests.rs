@@ -97,7 +97,7 @@ fn map() -> Zoo {
     zoo
 }
 
-fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3]) -> EntityType {
+pub(super) fn ty(class: &'static str, name: &[u8], subtype: &[u8], ini: &str, fp: [i32; 3]) -> EntityType {
     // A type without pictures of its own is the square of `obj.ani`.
     let ini = match ini.contains("[Animations]") {
         true => ini.to_string(),

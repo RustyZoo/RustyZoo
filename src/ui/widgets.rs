@@ -177,21 +177,21 @@ pub(crate) struct Heights {
     pub rows: Vec<i32>,
     pub spacing: i32,
     pub inner: i32,
-    /// The number of each shown row among all the rows; empty when none is hidden.
-    pub map: Vec<usize>,
+    /// The number of each shown row among all the rows; none when no row is hidden.
+    pub map: Option<Vec<usize>>,
 }
 
 impl Heights {
     /// The number among all the rows of the shown row `n`.
     fn full(&self, n: usize) -> usize {
-        self.map.get(n).copied().unwrap_or(n)
+        self.map.as_ref().map_or(n, |m| m.get(n).copied().unwrap_or(n))
     }
 
     /// The place among the shown rows of row `row`; none for a hidden one.
     fn place(&self, row: usize) -> Option<usize> {
-        match self.map.is_empty() {
-            true => Some(row),
-            false => self.map.iter().position(|&m| m == row),
+        match &self.map {
+            None => Some(row),
+            Some(map) => map.iter().position(|&m| m == row),
         }
     }
 
@@ -261,10 +261,7 @@ impl Rows {
     /// With nothing selected, Down and the page keys down start at the first row, Up and End at
     /// the last. Returns whether the selection changed.
     pub(crate) fn select_by_key(&mut self, key: ListKey, fit: &Heights) -> bool {
-        let shown = match fit.map.is_empty() {
-            true => self.rows.len(),
-            false => fit.map.len(),
-        };
+        let shown = fit.map.as_ref().map_or(self.rows.len(), Vec::len);
         let Some(last) = shown.checked_sub(1) else {
             return false;
         };

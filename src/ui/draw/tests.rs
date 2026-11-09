@@ -713,6 +713,39 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
 }
 
 #[test]
+fn a_hidden_row_takes_no_room_and_the_first_row_counts_shown_rows() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=36\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\n"
+    );
+    let mut tree = tree("listhidden", &root, &[]);
+    show_all(&mut tree);
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = (0..5)
+        .map(|_| Row {
+            text: b"a".to_vec(),
+            ..Row::default()
+        })
+        .collect();
+    // Rows 1 and 2 are hidden: row 3 is the second one shown, and the selected one.
+    list.rows.hidden = vec![false, true, true, false, false];
+    list.rows.selected = Some(3);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0], "right under the first row");
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    // The first row shown counts shown rows: 1 starts at row 3.
+    list.rows.top = 1;
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(at(&frame, 43, 4 + 3), [255, 0, 0]);
+}
+
+#[test]
 fn a_row_with_a_colour_of_its_own_is_written_in_it() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\

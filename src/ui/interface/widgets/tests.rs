@@ -989,3 +989,29 @@ fn texts_fields_lists_and_bars_are_hit_over_their_whole_rectangle_even_when_tran
     assert_eq!(hit(&mut ui, 44, 30), ["hover 21"], "the track of the bar");
     assert_eq!(hit(&mut ui, 60, 5), ["hover 30"], "a field");
 }
+
+#[test]
+fn rows_filled_with_hidden_ones_keep_their_numbers_and_the_bar_counts_shown_rows() {
+    let mut ui = interface("hidden-rows");
+    let range = |ui: &Interface| match &ui.tree.elements[ui.tree.find(21).unwrap()].kind {
+        Kind::ScrollBar(s) => (s.bar.max, s.bar.position),
+        _ => unreachable!(),
+    };
+    // Ten rows, every even one hidden: five shown, three at a time.
+    let hidden: Vec<bool> = (0..10).map(|n| n % 2 == 0).collect();
+    assert!(ui.fill_rows(20, rows(10), hidden.clone(), (Some(3), 99)));
+    assert_eq!(range(&ui), (2, 2), "the first shown row is clamped to the last page");
+    assert_eq!(ui.selected_row(20), Some(3));
+    assert_eq!(ui.list_top(20), 2);
+    // The rows shown from the third shown one on are 5, 7 and 9: a click on the second is row 7.
+    assert_eq!(press(&mut ui, 10, 14), ["focus 20", "row 20 7"]);
+    assert_eq!(release(&mut ui), ["select 20 7"]);
+    assert_eq!(ui.take_actions(), [Action::Row(20, 7)]);
+    // A selected number that is not a row selects none; no row at all is fine.
+    assert!(ui.fill_rows(20, rows(2), vec![], (Some(2), 0)));
+    assert_eq!(ui.selected_row(20), None);
+    assert!(ui.fill_rows(20, Vec::new(), vec![true; 3], (None, 5)));
+    assert_eq!((ui.list_top(20), range(&ui)), (0, (0, 0)));
+    assert!(!ui.fill_rows(21, rows(1), vec![], (None, 0)), "not a list");
+    assert_eq!(ui.list_top(21), 0);
+}

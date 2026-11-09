@@ -975,6 +975,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod unit_lists_tests;
 
 #[cfg(test)]
 mod filter_tests;

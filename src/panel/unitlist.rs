@@ -286,11 +286,9 @@ pub(crate) struct Window {
     /// A refill is due now whatever the clock says: the window was just shown or a filter chosen.
     pub now: bool,
     due: u64,
-    /// The entity of each row, and the unit each row stands for in the selection (the base of
-    /// a helicopter that has one).
+    /// The entity of each row, and the name each had.
     pub ids: Vec<u32>,
     names: Vec<Vec<u8>>,
-    targets: Vec<u32>,
     rows: Vec<Row>,
     hidden: Vec<bool>,
     /// The text colour each count had when the interface was loaded.
@@ -303,11 +301,6 @@ impl Window {
     /// The unit of row `row`.
     pub(crate) fn unit_of(&self, row: usize) -> Option<u32> {
         self.ids.get(row).copied()
-    }
-
-    /// The target of the unit of row `row` for a click or a selection: the base of a helicopter.
-    pub(crate) fn target_of(&self, row: usize) -> Option<u32> {
-        self.targets.get(row).copied()
     }
 
     /// Whether the refill is due at `now` (20.7 point 3): asked for or never run, or its time came;
@@ -372,7 +365,8 @@ impl Window {
                 .collect();
             self.hidden = vec![false; list.len()];
         }
-        self.targets = list.iter().map(|e| e.id).collect();
+        // The unit each row stands for in the selection: a helicopter's base, when it shows it.
+        let mut targets: Vec<u32> = list.iter().map(|e| e.id).collect();
         let mut counts = vec![0; spec.filters.len()];
         for (k, e) in list.iter().enumerate() {
             let results: Vec<bool> = (0..counts.len()).map(|i| tests.pass(which, i, e)).collect();
@@ -391,7 +385,7 @@ impl Window {
                     let c = world.zoo.entities[b].common.as_ref();
                     self.rows[k].text = c.map_or(Vec::new(), |c| to_cp1252(&c.name));
                     self.hidden[k] = false;
-                    self.targets[k] = c.map_or(e.id, |c| c.id);
+                    targets[k] = c.map_or(e.id, |c| c.id);
                 }
                 (true, true, None) => {}
                 _ => {
@@ -402,7 +396,7 @@ impl Window {
         }
         self.ids = list.iter().map(|e| e.id).collect();
         self.names = list.into_iter().map(|e| e.name).collect();
-        let row = (0..self.ids.len()).find(|&k| !self.hidden[k] && Some(self.targets[k]) == selected);
+        let row = (0..self.ids.len()).find(|&k| !self.hidden[k] && Some(targets[k]) == selected);
         let top = ui.list_top(spec.list);
         ui.fill_rows(spec.list, self.rows.clone(), self.hidden.clone(), (row, top));
         for (f, n) in spec.filters.iter().zip(counts) {

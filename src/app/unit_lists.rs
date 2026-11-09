@@ -68,10 +68,14 @@ impl App<'_> {
         let Some(id) = (w.unit_of(row)).filter(|&id| game.world.find(id).is_some()) else {
             return;
         };
-        let heli = which == STAFF && game.world.units.get(id).is_some_and(|u| u.kind == Kind::Heli);
-        let target = match heli {
-            true => (w.target_of(row)).filter(|&t| t != id && game.world.find(t).is_some()),
-            false => Some(id),
+        let base = game.world.units.get(id).and_then(|u| match &u.part {
+            crate::unit::Part::Staff(s) if u.kind == Kind::Heli => Some(s.heli.base),
+            _ => None,
+        });
+        let heli = which == STAFF && base.is_some();
+        let target = match base.filter(|_| heli) {
+            Some(base) => game.world.find(base).filter(|&at| game.world.zoo.entities[at].class == "building").map(|_| base),
+            None => Some(id),
         };
         let Some(target) = target else { return };
         ui.set_button(BULLDOZER, false, true);
