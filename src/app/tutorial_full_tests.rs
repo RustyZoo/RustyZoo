@@ -15,6 +15,8 @@ use crate::ui::layout::{DISABLED, Tree, installed_expansions};
 use crate::vfs::Vfs;
 use std::path::Path;
 
+mod bot;
+
 /// One pass of the test is one pass of the scenario: a step of 1500 ms.
 const STEP: u64 = 1500;
 
@@ -88,7 +90,8 @@ impl Rig {
 struct Goal {
     name: String,
     leaf: bool,
-    rule: [i32; 3],
+    /// `rulea`, `ruleb`, `arga`, `argb`, `value`.
+    rule: [i32; 5],
     /// The goal has a trigger.
     acts: bool,
     /// Its trigger shows a popup: a trigger 2 with a popup of its own (`truleb` 0) or a press that
@@ -107,7 +110,13 @@ fn goals(cfg: &Config) -> Vec<Goal> {
         out.push(Goal {
             name: String::from_utf8_lossy(name).into_owned(),
             leaf,
-            rule: [int("rulea"), int("ruleb"), int("arga")],
+            rule: [
+                int("rulea"),
+                int("ruleb"),
+                int("arga"),
+                int("argb"),
+                int("value"),
+            ],
             acts: int("trulea") != 0,
             popup: int("trulea") == 2
                 && match int("truleb") {
@@ -168,6 +177,9 @@ impl<'a, 'b> Play<'a, 'b> {
             if rest.starts_with("menu scenario dialog") {
                 self.ended = true;
             }
+            if std::env::var("DBG").is_ok() && !rest.starts_with("frame") && !rest.starts_with("sim step") {
+                println!("      {rest}");
+            }
             let keep = ["sim scenario ", "ui ask", "ui answer", "ui press", "menu "];
             if keep.iter().any(|k| rest.starts_with(k)) {
                 self.log.push((self.pass, rest.to_string()));
@@ -176,26 +188,17 @@ impl<'a, 'b> Play<'a, 'b> {
     }
 
     /// One pass of a step: a popup that is open gets its answer (OK), the end dialog none, else the
-    /// player presses the element of the first goal asking for a press that has not fired.
+    /// player does what the first goal that is not done asks.
     fn step(&mut self) {
-        let mut commands = Vec::new();
         let ui = self.app.ui.as_mut().unwrap();
         if ui.modal_open() {
             if !self.ended {
                 ui.answer(1);
             }
-        } else if let Some(g) = self
-            .goals
-            .iter()
-            .find(|g| g.leaf && g.rule[0] == 10 && g.rule[1] != 0 && !self.fired.contains(&g.name))
-        {
-            // The play button shows once the pause button was pressed.
-            if g.rule[2] == 1072 {
-                commands.push(Command::Press(1071));
-            }
-            commands.push(Command::Press(g.rule[2]));
+        } else if let Some(goal) = self.next_goal() {
+            self.act(&goal);
         }
-        self.tick(STEP, &commands);
+        self.tick(STEP, &[]);
     }
 
     /// Passes until `stop` holds, at most `limit`. Gives whether it did.
@@ -631,5 +634,32 @@ fn each_prepared_tutorial_ends_after_its_last_popup_and_yes_starts_the_next_one(
             }
             _ => {}
         }
+    }
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn scratch() {
+    let rig = rig("scratch");
+    let n = std::env::var("SCN").unwrap();
+    let file = path(&n);
+    let layout = goals(&read(&rig, &file).unwrap());
+    let mut app = rig.app(&n);
+    start(&mut app, &file);
+    let mut play = Play::new(&mut app, layout.clone());
+    for i in 0..400 {
+        let g = play.next_goal().map(|g| g.name);
+        play.step();
+        let w = play.app.sim.scenario().map(|s| s.states().iter().filter(|&&w| w != 0).count());
+        println!("{i} {:?} done {w:?} {}", g, play.ended);
+        if std::env::var("V").is_ok() {
+            for l in play.app.log_lines(play.pass, play.now).iter().take(0) { println!("   {l}"); }
+        }
+        if play.ended {
+            break;
+        }
+    }
+    for l in play.log.iter().filter(|l| l.1.starts_with("sim scenario end")) {
+        println!("{l:?}");
     }
 }
