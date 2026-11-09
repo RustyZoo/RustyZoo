@@ -102,6 +102,19 @@ impl Data for Library<'_> {
         set.map_or(0, |s| s.files.len())
     }
 
+    fn loop_sound(&self, unit: &Entity) -> Option<(String, i32)> {
+        let ty = &self.catalogue.types[self.at(unit)?];
+        let name = ty
+            .config
+            .as_deref()?
+            .section("Characteristics/Strings")?
+            .get("cLoopSoundName")?;
+        let file = ty.sound_member(name.trim_ascii());
+        Data::read(self, &file)?;
+        let atten = crate::build::number(ty, "cLoopSoundAtten");
+        Some((file, atten.map_or(0, |n| n as i32)))
+    }
+
     fn read(&self, name: &str) -> Option<Vec<u8>> {
         match self.vfs.read(name) {
             Ok(bytes) => Some(bytes),

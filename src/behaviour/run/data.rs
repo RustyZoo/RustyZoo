@@ -33,6 +33,11 @@ pub trait Data {
     fn set_files(&self, _ty: &EntityType) -> usize {
         0
     }
+    /// The rotor sound a helicopter type loads: the member of `cLoopSoundName` and
+    /// `cLoopSoundAtten`; `None` when the file cannot be read (staff 7.11.2 point 3).
+    fn loop_sound(&self, _unit: &Entity) -> Option<(String, i32)> {
+        None
+    }
     /// The bytes of the data file `name`; `None` when there is none.
     fn read(&self, _name: &str) -> Option<Vec<u8>> {
         None

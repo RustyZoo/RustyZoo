@@ -59,3 +59,39 @@ fn the_loops_of_the_filters_are_placed_in_the_view_and_follow_their_health_and_t
         assert!(looped(s).iter().all(|l| l.0 != right));
     });
 }
+
+#[test]
+fn the_rotor_of_a_helicopter_is_asked_for_as_its_sound_object_holds_it() {
+    use crate::staff::rotor::Rotor;
+    use crate::unit::Part;
+    with_game("rotor-loops", "", |s| {
+        let keeper = s.add(12, 1280, 1280, 0);
+        s.pass(&[]);
+        assert!(looped(s).is_empty());
+        // The program hands the sound rules where the view's centre is.
+        let game = s.app.game.as_mut().unwrap();
+        let hearing = game.hearing();
+        assert_eq!(game.world.units.hearing, hearing);
+        // A helicopter (a staff member with the helicopter words) in the air with its sound.
+        let Part::Staff(staff) = &mut game.world.units.get_mut(keeper).unwrap().part else {
+            panic!("not staff");
+        };
+        staff.heli.flying = true;
+        staff.heli.rotor =
+            Rotor::start(Some(("r.wav".into(), 1200)), (1280, 1280, 0), &hearing).into();
+        for _ in 0..10 {
+            s.pass(&[]);
+        }
+        let sounds = s.app.loop_sounds();
+        assert_eq!(sounds.len(), 1);
+        assert_eq!(sounds[0].voice, format!("rotor {keeper}"));
+        assert_eq!(sounds[0].file, "r.wav");
+        // The fade runs: B + F, and no distance term while it does.
+        assert!(
+            (1200..4200).contains(&sounds[0].base),
+            "the fade ran: {}",
+            sounds[0].base
+        );
+        assert_eq!(sounds[0].distance, 0);
+    });
+}
