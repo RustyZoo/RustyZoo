@@ -164,7 +164,10 @@ fn an_empty_path_value_lists_no_folder_and_a_missing_key_means_the_install_folde
 
 #[test]
 fn only_the_first_resource_section_is_read() {
-    assert_eq!(resource_path("[resource]\nkey=1\n[Resource]\npath=./x\n"), None);
+    assert_eq!(
+        resource_path("[resource]\nkey=1\n[Resource]\npath=./x\n"),
+        None
+    );
     assert_eq!(
         resource_path("[a]\n[resource]\npath=./x\n[resource]\npath=./y\n").as_deref(),
         Some("./x")
@@ -177,7 +180,10 @@ fn archives_are_not_limited_in_number() {
         let dir = TempDir::new("mod-many");
         dir.ini("./updates");
         for i in 0..count {
-            dir.archive(&format!("updates/a{i:04}.ztd"), &[(&format!("n{i}.txt"), "x")]);
+            dir.archive(
+                &format!("updates/a{i:04}.ztd"),
+                &[(&format!("n{i}.txt"), "x")],
+            );
         }
         let vfs = Vfs::open(&dir.0).unwrap();
         assert_eq!(vfs.archive_count(), count);

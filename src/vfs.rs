@@ -40,6 +40,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use flate2::read::DeflateDecoder;
 
@@ -104,10 +105,12 @@ struct Member {
 enum Source {
     /// Normalised name to the loose file, for every file below one search directory.
     Directory(HashMap<String, PathBuf>),
-    /// An archive, opened for each read, so that the number of archives is not bounded by the
-    /// limit of open files.
+    /// An archive. The first [`KEPT_OPEN`] archives stay open: reading a member seeks to it, and
+    /// the lock serialises reads. The others are opened for each read, so that the number of
+    /// archives is not bounded by the limit of open files of the system.
     Archive {
         path: PathBuf,
+        file: Option<Mutex<File>>,
         members: HashMap<String, Member>,
     },
 }
@@ -171,13 +174,26 @@ impl Source {
                     .map(Some)
                     .map_err(|f| f.within(&path.display().to_string(), name))
             }
-            Source::Archive { path, members } => {
+            Source::Archive {
+                path,
+                file,
+                members,
+            } => {
                 let Some(member) = members.get(name) else {
                     return Ok(None);
                 };
                 let within = |f: Failure| f.within(&path.display().to_string(), name);
-                let mut file = File::open(path).map_err(|e| within(io_failure(e)))?;
-                read_member(&mut file, member).map(Some).map_err(within)
+                let read = match file {
+                    Some(file) => {
+                        let mut file = file.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                        read_member(&mut file, member)
+                    }
+                    None => read_member(
+                        &mut File::open(path).map_err(|e| within(io_failure(e)))?,
+                        member,
+                    ),
+                };
+                read.map(Some).map_err(within)
             }
         }
     }
@@ -260,7 +276,9 @@ impl Vfs {
                     directories.push(directory);
                 }
                 Ok(_) => {}
-                Err(e) => vfs.warnings.push(format!("[resource] path entry \"{entry}\": {e}")),
+                Err(e) => vfs
+                    .warnings
+                    .push(format!("[resource] path entry \"{entry}\": {e}")),
             }
         }
         if directories.is_empty() {
@@ -270,6 +288,7 @@ impl Vfs {
             ));
         }
 
+        let mut kept = 0;
         for directory in &directories {
             let files = index_directory(directory, &mut vfs.warnings)?;
             // The archives are the files directly in the directory, last name first.
@@ -284,7 +303,15 @@ impl Vfs {
             vfs.sources.push(Source::Directory(files));
             for path in archives {
                 match open_archive(&path, &mut vfs.warnings) {
-                    Ok(source) => vfs.sources.push(source),
+                    Ok(mut source) => {
+                        if let Source::Archive { file, .. } = &mut source
+                            && kept >= KEPT_OPEN
+                        {
+                            *file = None;
+                        }
+                        kept += 1;
+                        vfs.sources.push(source);
+                    }
                     Err(Failure::Damaged(why)) => vfs
                         .warnings
                         .push(format!("{} is ignored: {why}", path.display())),
@@ -678,6 +705,7 @@ fn open_archive(path: &Path, warnings: &mut Vec<String>) -> Result<Source, Failu
     }
     Ok(Source::Archive {
         path: path.to_path_buf(),
+        file: Some(Mutex::new(reader.into_inner())),
         members,
     })
 }
@@ -821,6 +849,10 @@ fn cut_path(path: String) -> (String, bool) {
     }
     (path, false)
 }
+
+/// How many archives stay open. The system limits the open files of a process (256 on macOS by
+/// default, 1,024 on Linux), and an install may have any number of archives.
+const KEPT_OPEN: usize = 128;
 
 /// What the C library inside the original allows to be open together: 512 streams, three of them
 /// the standard ones.
