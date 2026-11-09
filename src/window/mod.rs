@@ -105,24 +105,6 @@ fn remember(on: bool) {
     }
 }
 
-/// Writes the choice of the alternate cursors into the settings of the user folder
-/// (`[UI] useAlternateCursors`), which the next start reads over the game's ini file. A failure
-/// only warns.
-fn remember_cursors(on: bool) {
-    let Some(dir) = userdir::dir() else {
-        eprintln!("rustyzoo: warning: no user folder, the cursors are not remembered");
-        return;
-    };
-    if let Err(e) = userdir::save(
-        &dir,
-        "UI",
-        "useAlternateCursors",
-        if on { "1" } else { "0" },
-    ) {
-        eprintln!("rustyzoo: warning: {e}");
-    }
-}
-
 /// The shortest time between two pictures of the start-up: about one refresh of a 60 Hz display.
 const LOADING_FRAME: Duration = Duration::from_millis(16);
 
@@ -293,6 +275,7 @@ fn sound_and_log(
     (pass, now): (u64, u64),
 ) -> Result<(), CliError> {
     sound.pause(app.paused());
+    sound.global(app.user_term());
     for line in sound.units(vfs, app) {
         println!("pass {pass} t={now} {line}");
     }
@@ -383,7 +366,7 @@ pub fn run(
 
     // The busy cursor shows from the start-up until the first pass.
     let cursors = Rc::new(RefCell::new(Cursors::new(vfs.root())));
-    let mut alternate = rustyzoo::cursor::alternate(ini);
+    let alternate = rustyzoo::cursor::alternate(ini);
     cursors.borrow_mut().show(busy_number(alternate));
     let mut sound = Sound::open(&sdl, ini);
     let mut pump = sdl.event_pump()?;
@@ -484,9 +467,18 @@ pub fn run(
             continue;
         }
         follow_mode(&mut screen, &mut state, &mut commands, &mut seen);
+        // A button of the options window asked for the other mode.
+        if let Some(on) = app.take_mode_request() {
+            switch(&mut screen, &mut state, &mut commands, on, true);
+        }
+        app.set_display(screen::desktop(&video));
         run_script(&mut script, pass, &mut screen, &mut state, &mut commands);
         if has_pointer {
             follow_pointer(&screen, &pump, &mut pointer, &mut commands)?;
+        }
+        // Ctrl+C switched the cursors; the game keeps the choice and writes it.
+        if state.alternate != app.alternate_cursors() {
+            app.set_alternate_cursors(state.alternate);
         }
         seen_alternate.set(state.alternate);
         let now = sdl3::timer::ticks() - start;
@@ -498,15 +490,13 @@ pub fn run(
             None => false,
         };
         commands.clear();
+        // A button of the options window may have switched them too.
+        state.alternate = app.alternate_cursors();
         shown |= painted;
         if painted || (shown && std::mem::take(&mut state.exposed)) {
             present(&mut screen, &texture)?;
         }
         (cursors.borrow_mut()).show(rustyzoo::cursor::number(app.cursor(), state.alternate));
-        if state.alternate != alternate {
-            alternate = state.alternate;
-            remember_cursors(alternate);
-        }
         sound_and_log(&mut sound, vfs, &app, &mut log, (pass, now))?;
         pass += 1;
         if app.quit() || flags.passes.is_some_and(|n| pass >= n) {

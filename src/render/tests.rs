@@ -815,6 +815,25 @@ fn check_windows(
 }
 
 #[test]
+fn switching_the_blending_drops_the_staged_grounds() {
+    let install = cache_install("render-blending", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = Zoo {
+        width: 2,
+        height: 2,
+        tiles: flat_map(2, 2),
+        ..tile_with(&[])
+    };
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    renderer.stage(&zoo, 0, false).unwrap();
+    assert!(!renderer.set_blending(true), "already on");
+    assert!(renderer.grounds.is_some(), "no change keeps the grounds");
+    assert!(renderer.set_blending(false));
+    assert!(renderer.grounds.is_none(), "the other setting stages again");
+}
+
+#[test]
 fn one_staging_draws_any_window_like_the_whole_map() {
     let install = cache_install("render-staged", frame_file());
     let vfs = Vfs::open(&install.0).unwrap();

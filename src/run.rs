@@ -554,10 +554,14 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         }
     };
     let mut lines = Flushed::new(|l: &str| report.line(format_args!("{l}")));
-    for (pass, now, due) in passes {
+    // A button of the options window asked for the other mode: the switch is made at the next pass.
+    let mut asked = None;
+    for (pass, now, mut due) in passes {
+        due.splice(0..0, asked.take());
         if let Some(frame) = app.pass(now, &due) {
             png(pass, frame)?;
         }
+        asked = app.take_mode_request().map(Command::Fullscreen);
         lines.pass(&app, pass, now)?;
         if app.quit() {
             break;

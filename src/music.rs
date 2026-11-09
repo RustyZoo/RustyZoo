@@ -155,6 +155,11 @@ impl Music {
         gain(self.sum())
     }
 
+    /// The main volume moved: `G` is `global` from now on.
+    pub(crate) fn set_global(&mut self, global: i32) {
+        self.global = global;
+    }
+
     /// Whether it plays at full level and is not fading.
     pub(crate) fn playing(&self) -> bool {
         self.state == State::Playing

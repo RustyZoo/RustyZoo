@@ -100,6 +100,18 @@ impl Interface {
         self.settings = settings;
     }
 
+    /// The settings the interface reads.
+    pub(crate) fn settings(&self) -> Settings {
+        self.settings
+    }
+
+    /// The milliseconds the tooltip stays once shown (its `timerDuration`).
+    pub(crate) fn set_tooltip_duration(&mut self, ms: i32) {
+        if let Some(i) = self.tooltip_element() {
+            self.tree.elements[i].timer_duration = ms;
+        }
+    }
+
     /// Gives the element `id` a tooltip of its own, `text`; an empty text takes it away. `false`
     /// if there is no such element.
     pub(crate) fn set_tip(&mut self, id: i32, text: String) -> bool {
