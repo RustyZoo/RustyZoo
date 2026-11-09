@@ -66,6 +66,9 @@ impl State {
         if let Some(command) = input::command(&event) {
             commands.push(command);
         }
+        if let Some(on) = input::shift(&event).filter(|_| self.interface) {
+            commands.push(Command::Shift(on));
+        }
         self.toggle |= input::alt_enter(&event);
         self.alternate ^= input::ctrl_c(&event);
         if self.interface {
@@ -116,6 +119,11 @@ impl State {
                     WindowEvent::Exposed | WindowEvent::Resized(..) | WindowEvent::PixelSizeChanged(..),
                 ..
             } => self.exposed = true,
+            // The release of a Shift key may go to another window: let go of it.
+            Event::Window {
+                win_event: WindowEvent::FocusLost,
+                ..
+            } if self.interface => commands.push(Command::Shift(false)),
             _ => {}
         }
     }
@@ -210,6 +218,43 @@ mod tests {
         state.note(window(WindowEvent::CloseRequested), &mut commands);
         state.note(Event::Quit { timestamp: 0 }, &mut commands);
         assert_eq!(commands, [Command::Close, Command::Close]);
+    }
+
+    #[test]
+    fn a_shift_key_becomes_a_command_only_with_an_interface() {
+        let shift = Event::KeyDown {
+            timestamp: 0,
+            window_id: 1,
+            keycode: None,
+            scancode: Some(sdl3::keyboard::Scancode::LShift),
+            keymod: sdl3::keyboard::Mod::LSHIFTMOD,
+            repeat: false,
+            which: 0,
+            raw: 0,
+        };
+        let mut state = State::default();
+        let mut commands = Vec::new();
+        state.note(shift.clone(), &mut commands);
+        assert!(commands.is_empty());
+        state.interface = true;
+        state.note(shift, &mut commands);
+        assert_eq!(commands, [Command::Shift(true)]);
+        commands.clear();
+        let lost = Event::Window {
+            timestamp: 0,
+            window_id: 1,
+            win_event: WindowEvent::FocusLost,
+        };
+        state.note(lost.clone(), &mut commands);
+        assert_eq!(
+            commands,
+            [Command::Shift(false)],
+            "focus lost lets go of Shift"
+        );
+        commands.clear();
+        state.interface = false;
+        state.note(lost, &mut commands);
+        assert!(commands.is_empty());
     }
 
     #[test]

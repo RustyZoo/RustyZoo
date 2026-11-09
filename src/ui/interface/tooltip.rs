@@ -124,6 +124,16 @@ impl Interface {
         true
     }
 
+    /// Makes string `help` the tooltip of the element `id`, as its layout's `helpid` would be.
+    /// `false` if there is no such element.
+    pub(crate) fn set_help(&mut self, id: i32, help: i32) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.tree.elements[i].help_id = vec![help];
+        true
+    }
+
     /// Makes the tooltip of element `id` the `i`-th `helpid` of its layout; an index outside the
     /// list changes nothing (information panels 6.5). `false` if nothing changed.
     pub(crate) fn use_tooltip(&mut self, id: i32, i: usize) -> bool {

@@ -600,3 +600,39 @@ fn a_rating_check_that_finds_a_loose_animal_dates_the_escape_before_the_penalty(
         assert_eq!(s.escape, file_time(10 * DAY));
     }
 }
+
+#[test]
+fn a_price_the_player_sets_is_kept_inside_the_range_of_the_economy_file() {
+    let mut s =
+        status("[characteristics]\ncMinAdultAdmissionPrice=5\ncMaxAdultAdmissionPrice=80\n");
+    let (min, max) = (s.settings.min_price, s.settings.max_price);
+    for (set, shown) in [
+        (22.0, 22.0),
+        (22.25, 22.25),
+        (min, min),
+        (max, max),
+        // Below the minimum, at it, and far under it (a negative price) give the minimum.
+        (min - 0.25, min),
+        (-3.0, min),
+        (f32::MIN, min),
+        (f32::NEG_INFINITY, min),
+        // Above the maximum, and far above it.
+        (max + 0.25, max),
+        (1e30, max),
+        (f32::INFINITY, max),
+        // Not a number: the maximum.
+        (f32::NAN, max),
+    ] {
+        s.set_price(set);
+        assert_eq!(s.price, shown, "{set}");
+    }
+}
+
+#[test]
+fn a_range_of_one_price_holds_that_price() {
+    let mut s = status("[characteristics]\ncMinAdultAdmissionPrice=7\ncMaxAdultAdmissionPrice=7\n");
+    for set in [0.0, 7.0, 99.0] {
+        s.set_price(set);
+        assert_eq!(s.price, 7.0);
+    }
+}

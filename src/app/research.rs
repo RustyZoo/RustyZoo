@@ -96,6 +96,9 @@ impl App<'_> {
                         .update_available(ui, &game.world, cat, vfs, species);
                 }
             }
+            if let Some(tree) = self.sim.research() {
+                game.window.completed.add(tree, d.name);
+            }
             let text = ui.string(COMPLETED).replacen("%r", &ui.string(d.name), 1);
             dialog(ui, vfs, Message::new(&to_cp1252(&text), kinds::PLAIN));
             // A branch with no program left says so in a second dialog (5.4).
@@ -184,6 +187,10 @@ impl App<'_> {
             }
         }
         game.build.start_research(cat, &flags);
+        if let Some(tree) = self.sim.research() {
+            done.iter()
+                .for_each(|d| game.window.completed.add(tree, d.name));
+        }
         // The open lists and panels follow.
         game.building.clock.force = true;
         game.staff.clock.force = true;

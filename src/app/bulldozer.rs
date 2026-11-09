@@ -63,7 +63,7 @@ enum Next {
 }
 
 /// The templates have no `%r`.
-struct Plain;
+pub(super) struct Plain;
 
 impl format::Strings for Plain {
     fn string(&self, _: u32) -> &str {
@@ -122,7 +122,9 @@ impl App<'_> {
             let rect = game.build.sweep_area(tile, pointer);
             let mut head = None;
             let found: Vec<usize> = match rect {
-                Some((a, b)) => bulldozer::area(world, a, b),
+                Some((a, b)) => bulldozer::area(world, a, b, |e| {
+                    crate::entity::type_of(cat, e).is_some_and(|t| game.view.hide.hides(t))
+                }),
                 // The last drawn entity with a pixel under the pointer (placing 7.1), and the
                 // tied wall that goes with it.
                 None => {

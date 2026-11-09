@@ -137,7 +137,10 @@ pub(super) fn interface(install: &Install) -> Interface {
                   [rl]\ntype=UIButton\nid=1008\nx=48\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
                   [rr]\ntype=UIButton\nid=1009\nx=52\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
                   [pa]\ntype=UIButton\nid=1071\nx=56\ny=0\ndx=4\ndy=4\ncolorasicon=1\n\
-                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n"
+                  [pl]\ntype=UIButton\nid=1072\nx=60\ny=0\ndx=4\ndy=4\ncolorasicon=1\nstate=1\n\
+                  [hf]\ntype=UIButton\nid=1066\nx=40\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1066\n\
+                  [hb]\ntype=UIButton\nid=1067\nx=44\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1067\n\
+                  [hg]\ntype=UIButton\nid=1068\nx=48\ny=4\ndx=4\ndy=4\ncolorasicon=1\nstate=2048\nhelpid=1068\n"
                     .to_vec(),
             ),
             (
@@ -1143,6 +1146,80 @@ fn building_upgrades_come_from_the_free_programs_and_from_each_completion() {
         assert_eq!(held(app), [21, 22]);
         app.open_zoo(zoo(), Money::default(), false).unwrap();
         assert!(held(app).is_empty());
+    });
+}
+
+#[test]
+fn the_research_list_follows_each_completion_a_forced_research_and_each_load_or_start() {
+    use crate::research::Done;
+    let program = |name: i32, cost: i32| {
+        format!("[research]\nname={name}\ncost={cost}\ntarget=3\neffect=1\nicon=ui/p{name}\n")
+            .into_bytes()
+    };
+    let files = [
+        ("s/lst.scn", b"[start]\nresearch=resl.cfg\n".to_vec()),
+        ("resl.cfg", b"[branches]\nbranch=lb.cfg\n".to_vec()),
+        ("lb.cfg", b"[branch]\nname=1\ncategory=lc.cfg\n".to_vec()),
+        (
+            "lc.cfg",
+            b"[category]\nname=2\nprogram=l1.cfg\nprogram=l2.cfg\nprogram=l3.cfg\n".to_vec(),
+        ),
+        ("l1.cfg", program(21, 0)),
+        ("l2.cfg", program(22, 50)),
+        ("l3.cfg", program(23, 60)),
+    ];
+    with_game("research-list", "", &files, None, |app, _| {
+        app.pass(0, &[]);
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let start = Start {
+            path: "saved.zoo".into(),
+            label: "scenario".into(),
+            forget_last: true,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: Some("s/lst.scn".into()),
+        };
+        app.begin(&start);
+        let listed = |app: &App| -> Vec<i32> {
+            let list = &app.game.as_ref().unwrap().window.completed;
+            list.rows.iter().map(|r| r.0).collect()
+        };
+        // The program of cost 0 is free and never listed.
+        assert!(listed(app).is_empty());
+        let done = |name| Done {
+            name,
+            target: 3,
+            effect: 1,
+            vals: [0; 3],
+        };
+        app.sim.push_research_done(done(22));
+        app.research_done();
+        assert_eq!(listed(app), [22]);
+        app.sim.push_research_done(done(22));
+        app.research_done();
+        assert_eq!(listed(app), [22]);
+        // A forced completion lists the programs it completes, the newest on top.
+        app.force_research(false);
+        assert_eq!(listed(app), [23, 22]);
+        // A saved game lists the programs its section completes: 22 only.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        section.extend(2i32.to_le_bytes());
+        section.extend(22u32.to_le_bytes());
+        section.extend(50f32.to_bits().to_le_bytes());
+        section.extend((-1i32).to_le_bytes());
+        let zoo = || {
+            let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), Some("s/lst.scn"))).unwrap();
+            zoo.set_research(section.clone());
+            zoo
+        };
+        app.open_zoo(zoo(), Money::default(), true).unwrap();
+        assert_eq!(listed(app), [22]);
+        // A game that starts with no scenario lists nothing.
+        app.open_zoo(zoo(), Money::default(), false).unwrap();
+        assert!(listed(app).is_empty());
     });
 }
 

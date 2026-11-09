@@ -41,6 +41,7 @@ pub mod rubble;
 pub mod scenario;
 pub mod show;
 pub mod sim;
+mod snapshot;
 mod soundscape;
 pub mod sprite;
 pub mod staff;

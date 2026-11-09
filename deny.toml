@@ -3,7 +3,8 @@ all-features = true
 
 [licenses]
 # GPL: the root crate. AGPL: the vendored nihav crates and the root crate (its licence is GPL AND AGPL).
-allow = ["GPL-3.0-or-later", "AGPL-3.0-or-later", "MIT", "Apache-2.0", "BSD-3-Clause", "Zlib"]
+# IJG: jpeg-encoder (its licence is (MIT OR Apache-2.0) AND IJG, for the standard JPEG tables).
+allow = ["GPL-3.0-or-later", "AGPL-3.0-or-later", "MIT", "Apache-2.0", "BSD-3-Clause", "Zlib", "IJG"]
 confidence-threshold = 0.9
 
 [sources]

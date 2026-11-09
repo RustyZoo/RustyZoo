@@ -241,7 +241,7 @@ impl Tree {
     }
 
     /// Every program in tree order.
-    fn programs(&self) -> impl Iterator<Item = &Program> {
+    pub(crate) fn programs(&self) -> impl Iterator<Item = &Program> {
         let categories = self.branches.iter().flat_map(|b| &b.categories);
         categories.flat_map(|c| &c.programs)
     }

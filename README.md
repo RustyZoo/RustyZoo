@@ -99,3 +99,5 @@ RustyZoo is free software under the [GNU General Public License, version 3 or la
 | --- | --- |
 | Liberation Sans fonts in `fonts/` | SIL Open Font License 1.1 (`fonts/OFL.txt`) |
 | Indeo 5 video decoder of [NihAV](https://nihav.org) by Kostya Shishkov, trimmed, in `vendor/nihav` (plays the intro movies) | AGPL-3.0-or-later (`vendor/README.md`) |
+
+This software is based in part on the work of the Independent JPEG Group (the DCT code of the `jpeg-encoder` crate, which writes the snapshots).

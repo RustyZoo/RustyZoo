@@ -388,5 +388,6 @@ impl App<'_> {
             let lines = game.panel.refresh_plaque(ui, &game.world, cat, vfs);
             self.lines.panel.extend(lines);
         }
+        self.zoo_window_pass(now, ticking);
     }
 }

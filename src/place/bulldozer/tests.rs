@@ -229,19 +229,19 @@ fn an_area_collects_each_object_once_by_the_tiles_it_covers() {
     pieces.push(piece("f", 2, 2, 4));
     let w = world(pieces);
     // The row of paths and the fence on the south side of tile (2, 2).
-    let row = area(&w, (1, 2), (7, 2));
+    let row = area(&w, (1, 2), (7, 2), |_| false);
     assert_eq!(row.len(), 8);
     assert!(row.contains(&8));
     // The shop covers four tiles and is collected once.
-    let shop = area(&w, (2, 3), (4, 5));
+    let shop = area(&w, (2, 3), (4, 5), |_| false);
     assert_eq!(shop.iter().filter(|&&e| e == 7).count(), 1);
     // The corners may come in either order; off the map tiles are left out.
-    assert_eq!(area(&w, (7, 2), (1, 2)).len(), 8);
-    assert_eq!(area(&w, (-4, -4), (20, 20)).len(), 9);
-    assert!(area(&w, (50, 50), (60, 60)).is_empty());
+    assert_eq!(area(&w, (7, 2), (1, 2), |_| false).len(), 8);
+    assert_eq!(area(&w, (-4, -4), (20, 20), |_| false).len(), 9);
+    assert!(area(&w, (50, 50), (60, 60), |_| false).is_empty());
     // A piece is collected by its own tile only: the north side of (2, 3) is the same line as
     // the south side of (2, 2), but another piece.
-    assert!(!area(&w, (2, 3), (2, 3)).contains(&8));
+    assert!(!area(&w, (2, 3), (2, 3), |_| false).contains(&8));
 }
 
 #[test]
@@ -445,7 +445,7 @@ fn a_tank_wall_is_tied_to_the_tank_wall_across_and_goes_with_it_in_the_order_of_
     let outer = w.edge(3 * 8 + 3, 0).unwrap();
     assert_eq!((tied(&w, outer), with_tied(&w, outer)), (None, vec![outer]));
     // The drag over one tile takes the outer walls and its own, not the other tank's.
-    assert_eq!(area(&w, (3, 3), (3, 3)).len(), 4);
+    assert_eq!(area(&w, (3, 3), (3, 3), |_| false).len(), 4);
 
     // A tank beside the grounds, whose wall across is a tank wall on the grounds' tile (it has
     // no wall height): the tied wall goes first, and a drag collects it before the piece even
@@ -456,7 +456,7 @@ fn a_tank_wall_is_tied_to_the_tank_wall_across_and_goes_with_it_in_the_order_of_
     let (p, q) = (w.edge(3 * 8 + 3, 2).unwrap(), w.edge(3 * 8 + 4, 6).unwrap());
     assert_eq!((tied(&w, p), tied(&w, q)), (Some(q), None));
     assert_eq!(with_tied(&w, p), [q, p]);
-    let found = area(&w, (3, 3), (3, 3));
+    let found = area(&w, (3, 3), (3, 3), |_| false);
     let place = |e| found.iter().position(|&x| x == e).unwrap();
     assert!(found.len() == 5 && place(q) + 1 == place(p), "{found:?}");
     // A fence across that is no tank wall is nobody's tied wall, and neither is a piece of the

@@ -369,3 +369,34 @@ fn the_expansions_are_the_xpac_files_by_id() {
     );
     assert!(expansion_entries(&Vfs::open(&Install::new("ui-none", &[]).0).unwrap()).is_empty());
 }
+
+#[test]
+fn a_graph_reads_its_keys_and_draws_its_own_background_unless_the_file_says_not() {
+    let tree = load(
+        "graph",
+        &[(
+            "ui/root.lyt",
+            "[LayoutInfo]\nid=1\n\
+             [a]\ntype=UIGraph\nid=2\ngraphType=b\nyIsMoney=1\nForcedMaxY=100\nNumYLabels=4\n\
+             [b]\ntype=UIGraph\nid=3\ntransparent=1\n",
+        )],
+        0,
+    );
+    let at = |id| &tree.elements[tree.find(id).unwrap()];
+    let Kind::Graph(g) = &at(2).kind else {
+        panic!("not a graph");
+    };
+    assert_eq!(
+        (
+            g.style,
+            g.y_is_money,
+            g.forced_max,
+            g.forced_min,
+            g.y_labels
+        ),
+        (crate::ui::graph::Style::Bar, true, 100, -1, 4)
+    );
+    // The graph clears its canvas with its own colour: opaque unless the file says otherwise.
+    assert!(!at(2).transparent && at(3).transparent);
+    assert_eq!(at(2).kind.name(), "UIGraph");
+}

@@ -46,6 +46,7 @@ fn row(ui: &mut Interface, vfs: &Vfs, it: &Item) -> Row {
         disabled: false,
         icon,
         grayed_icon,
+        ..Row::default()
     }
 }
 

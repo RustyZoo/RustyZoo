@@ -11,6 +11,7 @@ use super::{Action, Interface};
 use crate::app::Key;
 use crate::text::from_cp1252;
 use crate::ui::draw::{Strings, element_text};
+use crate::ui::graph::{Point, Style as GraphStyle};
 use crate::ui::layout::{
     DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, Picture, READ_ONLY, SELECT_ON_KEYS, SELECTED,
     TAKES_FOCUS,
@@ -186,6 +187,16 @@ impl Interface {
         (self.tree.find(id)).is_some_and(|i| self.tree.elements[i].state & SELECTED != 0)
     }
 
+    /// Puts the button `id` down (selected) or up, as the program has it, without its action;
+    /// `false` if there is none.
+    pub(crate) fn set_down(&mut self, id: i32, down: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        self.flag(i, SELECTED, down);
+        true
+    }
+
     /// Hides or shows an element on its own; `false` if there is none.
     pub(crate) fn set_hidden(&mut self, id: i32, hidden: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
@@ -335,6 +346,45 @@ impl Interface {
         self.flag(i, DIRTY, true);
         self.sync_owner(i);
         true
+    }
+
+    /// Gives a graph its points and the currency symbol its money labels use; `false` if the
+    /// element is not a graph.
+    pub(crate) fn set_graph(&mut self, id: i32, points: Vec<Point>, symbol: &str) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::Graph(g) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        if g.points == points && g.symbol == symbol {
+            return true;
+        }
+        (g.points, g.symbol) = (points, symbol.to_string());
+        self.flag(i, DIRTY, true);
+        true
+    }
+
+    /// Switches a graph to line, bar or point; `false` if the element is not a graph.
+    pub(crate) fn set_graph_style(&mut self, id: i32, style: GraphStyle) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let Kind::Graph(g) = &mut self.tree.elements[i].kind else {
+            return false;
+        };
+        g.style = style;
+        self.flag(i, DIRTY, true);
+        true
+    }
+
+    /// The style of a graph.
+    #[cfg(test)]
+    pub(crate) fn graph_style(&self, id: i32) -> Option<GraphStyle> {
+        match &self.tree.elements[self.tree.find(id)?].kind {
+            Kind::Graph(g) => Some(g.style),
+            _ => None,
+        }
     }
 
     /// Gives the rows of a list box the colours of their text (none: the list's own), the first

@@ -88,6 +88,7 @@ impl App<'_> {
         };
         want.ghosts.iter_mut().for_each(|g| g.anim = anim);
         want.marks.clone_from(&game.marks);
+        want.hide = game.view.hide;
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));
         want.hidden.extend_from_slice(game.world.hidden_sparkles());
@@ -221,6 +222,28 @@ pub fn frame_hashes(frames: &[&Framebuffer]) -> Vec<u64> {
 }
 
 impl Game {
+    /// The animation and frame each unit holds, for the picture.
+    pub(super) fn shown(&self) -> Vec<Shown> {
+        (self.world.units.iter())
+            .filter(|u| !u.animation.name.is_empty())
+            .map(|u| Shown {
+                id: u.id,
+                animation: u.animation.name.clone(),
+                frame: u.animation.shown(),
+            })
+            .chain(self.world.units.gate_frames().map(|(id, frame)| Shown {
+                id,
+                animation: "idle".into(),
+                frame,
+            }))
+            .chain(self.world.portal_frames().map(|(id, frame)| Shown {
+                id,
+                animation: "portal".into(),
+                frame,
+            }))
+            .collect()
+    }
+
     /// The centre of the map view in view space, where the sounds are heard from (sound 5).
     pub(super) fn listener(&self) -> (i64, i64) {
         let camera = &self.camera;

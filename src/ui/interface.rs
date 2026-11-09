@@ -87,6 +87,8 @@ pub struct Interface {
     sounds: Vec<&'static str>,
     /// The buttons whose action ran (see [`Interface::take_selected`]).
     selected: Vec<i32>,
+    /// The toggle buttons that were released as deselected (see [`Interface::take_deselected`]).
+    deselected: Vec<i32>,
     actions: Vec<Action>,
     settings: Settings,
     tip: tooltip::Tip,
@@ -135,6 +137,7 @@ impl Interface {
             events: Vec::new(),
             sounds: Vec::new(),
             selected: Vec::new(),
+            deselected: Vec::new(),
             actions: Vec::new(),
             settings: Settings::default(),
             tip: tooltip::Tip::default(),
@@ -306,6 +309,11 @@ impl Interface {
             .partition(|id| ids.contains(id));
         self.selected = kept;
         taken
+    }
+
+    /// The ids of the toggle buttons released as deselected since the last call, in order.
+    pub(crate) fn take_deselected(&mut self) -> Vec<i32> {
+        std::mem::take(&mut self.deselected)
     }
 
     /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,
