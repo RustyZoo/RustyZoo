@@ -16,6 +16,7 @@ use crate::vfs::Vfs;
 use std::path::Path;
 
 mod bot;
+mod freeform;
 
 /// The seed of every game of the test.
 const SEED: u32 = 1;
@@ -348,10 +349,10 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
     }
 }
 
-#[test]
-#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
-fn each_tutorial_is_played_by_script_to_its_end_dialog_and_yes_starts_the_next_one() {
-    let rig = rig("tutorial-end");
+/// The tutorial `n` played by script from its first popup to the end dialog, and Yes (or No after
+/// the last) answered.
+fn played(n: &str) {
+    let rig = rig(&format!("tutorial-end-{n}"));
     let full = installed_expansions(&rig.vfs) == 3;
     let next = [
         ("scn01a", "scn01"),
@@ -361,75 +362,93 @@ fn each_tutorial_is_played_by_script_to_its_end_dialog_and_yes_starts_the_next_o
         ("scn27", "scn28"),
         ("scn28", "scn28b"),
     ];
-    for n in SERIES {
-        let file = path(n);
-        let Some(cfg) = read(&rig, &file) else {
-            eprintln!("skipped {n}: the install lacks it");
-            continue;
-        };
-        let layout = goals(&cfg);
-        // The triggers that run in the game, in the order of the file, and their popups.
-        let played: Vec<&Goal> = layout.iter().filter(|g| g.leaf && g.acts).collect();
-        let mut app = rig.app(n);
-        start(&mut app, &file);
-        let mut play = Play::new(&mut app, layout.clone());
-        assert!(play.until(600, |p| p.ended), "{n}: {:?}", play.next_goal());
-        // The triggers came in the order of the file (a goal that is not sticky runs again).
-        let mut ran: Vec<&str> = Vec::new();
-        for f in play.fired.iter().map(String::as_str) {
-            if layout.iter().any(|g| g.name == f) && !ran.contains(&f) {
-                ran.push(f);
-            }
-        }
-        let names: Vec<&str> = played.iter().map(|g| g.name.as_str()).collect();
-        assert_eq!(ran, names, "{n}");
-        // Each popup came once and none was cancelled.
-        let popups = played.iter().filter(|g| g.popup).count();
-        assert_eq!(play.lines("ui ask 45100").len(), popups, "{n}");
-        assert!(play.lines("ui answer 2").is_empty(), "{n}");
-        // The end: won, then the dialog with its text, after the last popup was answered.
-        let at = |what: &str| play.log.iter().position(|l| l.1.starts_with(what));
-        let last_answer = play.log.iter().rposition(|l| l.1 == "ui answer 1");
-        let (won, dialog) = (
-            at("sim scenario end won").unwrap(),
-            at("menu scenario dialog"),
-        );
-        let text = if n == "scn28b" { 16102 } else { 16104 };
-        let dialog = dialog.unwrap();
-        assert_eq!(
-            play.log[dialog].1,
-            format!("menu scenario dialog {text}"),
-            "{n}"
-        );
-        // (The lines of one pass come by family: the end is told in the pass of the dialog.)
-        assert!(play.log[won].0 <= play.log[dialog].0, "{n}");
-        assert!(last_answer.unwrap() < dialog, "{n}");
-        // The clean-up gave the elements back and hid the hint (10.8 points 5 and 6).
-        play.tick(100, &[]);
-        let ids = blocked(&play);
-        assert!(ids.len() > 20, "{n}");
-        let locked = ids.iter().filter(|&&id| play.disabled(id)).count();
-        assert_eq!(locked, 0, "{n}");
-        let ui = play.app.ui.as_ref().unwrap();
-        assert!(!ui.shown(45400) && ui.modal_open(), "{n}");
-        // Yes starts the next tutorial; No after the last stops the game and shows the main menu
-        // (10.8 point 3).
-        let again = next.iter().find(|x| x.0 == n).map(|x| path(x.1));
-        match (full, again) {
-            (true, Some(again)) => {
-                play.app.ui.as_mut().unwrap().answer(6);
-                play.until(3, |p| !p.lines("sim scenario start").is_empty());
-                let started = format!("sim scenario start {again} ");
-                let line = (play.log.iter().skip(dialog)).find(|l| l.1.starts_with(&started));
-                assert!(line.is_some(), "{n}: {again}");
-            }
-            (true, None) => {
-                play.app.ui.as_mut().unwrap().answer(7);
-                play.tick(100, &[]);
-                assert!(play.app.camera().is_none(), "{n}");
-                assert!(play.app.ui.as_ref().unwrap().shown(26), "{n}");
-            }
-            _ => {}
+    let file = path(n);
+    let Some(cfg) = read(&rig, &file) else {
+        eprintln!("skipped {n}: the install lacks it");
+        return;
+    };
+    let layout = goals(&cfg);
+    // The triggers that run in the game, in the order of the file, and their popups.
+    let played: Vec<&Goal> = layout.iter().filter(|g| g.leaf && g.acts).collect();
+    let mut app = rig.app(n);
+    start(&mut app, &file);
+    let mut play = Play::new(&mut app, layout.clone());
+    assert!(play.until(600, |p| p.ended), "{n}: {:?}", play.next_goal());
+    // The triggers came in the order of the file (a goal that is not sticky runs again).
+    let mut ran: Vec<&str> = Vec::new();
+    for f in play.fired.iter().map(String::as_str) {
+        if layout.iter().any(|g| g.name == f) && !ran.contains(&f) {
+            ran.push(f);
         }
     }
+    let names: Vec<&str> = played.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(ran, names, "{n}");
+    // Each popup came once and none was cancelled.
+    let popups = played.iter().filter(|g| g.popup).count();
+    assert_eq!(play.lines("ui ask 45100").len(), popups, "{n}");
+    assert!(play.lines("ui answer 2").is_empty(), "{n}");
+    // The end: won, then the dialog with its text, after the last popup was answered.
+    let at = |what: &str| play.log.iter().position(|l| l.1.starts_with(what));
+    let last_answer = play.log.iter().rposition(|l| l.1 == "ui answer 1");
+    let (won, dialog) = (
+        at("sim scenario end won").unwrap(),
+        at("menu scenario dialog"),
+    );
+    let text = if n == "scn28b" { 16102 } else { 16104 };
+    let dialog = dialog.unwrap();
+    assert_eq!(
+        play.log[dialog].1,
+        format!("menu scenario dialog {text}"),
+        "{n}"
+    );
+    // (The lines of one pass come by family: the end is told in the pass of the dialog.)
+    assert!(play.log[won].0 <= play.log[dialog].0, "{n}");
+    assert!(last_answer.unwrap() < dialog, "{n}");
+    // The clean-up gave the elements back and hid the hint (10.8 points 5 and 6).
+    play.tick(100, &[]);
+    let ids = blocked(&play);
+    assert!(ids.len() > 20, "{n}");
+    let locked = ids.iter().filter(|&&id| play.disabled(id)).count();
+    assert_eq!(locked, 0, "{n}");
+    let ui = play.app.ui.as_ref().unwrap();
+    assert!(!ui.shown(45400) && ui.modal_open(), "{n}");
+    // Yes starts the next tutorial; No after the last stops the game and shows the main menu
+    // (10.8 point 3).
+    let again = next.iter().find(|x| x.0 == n).map(|x| path(x.1));
+    match (full, again) {
+        (true, Some(again)) => {
+            play.app.ui.as_mut().unwrap().answer(6);
+            play.until(3, |p| !p.lines("sim scenario start").is_empty());
+            let started = format!("sim scenario start {again} ");
+            let line = (play.log.iter().skip(dialog)).find(|l| l.1.starts_with(&started));
+            assert!(line.is_some(), "{n}: {again}");
+        }
+        (true, None) => {
+            play.app.ui.as_mut().unwrap().answer(7);
+            play.tick(100, &[]);
+            assert!(play.app.camera().is_none(), "{n}");
+            assert!(play.app.ui.as_ref().unwrap().shown(26), "{n}");
+        }
+        _ => {}
+    }
+}
+
+macro_rules! tutorials {
+    ($($test:ident $n:literal)*) => {$(
+        #[test]
+        #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+        fn $test() {
+            played($n);
+        }
+    )*};
+}
+
+tutorials! {
+    the_first_tutorial_is_played_by_script_to_its_end "scn01a"
+    the_second_tutorial_is_played_by_script_to_its_end "scn01"
+    the_third_tutorial_is_played_by_script_to_its_end "scn02"
+    the_dinosaur_tutorial_is_played_by_script_to_its_end "scn19"
+    the_first_marine_tutorial_is_played_by_script_to_its_end "scn27"
+    the_second_marine_tutorial_is_played_by_script_to_its_end "scn28"
+    the_third_marine_tutorial_is_played_by_script_to_its_end "scn28b"
 }
