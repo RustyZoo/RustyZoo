@@ -450,8 +450,10 @@ fn the_idle_animation_of_a_unit_follows_the_order_of_its_states() {
 
 #[test]
 fn the_unit_hands_its_idle_animation_to_the_runner_before_each_run() {
-    // Unit 1 stands in the water of the tank, unit 2 on dry ground.
+    // Unit 1 stands on a water tile, unit 2 on dry ground.
     let mut w = tank_world(5, 4, &[(1, (3, 3), 32), (2, (8, 6), 0)]);
+    w.set_water(vec![false, true]);
+    w.zoo.tiles[tile((3, 3))].terrain = 1;
     let rested = |w: &mut World, id| {
         let at = w.find(id).unwrap();
         let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
@@ -465,7 +467,8 @@ fn the_unit_hands_its_idle_animation_to_the_runner_before_each_run() {
         (u.typed, u.mover.swims, u.tank) = (true, true, 0);
     }
     assert_eq!(rested(&mut w, 2), (None, "idle"));
-    assert_eq!(rested(&mut w, 1).0.is_some(), wet(&w, w.find(1).unwrap()));
+    assert!(wet(&w, w.find(1).unwrap()));
+    assert_eq!(rested(&mut w, 1), (Some("water_idle"), "idle"));
     let Part::Animal(a) = &mut w.units.get_mut(2).unwrap().part else {
         panic!("not an animal");
     };
