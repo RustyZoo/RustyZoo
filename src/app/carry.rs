@@ -38,6 +38,7 @@ impl App<'_> {
             return false;
         };
         let world = &game.world;
+        let cat = self.renderer.catalogue();
         let pointed = (game.staged).pick(game.camera.view_point(ui.pointer()), 0, |id| {
             world.find(id).is_some()
         });
@@ -48,10 +49,12 @@ impl App<'_> {
             game.selected = None;
             return again.is_some_and(|id| self.lift_building(id));
         };
-        if game.selected != Some(id) {
-            game.selected = Some(id);
-            self.lines.tool.push(format!("tool select {id}"));
-            self.type_sound(id, "placesound");
+        // A helicopter stands for its base, which is selected whenever it is clicked (8.1 point 1).
+        let base = super::recovery_panel::selected_for(&game.world, cat, id);
+        if base != id || game.selected != Some(id) {
+            game.selected = Some(base);
+            self.lines.tool.push(format!("tool select {base}"));
+            self.type_sound(base, "placesound");
             return true;
         }
         self.carry_up(id);

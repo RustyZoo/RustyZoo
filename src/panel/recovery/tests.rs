@@ -5,6 +5,7 @@ use crate::goal;
 use crate::panel::follow::tests as follow;
 use crate::ui::draw::Strings;
 use crate::ui::layout::{SELECTED, Tree};
+use crate::unit::Part;
 use crate::unit::testing::{centre, entity, world};
 use crate::zoo::BuildingRecord;
 
@@ -84,7 +85,7 @@ fn panel_in(name: &str, darts: u32) -> (Interface, Vfs, World, Catalogue) {
         price: 0,
         users: Vec::new(),
         users_now: 0,
-        members: Vec::new(),
+        members: vec![1],
         fill: darts,
         built: 0,
     });
@@ -102,7 +103,7 @@ fn text(ui: &Interface, id: i32) -> String {
 fn the_panel_shows_the_cost_the_job_and_the_recoveries_of_the_team() {
     let (mut ui, vfs, mut world, cat) = panel_in("recovery-panel-text", 7);
     let mut panel = Panel::default();
-    panel.select(1);
+    panel.select(2);
     world.units.get_mut(1).unwrap().goal.record.task = goal::USE;
     let told = panel.refresh(&mut ui, &world, &cat, &vfs).unwrap();
     // The monthly cost is rounded; the recoveries are the darts of the base.
@@ -111,7 +112,7 @@ fn the_panel_shows_the_cost_the_job_and_the_recoveries_of_the_team() {
     assert_eq!(text(&ui, RECOVERIES), "7");
     assert_eq!(
         told,
-        "team 1 \"\" cost $2,000 duty \"Waiting\" recoveries 7"
+        "team 2 \"\" cost $2,000 duty \"Waiting\" recoveries 7"
     );
     // Nothing changed: nothing told.
     panel.clock.force = true;
@@ -136,31 +137,23 @@ fn the_panel_shows_the_cost_the_job_and_the_recoveries_of_the_team() {
 }
 
 #[test]
-fn the_recoveries_are_zero_without_a_base_and_whole_for_a_huge_count() {
-    for (darts, base, want) in [
-        (0, 2, "0"),
-        (u32::MAX, 2, "4294967295"),
-        (5, 99, "0"),
-        (5, 0, "0"),
-    ] {
-        let (mut ui, vfs, mut world, cat) = panel_in("recovery-panel-count", darts);
-        if let Some(Part::Staff(s)) = world.units.get_mut(1).map(|u| &mut u.part) {
-            s.heli.base = base;
-        }
+fn the_recoveries_are_the_darts_of_the_base_whole_for_a_huge_count() {
+    for (darts, want) in [(0, "0"), (7, "7"), (u32::MAX, "4294967295")] {
+        let (mut ui, vfs, world, cat) = panel_in("recovery-panel-count", darts);
         let mut panel = Panel::default();
-        panel.select(1);
+        panel.select(2);
         panel.refresh(&mut ui, &world, &cat, &vfs).unwrap();
-        assert_eq!(text(&ui, RECOVERIES), want, "{darts} {base}");
+        assert_eq!(text(&ui, RECOVERIES), want, "{darts}");
     }
 }
 
 #[test]
 fn the_name_and_the_follow_button_are_set_when_shown_and_the_button_is_enabled() {
     let (mut ui, vfs, mut world, cat) = panel_in("recovery-panel-name", 0);
-    let at = world.find(1).unwrap();
+    let at = world.find(2).unwrap();
     world.zoo.entities[at].common.as_mut().unwrap().name = "Heli".into();
     let mut panel = Panel::default();
-    panel.select(1);
+    panel.select(2);
     panel.refresh(&mut ui, &world, &cat, &vfs).unwrap();
     let state = |ui: &Interface| ui.tree.elements[ui.tree.find(FOLLOW).unwrap()].state;
     assert_eq!(text(&ui, NAME), "Heli");
@@ -182,15 +175,37 @@ fn the_name_and_the_follow_button_are_set_when_shown_and_the_button_is_enabled()
     assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs), None);
     panel.select(99);
     assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs), None);
+}
+
+#[test]
+fn a_base_without_a_helicopter_shows_its_darts_and_no_cost() {
+    let (mut ui, vfs, mut world, cat) = panel_in("recovery-panel-empty", 3);
+    let at = world.find(2).unwrap();
+    let building = world.zoo.entities[at]
+        .common
+        .as_mut()
+        .unwrap()
+        .building
+        .as_mut();
+    building.unwrap().members = vec![99];
+    let mut panel = Panel::default();
     panel.select(2);
-    assert_eq!(panel.refresh(&mut ui, &world, &cat, &vfs), None);
+    panel.refresh(&mut ui, &world, &cat, &vfs).unwrap();
+    assert_eq!(
+        (
+            text(&ui, RECOVERIES).as_str(),
+            text(&ui, COST).as_str(),
+            text(&ui, DUTY).as_str()
+        ),
+        ("3", "$0", "")
+    );
 }
 
 #[test]
 fn the_duty_icons_show_for_the_bits_of_the_training_mask() {
     let (mut ui, vfs, mut world, cat) = panel_in("recovery-panel-icons", 0);
     let mut panel = Panel::default();
-    panel.select(1);
+    panel.select(2);
     let shown = |ui: &Interface| {
         ICONS.map(|id| {
             let e = &ui.tree.elements[ui.tree.find(id).unwrap()];

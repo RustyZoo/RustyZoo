@@ -45,6 +45,7 @@ impl App<'_> {
     /// closes them.
     pub(super) fn units_sync(&mut self) {
         let building = self.game.as_ref().and_then(|g| g.selected);
+        let base = building.filter(|&id| self.is_base(id));
         let building = building.and_then(|id| Some((id, self.building_layout(id)?)));
         playing!(self, game, ui);
         let world = &game.world;
@@ -66,14 +67,17 @@ impl App<'_> {
         let show = match want.and_then(|id| world.units.get(id)) {
             Some(u) if u.kind == Kind::Animal => Show::Animal(u.id),
             Some(u) if u.kind == Kind::Guest => Show::Guest(u.id),
-            Some(u) if u.kind == Kind::Heli => Show::Team(u.id),
             Some(u) if matches!(u.kind, Kind::Keeper | Kind::Worker | Kind::Guide) => {
                 Show::Staff(u.id)
             }
             Some(_) => Show::Nothing,
-            None => building
-                .filter(|&(id, _)| want == Some(id))
-                .map_or(Show::Nothing, |(id, layout)| Show::Building(id, layout)),
+            None => (base.filter(|&id| want == Some(id)))
+                .map(Show::Team)
+                .or_else(|| {
+                    let (id, layout) = building.filter(|&(id, _)| want == Some(id))?;
+                    Some(Show::Building(id, layout))
+                })
+                .unwrap_or(Show::Nothing),
         };
         let (animal_open, staff_open) = (game.animal.selected, game.staff.selected);
         let team_open = game.recovery.selected;

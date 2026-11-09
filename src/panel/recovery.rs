@@ -1,5 +1,5 @@
 //! The recovery team panel (staff 18; Dinosaur Digs, layout 1400): what the player gets by
-//! selecting the helicopter. The name, the follow button, the monthly cost, the current job, the
+//! selecting the helicopter base. The name, the follow button, the monthly cost, the current job, the
 //! number of recoveries and the duty icons, refreshed every second of the interface clock while
 //! shown and not while the game is paused.
 //!
@@ -15,7 +15,6 @@ use crate::panel::staff::{job_text, training};
 use crate::staff;
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
-use crate::unit::Part;
 use crate::vfs::Vfs;
 use crate::world::World;
 
@@ -32,10 +31,10 @@ const ICONS: [i32; 5] = [1413, 1414, 1415, 1416, 1417];
 /// The interface clock time between two refreshes (ms).
 pub(crate) const PERIOD: u64 = 1000;
 
-/// The selected helicopter and the refresh clock.
+/// The selected base and the refresh clock.
 #[derive(Debug, Default)]
 pub(crate) struct Panel {
-    /// The selected helicopter, by entity id.
+    /// The selected helicopter base, by entity id.
     pub selected: Option<u32>,
     pub clock: Clock,
     /// Just selected: the next refresh also sets the name field and the follow button.
@@ -44,7 +43,7 @@ pub(crate) struct Panel {
 }
 
 impl Panel {
-    /// Selects the helicopter with entity id `id`: the panel is filled at once.
+    /// Selects the base with entity id `id`: the panel is filled at once.
     pub(crate) fn select(&mut self, id: u32) {
         self.selected = Some(id);
         self.fresh = true;
@@ -52,7 +51,7 @@ impl Panel {
         self.told.clear();
     }
 
-    /// Fills the panel again from the start: the name field shows the helicopter's name.
+    /// Fills the panel again from the start: the name field shows the base's name.
     pub(crate) fn reselect(&mut self) {
         if let Some(id) = self.selected {
             self.select(id);
@@ -64,8 +63,8 @@ impl Panel {
         self.told.clear();
     }
 
-    /// Writes the panel for the selected helicopter and returns the log line when something it
-    /// shows changed. The recoveries are the darts of its base, which count the animals it
+    /// Writes the panel for the selected base (its first member is the helicopter shown) and returns the log line when something it
+    /// shows changed. The recoveries are the darts of the base, which count the animals it
     /// brought down (staff 7.11.1 point 4.5).
     pub(crate) fn refresh(
         &mut self,
@@ -75,23 +74,26 @@ impl Panel {
         vfs: &Vfs,
     ) -> Option<String> {
         let id = self.selected?;
-        let (at, unit) = (world.find(id)?, world.units.get(id)?);
-        let Part::Staff(team) = &unit.part else {
-            return None;
-        };
-        let ty = type_at(world, cat, at);
+        let at = world.find(id)?;
+        let common = world.zoo.entities[at].common.as_ref()?;
+        // The helicopter shown is the first member of the base.
+        let heli = common.building.as_ref().and_then(|b| b.members.first());
+        let (heli_at, unit) = (
+            heli.and_then(|&m| world.find(m)),
+            heli.and_then(|&m| world.units.get(m)),
+        );
+        let ty = heli_at.and_then(|h| type_at(world, cat, h));
         let money = Symbol::new(ui.string(SYMBOL));
         let cost = money.text(ty.map_or(0.0, staff::monthly).round() as i64);
         ui.set_text(COST, &to_cp1252(&cost));
-        let duty = job_text(ui, world, cat, unit, ty.map_or(0, |t| t.name_id));
+        let duty = unit.map_or(String::new(), |u| {
+            job_text(ui, world, cat, u, ty.map_or(0, |t| t.name_id))
+        });
         ui.set_text(DUTY, &to_cp1252(&duty));
-        let base = world.find(team.heli.base);
-        let base = base.and_then(|b| world.zoo.entities[b].common.as_ref()?.building.as_ref());
-        let recoveries = base.map_or(0, |b| b.fill);
+        let recoveries = common.building.as_ref().map_or(0, |b| b.fill);
         ui.set_text(RECOVERIES, recoveries.to_string().as_bytes());
         let trained = training(ui, vfs, ty, world.research.training_of(ty), &ICONS);
-        let name = world.zoo.entities[at].common.as_ref();
-        let name = name.map_or("", |c| &c.name);
+        let name = &common.name;
         let fresh = std::mem::take(&mut self.fresh);
         if fresh {
             ui.set_text(NAME, &to_cp1252(name));
