@@ -3,8 +3,8 @@
 //! tests with a small layout for each window.
 
 use super::bulldozer_tests::{Session, catalogue, ty, with_game_of};
-use crate::panel::unitlist::{ANIMALS, GUESTS, STAFF};
 use super::{Command, Mouse};
+use crate::panel::unitlist::{ANIMALS, GUESTS, STAFF};
 use crate::ui::layout::{HIDDEN, Kind};
 
 /// The root of the bulldozer tests with the three windows, the panels they replace and the

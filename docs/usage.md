@@ -197,6 +197,16 @@ a click on the gate of an exhibit (no tool chosen) or the exhibit list button (i
 - its exhibit button opens the exhibit panel on its exhibit and its follow button keeps the view on it
 - the log has `panel ...` lines
 
+`rustyzoo run maps/scn01.zoo --headless --passes 60 --clock 20 --script lists.txt --png-every 10`
+
+the animal, guest and staff list buttons of the main bar (ids 1010, 1012 and 1051) show a list window of the zoo's units, one at a time:
+
+- the animals are sorted by name, the guests and the staff in the order they were added (the helicopter's row shows its base's name); a row has the unit's name and the picture of its type
+- six filters (nine for the staff with both expansions) hide the rows that fail them and the count text beside each button always counts the whole list; the title above the buttons names the filter in use, which is kept while the program runs
+- a click on a row selects the unit with its panel and centres the view on it, which ends a follow (the helicopter's row selects its base, and leaves a view that follows it alone); the selected unit's row is selected in its list whether it is shown or not
+- showing a window hides the zoo status and show panels (and, for guests and staff, the species and recommendations plaques) and lifts the unit panels above it
+- the list is filled again every 10 s of clock while shown and not while the game is paused, and at once when a unit comes or goes or a filter is chosen
+
 `rustyzoo run maps/default.zoo --headless --passes 30 --clock 67 --seed 1 --script hire.txt`
 
 the Hire panel (the left bar button 1005, layout 10, no tabs): the staff types of one sex, the keeper class (the zookeeper, the scientist, the marine specialist) first, then the tour guide, then the maintenance worker, the catalogue order kept within a kind (the scientist and the marine specialist only with their expansion), with the monthly salary and the duties of the chosen one.
