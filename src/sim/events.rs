@@ -24,6 +24,9 @@ pub(crate) const TANK_CHANNEL: u8 = 0x48;
 pub(crate) struct Events {
     current: Vec<Event>,
     next: Vec<Event>,
+    /// Whether the next buffer is the first of the two a file stores (save games 15.4 point 3):
+    /// as the file had it until a swap, which turns it over.
+    next_is_first: bool,
 }
 
 impl Events {
@@ -61,6 +64,7 @@ impl Events {
             }
         }
         std::mem::swap(&mut self.current, &mut self.next);
+        self.next_is_first = !self.next_is_first;
     }
 
     /// The queue a map stores, for a new game (simulation 8.3): the buffer the file calls "next"
@@ -71,6 +75,7 @@ impl Events {
             false => (&queue.second, &queue.first),
         };
         (self.next, self.current) = (next.clone(), current.clone());
+        self.next_is_first = queue.next_is_first;
     }
 
     /// The two buffers, the one read in this step and the next one, for the state hash.
@@ -78,13 +83,17 @@ impl Events {
         [&self.current, &self.next]
     }
 
-    /// The two buffers as a map stores them, the current one first (the inverse of
-    /// [`Events::restore`]).
+    /// The two buffers as a map stores them (the inverse of [`Events::restore`]).
     pub(crate) fn queue(&self) -> Queue {
+        let (current, next) = (self.current.clone(), self.next.clone());
+        let (first, second) = match self.next_is_first {
+            true => (next, current),
+            false => (current, next),
+        };
         Queue {
-            first: self.current.clone(),
-            second: self.next.clone(),
-            next_is_first: false,
+            first,
+            second,
+            next_is_first: self.next_is_first,
         }
     }
 
@@ -93,5 +102,49 @@ impl Events {
     pub(crate) fn clear(&mut self) {
         self.current.clear();
         self.next.clear();
+        self.next_is_first = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(kind: u16) -> Event {
+        Event {
+            sender: 1,
+            target: 0,
+            data: 0,
+            extra: 0,
+            kind,
+            delay: 1,
+            sender_channel: 0,
+            channel: 0,
+        }
+    }
+
+    #[test]
+    fn the_next_flag_is_written_as_read_and_turns_over_with_each_swap() {
+        for flag in [false, true] {
+            let stored = Queue {
+                first: vec![event(1)],
+                second: vec![event(2)],
+                next_is_first: flag,
+            };
+            let mut events = Events::default();
+            events.restore(&stored);
+            assert_eq!(events.queue(), stored);
+            // A post goes to the buffer the flag names.
+            events.post(event(3));
+            let saved = events.queue();
+            let next = if flag { &saved.first } else { &saved.second };
+            assert_eq!(
+                next.iter().map(|e| e.kind).collect::<Vec<_>>(),
+                [if flag { 1 } else { 2 }, 3]
+            );
+            // A swap makes the other buffer the next one.
+            events.age();
+            assert_eq!(events.queue().next_is_first, !flag);
+        }
     }
 }
