@@ -31,7 +31,7 @@ use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
 use crate::panel::marketing as marketing_panel;
 use crate::panel::research as research_panel;
-use crate::panel::{animal, exhibit, guest, show, staff};
+use crate::panel::{animal, exhibit, guest, recovery, show, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{
@@ -154,6 +154,8 @@ struct Game {
     animal: crate::panel::animal::Panel,
     /// The staff panel and the staff member selected.
     staff: crate::panel::staff::Panel,
+    /// The recovery team panel and the helicopter selected.
+    recovery: crate::panel::recovery::Panel,
     /// The guest panel and the guest selected.
     guest: crate::panel::guest::Panel,
     /// The research panel.
@@ -897,6 +899,7 @@ mod cheat_staff_tests;
 mod panel;
 mod pending;
 mod questions;
+mod recovery_panel;
 mod research;
 mod saves;
 mod scenario;

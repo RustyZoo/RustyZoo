@@ -259,7 +259,7 @@ pub(crate) struct Panel {
 }
 
 /// The values of a repeated key of a unit type's section, taken from its subtype or else from its
-/// default subtype (entity types 6.2).
+/// default subtype (entity types 6.2), or from the plain section for a type with none.
 fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
     let Some(config) = ty.config.as_deref() else {
         return Vec::new();
@@ -268,7 +268,11 @@ fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
         .section("Global")
         .and_then(|g| g.get("DefaultSubtype"));
     let lists = [&ty.subtype[..], default.unwrap_or_default()].map(|prefix| {
-        let name = [prefix, b"/", section.as_bytes()].concat();
+        // A type with no subtype (the helicopter) has its sections without a prefix.
+        let name = match prefix.is_empty() {
+            true => section.as_bytes().to_vec(),
+            false => [prefix, b"/", section.as_bytes()].concat(),
+        };
         config
             .section(name)
             .map_or(Vec::new(), |s| s.get_all(key).to_vec())

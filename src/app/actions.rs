@@ -52,6 +52,7 @@ impl App<'_> {
                 Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
+                Action::Edited(recovery::NAME) if self.game.is_some() => self.recovery_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
                 Action::Edited(research::DEV_CASH) if self.game.is_some() => {
                     // Escape takes the edit back: its key follows the edit at once.
@@ -108,6 +109,7 @@ impl App<'_> {
                 }
                 research::DEV_RESEARCH if self.game.is_some() => self.developer_research(),
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
+                recovery::FIRE if self.game.is_some() => self.recovery_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
                 panel_building::UP | panel_building::DOWN if self.game.is_some() => {

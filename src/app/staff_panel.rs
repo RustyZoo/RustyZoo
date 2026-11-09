@@ -20,6 +20,7 @@ const BAD: [u8; 3] = [0xEC, 0, 0];
 enum Show {
     Animal(u32),
     Staff(u32),
+    Team(u32),
     Guest(u32),
     Building(u32, i32),
     Nothing,
@@ -56,6 +57,7 @@ impl App<'_> {
             |open: Option<u32>, layout| open.is_some() && open == want && !ui.shown(layout);
         if closed(game.animal.selected, animal::LAYOUT)
             || closed(game.staff.selected, staff::LAYOUT)
+            || closed(game.recovery.selected, recovery::LAYOUT)
             || closed(game.guest.selected, guest::LAYOUT)
             || closed(game.building.selected, game.building.layout)
         {
@@ -64,12 +66,8 @@ impl App<'_> {
         let show = match want.and_then(|id| world.units.get(id)) {
             Some(u) if u.kind == Kind::Animal => Show::Animal(u.id),
             Some(u) if u.kind == Kind::Guest => Show::Guest(u.id),
-            Some(u)
-                if matches!(
-                    u.kind,
-                    Kind::Keeper | Kind::Worker | Kind::Guide | Kind::Heli
-                ) =>
-            {
+            Some(u) if u.kind == Kind::Heli => Show::Team(u.id),
+            Some(u) if matches!(u.kind, Kind::Keeper | Kind::Worker | Kind::Guide) => {
                 Show::Staff(u.id)
             }
             Some(_) => Show::Nothing,
@@ -78,6 +76,7 @@ impl App<'_> {
                 .map_or(Show::Nothing, |(id, layout)| Show::Building(id, layout)),
         };
         let (animal_open, staff_open) = (game.animal.selected, game.staff.selected);
+        let team_open = game.recovery.selected;
         let (guest_open, building_open) = (game.guest.selected, game.building.selected);
         match show {
             Show::Animal(id) => {
@@ -85,6 +84,7 @@ impl App<'_> {
                     self.open_animal(id);
                 }
                 self.close_staff();
+                self.close_recovery();
                 self.close_guest();
                 self.close_building();
             }
@@ -92,6 +92,16 @@ impl App<'_> {
                 if staff_open != Some(id) {
                     self.open_staff(id);
                 }
+                self.close_recovery();
+                self.close_animal();
+                self.close_guest();
+                self.close_building();
+            }
+            Show::Team(id) => {
+                if team_open != Some(id) {
+                    self.open_recovery(id);
+                }
+                self.close_staff();
                 self.close_animal();
                 self.close_guest();
                 self.close_building();
@@ -102,6 +112,7 @@ impl App<'_> {
                 }
                 self.close_animal();
                 self.close_staff();
+                self.close_recovery();
                 self.close_building();
             }
             Show::Building(id, layout) => {
@@ -110,11 +121,13 @@ impl App<'_> {
                 }
                 self.close_animal();
                 self.close_staff();
+                self.close_recovery();
                 self.close_guest();
             }
             Show::Nothing => {
                 self.close_animal();
                 self.close_staff();
+                self.close_recovery();
                 self.close_guest();
                 self.close_building();
             }

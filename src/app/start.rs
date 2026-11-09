@@ -158,6 +158,7 @@ impl App<'_> {
             panel: Default::default(),
             animal: Default::default(),
             staff: Default::default(),
+            recovery: Default::default(),
             guest: Default::default(),
             research: Default::default(),
             building: Default::default(),

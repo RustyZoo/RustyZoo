@@ -90,6 +90,7 @@ impl App<'_> {
                 crate::animal::lengthen(&mut game.world, &life);
                 // The open staff panel shows the new training (6.4).
                 game.staff.clock.force = true;
+                game.recovery.clock.force = true;
                 if d.effect == 6 {
                     let species = u32::try_from(d.target).ok();
                     game.show
@@ -187,6 +188,7 @@ impl App<'_> {
         // The open lists and panels follow.
         game.building.clock.force = true;
         game.staff.clock.force = true;
+        game.recovery.clock.force = true;
         game.research.clock.force = true;
         if let Some(ui) = &mut self.ui {
             let mut log = Vec::new();

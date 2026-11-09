@@ -7,7 +7,7 @@ use super::*;
 use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
 use crate::panel::unitlist as lists;
-use crate::panel::{animal, guest, research, staff};
+use crate::panel::{animal, guest, recovery, research, staff};
 use crate::text::from_cp1252;
 use crate::unit::Part;
 
@@ -228,8 +228,12 @@ impl App<'_> {
         let (game, ui) = (self.game.as_ref()?, self.ui.as_ref()?);
         let animal = game.animal.selected.filter(|_| ui.is_down(animal::FOLLOW));
         let staff = game.staff.selected.filter(|_| ui.is_down(staff::FOLLOW));
+        let team = game
+            .recovery
+            .selected
+            .filter(|_| ui.is_down(recovery::FOLLOW));
         let guest = game.guest.selected.filter(|_| ui.is_down(guest::FOLLOW));
-        animal.or(staff).or(guest)
+        animal.or(staff).or(team).or(guest)
     }
 
     /// Whether the view follows a unit.
@@ -318,6 +322,7 @@ impl App<'_> {
         self.units_sync();
         self.animal_sync();
         self.staff_sync();
+        self.recovery_sync();
         self.guest_sync();
         self.building_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
@@ -343,6 +348,10 @@ impl App<'_> {
             self.lines
                 .panel
                 .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
+        }
+        if ui.shown(recovery::LAYOUT) && game.recovery.clock.due(now, ticking, recovery::PERIOD) {
+            let line = game.recovery.refresh(ui, &game.world, cat, vfs);
+            self.lines.panel.extend(line);
         }
         if ui.shown(guest::LAYOUT) && game.guest.clock.due(now, ticking, guest::PERIOD) {
             let date = self.sim.calendar().date();
