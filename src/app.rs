@@ -959,6 +959,9 @@ mod scenario_tests;
 mod tutorial_tests;
 
 #[cfg(test)]
+mod tutorial_full_tests;
+
+#[cfg(test)]
 mod award_tests;
 
 #[cfg(test)]

@@ -118,6 +118,33 @@ fn the_ctrl_arrows_press_the_buttons_and_a_greyed_one_ignores_its_key() {
 }
 
 #[test]
+fn a_press_command_presses_a_shown_enabled_button_by_its_id_and_nothing_else() {
+    with_menu("press-command", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        let mut go = |app: &mut App, id: i32| {
+            now += 66;
+            pressed(app, now, &[Command::Press(id)])
+        };
+        // The map is stored zoomed out: zoom out is greyed, zoom in is not.
+        assert!(go(app, ZOOM_OUT).is_empty());
+        assert_eq!(go(app, ZOOM_IN), ["1007"]);
+        assert_eq!(game(app).camera.zoom, 0);
+        assert_eq!(go(app, 1008), ["1008"]);
+        // No id, a negative one, one nothing has and one no layout holds: nothing is pressed.
+        for id in [0, -1, 7_777_777, i32::MAX, i32::MIN] {
+            assert!(go(app, id).is_empty(), "{id}");
+        }
+        assert_eq!(game(app).camera.zoom, 0);
+        // A question in the way takes the press: the button waits behind it.
+        app.interface()
+            .unwrap()
+            .ask(45000, b"?", crate::ui::interface::Buttons::OK);
+        assert!(go(app, ZOOM_IN).is_empty());
+        assert_eq!(game(app).camera.zoom, 0);
+    });
+}
+
+#[test]
 fn the_pause_and_play_buttons_swap_and_the_keys_do_the_same() {
     with_menu("pause-buttons", "[user]\nlastfile=saved.zoo\n", |app, _| {
         let mut now = started(app);

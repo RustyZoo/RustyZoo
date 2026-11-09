@@ -188,3 +188,25 @@ fn the_simulation_steps_in_the_frame_after_a_start_whose_triggers_left_effects()
         assert!(disabled(app, 2001));
     });
 }
+
+#[test]
+fn a_press_of_a_zoom_button_reaches_the_goal_that_asks_for_it() {
+    // A goal on the zoom-in button, asked about for a pass before the press (8.2): the press is
+    // seen at the next scenario pass and its popup opens.
+    let scn = b"[start]\ntriggers=t\n[t]\ntrulea=2\n[goals]\ngoal=z\n\
+        [z]\nrulea=10\nruleb=1\narga=1007\nvalue=1\ntrulea=2\ntruleb=0\ntarga=8\n\
+        [8]\nlayout=45000\nshortText1=151\nmodal=1\n";
+    let files = [("s/zoom.scn", scn.to_vec())];
+    with_game("zoom-goal", "", &files, None, |app, _| {
+        let mut passes = Passes(play(app, "s/zoom.scn") / 66);
+        for _ in 0..30 {
+            passes.run(app, &[]);
+        }
+        assert!(!app.interface().unwrap().modal_open());
+        let zoom = app.game.as_ref().unwrap().camera.zoom;
+        passes.run(app, &[Command::Press(1007)]);
+        assert_ne!(app.game.as_ref().unwrap().camera.zoom, zoom);
+        passes.until_asked(app);
+        assert!(shown(app, 45000));
+    });
+}

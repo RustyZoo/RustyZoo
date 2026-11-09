@@ -199,6 +199,9 @@ pub(crate) struct Sim {
     lines: Vec<String>,
     /// The scenario being played, if the game is one.
     scenario: Option<Scenario>,
+    /// The milliseconds the manager has gathered towards its next pass: one value for the program,
+    /// so a game left between two passes brings its share to the next scenario (scenarios 5.2).
+    pass_ms: u32,
     /// The research tree of a scenario or freeform game, or of a saved game that names a
     /// scenario; none otherwise, which counts as no research done.
     research: Option<Tree>,
@@ -248,6 +251,7 @@ impl Sim {
             bulldozed: Vec::new(),
             lines: Vec::new(),
             scenario: None,
+            pass_ms: 0,
             research: None,
             research_done: Vec::new(),
             marketing: Marketing::default(),
@@ -462,7 +466,8 @@ impl Sim {
     }
 
     /// The scenario of the game just opened starts: its start triggers fire.
-    pub(crate) fn start_scenario(&mut self, scenario: Scenario) {
+    pub(crate) fn start_scenario(&mut self, mut scenario: Scenario) {
+        scenario.set_gathered(self.pass_ms);
         scenario.start(&mut self.lines);
         self.scenario = Some(scenario);
     }
@@ -487,6 +492,7 @@ impl Sim {
     /// A saved game that holds `scenario` opened (scenarios 5.3): its goals read the stored
     /// `words`, `groups` when the file's version is 86 or later.
     pub(crate) fn resume_scenario(&mut self, mut scenario: Scenario, words: &[u32], groups: bool) {
+        scenario.set_gathered(self.pass_ms);
         scenario.resume(words, groups, &mut self.lines);
         self.scenario = Some(scenario);
     }
@@ -932,6 +938,7 @@ impl Sim {
             };
             let env = Env::new(money.month as i32, money.year as i32, Some(game));
             scenario.update(step, &env, &mut self.lines);
+            self.pass_ms = scenario.gathered();
         }
         // The research manager, then the marketing manager.
         if let Some(tree) = &mut self.research {

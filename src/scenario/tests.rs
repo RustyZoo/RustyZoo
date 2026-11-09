@@ -816,6 +816,44 @@ fn the_sim_step_reads_the_cash_and_the_zoo_status_for_a_goal() {
 }
 
 #[test]
+fn the_pass_counter_belongs_to_the_program_and_a_new_game_keeps_what_the_last_one_gathered() {
+    use crate::entity::Catalogue;
+    use crate::money::Money;
+    use crate::sim::Sim;
+    use crate::unit::testing::world_with;
+    use crate::zoo::Clocks;
+    let text = "[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=5\n";
+    // The lines of the first step of `ms` of a new game of the scenario, after a game that
+    // gathered `before` ms and was left.
+    let first = |before: u32, ms: u32| {
+        let (cat, mut w) = (Catalogue::default(), world_with((4, 4), |_| {}));
+        let (mut sim, mut money) = (Sim::new(b""), Money::default());
+        sim.set_seed(1);
+        let mut step = |sim: &mut Sim, ms| {
+            let data = &crate::behaviour::NoData;
+            sim.step_game(data, &cat, &mut w, &mut money, ms, |_, _, _| {});
+            let lines = sim.take_lines();
+            lines
+                .iter()
+                .filter(|l| l.starts_with("scenario trigger"))
+                .count()
+        };
+        sim.start_game(16, Clocks::default());
+        sim.start_scenario(build(text, &[]));
+        step(&mut sim, before);
+        sim.start_game(16, Clocks::default());
+        sim.start_scenario(build(text, &[]));
+        step(&mut sim, ms)
+    };
+    // A fresh program: 1500 ms to the first pass. After a game that gathered 600: 900.
+    assert_eq!([first(0, 1499), first(0, 1500)], [0, 1]);
+    assert_eq!([first(600, 899), first(600, 900)], [0, 1]);
+    // A game that ran a whole pass starts the counter again.
+    assert_eq!([first(1500, 1499), first(1500, 1500)], [0, 1]);
+    assert_eq!(first(1499, 1), 1);
+}
+
+#[test]
 fn the_end_dialog_text_follows_the_file_the_result_and_the_expansions() {
     let text = |file, won, x| end_text(file, won, x);
     let table = [
@@ -834,12 +872,15 @@ fn the_end_dialog_text_follows_the_file_the_result_and_the_expansions() {
         );
         assert_eq!(text(file, false, 0), without + 1, "{file} lost");
     }
-    // Scenario 2 wants any expansion, scenario 19 the second one; the path may use either slash.
-    let scn2 = "scenario\\SCN02\\scn02.scn";
+    // Scenario 2 wants any expansion, scenario 19 the second one; the path is compared exactly.
+    let scn2 = "scenario/scn02/scn02.scn";
     assert_eq!(
         [0, 1, 2, 3].map(|x| text(scn2, true, x)),
         [16102, 16104, 16104, 16104]
     );
+    for other in ["scenario\\SCN02\\scn02.scn", "Scenario/scn02/scn02.scn"] {
+        assert_eq!(text(other, true, 3), 16100, "{other}");
+    }
     let scn19 = "scenario/scn19/scn19.scn";
     assert_eq!(
         [0, 1, 2, 3].map(|x| text(scn19, false, x)),
@@ -951,7 +992,10 @@ fn the_tutorial_chain_follows_the_expansions_installed() {
         ("scenario/scn27/scn27.scn", 0, file("scn28")),
         ("scenario/scn28/scn28.scn", 0, file("scn28b")),
         ("scenario/scn28b/scn28b.scn", 3, None),
-        (r"Scenario\SCN01\scn01.SCN", 0, file("scn02")),
+        // The end routine compares byte for byte (10.1 point 4): no folding of case or slashes.
+        (r"Scenario\SCN01\scn01.SCN", 0, None),
+        (r"scenario\scn01\scn01.scn", 0, None),
+        ("Scenario/scn01/scn01.scn", 0, None),
         ("scenario/scn03/scn03.scn", 3, None),
         ("", 3, None),
     ];
@@ -960,7 +1004,8 @@ fn the_tutorial_chain_follows_the_expansions_installed() {
     }
     for (f, want) in [
         ("scenario/scn28b/scn28b.scn", true),
-        (r"Scenario\SCN19\scn19.scn", true),
+        (r"Scenario\SCN19\scn19.scn", false),
+        ("scenario/SCN19/scn19.scn", false),
         ("scenario/scn03/scn03.scn", false),
         ("s/scn01.scn", false),
         ("", false),
