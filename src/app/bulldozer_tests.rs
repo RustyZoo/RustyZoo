@@ -706,6 +706,59 @@ fn the_bulldozer_leaves_a_unit_and_the_fire_button_asks_with_its_name_and_salary
 }
 
 #[test]
+fn the_sell_button_of_the_animal_panel_asks_with_the_animals_name_and_pays_its_live_price() {
+    with_game("sell-animal", "", |s| {
+        let id = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let game = s.app.game.as_mut().unwrap();
+        let at = game.world.find(id).unwrap();
+        game.world.zoo.entities[at].common.as_mut().unwrap().name = "Zed".into();
+        let unit = game.world.units.get_mut(id).unwrap();
+        unit.started = true;
+        if let crate::unit::Part::Animal(a) = &mut unit.part {
+            (a.happiness, a.health) = (100, 250);
+        }
+        // The bulldozer neither prices nor removes it.
+        s.pass(&[DELETE]);
+        let over = s.at(20, 20, 32, 32);
+        s.pass(&[over]);
+        assert_eq!(s.cost(), None);
+        s.click(over);
+        assert_eq!((s.count(), s.asking()), (1, false));
+        s.pass(&[Command::Key(Key::Escape, false, false)]);
+        // The button: the question names the animal, the price is from its live state.
+        s.app.game.as_mut().unwrap().animal.select(id);
+        s.app.animal_sell();
+        assert!(s.asking());
+        let game = s.app.game.as_ref().unwrap();
+        let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
+        let text = bulldozer::question_text(ui, cat, &game.world, at, Question::Sell);
+        assert_eq!(text, "sell Zed?\nRefund: $480");
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 480"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 50_480.0));
+    });
+}
+
+#[test]
+fn an_animal_sold_with_no_answer_stays_and_its_panel_is_closed() {
+    with_game("sell-animal-no", "", |s| {
+        let id = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.game.as_mut().unwrap().animal.select(id);
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        s.app.animal_sell();
+        assert!(s.asking());
+        assert_eq!(s.app.game.as_ref().unwrap().selected, None, "the panel closes");
+        s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!((s.count(), s.cash()), (1, 50_000.0));
+        // Nothing selected: the button does nothing.
+        s.app.game.as_mut().unwrap().animal.selected = None;
+        s.app.animal_sell();
+        assert!(!s.asking());
+    });
+}
+
+#[test]
 fn with_confirm_sell_off_a_building_goes_without_a_question() {
     with_game("noask", "[UI]\nconfirmSell=0\n", |s| {
         s.add(2, 20 * 64 + 32, 20 * 64 + 32, 0);

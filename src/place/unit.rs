@@ -263,7 +263,8 @@ fn tank_point(
         _ => 16,
     };
     let mut found = None;
-    for k in 0..TANK_STEPS + world.tank_config().limit as i32 {
+    // The setting is cut to 255 when it is read; the bound keeps a loose number from looping.
+    for k in 0..TANK_STEPS + world.tank_config().limit.min(255) as i32 {
         let x = ground.0.saturating_add(32 * k * (a - b));
         let y = ground.1.saturating_add(32 * k * (a + b));
         let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {

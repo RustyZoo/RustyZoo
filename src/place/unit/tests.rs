@@ -20,6 +20,11 @@ const GUIDE: usize = 8;
 const HIPPO: usize = 9;
 const MARINE: usize = 10;
 const GUEST: usize = 11;
+/// A swimmer that keeps off the walls.
+const RAY: usize = 12;
+/// The young of a species that lays eggs, a swimmer, and an adult of it.
+const YOUNG: usize = 13;
+const ADULT: usize = 14;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     fixtures::ty("animals", name, subtype, ini)
@@ -71,6 +76,13 @@ fn catalogue() -> Catalogue {
         class: "guests",
         ..ty("m", "guest", "")
     });
+    let ray = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncSwims=1\ncUnderwater=1\n\
+               cAvoidEdges=1\n";
+    cat.push(ty("m", "ray", ray));
+    let trike = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=500\n\
+                 cLaysEggs=1\ncSwims=1\ncUnderwater=1\n";
+    cat.push(ty("y", "trike", trike));
+    cat.push(ty("m", "trike", trike));
     cat
 }
 
@@ -122,7 +134,11 @@ fn shape(e: &Entity) -> Option<Shape> {
     };
     Some(Shape {
         kind,
-        footprint: if kind == Kind::Fixed { (2, 2) } else { (1, 1) },
+        footprint: match (kind, e.type_name.as_str()) {
+            (_, "pad") => (1, 1),
+            (Kind::Fixed, _) => (2, 2),
+            _ => (1, 1),
+        },
         fence,
         wall: false,
         gate: false,
@@ -133,6 +149,9 @@ fn shape(e: &Entity) -> Option<Shape> {
         rubbleable: false,
         tank: TankKind {
             wall: e.class == "tankwall",
+            // A pillar stands 5 levels high, a lily or a pad floats at the surface.
+            height: if e.type_name == "pillar" { 5 } else { 0 },
+            surface: matches!(e.type_name.as_str(), "lily" | "pad"),
             ..TankKind::NONE
         },
     })
@@ -1190,4 +1209,248 @@ fn an_animal_picked_up_is_no_longer_held() {
     let (mut w, _, a) = healing();
     pick_up(&mut w, &cat, a, 0).unwrap();
     assert!(!w.units.get(a).unwrap().held);
+}
+
+/// The pending unit of the type for the point `p` (with its height) seen from view 0.
+fn over(w: &World, ty: usize, p: (i64, i64, i32)) -> Option<Pending> {
+    pending(w, &catalogue(), &[false, true], ty, 0, aim(0, p), false)
+}
+
+#[test]
+fn the_tank_point_looks_48_plus_the_tank_limit_steps() {
+    // The water stands 60 levels high, so the tank is 60 steps from the ground point.
+    let tile = |limit: Option<u32>| {
+        let mut w = tank_world(3);
+        if let Some(limit) = limit {
+            let config = crate::exhibit::TankConfig::default();
+            w.set_tank_config(crate::exhibit::TankConfig { limit, ..config });
+        }
+        let id = w.tank_at(2 * 8 + 2).unwrap();
+        w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap().level = 60;
+        over(&w, HIPPO, behind_the_tank(60)).map(|p| p.tile)
+    };
+    // No tanks.cfg: the program's 30 gives 78 steps. The limit 13 gives 61, the last step being
+    // 60; 12 gives 60 steps, which stop one short; 0 leaves the 48.
+    assert_eq!(tile(None), Some((3, 2)));
+    assert_eq!(tile(Some(13)), Some((3, 2)));
+    assert_ne!(tile(Some(12)), Some((3, 2)));
+    assert_ne!(tile(Some(0)), Some((3, 2)));
+    // The largest limit a file can give (255) takes no overflow.
+    assert_eq!(tile(Some(255)), Some((3, 2)));
+    assert_eq!(tile(Some(u32::MAX)), Some((3, 2)));
+}
+
+#[test]
+fn the_ladder_row_also_refuses_a_unit_that_covers_the_middle_of_the_gate_tile() {
+    let (cat, w) = (catalogue(), tank_world(3));
+    let id = w.tank_at(2 * 8 + 2).unwrap();
+    // The gate inside tile is (2, 2): its middle is (160, 160). A unit on tile (3, 2) whose
+    // rectangle reaches it is refused, the bounds being included; a keeper may stand there.
+    let row = |ty: usize, half: i32| {
+        let rect = (3 * 64, 2 * 64 + 32, half, half);
+        tank_message(&w, id, 19, &cat.types[ty], rect, Form::Plain)
+    };
+    assert_eq!(row(MAINT, 32), Some(Some(LADDER)), "32 apart, bounds included");
+    assert_ne!(row(MAINT, 31), Some(Some(LADDER)));
+    assert_ne!(row(KEEPER, 32), Some(Some(LADDER)));
+    for half in [0, -5, i32::MAX] {
+        row(MAINT, half);
+    }
+}
+
+/// The tank world with an object of the type `name` at (`x`, `y`) of tile (3, 2).
+fn with_object(name: &str, level: u32, (x, y): (i32, i32)) -> World {
+    let thing = entity_at("objects", name, "", 3 * 64 + x, 2 * 64 + y, 0);
+    tank_world_with(level, vec![thing])
+}
+
+#[test]
+fn an_animal_is_too_deep_for_the_height_of_the_objects_that_block_its_quarters() {
+    let cat = catalogue();
+    let row = |w: &World| {
+        let id = w.tank_at(2 * 8 + 2).unwrap();
+        let rect = (3 * 64 + 16, 2 * 64 + 16, 16, 16);
+        tank_message(w, id, 19, &cat.types[HIPPO], rect, Form::Plain)
+    };
+    // A pillar of 5 levels in a tank of 3: 10560. A tank of 5 or more takes it.
+    assert_eq!(row(&with_object("pillar", 3, (32, 32))), Some(Some(DEEPER)));
+    assert_eq!(row(&with_object("pillar", 5, (32, 32))), None);
+    // Nothing blocks the quarters of the tile: the type's own depth (0) is all there is.
+    assert_eq!(row(&tank_world(1)), None);
+}
+
+#[test]
+fn a_swimmer_that_keeps_off_the_walls_and_a_floating_object_refuse_without_a_message() {
+    let w = tank_world(3);
+    let swim = |w: &World, ty| over(w, ty, behind_the_tank(3)).unwrap();
+    let (hippo, ray) = (swim(&w, HIPPO), swim(&w, RAY));
+    assert_eq!((hippo.verdict, hippo.message), (Verdict::Valid, None));
+    // Both tiles of the tank touch a wall: the ray (`cAvoidEdges` 1) is refused, with no message.
+    assert_eq!((ray.verdict, ray.message), (Verdict::Invalid, None));
+    // A floating pad in the fourth quarter refuses; in the first quarter it refuses nothing.
+    let first = with_object("pad", 3, (16, 16));
+    assert_eq!(swim(&first, HIPPO).message, None);
+    let fourth = with_object("pad", 3, (48, 48));
+    let id = fourth.tank_at(2 * 8 + 2).unwrap();
+    let rect = (3 * 64 + 16, 2 * 64 + 16, 16, 16);
+    let hippo = &catalogue().types[HIPPO];
+    assert_eq!(
+        tank_message(&fourth, id, 19, hippo, rect, Form::Plain),
+        Some(None)
+    );
+    let id = first.tank_at(2 * 8 + 2).unwrap();
+    assert_eq!(tank_message(&first, id, 19, hippo, rect, Form::Plain), None);
+}
+
+#[test]
+fn an_egg_is_the_young_of_a_species_that_lays_eggs_and_does_not_swim() {
+    let cat = catalogue();
+    assert!(is_egg(&cat.types[YOUNG]));
+    assert!(!is_egg(&cat.types[ADULT]) && !is_egg(&cat.types[ZEBRA]));
+    // The water of tile (5, 5), in a pen: the adult swims there, the egg is told to go on land.
+    let w = world(square("fences", 5, 5));
+    let adult = at(&w, ADULT, (5, 5));
+    assert_eq!((adult.verdict, adult.message), (Verdict::Valid, None));
+    let egg = at(&w, YOUNG, (5, 5));
+    assert_eq!((egg.verdict, egg.message), (Verdict::Invalid, Some(10570)));
+    // The tank holds no egg either (10570), whatever the water.
+    let tank = tank_world(3);
+    let id = tank.tank_at(2 * 8 + 2).unwrap();
+    let rect = (3 * 64 + 16, 2 * 64 + 16, 16, 16);
+    assert_eq!(
+        tank_message(&tank, id, 19, &cat.types[YOUNG], rect, Form::Egg),
+        Some(Some(10570))
+    );
+}
+
+#[test]
+fn an_egg_takes_the_slope_rule_by_its_egg_footprint() {
+    // An egg is 2 by 2 quarters: a sloped tile that is no path shape refuses it, as it refuses a
+    // large animal, where the adult of 1 by 1 may stand (unit placing 6.2 item 2).
+    let mut pieces = square("fences", 2, 2);
+    pieces.extend(square("fences", 3, 2));
+    let w = world_with(pieces, |z| z.tiles[2 * 8 + 2].shape = 0x12);
+    assert_eq!(at(&w, ADULT, (2, 2)).verdict, Verdict::Valid);
+    assert_eq!(at(&w, YOUNG, (2, 2)).verdict, Verdict::Invalid);
+    assert_eq!(at(&w, YOUNG, (3, 2)).verdict, Verdict::Valid);
+}
+
+#[test]
+fn the_pending_type_is_the_made_one_and_an_animal_with_none_made_has_no_pending_unit() {
+    let cat = catalogue();
+    // An egg layer chosen as an adult is pending as its young; a species with no young: nothing.
+    assert_eq!(made_type(&cat, Some(YOUNG), ADULT), Some(YOUNG));
+    assert_eq!(made_type(&cat, Some(ZEBRA), ZEBRA), Some(ZEBRA));
+    assert_eq!(made_type(&cat, None, ADULT), None);
+    assert_eq!(made_type(&cat, Some(YOUNG), ZEBRA), None, "another species");
+    assert_eq!(made_type(&cat, Some(999), ZEBRA), None);
+    assert_eq!(made_type(&cat, None, 999), None);
+    // A staff member is pending without one, as a building is.
+    assert_eq!(made_type(&cat, None, KEEPER), Some(KEEPER));
+}
+
+#[test]
+fn a_placed_unit_keeps_the_id_and_the_state_it_was_made_with_and_is_in_tank_mode_at_once() {
+    let cat = catalogue();
+    let mut w = tank_world(3);
+    let mut money = Money::default();
+    money.set_cash(1000.0);
+    let id = w.take_id().unwrap();
+    assert_eq!(id, 1001, "the counter moved at the creation");
+    // The creation state: an animal with a happiness no other path gives.
+    let mut made = crate::animal::Animal::default();
+    made.happiness = -77;
+    let made = Made {
+        ty: HIPPO,
+        id,
+        part: Part::Animal(made),
+    };
+    // Something else is added meanwhile: the unit still has the id it took.
+    let other = animal("m", (6, 6));
+    let other = w.add(other.clone(), shape(&other)).unwrap();
+    assert_eq!(other, 1002);
+    let p = over(&w, HIPPO, behind_the_tank(3)).unwrap();
+    assert_eq!(p.verdict, Verdict::Valid);
+    let placed = place(
+        &mut w,
+        &mut money,
+        &cat.types[HIPPO],
+        "Hippo",
+        &p,
+        shape,
+        (Some(made), &NoData),
+    );
+    assert_eq!(placed, Outcome::Placed(id));
+    let unit = w.units.get(id).unwrap();
+    assert!(unit.started && unit.typed);
+    assert!(matches!(&unit.part, Part::Animal(a) if a.happiness == -77));
+    // It is at the surface of the water from the click, with the move kind of a swimmer.
+    assert_eq!(unit.tank, 3);
+    let at = w.find(id).unwrap();
+    assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().movement_mode, 3);
+    assert_eq!(w.zoo.id_counter, 1002, "no id was taken at the add");
+}
+
+#[test]
+fn a_hired_staff_member_marks_its_exhibit_for_a_new_rating_and_an_animal_does_too() {
+    let cat = catalogue();
+    for ty in [KEEPER, ZEBRA] {
+        let mut w = world(square("fences", 2, 2));
+        let pen = w.exhibits().region(2 * 8 + 2).unwrap();
+        let mut money = Money::default();
+        money.set_cash(5000.0);
+        w.exhibits_mut().get_mut(pen).unwrap().rating.dirty = false;
+        let p = at(&w, ty, (2, 2));
+        let done = place(&mut w, &mut money, &cat.types[ty], "x", &p, shape, (None, &NoData));
+        assert!(matches!(done, Outcome::Placed(_)), "{done:?}");
+        assert!(w.exhibits().get(pen).unwrap().rating.dirty, "{ty}");
+    }
+}
+
+#[test]
+fn an_animal_refused_by_a_tank_is_crated_and_moved_and_an_egg_never_crated() {
+    let cat = catalogue();
+    let mut w = tank_world(3);
+    let swimmer = animal("m", (3, 2));
+    let id = w.add(swimmer.clone(), shape(&swimmer)).unwrap();
+    let egg = animal("y", (2, 2));
+    let egg = w.add(egg.clone(), shape(&egg)).unwrap();
+    for e in [id, egg] {
+        if let Some(Part::Animal(a)) = w.units.get_mut(e).map(|u| &mut u.part) {
+            a.escaped = e == id;
+            a.egg = e == egg;
+            a.hatch = if e == egg { 5 } else { 0 };
+        }
+    }
+    let width = 8;
+    let moved = |w: &World, e: u32| {
+        let c = w.zoo.entities[w.find(e).unwrap()].common.clone().unwrap();
+        (c.x.div_euclid(64), c.y.div_euclid(64), c.x.rem_euclid(64), c.y.rem_euclid(64))
+    };
+    assert!(refuse(&mut w, &cat, id, 0, &NoData));
+    let (x, y, lx, ly) = moved(&w, id);
+    // At the middle of a tile of the grounds, three or more tiles from the start (tile 0, 0).
+    assert_eq!((lx, ly), (32, 32));
+    assert!(x + y >= 3 && x < width && y < width);
+    let Some(Part::Animal(a)) = w.units.get(id).map(|u| &u.part) else {
+        panic!("not an animal");
+    };
+    assert!(a.crated && !a.escaped);
+    assert!(refuse(&mut w, &cat, egg, 0, &NoData));
+    let Some(Part::Animal(a)) = w.units.get(egg).map(|u| &u.part) else {
+        panic!("not an animal");
+    };
+    assert!(a.egg && !a.crated, "an egg is never crated");
+    assert_ne!(moved(&w, egg), (2, 2, 32, 32), "but it is moved");
+    // The countdown of a spent egg is kept and its health recomputed from it.
+    // No tile within reach: the animal stays where it is for the caller to sell.
+    let mut full = world(
+        (0..8)
+            .flat_map(|y| (0..8).map(move |x| animal("m", (x, y))))
+            .collect(),
+    );
+    let last = full.zoo.entities[0].common.as_ref().unwrap().id;
+    assert!(!refuse(&mut full, &cat, last, 0, &NoData));
+    let crated = matches!(full.units.get(last).map(|u| &u.part), Some(Part::Animal(a)) if a.crated);
+    assert!(crated, "crated where it stood");
 }
