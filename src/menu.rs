@@ -439,9 +439,7 @@ impl Menu {
     ) -> Result<(Zoo, Money), String> {
         let file = find_file(&self.root, path).ok_or_else(|| format!("{path}: no such file"))?;
         let bytes = std::fs::read(&file).map_err(|e| format!("{path}: {e}"))?;
-        Zoo::parse_money(&bytes)
-            .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
-            .map_err(|e| format!("{path}: {e}"))
+        Zoo::parse_money_in(&bytes, catalogue).map_err(|e| format!("{path}: {e}"))
     }
 
     /// A game starts: the menu layouts are hidden (the map view under them is the game's), and

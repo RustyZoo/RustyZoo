@@ -980,6 +980,61 @@ fn lookup_accepts_parent_classes_and_base_animation_follows_the_class() {
     assert_eq!(base("fences", "rail", "f").as_deref(), Some("idle"));
 }
 
+#[test]
+fn a_type_answers_to_its_own_class_and_its_parents_only() {
+    let mut c = Catalogue::default();
+    for (class, name) in [
+        ("objects", "o"),
+        ("food", "fd"),
+        ("paths", "pa"),
+        ("filter", "fi"),
+        ("rubble", "ru"),
+        ("building", "bu"),
+        ("fences", "fe"),
+        ("tankwall", "tw"),
+        ("animals", "an"),
+        ("guests", "gu"),
+        ("keeper", "ke"),
+        ("maint", "ma"),
+        ("tour", "to"),
+        ("helicopter", "he"),
+        ("ambient", "am"),
+    ] {
+        c.push(EntityType {
+            class,
+            type_name: name.into(),
+            subtype: b"s".to_vec(),
+            file: None,
+            config: None,
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+    }
+    let answers = |name: &str| -> Vec<&str> {
+        [
+            "objects", "fences", "unit", "staff", "Overlay", "entity", "tankwall", "building",
+            "keeper", "animals", "ambient", "Objects", "",
+        ]
+        .into_iter()
+        .filter(|&class| c.find(class, name.as_bytes(), b"s").is_some())
+        .collect()
+    };
+    for name in ["o", "fd", "pa", "fi", "ru"] {
+        assert_eq!(answers(name).first(), Some(&"objects"), "{name}");
+    }
+    assert_eq!(answers("bu"), ["objects", "building"]);
+    assert_eq!(answers("fe"), ["objects", "fences"]);
+    assert_eq!(answers("tw"), ["objects", "fences", "tankwall"]);
+    assert_eq!(answers("an"), ["unit", "animals"]);
+    assert_eq!(answers("gu"), ["unit"]);
+    assert_eq!(answers("ke"), ["unit", "staff", "keeper"]);
+    for name in ["ma", "to", "he"] {
+        assert_eq!(answers(name), ["unit", "staff"], "{name}");
+    }
+    assert_eq!(answers("am"), ["Overlay", "ambient"]);
+}
+
 /// Two colour groups for every staff type and four for every guest type (save games 11.2).
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]

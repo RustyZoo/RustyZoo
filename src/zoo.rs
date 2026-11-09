@@ -20,10 +20,11 @@
 //! layout is not understood is skipped (its [`Entity::common`] is `None`). Before version 70 the
 //! body must be parsed to find the next record, so any unknown class is an error there.
 //!
-//! The parser knows nothing of the entity definitions. The original also refuses a file of a
-//! version below 70 whose entity has a type it has no definition for, even if its class is
-//! known; [`Zoo::check_types`] does the same once the caller has the definitions. From version 70
-//! such an entity is skipped, and [`Zoo::checked`] drops it ([`Zoo::drop_unknown`]) after the load.
+//! [`Zoo::parse`] knows nothing of the entity definitions and reads each body with the class the
+//! record stores. [`Zoo::parse_in`] has them: it finds the type of each record from its three
+//! names before the body, reads the body with the layout of the type's class (a record may store
+//! a parent class name: `objects`, `fences`, `unit`, `staff`), skips an entity with no type from
+//! version 70 and drops it ([`Zoo::drop_unknown`]) after the load, and refuses the file below 70.
 //!
 //! [`Zoo::write`] mirrors the reader and always writes version 106 (from 70 on). What the engine
 //! does not model is kept as read ([`Kept`], and the body of each entity in [`Common`]), converted to
@@ -375,8 +376,6 @@ pub struct Entity {
     /// not know, or a body that did not decode to exactly its stored size. The original never
     /// compares a body with its size for a class it knows (it goes on from where its decoding
     /// stopped); such a record is kept without fields here, which the format allows.
-    /// A record stored under a parent class (`unit`, `staff`, `objects`, `fences`) keeps only its
-    /// bytes until [`Zoo::checked`] finds its type and reads it with that type's layout.
     pub common: Option<Common>,
 }
 
@@ -585,58 +584,32 @@ impl Zoo {
             .get(y as usize * self.width as usize + x as usize)
     }
 
-    /// Refuses a file of a version below 70 that holds an entity whose type `known` does not
-    /// find, as the original does: there is no body size to skip it by, so the whole load
-    /// fails. From version 70 such an entity is skipped, so the file passes.
-    pub(crate) fn check_types(&self, known: impl Fn(&Entity) -> bool) -> Result<(), ZooError> {
-        if self.version >= 70 {
-            return Ok(());
-        }
-        match self.entities.iter().position(|e| !known(e)) {
-            Some(i) => Err(ZooError::Corrupted(format!(
-                "entities: entity {i}: no definition of its type in a file without body sizes"
-            ))),
-            None => Ok(()),
-        }
-    }
-
     /// Drops the entities whose type `known` does not find, as the original's loader does when it
     /// skips their records: it makes no unit for them and so never saves them (zoo format 6.2).
-    /// [`Zoo::checked`] calls it after the load; the engine drops them again when it writes.
+    /// [`Zoo::parse_in`] calls it after the load; the engine drops them again when it writes.
     pub(crate) fn drop_unknown(&mut self, known: impl Fn(&Entity) -> bool) {
         self.entities.retain(known);
     }
 
-    /// Gives a record stored under a parent class name (`unit`, `staff`, `objects`, `fences`) the
-    /// class of the type it finds and reads its body with that class's layout (zoo format 6.15
-    /// points 1 and 2). A record stored under the class of its type is left as read, unless its
-    /// body waited for this (it did not decode as stored).
-    fn resolve_classes(&mut self, catalogue: &Catalogue) {
-        for at in 0..self.entities.len() {
-            let e = &self.entities[at];
-            if !matches!(&e.class[..], "unit" | "staff" | "objects" | "fences") {
-                continue;
-            }
-            let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-            let found = catalogue.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype));
-            let waits = e
-                .common
-                .as_ref()
-                .is_some_and(|c| c.raw.spans == Spans::default());
-            if let Some(ty) = found.filter(|ty| ty.class != e.class || waits) {
-                read::reread(self, at, ty.class);
-            }
-        }
+    /// Reads a file with the types of `catalogue` at hand, as the original does: each record's type
+    /// is found from its three names before its body is read, at every version, and the body is
+    /// read with the layout of the type's class, whatever parent class name the record stores (zoo
+    /// format 6.16). A record with no type is skipped by its size and dropped from version 70
+    /// ([`Zoo::drop_unknown`]), and fails the load below 70.
+    pub fn parse_in(bytes: &[u8], catalogue: &Catalogue) -> Result<Zoo, ZooError> {
+        Zoo::parse_money_in(bytes, catalogue).map(|(zoo, _)| zoo)
     }
 
-    /// Reads the records stored under a parent class with the layout of their type's class, applies
-    /// [`Zoo::check_types`] with the types of `catalogue`, then drops the entities of an unknown
-    /// type, so the world built from the zoo has no unit or id for them.
-    pub fn checked(mut self, catalogue: &Catalogue) -> Result<Zoo, ZooError> {
-        self.resolve_classes(catalogue);
-        self.check_types(knows(catalogue))?;
-        self.drop_unknown(knows(catalogue));
-        Ok(self)
+    /// Reads a file as [`Zoo::parse_in`] does and keeps the cash and the accounts it stores.
+    pub fn parse_money_in(bytes: &[u8], catalogue: &Catalogue) -> Result<(Zoo, Money), ZooError> {
+        let bytes_of = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
+        let find = |class: &str, type_name: &str, subtype: &str| {
+            let ty = catalogue.find(class, &bytes_of(type_name), &bytes_of(subtype));
+            ty.map(|ty| ty.class)
+        };
+        let (mut zoo, money, _) = Zoo::parse_marked(bytes, false, Some(&find))?;
+        zoo.drop_unknown(knows(catalogue));
+        Ok((zoo, money))
     }
 
     /// Reads a file, refusing it the way the original does.
@@ -646,17 +619,21 @@ impl Zoo {
 
     /// Reads a file as [`Zoo::parse`] does and keeps the cash and the accounts it stores.
     pub fn parse_money(bytes: &[u8]) -> Result<(Zoo, Money), ZooError> {
-        Zoo::parse_marked(bytes, false).map(|(zoo, money, _)| (zoo, money))
+        Zoo::parse_marked(bytes, false, None).map(|(zoo, money, _)| (zoo, money))
     }
 
     /// Where each section of a file ends (a name and the offset in the file, an entity as
     /// `entity/CLASS`), for the parity report of the full-game tests.
     #[cfg(test)]
     pub(crate) fn sections(bytes: &[u8]) -> Result<Marks, ZooError> {
-        Zoo::parse_marked(bytes, true).map(|(_, _, marks)| marks)
+        Zoo::parse_marked(bytes, true, None).map(|(_, _, marks)| marks)
     }
 
-    fn parse_marked(bytes: &[u8], marked: bool) -> Result<(Zoo, Money, Marks), ZooError> {
+    fn parse_marked(
+        bytes: &[u8],
+        marked: bool,
+        resolve: Option<read::Resolve>,
+    ) -> Result<(Zoo, Money, Marks), ZooError> {
         if bytes.get(..4) != Some(b"TZFB") {
             return Err(ZooError::NotASavedGame);
         }
@@ -675,6 +652,7 @@ impl Zoo {
         }
         let mut r = Reader::new(&bytes[8..], version);
         r.marks = marked.then(Vec::new);
+        r.resolve = resolve;
         let mut section = "header";
         let mut money = Money::default();
         read(&mut r, &mut section, &mut money)

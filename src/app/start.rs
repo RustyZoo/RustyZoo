@@ -239,9 +239,7 @@ impl App<'_> {
         let catalogue = self.renderer.catalogue();
         let read = std::fs::read(file).map_err(|e| format!("{file}: {e}"));
         let read = read.and_then(|bytes| {
-            Zoo::parse_money(&bytes)
-                .and_then(|(zoo, money)| Ok((zoo.checked(catalogue)?, money)))
-                .map_err(|e| format!("{file}: {e}"))
+            Zoo::parse_money_in(&bytes, catalogue).map_err(|e| format!("{file}: {e}"))
         });
         let start = Start {
             path: file.to_string(),

@@ -16,11 +16,6 @@ use rustyzoo::vfs::Vfs;
 use rustyzoo::world::World;
 use rustyzoo::zoo::{Zoo, ZooError};
 
-pub fn load_map(vfs: &Vfs, member: &str) -> Result<Zoo, CliError> {
-    let bytes = vfs.read(member)?;
-    Ok(Zoo::parse(&bytes).map_err(|e| format!("{member}: {e}"))?)
-}
-
 /// Reads a movie from a file, or else from the game, decodes it, and prints what it holds.
 pub fn movie_info(
     data_dir: Option<OsString>,
@@ -99,8 +94,7 @@ pub fn check_maps(vfs: &Vfs) -> Result<(), CliError> {
         let result = vfs
             .read(&member)
             .map_err(|e| ZooError::Corrupted(e.to_string()))
-            .and_then(|bytes| Zoo::parse(&bytes))
-            .and_then(|zoo| zoo.checked(&catalogue));
+            .and_then(|bytes| Zoo::parse_in(&bytes, &catalogue));
         match result {
             Ok(zoo) => {
                 ok += 1;
@@ -158,8 +152,7 @@ pub fn check_exhibits(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         let zoo = vfs
             .read(&member)
             .map_err(|e| ZooError::Corrupted(e.to_string()))
-            .and_then(|bytes| Zoo::parse(&bytes))
-            .and_then(|zoo| zoo.checked(&catalogue));
+            .and_then(|bytes| Zoo::parse_in(&bytes, &catalogue));
         let zoo = match zoo {
             Ok(zoo) => zoo,
             Err(err) => {
@@ -236,8 +229,7 @@ pub fn check_rating(vfs: &Vfs, pattern: &str) -> Result<(), CliError> {
         let zoo = vfs
             .read(&member)
             .map_err(|e| ZooError::Corrupted(e.to_string()))
-            .and_then(|bytes| Zoo::parse(&bytes))
-            .and_then(|zoo| zoo.checked(&catalogue));
+            .and_then(|bytes| Zoo::parse_in(&bytes, &catalogue));
         let Ok(zoo) = zoo else {
             report.line(format_args!("skipped {}", member.escape_debug()));
             continue;

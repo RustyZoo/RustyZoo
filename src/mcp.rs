@@ -228,9 +228,8 @@ impl Session<'_> {
             _ => return Err("give either map or file".into()),
         };
         let cat = Catalogue::load(self.vfs).map_err(|e| e.to_string())?;
-        let (zoo, money): (Zoo, Money) = Zoo::parse_money(&bytes)
-            .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
-            .map_err(|e| format!("{what}: {e}"))?;
+        let (zoo, money): (Zoo, Money) =
+            Zoo::parse_money_in(&bytes, &cat).map_err(|e| format!("{what}: {e}"))?;
         let economy = self.vfs.read("economy.cfg").unwrap_or_default();
         let fences = (!saved).then_some(false);
         let run = Run::from_vfs(self.vfs, &economy, cat, (zoo, money), seed, fences);

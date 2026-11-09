@@ -77,9 +77,7 @@ fn resaved_after(
     member: &str,
     before: impl FnOnce(&mut Run),
 ) -> Result<Vec<u8>, String> {
-    let (zoo, money) = Zoo::parse_money(&vfs.read(member).unwrap())
-        .and_then(|(zoo, money)| Ok((zoo.checked(&cat)?, money)))
-        .unwrap();
+    let (zoo, money) = Zoo::parse_money_in(&vfs.read(member).unwrap(), &cat).unwrap();
     let renderer = crate::render::MapRenderer::new(vfs, &cat);
     let language = crate::strings::Language::of(vfs.root());
     let mut world = crate::world::World::with_language(zoo, |e| renderer.shape(e), language);

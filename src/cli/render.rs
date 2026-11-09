@@ -3,7 +3,6 @@
 use std::fs::File;
 use std::io;
 
-use super::maps::load_map;
 use super::{CliError, Report};
 use rustyzoo::entity::Catalogue;
 use rustyzoo::render::{MapRenderer, Options, Summary};
@@ -61,9 +60,8 @@ pub fn render_map(
         return Err(CliError::Usage);
     }
     let catalogue = Catalogue::load(vfs)?;
-    let zoo = load_map(vfs, member)?
-        .checked(&catalogue)
-        .map_err(|e| format!("{member}: {e}"))?;
+    let zoo =
+        Zoo::parse_in(&vfs.read(member)?, &catalogue).map_err(|e| format!("{member}: {e}"))?;
     let (image, summary) =
         MapRenderer::new(vfs, &catalogue).render_with(&zoo, rotation, options)?;
     let file = File::create(out).map_err(|e| format!("cannot create {out}: {e}"))?;
@@ -96,8 +94,7 @@ pub fn check_render(vfs: &Vfs, rotation: u8) -> Result<(), CliError> {
         let zoo = vfs
             .read(&member)
             .ok()
-            .and_then(|bytes| Zoo::parse(&bytes).ok())
-            .and_then(|zoo| zoo.checked(&catalogue).ok());
+            .and_then(|bytes| Zoo::parse_in(&bytes, &catalogue).ok());
         let Some(zoo) = zoo else {
             skipped += 1;
             report.line(format_args!("skipped {name}: cannot be loaded"));

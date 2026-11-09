@@ -1278,8 +1278,7 @@ fn a_loaded_exhibit_lists_its_stored_tile_first() {
         if !map.to_ascii_lowercase().ends_with(".zoo") {
             continue;
         }
-        let Ok(zoo) = Zoo::parse(&vfs.read(&map).unwrap()).and_then(|z| z.checked(&catalogue))
-        else {
+        let Ok(zoo) = Zoo::parse_in(&vfs.read(&map).unwrap(), &catalogue) else {
             continue;
         };
         let tiles = zoo.habitat_tiles.clone();
