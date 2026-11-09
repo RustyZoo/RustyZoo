@@ -120,6 +120,8 @@ struct Game {
     funding: crate::panel::marketing::Funding,
     /// Whether the status window was shown at the last look, for the Awards page.
     awards_page: Awards,
+    /// The tabs of the zoo status window.
+    window: zoo_window::Window,
     /// The building panels and the tool they choose.
     build: Build,
     /// The pending object and the drag that buys it.
@@ -514,6 +516,7 @@ impl<'a> App<'a> {
             game.funding = Default::default();
             game.world.units.names = names;
             game.awards_page = Awards::default();
+            game.window.fresh();
         }
     }
 
@@ -926,6 +929,7 @@ mod tank_panel;
 mod terrain;
 mod told;
 mod undo;
+mod zoo_window;
 
 #[cfg(test)]
 mod adopt_tests;

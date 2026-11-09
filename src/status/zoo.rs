@@ -449,6 +449,12 @@ impl Status {
         self.price = if top <= min { min } else { top };
     }
 
+    /// Sets the adult admission price, limited to the range (11).
+    pub(crate) fn set_price(&mut self, price: f32) {
+        self.price = price;
+        self.limit_price();
+    }
+
     /// What a file stores of the status (the inverse of [`Status::start`]).
     pub(crate) fn record(&self) -> StatusRecord {
         StatusRecord {

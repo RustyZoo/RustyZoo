@@ -3,6 +3,10 @@
 //! of the layout.
 
 pub mod awards;
+pub(crate) mod commerce;
+pub(crate) mod completed;
+pub(crate) mod graphs;
+pub(crate) mod info;
 pub mod zoo;
 
 use crate::money::Money;

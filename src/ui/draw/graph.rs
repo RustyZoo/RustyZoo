@@ -29,7 +29,11 @@ fn column(font: &text::Font, g: &Graph) -> i32 {
         let wide = font.width(&label(g, min)).max(font.width(&label(g, max)));
         return wide.saturating_add(12);
     }
-    let digits = min.unsigned_abs().to_string().len().max(max.unsigned_abs().to_string().len());
+    let digits = min
+        .unsigned_abs()
+        .to_string()
+        .len()
+        .max(max.unsigned_abs().to_string().len());
     (3 + digits as i32).saturating_mul(font.advance(b'0'))
 }
 
@@ -37,11 +41,18 @@ fn column(font: &text::Font, g: &Graph) -> i32 {
 fn line(canvas: &mut Framebuffer, a: (i32, i32), b: (i32, i32), color: [u8; 4]) {
     let (mut x, mut y) = (i64::from(a.0), i64::from(a.1));
     let (dx, dy) = ((i64::from(b.0) - x).abs(), -(i64::from(b.1) - y).abs());
-    let (sx, sy) = (if x < i64::from(b.0) { 1 } else { -1 }, if y < i64::from(b.1) { 1 } else { -1 });
+    let (sx, sy) = (
+        if x < i64::from(b.0) { 1 } else { -1 },
+        if y < i64::from(b.1) { 1 } else { -1 },
+    );
     let mut error = dx + dy;
     // The longest line is a few thousand pixels.
     for _ in 0..=dx - dy {
-        fill_rect(canvas, (x as i32, y as i32, x as i32 + 1, y as i32 + 1), color);
+        fill_rect(
+            canvas,
+            (x as i32, y as i32, x as i32 + 1, y as i32 + 1),
+            color,
+        );
         if (x, y) == (i64::from(b.0), i64::from(b.1)) {
             break;
         }
@@ -84,15 +95,29 @@ impl Painter {
         let text_height = font.line_height();
         let (l, t) = (column(font, g).min(w - 1).max(0), 0);
         let (r, b) = (w, (h - g.x_label_padding - text_height).max(t + 1));
-        let say = |canvas: &mut Framebuffer, font: &mut text::Font, text: &[u8], (x, y): (i32, i32), color: [u8; 3], justify: text::Justify| {
+        let say = |canvas: &mut Framebuffer,
+                   font: &mut text::Font,
+                   text: &[u8],
+                   (x, y): (i32, i32),
+                   color: [u8; 3],
+                   justify: text::Justify| {
             let width = font.width(text);
             let left = match justify {
                 text::Justify::Left => x,
                 text::Justify::Center => x - width / 2,
                 text::Justify::Right => x - width,
             };
-            let rect = Rect { left, top: y, right: left + width, bottom: y + text_height };
-            let style = Style { color, justify: text::Justify::Left, shadow: false };
+            let rect = Rect {
+                left,
+                top: y,
+                right: left + width,
+                bottom: y + text_height,
+            };
+            let style = Style {
+                color,
+                justify: text::Justify::Left,
+                shadow: false,
+            };
             text::draw(canvas, font, rect, text, &style);
         };
         // The Y labels, equally spaced from the top of the plot.
@@ -100,9 +125,20 @@ impl Painter {
         let (top, room) = (t + g.vert_padding, b - t - 2 * g.vert_padding);
         for (k, &value) in values.iter().enumerate() {
             let y = top + (room as f32 * k as f32 / (values.len() - 1).max(1) as f32) as i32;
-            let color = if (value as f32) < -0.9 { g.y_neg } else { g.y_pos };
+            let color = if (value as f32) < -0.9 {
+                g.y_neg
+            } else {
+                g.y_pos
+            };
             let text = label(g, i64::from(value));
-            say(canvas, font, &text, (l - 3, y - text_height / 2), color, text::Justify::Right);
+            say(
+                canvas,
+                font,
+                &text,
+                (l - 3, y - text_height / 2),
+                color,
+                text::Justify::Right,
+            );
         }
         let axis = fill_color(g.axis);
         line(canvas, (l, t), (l, b), axis);
@@ -145,7 +181,14 @@ impl Painter {
                 let half = font.width(&text) / 2;
                 let x = at(i).clamp(l + half, (r - half).max(l + half));
                 let y = (ys[i] - 2 - text_height).max(t);
-                say(canvas, font, &text, (x, y), g.point_label_color, text::Justify::Center);
+                say(
+                    canvas,
+                    font,
+                    &text,
+                    (x, y),
+                    g.point_label_color,
+                    text::Justify::Center,
+                );
             }
         }
         // The X labels stop at the first point whose x does not follow the one before.
@@ -155,7 +198,14 @@ impl Painter {
                 break;
             }
             previous = Some(p.x);
-            say(canvas, font, &p.label, (at(i), b + g.x_label_padding), g.x_label, text::Justify::Center);
+            say(
+                canvas,
+                font,
+                &p.label,
+                (at(i), b + g.x_label_padding),
+                g.x_label,
+                text::Justify::Center,
+            );
         }
     }
 }

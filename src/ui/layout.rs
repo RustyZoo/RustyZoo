@@ -27,8 +27,8 @@ use crate::config::{Config, Section, to_flag, to_int};
 use crate::tga::Texture;
 use crate::vfs::{Vfs, normalise};
 
-use super::resolve::Placed;
 use super::graph::Graph;
+use super::resolve::Placed;
 use super::widgets::{Bar, Caret, Rows};
 
 /// State flag: not drawn, not hit. Every element starts with it.

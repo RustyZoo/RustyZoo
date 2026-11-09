@@ -2,6 +2,7 @@
 //! scenario, and the start of a game from the menu.
 
 use super::*;
+use crate::status::completed::Completed;
 
 impl App<'_> {
     /// Opens a game on `zoo`: its stored camera, the first draw, and a simulation whose next step is
@@ -131,6 +132,7 @@ impl App<'_> {
             finances: Finances::default(),
             funding: Default::default(),
             awards_page: Awards::default(),
+            window: Default::default(),
             build: self.new_build(stored, exhibits),
             placing: pending::Placing {
                 pending: None,
@@ -200,6 +202,7 @@ impl App<'_> {
             game.world.units.upgrades = research::upgrades(&tree);
             game.build
                 .after_triggers(self.renderer.catalogue(), &ini, &[]);
+            game.window.completed = Completed::replay(&tree);
             self.sim.set_research(tree);
         }
         if let Some(ui) = &mut self.ui {
@@ -342,6 +345,7 @@ impl App<'_> {
                     let value = tree.selection.unwrap_or(tree.expansion);
                     game.build.set_scenario(tree.off, Some(value));
                     game.world.units.upgrades = research::upgrades(&tree);
+                    game.window.completed = Completed::replay(&tree);
                 }
                 self.sim.set_research(tree);
             } else if let Some(game) = &mut self.game {

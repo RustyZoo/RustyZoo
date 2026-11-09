@@ -154,7 +154,9 @@ impl Graph {
         let (min, max) = self.range();
         let n = self.y_labels.clamp(0, 1000);
         let step = ((max - min) as f32 / (n - 1).max(1) as f32).max(1.0);
-        (0..n).map(|k| (max as f32 - k as f32 * step) as i32).collect()
+        (0..n)
+            .map(|k| (max as f32 - k as f32 * step) as i32)
+            .collect()
     }
 }
 

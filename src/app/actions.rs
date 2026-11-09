@@ -2,6 +2,7 @@
 //! act on, and what the menu asked of the game.
 
 use super::*;
+use crate::status::{commerce, graphs, info};
 use crate::ui::interface::HISTORY_LIST;
 
 impl App<'_> {
@@ -66,6 +67,10 @@ impl App<'_> {
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
                     self.building_type_price();
                 }
+                Action::Edited(info::NAME) if self.game.is_some() => self.zoo_rename(),
+                Action::Edited(info::PRICE) if self.game.is_some() => self.zoo_price_typed(),
+                Action::Row(commerce::LIST, row) if self.game.is_some() => self.commerce_row(row),
+                Action::Double(commerce::LIST, _) if self.game.is_some() => self.commerce_double(),
                 _ => {}
             }
         }
@@ -143,6 +148,11 @@ impl App<'_> {
                     if let Some(game) = &mut self.game {
                         game.animal.clock.force = true;
                     }
+                }
+                info::UP | info::DOWN if self.game.is_some() => self.zoo_price_step(id == info::UP),
+                t if graphs::switched(t).is_some() && self.game.is_some() => self.graph_switch(t),
+                t if commerce::BUTTONS.contains(&t) && self.game.is_some() => {
+                    self.commerce_sorted(t);
                 }
                 _ if self.game.is_some() => self.build(Some(id)),
                 _ if self.game.is_none() => {
