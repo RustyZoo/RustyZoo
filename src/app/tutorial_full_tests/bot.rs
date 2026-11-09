@@ -62,14 +62,16 @@ impl Play<'_, '_> {
             (10, 1..) => self.press(a),
             // The bulldozer takes out a piece of fence.
             (1, _) => self.delete_fence(),
+            // The DRT workers come with the base.
+            (2, 0) if a == 9550 => self.supply(8031, value),
             (2, 0) => self.supply(a, value),
             (11, _) => self.pick_row(a, b, g.rule[3], value),
             (3, 0) => {
-                self.exhibit(3);
+                self.exhibit(6);
             }
             (3, 1) => self.adopt(),
-            (5, 3) => self.improve(a, value),
-            (6, 3) => self.improve(g.rule[3], value),
+            (5, 1..=3) => self.improve(b, a, value),
+            (6, 1..=3) => self.improve(b, g.rule[3], value),
             (16, _) => self.wall(b, a),
             _ => {}
         }
@@ -198,60 +200,72 @@ impl Play<'_, '_> {
 
     /// The exhibit panel on a show tank, which opens the window of its show.
     fn show_window(&mut self) {
+        if self.app.ui.as_ref().unwrap().shown(crate::panel::show::LAYOUT) {
+            return;
+        }
         let world = &self.app.game.as_ref().unwrap().world;
         let list = world.exhibits().list();
         let tank = list.iter().find(|x| crate::show::info_of(world, x.id).is_some());
         if let Some(id) = tank.map(|x| x.id) {
             self.app.open_exhibit(id);
-            for k in 0..3 {
-                self.tick(STEP, &[]);
-                let ui = self.app.ui.as_ref().unwrap();
-                let n = |l: i32| match ui.tree.find(l).map(|i| &ui.tree.elements[i].kind) { Some(Kind::ListBox(b)) => b.rows.rows.len() as i32, _ => -1 };
-                println!("SHOWWIN {k} {} {} {} {}", n(11111), n(11115), n(11196), n(11191));
-                let dup: Vec<_> = ui.tree.elements.iter().enumerate().filter(|(_, e)| e.id == 11111).map(|(i, e)| (i, e.state, matches!(e.kind, Kind::ListBox(_)))).collect();
-                println!("DUP {dup:?} {:?}", ui.tree.find(11111));
-            }
+            self.tick(STEP, &[]);
         }
     }
 
-    /// The exhibits where the species with the name id `name_id` lives and the key of its type.
-    fn homes(&self, name_id: i32) -> Vec<(u32, String)> {
+    /// The animal types whose family (`b` 1), genus (2) or species (3) is `id`.
+    fn kinds(&self, b: i32, id: i32) -> Vec<usize> {
+        let cat = self.app.renderer.catalogue();
+        let at = [0, 2, 1, 0][b as usize];
+        let kind = |&i: &usize| {
+            let t = &cat.types[i];
+            t.class == "animals" && crate::exhibit::rating::Likes::of(t).ids[at] == id
+        };
+        (0..cat.types.len()).filter(kind).collect()
+    }
+
+    /// The exhibits where the animals of these types live, with the key of the type.
+    fn homes(&self, kinds: &[usize]) -> Vec<(u32, String)> {
         let world = &self.app.game.as_ref().unwrap().world;
         let cat = self.app.renderer.catalogue();
-        let species = |t: &crate::entity::EntityType| t.class == "animals" && t.name_id == name_id;
         let mut homes = Vec::new();
         for (at, e) in world.zoo.entities.iter().enumerate() {
-            let is = cat.types.iter().any(|t| species(t) && t.type_name == e.type_name.as_bytes());
+            let is = kinds.iter().any(|&t| cat.types[t].type_name == e.type_name.as_bytes());
             let home = crate::panel::exhibit::animals_exhibit(world, at);
-            if let (true, Some(x)) = (is, home) {
-                if !homes.contains(&(x, e.type_name.clone())) {
-                    homes.push((x, e.type_name.clone()));
-                }
+            if let (true, Some(x)) = (is, home)
+                && !homes.contains(&(x, e.type_name.clone()))
+            {
+                homes.push((x, e.type_name.clone()));
             }
         }
         homes
     }
 
-    /// One step towards a suitability of `target` for the species `name_id`: the ground painted
-    /// with what it likes best, then a plant or a rock at a time, taken back when it lowered the
-    /// rating.
-    fn improve(&mut self, name_id: i32, target: i32) {
+    /// One step towards a suitability of `target` for the animals of the kind `b` and `id`: the
+    /// ground painted with what they like best, then a plant or a rock at a time, taken back when
+    /// it lowered the rating.
+    fn improve(&mut self, b: i32, id: i32, target: i32) {
+        let kinds = self.kinds(b, id);
+        let homes = self.homes(&kinds);
+        if homes.is_empty() {
+            if self.choose(&kinds) {
+                self.house();
+            }
+            return;
+        }
         let game = self.app.game.as_ref().unwrap();
         let cat = self.app.renderer.catalogue();
         let rate = |&(x, ref key): &(u32, String)| {
             crate::panel::animal::suitability_in(&game.world, cat, x, key)
         };
-        let low: Vec<_> = (self.homes(name_id).into_iter()).filter(|h| rate(h) < target).collect();
-        let Some((x, key)) = low.first().cloned() else {
+        let Some(low) = homes.iter().find(|h| rate(h) < target) else {
             return;
         };
-        let now = rate(&low[0]);
-        println!("IMPROVE {name_id} {now}");
-        if let Some((before, t)) = self.last.take() {
-            if now < before {
-                self.press(1075);
-                self.bad.push(t);
-            }
+        let (now, (x, key)) = (rate(low), low.clone());
+        if let Some((before, t)) = self.last.take()
+            && now < before
+        {
+            self.press(1075);
+            self.bad.push(t);
         }
         if self.painted.contains(&x) {
             self.plant(x, &key, now);
@@ -278,10 +292,11 @@ impl Play<'_, '_> {
         }
         let game = self.app.game.as_ref().unwrap();
         let width = game.world.zoo.width as usize;
-        let list = game.world.exhibits().get(x).map(|e| e.order.clone()).unwrap_or_default();
-        let tiles: Vec<(i32, i32)> = list.iter().map(|&t| ((t % width) as i32, (t / width) as i32)).collect();
-        let (cx, cy) = tiles.first().copied().unwrap_or((0, 0));
-        self.look((cx, cy));
+        let order = game.world.exhibits().get(x).map(|e| e.order.clone()).unwrap_or_default();
+        let tiles: Vec<(i32, i32)> = (order.iter())
+            .map(|&t| ((t % width) as i32, (t / width) as i32))
+            .collect();
+        self.look(tiles.first().copied().unwrap_or((0, 0)));
         let mut commands = Vec::new();
         for (tx, ty) in tiles {
             let (px, py) = self.win(tx * 64 + 32, ty * 64 + 32);
@@ -291,8 +306,8 @@ impl Play<'_, '_> {
         self.press(3302);
     }
 
-    /// A plant or a rock the species `key` likes, in exhibit `x`: the best of those on offer,
-    /// then the next ones in turn.
+    /// A plant, a rock or a shelter the species `key` likes, in exhibit `x`: the best of those on
+    /// offer, then the next ones in turn.
     fn plant(&mut self, x: u32, key: &str, now: i32) {
         let cat = self.app.renderer.catalogue();
         let animal = cat.types.iter().find(|t| t.class == "animals" && t.type_name == key.as_bytes());
@@ -318,14 +333,17 @@ impl Play<'_, '_> {
         let Some(&(_, t)) = want.get(self.painted.len() % want.len().max(1)) else {
             return;
         };
-        let world = &game.world;
+        // An item no panel lists is dropped.
+        if !self.choose(&[t]) {
+            self.bad.push(t);
+            return;
+        }
+        let world = &self.app.game.as_ref().unwrap().world;
         let width = world.zoo.width as usize;
         let tile = world.exhibits().get(x).map_or(0, |e| e.order[e.order.len() / 2]);
-        if self.choose(&[t]) {
-            self.last = Some((now, t));
-            self.painted.push(0);
-            self.put(((tile % width) as i32, (tile / width) as i32));
-        }
+        self.last = Some((now, t));
+        self.painted.push(0);
+        self.put(((tile % width) as i32, (tile / width) as i32));
     }
 
     /// The held animal goes in an exhibit with no animal, or the last one.
