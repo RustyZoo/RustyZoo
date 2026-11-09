@@ -62,7 +62,8 @@ pub(super) const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\
     [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n\
     [j]\ntype=UILayout\nlayout=ui/filter.lyt\nstate=1\n";
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
-    [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
+    [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n\
+    [s]\ntype=UIButton\nid=3111\nx=10\ndx=8\ndy=8\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n\
     [b]\ntype=UIText\nid=4868\ndx=8\ndy=8\n[c]\ntype=UIText\nid=4881\ndx=8\ndy=8\n\
@@ -746,7 +747,11 @@ fn an_animal_sold_with_no_answer_stays_and_its_panel_is_closed() {
         let id = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
         s.app.game.as_mut().unwrap().animal.select(id);
         s.app.game.as_mut().unwrap().selected = Some(id);
-        s.app.animal_sell();
+        // The sell button of the panel, pressed.
+        assert!(s.app.interface().unwrap().show(6));
+        s.pass(&[Command::Mouse(Mouse::Move(14, 4))]);
+        s.pass(&[Command::Mouse(Mouse::Down)]);
+        s.pass(&[Command::Mouse(Mouse::Up)]);
         assert!(s.asking());
         assert_eq!(
             s.app.game.as_ref().unwrap().selected,
