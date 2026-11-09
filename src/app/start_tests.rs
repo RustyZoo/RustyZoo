@@ -1774,3 +1774,64 @@ fn a_saved_game_trains_the_staff_types_of_the_programs_its_section_completes() {
         assert_eq!(masks(app), [2, 0]);
     });
 }
+
+/// The lives of the animals of the file `member` of the install in `dir`, by id, as a Continue
+/// loads them and a save writes them back.
+fn resaved_lives(dir: &std::ffi::OsStr, member: &str) -> [Vec<(u32, i32)>; 2] {
+    let lives = |zoo: &Zoo| {
+        (zoo.entities.iter())
+            .filter_map(|e| {
+                let c = e.common.as_ref()?;
+                Some((c.id, c.animal.as_ref()?.life?))
+            })
+            .collect::<Vec<_>>()
+    };
+    let vfs = Vfs::open(std::path::Path::new(dir)).unwrap();
+    let cat = Catalogue::load(&vfs).unwrap();
+    let read = || Zoo::parse_money_in(&vfs.read(member).unwrap(), &cat).unwrap();
+    let before = lives(&read().0);
+    let mut app = App::new(
+        MapRenderer::new(&vfs, &cat),
+        read().0,
+        Settings::default(),
+        Timers::new(66, 16, 200),
+        SIZE,
+    )
+    .unwrap();
+    let (zoo, money) = read();
+    app.open_zoo(zoo, money, true).unwrap();
+    let file = std::env::temp_dir().join(format!("rz-lives-{}.zoo", std::process::id()));
+    app.save_game(file.to_str().unwrap());
+    let saved = std::fs::read(&file).unwrap();
+    std::fs::remove_file(&file).unwrap();
+    [before, lives(&Zoo::parse(&saved).unwrap())]
+}
+
+/// The research of a saved game reaches its animals after they are read (save games, re-save
+/// parity): the cut by the type as the file leaves it, then the forcing of the scenario's resume
+/// and the programs the file completes, each adding a quarter.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_research_lengthens_the_animals_after_they_are_read() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    if !crate::fixtures::has_member("research_order", &vfs, "maps/med_kids.zoo") {
+        return;
+    }
+    // The tank animals of the Marine Mania file: cut to 12 959, then +3 239 once (the resume forces
+    // every program; nothing is complete in the file).
+    let [before, after] = resaved_lives(&dir, "maps/med_kids.zoo");
+    let grown: Vec<_> = (before.iter().zip(&after))
+        .filter(|(b, a)| b.1 > 16000 && a.1 == 16198)
+        .collect();
+    assert_eq!(grown.len(), 8, "{before:?} {after:?}");
+    // The saved game (not in every edition): its longevity program is complete too, so a second quarter of 16 198.
+    if !vfs.contains("saved games/test.zoo") {
+        return;
+    }
+    let [before, after] = resaved_lives(&dir, "saved games/test.zoo");
+    let grown: Vec<_> = (before.iter().zip(&after))
+        .filter(|(b, a)| b.1 > 12959 && a.1 == 20247)
+        .collect();
+    assert_eq!(grown.len(), 3, "{before:?} {after:?}");
+}
