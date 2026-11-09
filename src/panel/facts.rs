@@ -25,7 +25,7 @@ pub(crate) const HIRE_BUTTON: i32 = 3699;
 const NAME: i32 = 25001;
 const PICTURE: i32 = 25002;
 const TEXT: i32 = 25003;
-/// The habitat and location pictures, and the border that follows the second.
+/// The location and habitat pictures (as the Adopt panel lays them out), and the border of the second.
 const INFO: [i32; 2] = [25050, 25051];
 const INFO_BORDER: i32 = 25052;
 /// The preferred object's picture and its border.
@@ -215,7 +215,7 @@ fn write_species(ui: &mut Interface, vfs: &Vfs, ty: &EntityType, from_animal: bo
     ui.set_text(NAME, &to_cp1252(&ui.string(ty.name_id)));
     picture(ui, vfs, PICTURE, ty);
     let table = infoimg(vfs);
-    for (id, key) in INFO.into_iter().zip(["cHabitat", "cLocation"]) {
+    for (id, key) in INFO.into_iter().zip(["cLocation", "cHabitat"]) {
         let value = number(ty, key).map(|v| v as i32);
         let shown = value.and_then(|v| table.get(&v));
         let shown = shown.and_then(|n| ui.tree.picture(vfs, n));
