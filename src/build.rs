@@ -60,6 +60,8 @@ const CREATURES: i32 = 2025;
 const DINOSAURS: i32 = 2024;
 /// The preferred object's picture and its border on the Adopt panel.
 const PREFERRED: (i32, i32) = (2060, 2070);
+/// The capacity label and number of a shelter on the Adopt panel.
+const CAPACITY: [i32; 2] = [2090, 2091];
 /// The bulldozer button of the left bar.
 pub(crate) const BULLDOZER: i32 = 1028;
 /// A bulldozer press becomes an area drag when the pointer moves more than this many pixels.
@@ -558,6 +560,12 @@ impl Build {
         match self.held.take() {
             Some(_) => {
                 ui.select_item(PANELS[p].list, None);
+                // The shelter's capacity goes with the item (unit placing 3.3 item 6).
+                if PANELS[p].layout == ADOPT {
+                    for id in CAPACITY {
+                        ui.set_hidden(id, true);
+                    }
+                }
                 log.push("tool drop".into());
             }
             None => self.close(ui, p, log),
@@ -876,6 +884,15 @@ impl Build {
             None if hire => "staff".into(),
             None => String::new(),
         };
+        // A shelter shows its capacity as a plain number (unit placing 3.3 items 4 and 5).
+        if panel.layout == ADOPT {
+            let shelters = tag == "shelters";
+            let [label, number_id] = CAPACITY;
+            let capacity = number(ty, "cCapacity").unwrap_or(1.0) as i64;
+            ui.set_text(number_id, &to_cp1252(&crate::text::format::integer(capacity, false)));
+            ui.set_hidden(label, !shelters);
+            ui.set_hidden(number_id, !(shelters && ty.class == "building"));
+        }
         log.push(format!(
             "tool item {tag} {}/{}/{} name={name} cost={price}",
             ty.class,

@@ -285,7 +285,10 @@ fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
         };
         let made = |app: &App| {
             let made = app.game.as_ref().unwrap().placing.made.clone();
-            made.map(|(ty, s)| (ty, s.work, s.chase))
+            made.and_then(|m| match m.part {
+                crate::unit::Part::Staff(s) => Some((m.ty, s.work, s.chase)),
+                _ => None,
+            })
         };
         // The Hire panel opens on the sex drawn: its first item, the zookeeper (3 or 4), is chosen
         // and makes the pending staff member.
@@ -361,7 +364,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
             0,
             "the empty label shows"
         );
-        let pending = game.placing.made.as_ref().map(|m| m.0);
+        let pending = game.placing.made.as_ref().map(|m| m.ty);
         assert!(pending.is_some(), "pending kept");
         assert!(game.build.tool().is_some(), "tool kept");
         // The next placement hires the pending woman and draws the sex again.

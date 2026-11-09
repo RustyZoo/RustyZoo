@@ -30,7 +30,7 @@ pub(crate) const FOLLOW: i32 = 3114;
 pub(crate) const EXHIBIT: i32 = 3197;
 pub(crate) const RECOMMENDATIONS: i32 = 3122;
 pub(crate) const TABS: [i32; 3] = [3162, 3164, 3165];
-const SELL: i32 = 3111;
+pub(crate) const SELL: i32 = 3111;
 const PICK_UP: i32 = 3115;
 const THOUGHTS: i32 = 3125;
 /// The bars: happiness, hunger, health and suitability.

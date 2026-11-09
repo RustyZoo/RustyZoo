@@ -441,7 +441,8 @@ pub(super) fn question_text(
         Question::Sell | Question::Fire => {
             let entity = world.zoo.entities.get(at);
             let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
-            let name = ty.map_or(String::new(), |t| ui.string(t.name_id));
+            // The entity's own name, not its type's text (unit placing 10.1).
+            let name = (entity.and_then(|e| e.common.as_ref())).map_or(String::new(), |c| c.name.clone());
             // The refund of a sale, or the monthly salary of the staff member fired; the dialog
             // shows it cut to whole units, the cash gets the exact amount.
             let (id, amount) = match question {

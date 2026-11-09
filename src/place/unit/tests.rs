@@ -2,6 +2,7 @@
 //! maps.
 
 use super::*;
+use crate::behaviour::NoData;
 use crate::config::Config;
 use crate::fixtures;
 use crate::world::TankKind;
@@ -349,7 +350,7 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
     money.set_cash(1000.0);
     let zebra = &cat.types[ZEBRA];
     let p = at(&w, ZEBRA, (2, 2));
-    let placed = place(&mut w, &mut money, zebra, "Test Zebra", &p, shape);
+    let placed = place(&mut w, &mut money, zebra, "Test Zebra", &p, shape, (None, &NoData));
     let Outcome::Placed(id) = placed else {
         panic!("{placed:?}")
     };
@@ -374,7 +375,8 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &cat.types[FEMALE],
             "Test Zebra",
             &p,
-            shape
+            shape,
+            (None, &NoData)
         ),
         Outcome::Refused(Some(10555))
     );
@@ -386,7 +388,8 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &cat.types[FEMALE],
             "Test Zebra",
             &p,
-            shape
+            shape,
+            (None, &NoData)
         ),
         Outcome::Refused(Some(IN_AN_EXHIBIT))
     );
@@ -398,7 +401,8 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
             &cat.types[FEMALE],
             "Test Zebra",
             &p,
-            shape
+            shape,
+            (None, &NoData)
         ),
         Outcome::Refused(Some(NO_FUNDS))
     );
@@ -652,7 +656,7 @@ fn hiring_books_the_wages_of_the_class_names_the_member_and_empties_the_undo_lis
     money.set_cash(1700.0);
     let mut hire = |w: &mut World, ty: usize, tile| {
         let p = at(w, ty, tile);
-        place(w, &mut money, &cat.types[ty], "Staff", &p, shape)
+        place(w, &mut money, &cat.types[ty], "Staff", &p, shape, (None, &NoData))
     };
     assert!(matches!(hire(&mut w, KEEPER, (4, 3)), Outcome::Placed(_)));
     assert!(matches!(hire(&mut w, GUIDE, (3, 3)), Outcome::Placed(_)));
