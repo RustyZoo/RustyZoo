@@ -564,6 +564,7 @@ impl World {
                 })
             })
             .collect();
+        self.drop_gone_sparkles();
         if self.zoo.tanks != tanks {
             self.zoo.tanks = tanks;
             self.dirty = true;

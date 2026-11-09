@@ -104,7 +104,7 @@ pub(crate) fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
             // An animal is sold and a staff member fired (the unit's panel buttons, until the
             // panels exist).
             Kind::Unit => unit::is_unit(ty),
-            Kind::Overlay | Kind::Flight => false,
+            Kind::Overlay | Kind::Flight | Kind::Sparkle => false,
         }
 }
 
