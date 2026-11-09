@@ -1,5 +1,5 @@
 use super::*;
-use crate::behaviour::parse_call;
+use crate::behaviour::{Number, Row, parse_call};
 use crate::zoo::Behaviour as Saved;
 use std::collections::HashMap;
 
