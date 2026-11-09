@@ -291,7 +291,7 @@ pub(crate) fn pair(world: &mut World, id: u32, out: &Out) {
 }
 
 /// The keeper's `cSicklyAnimalPct`: one value for the whole game, the last keeper type's (staff 2).
-fn sickly(cat: &Catalogue) -> i64 {
+pub(crate) fn sickly(cat: &Catalogue) -> i64 {
     let value = |t: &&EntityType| crate::build::number(t, "cSicklyAnimalPct");
     let keepers = cat.types.iter().filter(|t| t.class == "keeper");
     keepers

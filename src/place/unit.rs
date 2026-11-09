@@ -16,7 +16,7 @@ use super::{
     NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, fenced, path_shape,
     snap, uneven,
 };
-use crate::behaviour::{Animation, Runner};
+use crate::behaviour::{Animation, Data, Runner};
 use crate::build::{cost, number, plain};
 use crate::camera::zoom_view;
 use crate::entity::{Catalogue, EntityType};
@@ -26,6 +26,7 @@ use crate::place::Class;
 use crate::render::Form;
 use crate::render::order::{Kind, ground_height, project};
 use crate::staff;
+use crate::unit::{Part, Unit, movement, swim};
 use crate::world::{Shape, World};
 use crate::zoo::Entity;
 
@@ -133,6 +134,20 @@ pub(crate) fn pending(
     let form = if is_egg(t) { Form::Egg } else { Form::Plain };
     let dir = facing(0, view);
     pending_of(world, cat, water, ty, dir, view, aim, price(t, october), form)
+}
+
+/// The type the pending unit of the tool `tool` is made from (unit placing 5.4), given the type
+/// `made` its creation used: the same species, as a young for an egg. An animal with none made
+/// has no pending unit (an egg layer with no young type makes nothing, 3.3 item 8).
+pub(crate) fn made_type(cat: &Catalogue, made: Option<usize>, tool: usize) -> Option<usize> {
+    let t = cat.types.get(tool)?;
+    let same = |m: &&EntityType| {
+        (m.class, &m.type_name) == (t.class, &t.type_name) && (m.subtype == t.subtype || is_egg(m))
+    };
+    match made.filter(|&m| cat.types.get(m).is_some_and(|m| same(&m))) {
+        None if is_animal(t) => None,
+        made => made.or(Some(tool)),
+    }
 }
 
 /// Whether the pending animal of this type is an egg (unit placing 3.3 item 8): the young type of
@@ -595,11 +610,22 @@ pub(crate) fn category(ty: &EntityType) -> usize {
     staff::wages(ty).unwrap_or(ANIMAL_PURCHASE)
 }
 
+/// The state a pending unit was made with (unit placing 5.4): the type it was made from, the id it
+/// took and its creation state. The placed unit keeps all three.
+#[derive(Debug, Clone)]
+pub(crate) struct Made {
+    pub ty: usize,
+    pub id: u32,
+    pub part: Part,
+}
+
 /// Releases the button over a pending unit (unit placing 7.1): a valid place is paid with the
 /// cash, booked in its [`category`], and gets the unit named `text` (the type's name, numbered
 /// by [`name`]); a place that is not valid shows its stored message, a cash that does not cover
 /// the cost the message of insufficient funds. The undo list records the placement of an animal;
-/// hiring a staff member empties it.
+/// hiring a staff member empties it. The unit takes the id and the state of the pending unit,
+/// `made`, if it has one; at the add it takes the tank mode and the terrain mode of where it
+/// stands, and a staff member marks its exhibit for a new rating (7.1 items 1 and 4).
 pub(crate) fn place(
     world: &mut World,
     money: &mut Money,
@@ -607,6 +633,7 @@ pub(crate) fn place(
     text: &str,
     p: &Pending,
     shape: impl Fn(&Entity) -> Option<Shape>,
+    (made, data): (Option<Made>, &dyn Data),
 ) -> Outcome {
     if p.verdict == Verdict::Invalid {
         return Outcome::Refused(p.message);
@@ -617,10 +644,18 @@ pub(crate) fn place(
     let mut unit = entity(ty, p, Vec::new(), &world.research, world.units.now);
     if let Some(common) = unit.common.as_mut() {
         common.name = name(world, ty, text);
+        if let Some(Part::Staff(s)) = made.as_ref().map(|m| &m.part) {
+            common.colors.clone_from(&s.colours);
+        }
     }
     let shape = shape(&unit);
-    match world.add(unit, shape) {
+    let tile = world.tile_index(p.tile.0, p.tile.1);
+    match world.add_made(unit, shape, true, made.as_ref().map(|m| m.id)) {
         Some(id) => {
+            arrive(world, id, made.map(|m| m.part), data);
+            if let Some(t) = tile.filter(|_| !is_animal(ty)) {
+                world.mark_rating(t);
+            }
             world.priced(p.price);
             if staff::is_staff(ty) {
                 world.clear_undo();
@@ -630,6 +665,104 @@ pub(crate) fn place(
         }
         None => Outcome::Refused(None),
     }
+}
+
+/// The unit `id` just added takes the state it was made with, if it was, and what the add gives
+/// it (unit placing 7.1 item 1): the tank position check and the terrain mode, and the picture of
+/// an egg or a crate.
+fn arrive(world: &mut World, id: u32, part: Option<Part>, data: &dyn Data) {
+    let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
+        return;
+    };
+    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+    if let Some(part) = part {
+        unit.part = part;
+        unit.started = true;
+    }
+    movement::read_type(&mut unit, data, &world.zoo.entities[at]);
+    unit.typed = true;
+    swim::check(&mut unit, world, at);
+    swim::add_to_map(&mut unit, world, at);
+    if matches!(&unit.part, Part::Animal(a) if a.egg || a.crated) {
+        movement::idle(&mut unit, world, data, at);
+    }
+    if let Some(slot) = world.units.get_mut(id) {
+        *slot = unit;
+    }
+}
+
+/// The unit `id` shows its idle picture: the egg's or the crate's for an egg or a crate (unit
+/// placing 9.1).
+pub(crate) fn show_idle(world: &mut World, id: u32, data: &dyn Data) {
+    let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
+        return;
+    };
+    if !matches!(&slot.part, Part::Animal(a) if a.egg || a.crated) {
+        return;
+    }
+    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+    movement::idle(&mut unit, world, data, at);
+    if let Some(slot) = world.units.get_mut(id) {
+        *slot = unit;
+    }
+}
+
+/// The animal `id`, refused by a new tank, is put out of it (unit placing 9.1, 9.3), starting the
+/// search at tile `start`: crated where it stands, an egg never (one whose countdown is spent is
+/// put in its egg state again, the countdown kept), then moved to the middle of the tile
+/// [`crate_spot`] finds, where it takes the tank mode and the terrain mode. `false` when no tile
+/// qualifies: it stays where it is, for the caller to sell.
+pub(crate) fn refuse(
+    world: &mut World,
+    cat: &Catalogue,
+    id: u32,
+    start: usize,
+    data: &dyn Data,
+) -> bool {
+    let Some(at) = world.find(id) else {
+        return false;
+    };
+    let (keys, sickly) = (crate::animal::keys(world, cat, at), crate::animal::breed::sickly(cat));
+    let egg = match world.units.get_mut(id).map(|u| &mut u.part) {
+        Some(Part::Animal(a)) if a.egg => {
+            if a.hatch < 1 {
+                a.refresh_egg(&keys, sickly);
+            }
+            true
+        }
+        Some(Part::Animal(a)) => {
+            crate::animal::boxed::crate_up(a);
+            (a.playing, a.caught_prey, a.prey) = (false, false, 0);
+            false
+        }
+        _ => return false,
+    };
+    if !egg {
+        crate::animal::boxed::snap(world, at);
+        if let Some(unit) = world.units.get_mut(id) {
+            crate::goal::stop_all(unit);
+            unit.animation = Animation::default();
+            unit.predator = 0;
+        }
+        swim::put(world, id);
+        show_idle(world, id, data);
+    }
+    let Some(spot) = crate_spot(world, start) else {
+        return false;
+    };
+    let width = world.zoo.width as usize;
+    let (x, y) = ((spot % width) as i32 * 64 + 32, (spot / width) as i32 * 64 + 32);
+    let z = ground_height(&world.zoo.tiles[spot], 32, 32);
+    world.show_moved(at, false);
+    world.lift_unit(at);
+    let from = (world.zoo.entities[at].common.as_ref())
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+    let rotation = world.zoo.entities[at].common.as_ref().map_or(0, |c| c.rotation);
+    world.place_unit(at, (x, y, z), rotation);
+    world.show_moved(at, true);
+    swim::put(world, id);
+    from.into_iter().chain([spot]).for_each(|t| world.mark_rating(t));
+    true
 }
 
 /// The tile for the crate of an animal that was put out of a tank, searched from `start` (unit

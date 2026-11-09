@@ -816,7 +816,7 @@ impl Build {
         self.stop_gate(ui, log);
         self.chosen[p][tab] = Some(index);
         self.held = Some(index);
-        if staff::is_staff(ty) || ty.class == "building" {
+        if is_unit(ty) || ty.class == "building" {
             self.made.push(index);
         }
         self.turn = self.step[p];
