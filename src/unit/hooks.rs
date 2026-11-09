@@ -26,6 +26,8 @@ pub(crate) trait Hooks {
     fn behaviour(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
     /// The goals (simulation 6.6); not run while suspended or waiting.
     fn goals(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
+    /// The end of the turn, after the whole entity update, goals included (staff 7.11.2 point 4).
+    fn finish(&mut self, _: &mut Unit, _: &mut World, _: &mut Ctx, _at: usize) {}
 }
 
 /// The hooks of the game: the move, the animation and the behaviour set from the data, the
@@ -94,12 +96,15 @@ impl Hooks for Standard<'_> {
         self.force(unit, world, at);
     }
 
-    fn animate(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, ms: u32) {
+    fn finish(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        crate::staff::heli::rotor(unit, world, at, ctx.step);
+    }
+
+    fn animate(&mut self, unit: &mut Unit, world: &mut World, _: &mut Ctx, at: usize, ms: u32) {
         let entity = &world.zoo.entities[at];
         unit.animation
             .advance(ms, &|name| self.data.timing(entity, name));
         self.tell(unit, world, at);
-        crate::staff::heli::rotor(unit, world, self.data, at, ctx.step);
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
@@ -193,6 +198,10 @@ impl Hooks for Standard<'_> {
         }
     }
     fn events(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+        // A helicopter loaded in the air starts its sound before its first movement.
+        if unit.kind == Kind::Heli {
+            crate::staff::heli::settle(unit, world, self.data, at);
+        }
         crate::guest::reaction::react(unit, world, ctx, at, self.data);
         crate::show::cue(unit, world, ctx, at, self.data);
     }
@@ -360,5 +369,6 @@ fn turn(hooks: &mut impl Hooks, unit: &mut Unit, world: &mut World, ctx: &mut Ct
             hooks.goals(unit, world, ctx, at);
         }
     }
+    hooks.finish(unit, world, ctx, at);
     unit.events.clear();
 }

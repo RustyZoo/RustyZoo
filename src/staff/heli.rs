@@ -51,7 +51,7 @@ impl Heli {
             base: word(0),
             flying,
             dir: if own.len() < 12 { -1 } else { word(2) as i32 },
-            // A flying helicopter restarts its sound at its first update.
+            // A flying helicopter restarts its sound at its first turn.
             rotor: flying.then(Rotor::loaded_in_air),
             ..Heli::default()
         }
@@ -132,8 +132,8 @@ fn sounding(unit: &Unit, world: &World, at: usize) -> Option<((i32, i32, i32), b
     Some(((c.x, c.y, c.z), s.heli.flying))
 }
 
-/// Point 7 of staff 7.11.2: a helicopter loaded in the air starts its sound before anything else
-/// happens to it.
+/// Point 7 of staff 7.11.2: a helicopter loaded in the air starts its sound at its first turn,
+/// before its first movement.
 pub(crate) fn settle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let Some((point, _)) = sounding(unit, world, at) else {
         return;
@@ -164,8 +164,7 @@ pub(crate) fn set_flying(unit: &mut Unit, world: &World, data: &dyn Data, at: us
 }
 
 /// Staff 7.11.2 point 4: the sound after an update of `ms` milliseconds.
-pub(crate) fn rotor(unit: &mut Unit, world: &World, data: &dyn Data, at: usize, ms: u32) {
-    settle(unit, world, data, at);
+pub(crate) fn rotor(unit: &mut Unit, world: &World, at: usize, ms: u32) {
     let Some((point, flying)) = sounding(unit, world, at) else {
         return;
     };

@@ -707,3 +707,32 @@ fn a_helicopter_loaded_in_the_air_starts_its_sound_at_its_first_update_and_a_lan
     }
     assert!(rotor(&w, h).is_some_and(|r| !r.playing));
 }
+
+#[test]
+fn the_rotor_fade_has_moved_in_the_update_that_takes_off() {
+    let (mut w, cat, h) = zoo(&[(HERON, (19, 10))]);
+    let mut rng = Rng::default();
+    let (x, y) = crate::render::order::project(0, SLOT.0, SLOT.1, SLOT.2);
+    w.units.hearing.listener = (i64::from(x), i64::from(y));
+    until(&mut w, &cat, &mut rng, h, 80, |w| heli(w, h).flying);
+    // The counter has moved by the 67 ms step of that very update: 4000 - 67 = 3933.
+    assert_eq!(rotor(&w, h).unwrap().level(), 2950);
+}
+
+#[test]
+fn a_helicopter_loaded_in_the_air_starts_its_sound_at_the_stored_position() {
+    // At the 6000 limit (1200 + 3000 + X <= 6000): X = 2.75 * 650 = 1787 at the stored position,
+    // and a step of movement would take it over for some side of the listener.
+    for (dx, dy) in [(650, 0), (-650, 0), (0, 650), (0, -650)] {
+        let (mut w, cat, h) = zoo(&[]);
+        let mut rng = Rng::default();
+        let (x, y) = crate::render::order::project(0, SLOT.0, SLOT.1, SLOT.2);
+        w.units.hearing.listener = (i64::from(x) + dx, i64::from(y) + dy);
+        let own = [BASE as u8, 0, 0, 0, 1, 0, 0, 0, 0xff, 0xff, 0xff, 0xff];
+        if let Part::Staff(s) = &mut w.units.get_mut(h).unwrap().part {
+            s.heli = crate::staff::heli::Heli::from_own(&own);
+        }
+        step(&mut w, &cat, &mut rng, h, 67);
+        assert!(rotor(&w, h).unwrap().playing, "({dx}, {dy})");
+    }
+}
