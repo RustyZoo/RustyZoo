@@ -26,6 +26,21 @@ pub(super) struct Window {
     pub(super) completed: Completed,
 }
 
+/// The tab buttons of the window and of its Graphs tab: the first of each set is the one a game
+/// starts with.
+const TABS: [i32; 6] = [4104, 4105, 4153, 4154, 4180, 4181];
+const GRAPH_TABS: [i32; 4] = [4106, 13982, 13983, 13984];
+
+/// A new game or a load puts the tabs back to the first of each set: the next opening shows the
+/// zoo info tab and the rating graph (21.1 step 2).
+pub(super) fn reset_tabs(ui: &mut Interface) {
+    for set in [&TABS[..], &GRAPH_TABS[..]] {
+        for (n, &button) in set.iter().enumerate() {
+            ui.set_button(button, n == 0, true);
+        }
+    }
+}
+
 impl Window {
     /// The interface is new: the research list is written again.
     pub(super) fn fresh(&mut self) {

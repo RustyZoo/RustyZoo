@@ -207,6 +207,7 @@ impl App<'_> {
         }
         if let Some(ui) = &mut self.ui {
             Build::first_tabs(ui);
+            zoo_window::reset_tabs(ui);
         }
         // The load sets every exhibit's stored name again (cheats 2.2).
         let names = self

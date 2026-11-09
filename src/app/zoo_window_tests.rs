@@ -27,6 +27,10 @@ const WINDOW_LAYOUT: &str = "[LayoutInfo]\nid=14\nlayer=7\nx=0\ny=0\ndx=300\ndy=
     [h4]\ntype=UIGraph\nid=13965\nx=240\ny=0\ndx=50\ndy=60\nForcedMinY=0\n\
     [s1]\ntype=UIButton\nid=4151\nx=110\ny=0\ndx=8\ndy=8\ntransparent=0\n\
     [s2]\ntype=UIButton\nid=4152\nx=110\ny=10\ndx=8\ndy=8\ntransparent=0\n\
+    [u1]\ntype=UIButton\nid=4104\nx=0\ny=180\ndx=8\ndy=8\nstate=2048\n\
+    [u2]\ntype=UIButton\nid=4154\nx=10\ny=180\ndx=8\ndy=8\nstate=2048\n\
+    [u3]\ntype=UIButton\nid=4106\nx=20\ny=180\ndx=8\ndy=8\nstate=2048\n\
+    [u4]\ntype=UIButton\nid=13983\nx=30\ny=180\ndx=8\ndy=8\nstate=2048\n\
     [t1]\ntype=UILayout\nlayout=ui/zc.lyt\nstate=1\n\
     [t2]\ntype=UILayout\nlayout=ui/zr.lyt\nstate=1\n";
 const COMMERCE_LAYOUT: &str = "[LayoutInfo]\nid=810\nlayer=1\nx=0\ny=0\ndx=300\ndy=200\nstate=1\n\
@@ -592,5 +596,25 @@ fn a_completion_adds_a_row_to_the_research_list_once_whether_the_window_is_shown
         s.pass(&[]);
         assert_eq!(research_rows(s), 2);
         assert_eq!(completed(s).rows.iter().map(|r| r.0).collect::<Vec<_>>(), [2, 1]);
+    });
+}
+
+#[test]
+fn a_new_game_puts_the_tabs_and_the_graph_tabs_back_to_their_first() {
+    use crate::render::tests::{flat_map, tile_with};
+    run("zw-tabs", |s| {
+        let ui = s.app.interface().unwrap();
+        ui.set_button(4104, false, true);
+        ui.set_button(4154, true, true);
+        ui.set_button(4106, false, true);
+        ui.set_button(13983, true, true);
+        let mut zoo = tile_with(&[]);
+        zoo.width = 4;
+        zoo.height = 4;
+        zoo.tiles = flat_map(4, 4);
+        s.app.open_game(zoo, Money::default()).unwrap();
+        let ui = s.app.interface().unwrap();
+        let down = [4104, 4154, 4106, 13983].map(|id| ui.is_down(id));
+        assert_eq!(down, [true, false, true, false]);
     });
 }
