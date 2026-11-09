@@ -52,7 +52,12 @@ impl Play<'_, '_> {
                 self.press(a);
             }
             // The undo button waits for something to undo: a bench.
-            (10, 1..) if a == 1075 && self.disabled(a) => self.supply(6050, 1),
+            // It is taken back in the pass of the click, before the goals see the bench.
+            (10, 1..) if a == 1075 && self.disabled(a) => {
+                self.after = vec![Command::Press(a)];
+                self.supply(6050, 1);
+                self.after.clear();
+            }
             // The window of a show opens on the exhibit of a show tank.
             (10, 1..) if a == 11113 => {
                 self.show_window();
@@ -473,6 +478,8 @@ impl Play<'_, '_> {
             let pending = self.app.game.as_ref().unwrap().placing.pending.as_ref();
             if pending.is_some_and(|p| matches!(p.verdict, Verdict::Valid | Verdict::Overwrite)) {
                 self.tick(50, &[Command::Mouse(Mouse::Down), Command::Mouse(Mouse::Up)]);
+                let after = std::mem::take(&mut self.after);
+                self.tick(1, &after);
                 return true;
             }
         }

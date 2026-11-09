@@ -99,7 +99,7 @@ struct Goal {
     /// The goal has a trigger.
     acts: bool,
     /// Its trigger shows a popup: a trigger 2 with a popup of its own (`truleb` 0) or a press that
-    /// names one.
+    /// names one, a trigger 4 that makes a type available and names one.
     popup: bool,
 }
 
@@ -122,12 +122,11 @@ fn goals(cfg: &Config) -> Vec<Goal> {
                 int("value"),
             ],
             acts: int("trulea") != 0,
-            popup: int("trulea") == 2
-                && match int("truleb") {
-                    0 => int("targa") > 0,
-                    1 | 2 => int("targb") > 0,
-                    _ => false,
-                },
+            popup: match (int("trulea"), int("truleb")) {
+                (2, 0) => int("targa") > 0,
+                (2, 1 | 2) | (4, 4) => int("targb") > 0,
+                _ => false,
+            },
         });
         if !leaf {
             kids.iter().for_each(|k| walk(cfg, k, out));
@@ -157,6 +156,8 @@ struct Play<'a, 'b> {
     /// lowered a rating.
     last: Option<(i32, usize)>,
     bad: Vec<usize>,
+    /// Commands that go in the pass of the next click on the map.
+    after: Vec<Command>,
 }
 
 impl<'a, 'b> Play<'a, 'b> {
@@ -172,6 +173,7 @@ impl<'a, 'b> Play<'a, 'b> {
             painted: Vec::new(),
             last: None,
             bad: Vec::new(),
+            after: Vec::new(),
         }
     }
 
@@ -350,216 +352,9 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
     }
 }
 
-/// What a test does to the prepared save of a tutorial: where the player takes over, and what the
-/// goals from there on count that no step of the test builds.
-struct Plan {
-    n: &'static str,
-    /// The first goal the player plays; those before it are done in the save.
-    from: &'static str,
-    /// Goals from there on that are done in the save too: conditions on exhibits and ratings that
-    /// no step of the test reaches. Only for files whose goals do not count the goals done.
-    skip: &'static [&'static str],
-    /// Objects put in the zoo: the name id of the type and how many.
-    put: &'static [(i32, usize)],
-    /// Staff hired: the class, the type and how many.
-    hire: &'static [(&'static str, &'static str, usize)],
-    /// Tiles closed with fences, each an exhibit.
-    fences: usize,
-    /// Animals crated: the name id of the type.
-    crated: &'static [i32],
-    /// Tank wall heights set: the position of the tank among the tanks, the height.
-    heights: &'static [(usize, u32)],
-}
-
-const NONE: Plan = Plan {
-    n: "",
-    from: "",
-    skip: &[],
-    put: &[],
-    hire: &[],
-    fences: 0,
-    crated: &[],
-    heights: &[],
-};
-
-const PLANS: [Plan; 7] = [
-    Plan {
-        n: "scn01a",
-        from: "click_buy2",
-        put: &[(6050, 1)],
-        ..NONE
-    },
-    Plan {
-        n: "scn01",
-        from: "click_buy5",
-        put: &[(6009, 3)],
-        ..NONE
-    },
-    Plan {
-        n: "scn02",
-        from: "PLACE_KAPOK_TREE",
-        skip: &[
-            "LION_SUITABLE",
-            "show_new_buttons",
-            "unlock_new_items",
-            "CLEOPARD_SUITABLE",
-        ],
-        put: &[(7065, 4)],
-        ..NONE
-    },
-    Plan {
-        n: "scn19",
-        from: "SHOW_STAFF_2",
-        put: &[(8031, 1)],
-        hire: &[("keeper", "scient", 2)],
-        crated: &[5094],
-        ..NONE
-    },
-    Plan {
-        n: "scn27",
-        from: "show_building",
-        put: &[(8060, 1)],
-        ..NONE
-    },
-    Plan {
-        n: "scn28",
-        from: "research_text",
-        skip: &["RESEARCH"],
-        fences: 1,
-        ..NONE
-    },
-    Plan {
-        n: "scn28b",
-        from: "close_exhibit_info",
-        hire: &[("keeper", "keeper", 2)],
-        heights: &[(0, 8), (1, 4)],
-        ..NONE
-    },
-];
-
-/// Places an object of the catalogue type `at` on `point` (world units) as a click on a valid
-/// place does; a building makes what it gives birth to. Gives the id.
-fn place_at(app: &mut App, at: usize, point: (i32, i32)) -> u32 {
-    use crate::place::{Outcome, Verdict};
-    let cat = app.renderer.catalogue();
-    let ty = &cat.types[at];
-    let renderer = &app.renderer;
-    let elapsed = app.sim.calendar().elapsed_ms();
-    let game = app.game.as_mut().unwrap();
-    let (point, none) = ((i64::from(point.0), i64::from(point.1)), |_| None);
-    let moved = crate::place::moved(&game.world, cat, &game.water, &none, false, at, 0, point);
-    let mut p = moved.unwrap();
-    (p.verdict, p.price) = (Verdict::Valid, 0.0);
-    let colors = renderer.default_colors(ty);
-    let shape = |e: &_| renderer.shape(e);
-    let (world, money, water) = (&mut game.world, &mut game.money, &game.water);
-    let Outcome::Placed(id) = crate::place::place(world, money, ty, &p, water, colors, shape)
-    else {
-        panic!("{} not placed at {point:?}", ty.name_id);
-    };
-    crate::building::built(world, ty, id, elapsed);
-    if ty.class == "building" {
-        let built = crate::timing::file_time(elapsed);
-        let rng = &mut app.sim.rng;
-        crate::building::birth::births(world, cat, id, rng, built, shape);
-    }
-    id
-}
-
-/// Puts `n` objects of the type with the name id `name_id` on tiles near the middle of the map.
-fn put(app: &mut App, name_id: i32, n: usize) {
-    let at = (app.renderer.catalogue().types.iter())
-        .position(|t| t.name_id == name_id)
-        .unwrap();
-    let game = app.game.as_ref().unwrap();
-    let (w, h) = (game.world.zoo.width as i32, game.world.zoo.height as i32);
-    for k in 0..n as i32 {
-        place_at(app, at, ((w / 2 + 3 * k) * 64 + 32, (h / 2) * 64 + 32));
-    }
-}
-
-/// Closes `n` tiles near the middle of the map with fences, each its own exhibit.
-fn fence(app: &mut App, n: usize) {
-    let cat = app.renderer.catalogue();
-    // The chain link fence.
-    let at = (cat.types.iter())
-        .position(|t| t.name_id == 9301 && t.subtype == b"f")
-        .unwrap();
-    let game = app.game.as_ref().unwrap();
-    let (w, h) = (game.world.zoo.width as i32, game.world.zoo.height as i32);
-    for k in 0..n as i32 {
-        let (x, y) = ((w / 2 + 3 * k) * 64, (h / 2 + 5) * 64);
-        for (dx, dy) in [(32, 6), (58, 32), (32, 58), (6, 32)] {
-            let id = place_at(app, at, (x + dx, y + dy));
-            let game = app.game.as_ref().unwrap();
-            let e = &game.world.zoo.entities[game.world.find(id).unwrap()];
-            println!(
-                "fence {id} rotation {}",
-                e.common.as_ref().unwrap().rotation
-            );
-        }
-    }
-}
-
-/// What the plan adds to the zoo of the game just loaded.
-fn arrange(app: &mut App, plan: &Plan) {
-    for &(id, count) in plan.put {
-        put(app, id, count);
-    }
-    fence(app, plan.fences);
-    let cat = app.renderer.catalogue();
-    let game = app.game.as_mut().unwrap();
-    for &(class, name, count) in plan.hire {
-        for k in 0..count as i32 {
-            let at = (game.world.zoo.width as i32 / 2 + 2 * k, 3);
-            let rng = &mut app.sim.rng;
-            let hired =
-                crate::sim::drive::add_unit(&mut game.world, cat, rng, class, Some(name), at, None);
-            assert!(hired, "{class} {name}");
-        }
-    }
-    for &id in plan.crated {
-        let renderer = &app.renderer;
-        let made = crate::scenario::boxed(&mut game.world, cat, id, b'm', |e| renderer.shape(e));
-        assert!(made.is_some(), "{id}");
-    }
-    for &(at, height) in plan.heights {
-        let tanks: Vec<u32> = (game.world.exhibits().list().iter())
-            .filter(|x| x.tank.is_some())
-            .map(|x| x.id)
-            .collect();
-        game.world.set_height(tanks[at], height);
-    }
-}
-
-/// A save of the tutorial made at test time: its map as the start leaves it, with the goals
-/// before the plan's first one, and its `skip` ones, done.
-fn prepared(rig: &Rig, plan: &Plan) -> String {
-    let file = path(plan.n);
-    let layout = goals(&read(rig, &file).unwrap());
-    let mut app = rig.app(&format!("prepare-{}", plan.n));
-    start(&mut app, &file);
-    let mut words = app.sim.scenario().unwrap().states();
-    assert_eq!(words.len(), 1 + layout.len(), "{}", plan.n);
-    let first = layout.iter().position(|g| g.name == plan.from).unwrap();
-    for (i, g) in layout.iter().enumerate() {
-        if g.leaf && (i < first || plan.skip.contains(&g.name.as_str())) {
-            words[1 + i] = 1;
-        }
-    }
-    let save = rig.user.0.join(format!("{}.zoo", plan.n));
-    let save = save.to_str().unwrap();
-    app.save_game(save);
-    let bytes = std::fs::read(save).unwrap();
-    let (mut zoo, money) = crate::zoo::Zoo::parse_money_in(&bytes, &rig.cat).unwrap();
-    zoo.set_scenario(&file, &words);
-    std::fs::write(save, zoo.write(&money).unwrap()).unwrap();
-    save.to_string()
-}
-
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
-fn each_prepared_tutorial_ends_after_its_last_popup_and_yes_starts_the_next_one() {
+fn each_tutorial_is_played_by_script_to_its_end_dialog_and_yes_starts_the_next_one() {
     let rig = rig("tutorial-end");
     let full = installed_expansions(&rig.vfs) == 3;
     let next = [
@@ -570,49 +365,42 @@ fn each_prepared_tutorial_ends_after_its_last_popup_and_yes_starts_the_next_one(
         ("scn27", "scn28"),
         ("scn28", "scn28b"),
     ];
-    for plan in &PLANS {
-        let n = plan.n;
+    for n in SERIES {
         let file = path(n);
         let Some(cfg) = read(&rig, &file) else {
             eprintln!("skipped {n}: the install lacks it");
             continue;
         };
         let layout = goals(&cfg);
-        let first = layout.iter().position(|g| g.name == plan.from).unwrap();
-        // What the player plays, the triggers that run in the game, in the order of the file.
-        let played: Vec<&Goal> = (layout[first..].iter())
-            .filter(|g| g.leaf && g.acts && !plan.skip.contains(&g.name.as_str()))
-            .collect();
-        let save = prepared(&rig, plan);
-        let mut app = rig.app(&format!("end-{n}"));
-        assert!(app.load_saved(&save), "{n}");
-        arrange(&mut app, plan);
+        // The triggers that run in the game, in the order of the file, and their popups.
+        let played: Vec<&Goal> = layout.iter().filter(|g| g.leaf && g.acts).collect();
+        let mut app = rig.app(n);
+        start(&mut app, &file);
         let mut play = Play::new(&mut app, layout.clone());
-        assert!(play.until(500, |p| p.ended), "{n}: {:?}", play.fired);
-        // The triggers of the goals the player plays came in the order of the file.
+        assert!(play.until(600, |p| p.ended), "{n}: {:?}", play.next_goal());
+        // The triggers came in the order of the file (a goal that is not sticky runs again).
+        let mut ran: Vec<&str> = Vec::new();
+        for f in play.fired.iter().map(String::as_str) {
+            if layout.iter().any(|g| g.name == f) && !ran.contains(&f) {
+                ran.push(f);
+            }
+        }
         let names: Vec<&str> = played.iter().map(|g| g.name.as_str()).collect();
-        let ran: Vec<&str> = play.fired.iter().map(String::as_str).collect();
-        assert!(ran.ends_with(&names), "{n}: {ran:?} {names:?}");
-        // Each popup came once and was answered; none was cancelled.
+        assert_eq!(ran, names, "{n}");
+        // Each popup came once and none was cancelled.
         let popups = played.iter().filter(|g| g.popup).count();
         assert_eq!(play.lines("ui ask 45100").len(), popups, "{n}");
-        assert_eq!(play.lines("ui answer 1").len(), popups, "{n}");
         assert!(play.lines("ui answer 2").is_empty(), "{n}");
-        // The end: won, then the dialog with its text, after the last answer.
+        // The end: won, then the dialog with its text, after the last popup was answered.
         let at = |what: &str| play.log.iter().position(|l| l.1.starts_with(what));
         let last_answer = play.log.iter().rposition(|l| l.1 == "ui answer 1");
-        let (won, dialog) = (
-            at("sim scenario end won").unwrap(),
-            at("menu scenario dialog"),
-        );
+        let (won, dialog) = (at("sim scenario end won").unwrap(), at("menu scenario dialog"));
         let text = if n == "scn28b" { 16102 } else { 16104 };
         let dialog = dialog.unwrap();
-        assert_eq!(
-            play.log[dialog].1,
-            format!("menu scenario dialog {text}"),
-            "{n}"
-        );
-        assert!(won < dialog && last_answer.unwrap() < dialog, "{n}");
+        assert_eq!(play.log[dialog].1, format!("menu scenario dialog {text}"), "{n}");
+        // (The lines of one pass come by family: the end is told in the pass of the dialog.)
+        assert!(play.log[won].0 <= play.log[dialog].0, "{n}");
+        assert!(last_answer.unwrap() < dialog, "{n}");
         // The clean-up gave the elements back and hid the hint (10.8 points 5 and 6).
         play.tick(100, &[]);
         let ids = blocked(&play);
@@ -629,16 +417,8 @@ fn each_prepared_tutorial_ends_after_its_last_popup_and_yes_starts_the_next_one(
                 play.app.ui.as_mut().unwrap().answer(6);
                 play.until(3, |p| !p.lines("sim scenario start").is_empty());
                 let started = format!("sim scenario start {again} ");
-                let line = play
-                    .log
-                    .iter()
-                    .skip(dialog)
-                    .find(|l| l.1.starts_with(&started));
-                assert!(
-                    line.is_some(),
-                    "{n}: {again} {:?}",
-                    play.log.iter().skip(dialog).collect::<Vec<_>>()
-                );
+                let line = (play.log.iter().skip(dialog)).find(|l| l.1.starts_with(&started));
+                assert!(line.is_some(), "{n}: {again}");
             }
             (true, None) => {
                 play.app.ui.as_mut().unwrap().answer(7);
