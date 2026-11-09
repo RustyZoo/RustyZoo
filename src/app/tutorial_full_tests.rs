@@ -465,3 +465,60 @@ tutorials! {
     the_second_marine_tutorial_is_played_by_script_to_its_end "scn28"
     the_third_marine_tutorial_is_played_by_script_to_its_end "scn28b"
 }
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn the_exhibit_step_of_the_second_tutorial_fires_after_the_first_exhibit_and_not_before() {
+    let rig = rig("rule3");
+    if !rig.measured("scn01") {
+        return;
+    }
+    let file = path("scn01");
+    let layout = goals(&read(&rig, &file).unwrap());
+    let step = layout
+        .iter()
+        .find(|g| g.leaf && g.acts && g.rule[0] == 3 && g.rule[1] == 0)
+        .expect("a goal counts exhibits")
+        .name
+        .clone();
+    let mut app = rig.app("scn01");
+    start(&mut app, &file);
+    let mut play = Play::new(&mut app, layout);
+    play.build = true;
+    let known = play
+        .app
+        .game
+        .as_ref()
+        .unwrap()
+        .world
+        .exhibits()
+        .list()
+        .len();
+    let (mut built, mut fired) = (None, None);
+    for n in 0..600u32 {
+        play.step();
+        let now = play
+            .app
+            .game
+            .as_ref()
+            .unwrap()
+            .world
+            .exhibits()
+            .list()
+            .len()
+            > known;
+        if now && built.is_none() {
+            built = Some(n);
+        }
+        if fired.is_none() && play.fired.contains(&step) {
+            fired = Some(n);
+            assert!(built.is_some(), "{step} fired at step {n} with no exhibit");
+            break;
+        }
+    }
+    let (built, fired) = (built.expect("an exhibit was built"), fired.expect("fired"));
+    assert!(
+        fired - built <= 1,
+        "built at step {built}, fired at {fired}"
+    );
+}
