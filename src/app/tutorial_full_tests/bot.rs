@@ -45,6 +45,10 @@ impl Play<'_, '_> {
     /// What a player does for the goal: presses what it names, or builds what it counts.
     pub(super) fn act(&mut self, g: &Goal) {
         let [rule, b, a, _, value] = g.rule;
+        // Without `build` only the buttons are pressed.
+        if !self.build && !(rule == 10 && b > 0) {
+            return;
+        }
         match (rule, b) {
             // The play button shows once the pause button was pressed.
             (10, 1..) if a == 1072 => {

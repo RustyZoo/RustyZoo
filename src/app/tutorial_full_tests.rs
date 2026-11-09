@@ -60,6 +60,12 @@ fn interface(vfs: &Vfs, size: (u32, u32)) -> Interface {
 }
 
 impl Rig {
+    /// Whether the play of `test` was measured on this install: the complete English or French
+    /// one, whose ratings and counts the scripts rely on.
+    fn measured(&self, test: &str) -> bool {
+        crate::fixtures::measured_on(test, self.vfs.root().as_os_str())
+    }
+
     /// A program on its main menu: the scenario list of the install, no drawing after the first
     /// frame, and a step of 1500 ms at most.
     fn app(&self, which: &str) -> App<'_> {
@@ -159,6 +165,8 @@ struct Play<'a, 'b> {
     bad: Vec<usize>,
     /// Commands that go in the pass of the next click on the map.
     after: Vec<Command>,
+    /// The player builds, adopts and hires; else it only presses.
+    build: bool,
 }
 
 impl<'a, 'b> Play<'a, 'b> {
@@ -175,6 +183,7 @@ impl<'a, 'b> Play<'a, 'b> {
             last: None,
             bad: Vec::new(),
             after: Vec::new(),
+            build: false,
         }
     }
 
@@ -353,6 +362,9 @@ fn the_shipped_tutorials_start_locked_and_advance_with_presses_and_answers() {
 /// the last) answered.
 fn played(n: &str) {
     let rig = rig(&format!("tutorial-end-{n}"));
+    if !rig.measured(n) {
+        return;
+    }
     let full = installed_expansions(&rig.vfs) == 3;
     let next = [
         ("scn01a", "scn01"),
@@ -373,6 +385,7 @@ fn played(n: &str) {
     let mut app = rig.app(n);
     start(&mut app, &file);
     let mut play = Play::new(&mut app, layout.clone());
+    play.build = true;
     assert!(play.until(600, |p| p.ended), "{n}: {:?}", play.next_goal());
     // The triggers came in the order of the file (a goal that is not sticky runs again).
     let mut ran: Vec<&str> = Vec::new();

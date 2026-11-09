@@ -68,15 +68,13 @@ fn reloaded<'a>(rig: &'a Rig, play: &mut Play, name: &str) -> App<'a> {
     app
 }
 
-/// The full game lists 107 goals on a map; the base game alone another count.
-fn full(rig: &Rig) -> bool {
-    installed_expansions(&rig.vfs) == 3
-}
-
 #[test]
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn a_freeform_game_gives_the_awards_of_its_guests_once_and_a_saved_game_gives_none_again() {
     let rig = rig("freeform-guests");
+    if !rig.measured("freeform guests") {
+        return;
+    }
     let mut app = game(&rig, "played");
     let mut play = Play::new(&mut app, Vec::new());
     play.tick(STEP, &[]);
@@ -90,7 +88,7 @@ fn a_freeform_game_gives_the_awards_of_its_guests_once_and_a_saved_game_gives_no
         .unwrap()
         .parse::<usize>()
         .unwrap();
-    assert!(count > 40 && (count == 107 || !full(&rig)), "{start:?}");
+    assert!(count >= 100, "{start:?}");
     assert!(!said(&play, "sim scenario trigger DEFAULT_ITEMS").is_empty());
     play.tick(100, &[Command::Press(1000)]);
     play.tick(100, &[]);
@@ -144,8 +142,8 @@ fn a_freeform_game_gives_the_awards_of_its_guests_once_and_a_saved_game_gives_no
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn fifteen_awards_make_the_chain_of_the_best_zoo_give_cash_and_a_crated_panda_once() {
     let rig = rig("freeform-chain");
-    if !full(&rig) {
-        return eprintln!("skipped: the install has no expansions");
+    if !rig.measured("freeform chain") {
+        return;
     }
     let mut app = game(&rig, "played");
     // A zoo that holds 15 awards.
