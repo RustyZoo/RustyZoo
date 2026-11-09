@@ -246,6 +246,26 @@ impl Tree {
         categories.flat_map(|c| &c.programs)
     }
 
+    /// Whether the record named `id` is complete (scenarios 6.1): the first match in tree order
+    /// decides. A program is complete at its cost, a category when all its programs are, a branch
+    /// never (the original's bug), and an unknown id is not.
+    pub(crate) fn id_complete(&self, id: i32) -> bool {
+        for b in &self.branches {
+            if b.name == id {
+                return false;
+            }
+            for c in &b.categories {
+                if c.name == id {
+                    return c.programs.iter().all(Program::done);
+                }
+                if let Some(p) = c.programs.iter().find(|p| p.name == id) {
+                    return p.done();
+                }
+            }
+        }
+        false
+    }
+
     /// The percentage of programs complete, 100 when there is none (zoo status 5.5).
     pub(crate) fn share(&self) -> i32 {
         let all = self.programs().count() as i64;

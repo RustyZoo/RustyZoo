@@ -1,6 +1,7 @@
 use super::*;
 use crate::config::Config;
 use crate::entity::EntityType;
+use crate::research::{Branch, Category, Program};
 use crate::unit::Part;
 use crate::unit::testing::{amphibious_world, centre, entity, world_with};
 use std::sync::Arc;
@@ -67,6 +68,7 @@ struct Parts {
     cat: Catalogue,
     money: Money,
     status: Status,
+    research: Option<Tree>,
 }
 
 impl Parts {
@@ -82,6 +84,7 @@ impl Parts {
             cat,
             money,
             status,
+            research: None,
         }
     }
 
@@ -96,6 +99,7 @@ impl Parts {
             cat: &self.cat,
             money: &self.money,
             status: &self.status,
+            research: self.research.as_ref(),
         };
         eval(
             &rule,
@@ -144,7 +148,7 @@ fn rule_0_reads_the_accounts_truncated_and_an_unknown_category_or_table_reads_0(
 }
 
 #[test]
-fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_rounded() {
+fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_truncated() {
     let mut p = Parts::new(world(), zoo_types());
     p.status.rating = 61;
     p.status.sums.animals = 4;
@@ -152,7 +156,7 @@ fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_rounded() {
     p.status.sums.guests = 2;
     p.status.sums.guest_happiness = -200;
     (p.status.sums.sick, p.status.sums.species) = (1, 7);
-    p.money.cash = 2.5;
+    p.money.cash = 3.9;
     let read = |p: &Parts, arga| (0..=7).map(|b| p.read([1, b, arga, 0])).collect::<Vec<_>>();
     assert_eq!(read(&p, 0), [75, 0, 61, 2, 4, 1, 7, 3]);
     assert_eq!(read(&p, 1), [75, 0, 61, 2, 4, 1, 7, 3], "month 1 is now");
@@ -163,10 +167,15 @@ fn rule_1_reads_the_zoo_status_after_month_arga_and_cash_rounded() {
         assert_eq!(p.read([1, b, 0, 0]), 0, "ruleb {b} reads 0");
     }
     for (cash, want) in [
-        (-2.5, -3),
+        (-2.5, -2),
+        (9999.6, 9999),
+        (0.99, 0),
+        (-0.5, 0),
         (f32::NAN, 0),
-        (1e20, i32::MAX),
-        (-1e20, i32::MIN),
+        (3.0e9, -1_294_967_296),
+        (-3.0e9, 1_294_967_296),
+        (1e20, 0),
+        (-1e20, 0),
     ] {
         p.money.cash = cash;
         assert_eq!(p.read([1, 7, 0, 0]), want, "cash {cash}");
@@ -325,6 +334,19 @@ fn rule_4_counts_animals_by_type_state_and_expansion() {
     ];
     assert_eq!(state.map(|(b, x)| n(&p, b, x, 0)), [1, 1, 0, 1, 1, 1, 1, 0]);
     assert_eq!([16, 17, 18].map(|b| n(&p, b, 1, 0)), [0; 3]);
+    // Escaped: only the flag is read, so an escaped egg counts too (6.3).
+    p.animal(1).escaped = true;
+    p.animal(2).escaped = true;
+    p.animal(4).escaped = true;
+    assert_eq!(n(&p, 16, 0, 0), 3);
+    assert_eq!(
+        [(17, 1), (17, 2), (18, 10), (18, 30), (18, 20)].map(|(b, x)| n(&p, b, x, 0)),
+        [2, 1, 1, 1, 1]
+    );
+    assert_eq!(n(&p, 16, -1, 7), 3, "arga and argb are not read by 16");
+    for id in [1, 2, 4] {
+        p.animal(id).escaped = false;
+    }
     // The expansion of the type: bears 1, the rest 0.
     assert_eq!(
         [n(&p, 19, 1, 0), n(&p, 19, 0, 0), n(&p, 19, 2, 0)],
@@ -539,4 +561,229 @@ fn rules_5_and_6_read_the_stored_animal_lists_recomputed_first() {
     // Back in the list, it counts.
     listed(&mut p, tank).push(2);
     assert_eq!(p.value([5, 3, 5002, 0], low as i32), low as i32);
+}
+
+/// A tree of one branch (name 10), one category (20) of programs 31 (cost 5, progress 5) and 32
+/// (cost 5, progress 4), and an empty category (21).
+fn tree() -> Tree {
+    let program = |name, progress| Program {
+        name,
+        cost: 5.0,
+        progress,
+        ..Program::default()
+    };
+    let category = |name, programs| Category {
+        name,
+        programs,
+        ..Category::default()
+    };
+    Tree {
+        branches: vec![Branch {
+            name: 10,
+            categories: vec![
+                category(20, vec![program(31, 5.0), program(32, 4.0)]),
+                category(21, vec![]),
+                // A second record with the name of the first program is never reached.
+                category(22, vec![program(31, 0.0)]),
+            ],
+            ..Branch::default()
+        }],
+        ..Tree::default()
+    }
+}
+
+fn research_of(p: &Parts, ids: &[i32]) -> i32 {
+    let game = Game {
+        world: &p.world,
+        cat: &p.cat,
+        money: &p.money,
+        status: &p.status,
+        research: p.research.as_ref(),
+    };
+    research(ids, &Env::new(1, 0, Some(game)))
+}
+
+#[test]
+fn rule_13_counts_the_listed_ids_that_are_complete() {
+    let mut p = Parts::new(world(), zoo_types());
+    p.research = Some(tree());
+    // A program complete at its cost, a program short of it, a category with a short program, an
+    // empty category, a branch (never), an unknown id, an id listed twice counts twice.
+    assert_eq!(research_of(&p, &[31]), 1);
+    assert_eq!(research_of(&p, &[32]), 0);
+    assert_eq!(research_of(&p, &[20]), 0);
+    assert_eq!(research_of(&p, &[21]), 1);
+    assert_eq!(research_of(&p, &[10]), 0);
+    assert_eq!(research_of(&p, &[99, 0, -1, i32::MAX]), 0);
+    assert_eq!(research_of(&p, &[31, 31, 21, 32, 10]), 3);
+    assert_eq!(research_of(&p, &[]), 0);
+    // The first record found decides: the second program 31 is not complete, the first is.
+    assert_eq!(research_of(&p, &[22]), 0);
+    // Progress moves the count.
+    p.research.as_mut().unwrap().branches[0].categories[0].programs[1].progress = 5.0;
+    assert_eq!(research_of(&p, &[20, 32]), 2);
+    // No tree: nothing is complete.
+    p.research = None;
+    assert_eq!(research_of(&p, &[31, 21]), 0);
+}
+
+#[test]
+fn rule_13_reads_every_arga_of_the_goal_section_and_no_other_key() {
+    use crate::scenario::Scenario;
+    let text = "[goals]\ngoal=r\n[r]\nrulea=13\nruleb=5\narga=31\narga=32\narga=31\nargb=21\n\
+        type=0\nvalue=2\n";
+    let main = Config::parse(text.as_bytes()).unwrap();
+    let mut p = Parts::new(world(), zoo_types());
+    p.research = Some(tree());
+    let mut s = Scenario::build("s.scn", &main, &[]);
+    let pass = |s: &mut Scenario, p: &Parts| {
+        let game = Game {
+            world: &p.world,
+            cat: &p.cat,
+            money: &p.money,
+            status: &p.status,
+            research: p.research.as_ref(),
+        };
+        s.update(
+            crate::scenario::PERIOD,
+            &Env::new(1, 0, Some(game)),
+            &mut Vec::new(),
+        );
+        s.states()[1]
+    };
+    // 31 twice is 2: the goal is met; the single value of an `arga` read as the first only would
+    // count 1.
+    assert_eq!(pass(&mut s, &p), 1);
+    let mut s = Scenario::build("s.scn", &main, &[]);
+    p.research.as_mut().unwrap().branches[0].categories[0].programs[0].progress = 0.0;
+    assert_eq!(pass(&mut s, &p), 0);
+}
+
+/// A show info 1000 with two typed records (keys 5400 scripted and 5402 not), 2000 with one.
+fn shows(p: &mut Parts) {
+    use crate::zoo::{ShowInfo, TypeRecord};
+    let f = |v: f32| v.to_bits();
+    let mut a = ShowInfo::new(1001, 0, 0);
+    let mut b = ShowInfo::new(1000, 0, 0);
+    a.receipts = [f(10.0), f(20.0), f(300.0)];
+    a.upkeep = [f(1.0), f(6.0), f(50.0)];
+    a.attendance = [1, 2, 7];
+    let mut x = TypeRecord::new(5400, 2000, 0);
+    x.receipts = [f(1.0), f(2.0), f(30.0)];
+    x.attendance = [0, 1, 4];
+    let y = TypeRecord::new(5402, u16::MAX, 0);
+    let z = TypeRecord::new(5040, 2001, 0);
+    a.records = vec![z, x, y];
+    b.receipts = [f(0.0), f(1.5), f(100.7)];
+    b.upkeep = [f(0.0), f(0.0), f(0.2)];
+    b.attendance = [0, 0, 3];
+    p.world.zoo.shows.infos = vec![Some(a), None, Some(b)];
+}
+
+#[test]
+fn rule_15_sums_the_show_figures_in_single_precision_and_truncates() {
+    let mut p = Parts::new(world(), zoo_types());
+    assert_eq!(p.read([15, 3, 0, 0]), 0, "no show");
+    shows(&mut p);
+    let all = |p: &Parts, b| p.read([15, b, 0, 0]);
+    // The shows' own figures (arga 0 or less): last month, cumulative, the same minus upkeep.
+    assert_eq!([0, 1, 2, 3, 4].map(|b| all(&p, b)), [21, 400, 15, 350, 10]);
+    assert_eq!(p.read([15, 3, -7, 0]), 350, "arga below 0 is the same");
+    assert_eq!(p.read([15, 3, i32::MIN, 0]), 350);
+    // A species: the show info 1001 holds three records, two with a script, so its upkeep is
+    // shared by 2; the record 5402 has the script id 0xffff and is found but not counted in n.
+    let one = |p: &Parts, b, t| p.read([15, b, t, 0]);
+    assert_eq!([0, 1, 2, 3, 4].map(|b| one(&p, b, 5400)), [2, 30, -1, 5, 4]);
+    assert_eq!(one(&p, 3, 5402), -25);
+    // An unknown species adds nothing; a ruleb above 4 or negative reads 0.
+    assert_eq!(one(&p, 3, 4999), 0);
+    for b in [5, -1, i32::MAX, i32::MIN] {
+        assert_eq!([b].map(|b| one(&p, b, 5400)), [0]);
+        assert_eq!(p.read([15, b, 0, 0]), 0, "ruleb {b}");
+    }
+    // The sum is truncated toward 0: -3 + -0.5 gives -3, and 0.9 gives 0.
+    p.world.zoo.shows.infos[0].as_mut().unwrap().upkeep[1] = 1.0f32.to_bits();
+    assert_eq!(
+        p.read([15, 2, 5040, 0]),
+        0,
+        "receipts 0 minus 1/2 gives -0.5, cut to 0"
+    );
+    // A show with no scripted record shares by 1.
+    let mut c = crate::zoo::ShowInfo::new(1002, 0, 0);
+    c.receipts[2] = 10.0f32.to_bits();
+    c.upkeep[2] = 7.0f32.to_bits();
+    c.records = vec![crate::zoo::TypeRecord::new(5402, u16::MAX, 0)];
+    p.world.zoo.shows.infos.push(Some(c));
+    assert_eq!(one(&p, 3, 5402), -32);
+}
+
+#[test]
+fn rule_15_keeps_the_low_32_bits_of_the_chopped_64_bit_sum_and_gives_0_outside_the_range() {
+    let mut p = Parts::new(world(), zoo_types());
+    for (v, want) in [
+        (3.0e9f32, -1_294_967_296),
+        (-3.0e9, 1_294_967_296),
+        (1e20, 0),
+        (-1e20, 0),
+        (f32::NAN, 0),
+    ] {
+        let mut i = crate::zoo::ShowInfo::new(1, 0, 0);
+        i.receipts[2] = v.to_bits();
+        p.world.zoo.shows.infos = vec![Some(i)];
+        assert_eq!(p.read([15, 1, 0, 0]), want, "figure {v}");
+    }
+}
+
+/// The goals of the shipped Marine Mania scenario 32 name programs of its research tree; each is
+/// complete once its progress reaches its cost, and the goals of the shipped extra file read the
+/// show figure 3 of the shows 5040, 5414, 5400 and 5402 (scenarios 6.1, 6.2).
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_scn32_research_goals_and_unlock02_show_goals() {
+    use crate::config::to_int;
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    if !crate::fixtures::with_expansions("full_game_scn32", &dir) {
+        return;
+    }
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let file = "scenario/scn32/scn32.scn";
+    let cfg = Config::parse(&vfs.read(file).unwrap()).unwrap();
+    let mut tree = Tree::of_scenario(&vfs, file, &mut || 0).unwrap();
+    let names = [
+        "RESEARCH_MANATEE",
+        "RESEARCH_BELUGA",
+        "RESEARCH_MANTARAY",
+        "RESEARCH_HUMPBACK",
+    ];
+    for name in names {
+        let s = cfg.section(name).unwrap();
+        let ids: Vec<i32> = (s.get_all("arga").iter())
+            .filter_map(|v| to_int(v))
+            .collect();
+        assert_eq!(ids.len(), 1, "{name}");
+        assert_eq!(s.get("rulea").and_then(to_int), Some(13), "{name}");
+        assert!(!tree.id_complete(ids[0]), "{name} starts incomplete");
+        for p in tree.branches.iter_mut().flat_map(|b| &mut b.categories) {
+            for p in p.programs.iter_mut().filter(|p| p.name == ids[0]) {
+                p.progress = p.cost;
+            }
+        }
+        assert!(tree.id_complete(ids[0]), "{name} is complete at its cost");
+    }
+    let cfg = Config::parse(&vfs.read("freeform/unlock02.scn").unwrap()).unwrap();
+    let shows = [
+        ("sea_lion_show_rule", 5040),
+        ("sea_otter_show_rule", 5414),
+        ("orca_show_rule", 5400),
+        ("dolphin_show_rule", 5402),
+    ];
+    for (name, id) in shows {
+        let s = cfg.section(name).unwrap();
+        let int = |k: &str| s.get(k).and_then(to_int).unwrap_or(0);
+        assert_eq!(
+            (int("rulea"), int("ruleb"), int("arga")),
+            (15, 3, id),
+            "{name}"
+        );
+    }
 }
