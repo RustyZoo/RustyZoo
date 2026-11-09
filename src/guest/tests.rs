@@ -554,11 +554,12 @@ fn a_bonus_moves_the_rating_to_the_row_it_makes() {
             }
         }
     }
-    // The bonus really changes the answer, and a huge one cannot overflow.
+    // The bonus really changes the answer, and a huge one wraps around as the 32-bit sum does.
     assert_ne!(check(50, 0, 49.01), check(50, 31, 49.01));
-    assert_eq!(check(i32::MAX, 30, 9.0), check(i32::MAX, 0, 9.0));
+    assert_eq!(check(i32::MAX, 30, 9.0), check(i32::MIN + 29, 0, 9.0));
     assert_eq!(check(0, i32::MAX, 49.01), check(81, 0, 49.01));
-    assert_eq!(check(i32::MIN, -30, 9.0), check(i32::MIN, 0, 9.0));
+    assert_eq!(check(50, i32::MAX, 49.01), check(i32::MIN + 49, 0, 49.01));
+    assert_eq!(check(i32::MIN, -30, 9.0), check(i32::MAX - 29, 0, 9.0));
 }
 
 #[test]
@@ -864,6 +865,68 @@ fn the_step_raises_the_trio_flag_when_an_exhibit_holds_a_lion_a_tiger_and_a_griz
         assert!(!run_with(&[lion, lion, bear], by_step));
         assert!(!run_with(&[], by_step));
     }
+}
+
+#[test]
+fn the_marketing_benefit_joins_the_rating_of_the_check_doubled_by_its_flag_paid_or_not() {
+    use crate::marketing::{Level, Marketing};
+    // The guests a run of 50 s makes at a price of the second column, with the marketing and the
+    // flags given and this rating. The same stream of draws makes the same guests for the same
+    // effective rating.
+    let guests = |marketing: Option<i32>, (double, wonderland): (bool, bool), rating: i32| {
+        let mut run = game("", true);
+        if let Some(benefit) = marketing {
+            // A cost the cash can never cover: the benefit counts all the same.
+            let cost = 1e12;
+            let level = Level {
+                name: 0,
+                cost,
+                benefit,
+            };
+            run.sim.set_marketing(Marketing::with_levels(vec![level]));
+        }
+        run.world.units.cheat.marketing_double = double;
+        run.world.units.cheat.rating_bonus = wonderland;
+        run.sim.status.price = 40.0;
+        let mut log = Vec::new();
+        for _ in 0..746 {
+            run.sim.status.rating = rating;
+            log.extend(run.step(67));
+        }
+        assert_eq!(run.money.total[money::MARKETING], 0.0);
+        added(&log)
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+    };
+    let plain = |rating| guests(None, (false, false), rating);
+    // Below 30 nothing comes in that column, from 81 up a quarter of the checks bring a guest.
+    assert!(plain(0).is_empty());
+    assert!(!plain(81).is_empty());
+    assert!(guests(None, (true, false), 0).is_empty());
+    for (benefit, set, rating, effective) in [
+        (81, (false, false), 0, 81),
+        (50, (true, false), 0, 100),
+        (51, (false, true), 0, 81),
+        (21, (true, true), 0, 72),
+        (-50, (false, true), 100, 80),
+        (7, (false, false), 74, 81),
+        (i32::MAX, (true, false), 0, -2),
+        (i32::MAX, (false, false), 0, i32::MAX),
+        (i32::MIN, (true, false), 100, 100),
+    ] {
+        assert_eq!(
+            guests(Some(benefit), set, rating),
+            plain(effective),
+            "{benefit} {set:?} {rating}"
+        );
+    }
+    // Each part counts: the benefit alone, the flag that doubles it, the other flag after it.
+    assert!(guests(Some(29), (false, false), 0).is_empty());
+    assert!(!guests(Some(41), (true, false), 0).is_empty());
+    assert!(!guests(Some(51), (false, true), 0).is_empty());
+    // No configuration: the flag that doubles adds nothing, the other still adds 30.
+    assert_eq!(guests(None, (true, true), 51), plain(81));
 }
 
 #[test]

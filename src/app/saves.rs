@@ -86,6 +86,7 @@ impl App<'_> {
         if let Some(section) = self.sim.research_section() {
             zoo.set_research(section);
         }
+        zoo.set_marketing(self.sim.marketing().saved());
         if let Some(scenario) = self.sim.scenario() {
             zoo.set_scenario(scenario.file(), &scenario.states());
         }
