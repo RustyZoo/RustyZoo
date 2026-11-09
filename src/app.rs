@@ -364,6 +364,8 @@ enum Asked {
     /// The objects a new tank does not allow: Yes sells and moves them, anything else undoes
     /// the operation.
     Tank,
+    /// The restart notice of the options window: its answer deselects the Options button.
+    Restart,
 }
 
 impl<'a> App<'a> {

@@ -19,7 +19,7 @@ impl App<'_> {
             Asked::Exit => (ASK_EXIT, "exit"),
             Asked::Load => (ASK_LOAD, "load"),
             // The bulldozer and the tanks ask their own questions.
-            Asked::Sweep | Asked::Tank => return,
+            Asked::Sweep | Asked::Tank | Asked::Restart => return,
         };
         // The questions ask only when saving is allowed (save games 3).
         if !self.can_save() {
@@ -59,6 +59,9 @@ impl App<'_> {
         if kind == Asked::Tank {
             return self.tank_answered(code);
         }
+        if kind == Asked::Restart {
+            return self.restart_answered();
+        }
         match code {
             6 => self.begin_save(Some(kind)),
             7 => self.proceed(kind),
@@ -68,7 +71,7 @@ impl App<'_> {
 
     pub(super) fn proceed(&mut self, kind: Asked) {
         match kind {
-            Asked::Sweep | Asked::Tank => {}
+            Asked::Sweep | Asked::Tank | Asked::Restart => {}
             Asked::Leave => self.stop_game(),
             Asked::Load => self.open_list(),
             Asked::Exit => {

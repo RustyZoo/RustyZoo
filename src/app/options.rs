@@ -64,8 +64,6 @@ pub(crate) struct Options {
     /// The ini file with the changes made since the start.
     ini: Config,
     started: bool,
-    /// The rows that need a game's map view have been set.
-    mapped: bool,
     shown: bool,
     /// `loadHalfAnims` and `use8BitSound` when the window was shown (16.1 point 3.5).
     remembered: (i32, i32),
@@ -86,7 +84,6 @@ impl Options {
         let ini = Config::parse(ini).unwrap_or_default();
         Options {
             started: false,
-            mapped: false,
             shown: false,
             remembered: (0, 0),
             max_attenuation: -1000,
@@ -153,32 +150,17 @@ impl App<'_> {
         }
     }
 
-    /// The controls take the values of the ini file, once (16.2): each is set without running its
-    /// action, then what the value asks for is applied. The rows from the map scroll speed on wait
-    /// for a game, whose map view they act on (point 6); the window cannot be opened before.
+    /// The controls take the values of the ini file, once, at the interface build (16.2): each is
+    /// set without running its action, then what the value asks for is applied. The map view
+    /// exists then (point 6), so the whole table is applied before any game.
     pub(super) fn options_start(&mut self) {
-        if self.ui.is_none() {
+        if self.ui.is_none() || std::mem::replace(&mut self.options.started, true) {
             return;
         }
         let o = &self.options;
         let get = |section, key, default| o.get(section, key, default);
         let (help, delay) = (get("UI", "helpType", 0), get("UI", "tooltipDelay", 1));
         let duration = get("UI", "tooltipDuration", 5000);
-        if !std::mem::replace(&mut self.options.started, true) {
-            if let Some(ui) = &mut self.ui {
-                ui.pick(if help == 0 { SHORT } else { LONG });
-                ui.set_slider(DELAY, (i64::from(delay) - 1) / 10);
-                ui.set_slider(DURATION, (i64::from(duration) - 500) / 100);
-            }
-            self.tooltip_delay((i64::from(delay) - 1) / 10);
-            self.tooltip_duration((i64::from(duration) - 500) / 100);
-            self.help_build();
-        }
-        if self.game.is_none() || std::mem::replace(&mut self.options.mapped, true) {
-            return;
-        }
-        let o = &self.options;
-        let get = |section, key, default| o.get(section, key, default);
         let scroll = get("UI", "mouseScrollX", 32);
         let (max, music) = (
             get("UI", "menuMusicMaxAttenuation", -1000),
@@ -190,6 +172,9 @@ impl App<'_> {
         let colored = get("UI", "useAlternateCursors", 0);
         self.options.max_attenuation = max;
         if let Some(ui) = &mut self.ui {
+            ui.pick(if help == 0 { SHORT } else { LONG });
+            ui.set_slider(DELAY, (i64::from(delay) - 1) / 10);
+            ui.set_slider(DURATION, (i64::from(duration) - 500) / 100);
             ui.set_slider(SCROLL, scroll_position(scroll));
             ui.set_slider(MUSIC, 100 - (i64::from(music) - i64::from(max)) / 50);
             ui.set_slider(VOLUME, (100 - i64::from(volume) / 15).clamp(0, 100));
@@ -200,6 +185,9 @@ impl App<'_> {
                 ui.pick(TERRAIN + level);
             }
         }
+        self.tooltip_delay((i64::from(delay) - 1) / 10);
+        self.tooltip_duration((i64::from(duration) - 500) / 100);
+        self.help_build();
         self.set_scroll(scroll);
         self.put("UI", "mouseScrollY", scroll, Some(32));
         self.put("UI", "mouseScrollX", scroll, Some(32));
@@ -279,9 +267,15 @@ impl App<'_> {
             self.options.checked = None;
             self.options.remembered = self.options.restart_keys();
         } else if !shown && self.options.shown {
-            ui.set_button(OPTIONS_BUTTON, false, true);
-            if self.options.restart_keys() != self.options.remembered {
-                self.notice(RESTART);
+            // The button is deselected after the notice, once OK answers it (16.6 point 4).
+            let restart = self.options.restart_keys() != self.options.remembered;
+            if restart && self.notice(RESTART) {
+                self.asked = Some(Asked::Restart);
+                if let Some(ui) = &mut self.ui {
+                    ui.set_button(OPTIONS_BUTTON, true, true);
+                }
+            } else if let Some(ui) = &mut self.ui {
+                ui.set_button(OPTIONS_BUTTON, false, true);
             }
         }
         self.options.shown = shown;
@@ -292,14 +286,23 @@ impl App<'_> {
         }
     }
 
-    /// A question box with an OK button and the exclamation picture.
-    fn notice(&mut self, string: i32) {
-        let Some(ui) = &mut self.ui else { return };
+    /// A question box with an OK button and the exclamation picture. Whether it is open.
+    fn notice(&mut self, string: i32) -> bool {
+        let Some(ui) = &mut self.ui else { return false };
         let text = to_cp1252(&ui.string(string));
         self.menu_events
             .push(format!("options notice {}", ui.string(string)));
-        if ui.ask(QUESTION, &text, Buttons::OK) {
+        let open = ui.ask(QUESTION, &text, Buttons::OK);
+        if open {
             research::exclaim(ui, self.renderer.vfs());
+        }
+        open
+    }
+
+    /// The main bar's Options button goes up, when the window is hidden and its notice answered.
+    pub(super) fn restart_answered(&mut self) {
+        if let Some(ui) = &mut self.ui {
+            ui.deselect_button(OPTIONS_BUTTON);
         }
     }
 
@@ -463,10 +466,16 @@ impl App<'_> {
         let (w, h) = (self.frame.width as i32, self.frame.height as i32);
         if let (false, Some((dw, dh, db))) = (full, self.options.display) {
             if db < 9 {
-                return self.notice(TOO_SHALLOW);
+                {
+                    self.notice(TOO_SHALLOW);
+                    return;
+                }
             }
             if dw <= w || dh <= h {
-                return self.notice(TOO_SMALL);
+                {
+                    self.notice(TOO_SMALL);
+                    return;
+                }
             }
         }
         self.options.request = Some(full);

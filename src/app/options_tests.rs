@@ -340,18 +340,16 @@ fn a_missing_key_takes_the_built_in_value_and_odd_values_are_quantised() {
 }
 
 #[test]
-fn the_rows_from_the_scroll_speed_on_wait_for_a_map_view() {
-    let ini = "[UI]\ntooltipDelay=101\nuserAttenuation=600\nmouseScrollX=40\n";
+fn the_start_up_applies_every_row_at_the_interface_build_before_any_game() {
+    let ini = "[UI]\ntooltipDelay=101\nuserAttenuation=600\nmouseScrollX=40\n[advanced]\nlevel=0\n";
     with_options_at("mapview", ini, false, |t, dir| {
-        let game = t.app.game.take();
+        t.app.game = None;
         t.app.options_start();
         assert_eq!(t.slider(1523), 10, "the tooltip rows are set");
-        assert_eq!(t.slider(1511), 0, "the volume waits");
-        assert_eq!(written(dir, "UI", "mouseScrollY"), None);
-        t.app.game = game;
-        t.pass(&[]);
-        assert_eq!(t.slider(1511), 60);
+        assert_eq!(t.slider(1511), 60, "and the volume");
         assert_eq!(written(dir, "UI", "mouseScrollY"), Some(40));
+        assert_eq!(t.app.settings.mouse, 40, "for the first game");
+        assert!(!t.app.renderer.blending(), "level 0: no blending");
     });
 }
 
@@ -702,5 +700,45 @@ fn the_help_window_pauses_a_running_game_and_only_that() {
         t.pass(&[Command::Key(Key::F1, false, false)]);
         t.press(28007);
         assert!(!t.ui().shown(38) && paused(t));
+    });
+}
+
+#[test]
+fn f1_and_escape_act_on_the_help_window_before_a_question_sees_the_key() {
+    with_options("modal", "", |t, _| {
+        t.ui().ask(
+            45000,
+            b"sure?",
+            crate::ui::interface::Buttons::YES_NO_CANCEL,
+        );
+        assert!(t.ui().modal_open());
+        t.pass(&[Command::Key(Key::F1, false, false)]);
+        assert!(t.ui().shown(38), "F1 opens the help window");
+        t.pass(&[Command::Key(Key::Escape, false, false)]);
+        assert!(!t.ui().shown(38), "Escape hides it first");
+        assert!(t.ui().modal_open(), "the question stays");
+        t.pass(&[Command::Key(Key::Escape, false, false)]);
+        assert!(!t.ui().modal_open(), "the next Escape answers it");
+    });
+}
+
+#[test]
+fn the_options_button_goes_up_only_after_the_restart_notice_is_answered() {
+    with_options("order", "", |t, _| {
+        t.open(1530);
+        t.press(1546);
+        t.press(1004);
+        assert!(t.ui().modal_open() && t.noticed("restart"));
+        let at = |t: &T, end: &str| t.lines.iter().position(|l| l.ends_with(end));
+        let notice = at(t, "options notice restart");
+        let last = |t: &T| {
+            t.lines
+                .iter()
+                .rposition(|l| l.ends_with("ui deselect 1004"))
+        };
+        assert!(last(t) < notice, "only the click so far");
+        t.pass(&[Command::Key(Key::Enter, false, false)]);
+        assert!(!t.ui().modal_open());
+        assert!(last(t) > at(t, "ui answer 1"), "deselected after OK");
     });
 }
