@@ -7,10 +7,11 @@
 //! world and returns the `panel` log line when what it shows changed.
 
 use crate::entity::Catalogue;
+use crate::exhibit::members::type_at;
 use crate::guest::thought::Thought;
 use crate::guest::{self, Guest};
 use crate::panel::animal::percent;
-use crate::panel::exhibit::{Clock, type_at};
+use crate::panel::exhibit::Clock;
 use crate::panel::follow::set_follow_icon;
 use crate::status::Words;
 use crate::text::format::{self, Arg};

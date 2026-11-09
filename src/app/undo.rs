@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::build::cost;
+use crate::entity::type_of;
 use crate::money::{ANIMAL_PURCHASE, ANIMAL_REFUND, CONSTRUCTION, CONSTRUCTION_REFUND};
-use crate::place::bulldozer::type_of;
 use crate::text::format::whole_units;
 use crate::world::{Spot, Step, Undone};
 

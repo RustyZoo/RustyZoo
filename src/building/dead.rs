@@ -7,8 +7,8 @@
 //! are decided the same way, and so do the scenery types with a dead key (no users).
 
 use super::{Kind, Live, leave::push_out};
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
-use crate::place::bulldozer::type_of;
 use crate::world::World;
 
 /// The type keys that decide the dead state: `cDeadOnLand`, `cDeadOnFlatWater`,

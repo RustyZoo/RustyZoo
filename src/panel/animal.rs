@@ -10,8 +10,8 @@
 use crate::animal::{self, Animal, Keys};
 use crate::build::number;
 use crate::entity::Catalogue;
-use crate::exhibit::rating;
-use crate::panel::exhibit::{Clock, animals_exhibit, keeper_kind, type_at};
+use crate::exhibit::members::{suitability, type_at};
+use crate::panel::exhibit::{Clock, keeper_kind};
 use crate::panel::follow::{animal_animation, set_follow_icon};
 use crate::panel::guest::{thought_rows, thought_texts};
 use crate::status::Words;
@@ -104,26 +104,6 @@ pub(crate) fn bars(a: &Animal, k: &Keys, rating: i32, carried: bool) -> Bars {
 pub(crate) fn band(now: i64, then: i64) -> usize {
     let hours = now.saturating_sub(then) / HOUR;
     usize::from(hours >= RECENT) + usize::from(hours > SHORT)
-}
-
-/// The rating the animal at `at` shows (habitat rating 6): its species' in the exhibit under it
-/// with its neighbours followed, 0 on the grounds. It need not be the home's.
-pub(crate) fn suitability(world: &World, cat: &Catalogue, at: usize) -> i32 {
-    let Some(exhibit) = animals_exhibit(world, at) else {
-        return 0;
-    };
-    suitability_in(world, cat, exhibit, &world.zoo.entities[at].type_name)
-}
-
-/// The rating species `key` shows in `exhibit`, its amphibious neighbours followed.
-pub(crate) fn suitability_in(world: &World, cat: &Catalogue, exhibit: u32, key: &str) -> i32 {
-    let near = world
-        .exhibits()
-        .get(exhibit)
-        .map_or(Vec::new(), |e| e.amphibious.clone());
-    let read = &mut |x| rating::rate(&rating::input(world, cat, x));
-    rating::rating(exhibit, &near, key, read)
-        .map_or(0, |r| rating::shown(r).min(i32::MAX as u32) as i32)
 }
 
 /// The selected animal and the refresh clock.

@@ -164,7 +164,7 @@ impl App<'_> {
         let whole = whole_units(f64::from(d.refund));
         let single = d.head.as_ref().filter(|_| d.rect.is_none());
         let entity = single.map(|&e| &game.world.zoo.entities[e]);
-        let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
+        let ty = entity.and_then(|e| crate::entity::type_of(cat, e));
         ui.help_tip(ty.map_or(0, |t| t.name_id));
         let line = match (d.rect, entity) {
             (Some((a, b)), _) => format!(
@@ -342,7 +342,7 @@ impl App<'_> {
                 None => (game.world).tile_index(c.x.div_euclid(64), c.y.div_euclid(64))?,
             };
             let kind = Kind::of_class(&e.class);
-            let ty = bulldozer::type_of(cat, e)
+            let ty = crate::entity::type_of(cat, e)
                 .filter(|_| !matches!(kind, Kind::Overlay | Kind::Flight));
             ty.map(|ty| {
                 let (habitat, name) = rating::object(ty);
@@ -440,7 +440,7 @@ pub(super) fn question_text(
     match question {
         Question::Sell | Question::Fire => {
             let entity = world.zoo.entities.get(at);
-            let ty = entity.and_then(|e| bulldozer::type_of(cat, e));
+            let ty = entity.and_then(|e| crate::entity::type_of(cat, e));
             // The entity's own name, not its type's text (unit placing 10.1).
             let name =
                 (entity.and_then(|e| e.common.as_ref())).map_or(String::new(), |c| c.name.clone());

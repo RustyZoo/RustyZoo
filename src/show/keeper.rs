@@ -4,8 +4,8 @@
 use super::{cycle, event, has_info, info_slot, units};
 use crate::behaviour::Data;
 use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::goal::Cx;
-use crate::place::bulldozer::type_of;
 use crate::sim::{Event, Events};
 use crate::unit::{Ctx, Kind, Unit};
 use crate::world::World;

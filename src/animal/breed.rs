@@ -408,7 +408,7 @@ pub(crate) fn born(
         return false;
     }
     // The species in the exhibit are glad, and the mother is named.
-    for e in crate::panel::exhibit::animals_in(world, x) {
+    for e in crate::exhibit::members::animals_in(world, x) {
         let other = &world.zoo.entities[e];
         let Some(c) = other
             .common

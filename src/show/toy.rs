@@ -2,7 +2,7 @@
 
 use crate::building::{Species, has_open_slot, kind_of};
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::sim::Rng;
 use crate::world::World;
 

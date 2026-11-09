@@ -9,7 +9,8 @@
 
 use super::{LIFE, unit};
 use crate::build::{cost, number};
-use crate::entity::{Catalogue, EntityType};
+use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{ANIMAL_REFUND, CONSTRUCTION_REFUND, Money};
 use crate::render::order::Kind;
@@ -21,12 +22,6 @@ use crate::zoo::{Entity, Fence};
 /// What the bulldozer and the gate tool add to the width of the pixel pick, which is
 /// [`crate::render::Staged::pick`] (placing 7.1); the selection adds nothing.
 pub(crate) const WIDEN: i32 = 5;
-
-/// The type of an entity.
-pub(crate) fn type_of<'a>(cat: &'a Catalogue, e: &Entity) -> Option<&'a EntityType> {
-    let bytes = |s: &str| s.chars().map(|c| c as u8).collect::<Vec<u8>>();
-    cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
-}
 
 /// The tied wall of the fence piece at position `e` (placing 7.1): the piece stands on a tile of
 /// a tank, the tile across is not in that tank, and the slot across on the same line holds a tank

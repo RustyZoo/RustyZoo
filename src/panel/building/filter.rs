@@ -6,8 +6,8 @@
 
 use super::{Panel, info_image};
 use crate::entity::Catalogue;
+use crate::exhibit::members::type_at;
 use crate::money::{SYMBOL, Symbol};
-use crate::panel::exhibit::type_at;
 use crate::status::Words;
 use crate::text::format::{self, Arg};
 use crate::text::to_cp1252;
