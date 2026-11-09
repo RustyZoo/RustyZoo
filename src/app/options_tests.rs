@@ -259,7 +259,7 @@ fn the_window_always_opens_on_its_first_tab_and_hides_the_other_panels() {
             "the sound page shows"
         );
         assert!(!t.ui().shown(30), "an info panel is hidden by the showing");
-        // Closed on the Sound & Video tab, it opens on File Options again.
+        // Closed on the second tab, it opens on the first again.
         t.press(1004);
         assert!(!t.ui().shown(5) && !t.down(1004));
         t.press(1004);
