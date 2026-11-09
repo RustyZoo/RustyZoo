@@ -54,7 +54,9 @@ fn walk(vfs: &Vfs, file: &str) -> (Vec<String>, bool) {
 #[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
 fn the_shipped_tutorials_fire_each_trigger_once_and_start_with_the_locks() {
     let vfs = data().unwrap();
-    for n in ["scn01a", "scn01", "scn02", "scn19", "scn27", "scn28", "scn28b"] {
+    for n in [
+        "scn01a", "scn01", "scn02", "scn19", "scn27", "scn28", "scn28b",
+    ] {
         let file = format!("scenario/{n}/{n}.scn");
         if !vfs.contains(&file) {
             eprintln!("skipped {n}: the install lacks it");
@@ -66,7 +68,11 @@ fn the_shipped_tutorials_fire_each_trigger_once_and_start_with_the_locks() {
             .filter(|l| l.starts_with("scenario trigger"))
             .collect();
         // The start triggers come first: every type unavailable, then the locks.
-        assert!(triggers[0].contains(" start 4 9 "), "{n}: {:?}", triggers[0]);
+        assert!(
+            triggers[0].contains(" start 4 9 "),
+            "{n}: {:?}",
+            triggers[0]
+        );
         assert!(triggers.len() > 3, "{n}: the steps do not advance");
         // A trigger runs once (the tutorials hold no goal that fires again without a zoo).
         let mut seen: HashMap<&str, usize> = HashMap::new();
@@ -104,7 +110,10 @@ fn a_full_game_freeform_map_lists_its_extra_goals_in_the_order_of_the_spec() {
             .map(|g| String::from_utf8_lossy(g).into_owned())
             .collect()
     };
-    let (donations, awards) = (listed("freeform/donation.scn"), listed("freeform/awards.scn"));
+    let (donations, awards) = (
+        listed("freeform/donation.scn"),
+        listed("freeform/awards.scn"),
+    );
     assert_eq!((donations.len(), awards.len()), (19, 45));
     assert_eq!(names[1..20], donations[..]);
     assert_eq!(names[20..65], awards[..]);

@@ -93,7 +93,11 @@ fn modal_popups_of_one_pass_come_one_after_the_other_and_the_end_dialog_after_th
         // The last answer: the third goal acts, the hint comes with the line the goal in progress
         // had at the second trigger.
         let last = passes.answer(app);
-        assert_eq!(count(&last, "sim scenario element 2001 enable"), 1, "{last:?}");
+        assert_eq!(
+            count(&last, "sim scenario element 2001 enable"),
+            1,
+            "{last:?}"
+        );
         assert_eq!(count(&last, "sim scenario hint 45400"), 1);
         assert!(!disabled(app, 2001) && shown(app, 45400));
         assert_eq!(

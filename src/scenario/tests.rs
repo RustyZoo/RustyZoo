@@ -633,7 +633,13 @@ fn the_hint_line_is_taken_when_the_trigger_runs_not_after_the_pass() {
     };
     assert_eq!(p.hint.goal, line);
     let s = goal_of("trulea=4\ntruleb=4\ntarga=5\ntargb=9");
-    let [Avail { tell: Some(Tell::Popup(p)), .. }] = &s.gui().take_avail()[..] else {
+    let [
+        Avail {
+            tell: Some(Tell::Popup(p)),
+            ..
+        },
+    ] = &s.gui().take_avail()[..]
+    else {
         panic!()
     };
     assert_eq!(p.hint.goal, line);
