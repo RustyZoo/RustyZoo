@@ -36,7 +36,7 @@ const NAME_LIMIT: i32 = 17;
 
 /// `[UI] defaultEditCharLimit` of the ini file; a limit below 1 is no limit, which a name field
 /// would not have, so it falls back to the built-in one.
-fn name_limit(ini: &[u8]) -> i32 {
+pub(super) fn name_limit(ini: &[u8]) -> i32 {
     Config::parse(ini)
         .ok()
         .and_then(|c| ini_whole(&c, "UI", "defaultEditCharLimit"))

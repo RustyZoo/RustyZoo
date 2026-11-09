@@ -912,3 +912,169 @@ fn a_row_is_as_tall_as_its_wrapped_text_or_its_icon_and_spacing_goes_between_row
     );
     assert_eq!((h.rows[2], h.spacing, h.inner), (line, 3, 60));
 }
+
+/// A graph of the whole window (64 x 48) with small paddings, a range of 0 to 10 and bright colours.
+fn graph_tree(name: &str, style: &str, points: &[(i32, i32)]) -> Tree {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [g]\ntype=UIGraph\nid=2\nx=0\ny=0\ndx=whole\ndy=whole\ngraphType={style}\n\
+         backcolor=0\nbackcolor=0\nbackcolor=255\nVertPaddingPixels=2\nHorizPaddingPixels=2\n\
+         XValLabelPadding=1\nNumYLabels=3\nForcedMinY=0\nForcedMaxY=10\nMaxBarWidth=6\nBarSpacing=1\n\
+         DrawPointsLineGraph=1\nLineColor=255\nLineColor=0\nLineColor=0\n\
+         BoxColor=255\nBoxColor=255\nBoxColor=0\nPointColor=255\nPointColor=255\nPointColor=255\n\
+         AxisLineColor=0\nAxisLineColor=255\nAxisLineColor=0\nYLabelColorPos=255\nYLabelColorPos=0\n\
+         YLabelColorPos=255\nYLabelColorNeg=0\nYLabelColorNeg=255\nYLabelColorNeg=255\n"
+    );
+    let mut tree = tree(name, &root, &[]);
+    show_all(&mut tree);
+    let Kind::Graph(g) = &mut tree.elements[1].kind else {
+        panic!("not a graph");
+    };
+    g.points = points
+        .iter()
+        .map(|&(x, y)| crate::ui::graph::Point {
+            x,
+            y,
+            label: b"m".to_vec(),
+        })
+        .collect();
+    tree
+}
+
+const LINE: [u8; 3] = [255, 0, 0];
+const BOX: [u8; 3] = [255, 255, 0];
+const AXIS: [u8; 3] = [0, 255, 0];
+const DOT: [u8; 3] = [255, 255, 255];
+
+#[test]
+fn a_graph_fills_its_background_and_draws_the_axes_and_nothing_else_without_points() {
+    let mut tree = graph_tree("graph-empty", "l", &[]);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(at(&frame, 63, 0), [0, 0, 255], "the background");
+    assert!(count(&frame, AXIS) > 40, "the two axes");
+    assert_eq!(
+        [count(&frame, LINE), count(&frame, BOX), count(&frame, DOT)],
+        [0; 3]
+    );
+}
+
+#[test]
+fn a_line_graph_draws_dots_and_the_line_between_them() {
+    let mut tree = graph_tree("graph-line", "l", &[(0, 2), (1, 8), (2, 5)]);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert!(count(&frame, LINE) > 10, "the line");
+    // Three dots of a 7 x 7 disc.
+    assert!(count(&frame, DOT) >= 3 * 30, "{}", count(&frame, DOT));
+    assert_eq!(count(&frame, BOX), 0, "no bars");
+}
+
+#[test]
+fn a_bar_graph_draws_a_box_for_each_point_and_no_line() {
+    let mut tree = graph_tree("graph-bar", "b", &[(0, 4), (1, 10), (2, 0)]);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert!(count(&frame, BOX) > 20, "{}", count(&frame, BOX));
+    assert_eq!([count(&frame, LINE), count(&frame, DOT)], [0, 0]);
+    // Switching the style on the same points draws the line instead.
+    let Kind::Graph(g) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    g.style = crate::ui::graph::Style::Line;
+    tree.elements[1].state |= DIRTY;
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert_eq!(count(&frame, BOX), 0);
+    assert!(count(&frame, LINE) > 0);
+}
+
+#[test]
+fn the_x_labels_of_a_bar_graph_sit_where_those_of_a_line_graph_do() {
+    let points = [(0, 4), (1, 10), (2, 0)];
+    let strip = |style: &str| {
+        let mut tree = graph_tree("graph-x-labels", style, &points);
+        let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+        // The black pixels of the label row (the labels' colour; dots and bars are not black).
+        (36..48)
+            .flat_map(|y| (0..64).map(move |x| (x, y)))
+            .filter(|&(x, y)| at(&frame, x, y) == [0, 0, 0])
+            .collect::<Vec<_>>()
+    };
+    let (bars, line) = (strip("b"), strip("l"));
+    assert!(!bars.is_empty(), "labels are drawn");
+    assert!(bars == line, "{bars:?} {line:?}");
+}
+
+#[test]
+fn the_labels_below_zero_take_the_negative_colour_and_the_others_the_positive_one() {
+    let neg = rgb(text_color([0, 255, 255]));
+    let pos = rgb(text_color([255, 0, 255]));
+    let mut tree = graph_tree("graph-labels", "l", &[(0, 5)]);
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert!(count(&frame, pos) > 5, "positive labels");
+    assert_eq!(count(&frame, neg), 0);
+    // A graph with a free bottom and a point below zero has negative labels.
+    let mut tree = graph_tree("graph-labels-neg", "l", &[(0, -50)]);
+    let Kind::Graph(g) = &mut tree.elements[1].kind else {
+        unreachable!();
+    };
+    g.forced_min = -1;
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    assert!(count(&frame, neg) > 5, "negative labels");
+}
+
+#[test]
+fn a_graph_of_any_size_or_with_far_points_draws_without_panicking() {
+    for points in [
+        vec![(0, i32::MAX), (1, i32::MIN)],
+        vec![(i32::MIN, 1), (i32::MAX, 1)],
+        vec![(0, 0); 500],
+    ] {
+        let mut tree = graph_tree("graph-wild", "l", &points);
+        let _ = paint(&mut tree, &mut Painter::default(), &Texts::default());
+        let Kind::Graph(g) = &mut tree.elements[1].kind else {
+            unreachable!();
+        };
+        g.style = crate::ui::graph::Style::Bar;
+        g.y_is_money = true;
+        tree.elements[1].state |= DIRTY;
+        let _ = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    }
+}
+
+#[test]
+fn a_row_with_cells_draws_each_where_its_column_key_puts_it_in_its_colour() {
+    let root = format!(
+        "[LayoutInfo]\nid=1\n{FULL}\
+         [a]\ntype=UIListBox\nid=2\nx=0\ny=0\ndx=64\ndy=24\nbackcolor=0\nbackcolor=0\nbackcolor=0\n\
+         forecolor=255\nforecolor=255\nforecolor=255\ncolumn=0\ncolumn=0\ncolumn=20\ncolumn=40\n"
+    );
+    let mut tree = tree("cells", &root, &[]);
+    show_all(&mut tree);
+    let cell = |text: &str, color| crate::ui::widgets::Cell {
+        text: text.as_bytes().to_vec(),
+        color,
+        justify: crate::text::Justify::Left,
+    };
+    let Kind::ListBox(list) = &mut tree.elements[1].kind else {
+        panic!("not a list");
+    };
+    list.rows.rows = vec![Row {
+        text: b"H".to_vec(),
+        cells: vec![cell("H", Some([255, 0, 0])), cell("H", None)],
+        ..Row::default()
+    }];
+    let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+    let white = rgb(text_color([255, 255, 255]));
+    let red = rgb(text_color([255, 0, 0]));
+    let columns = |c: [u8; 3], from: u32, to: u32| {
+        (0..12u32)
+            .flat_map(|y| (from..to).map(move |x| (x, y)))
+            .filter(|&(x, y)| at(&frame, x, y) == c)
+            .count()
+    };
+    // The first text is the row's own colour in the first column, the second cell is red in the
+    // second, the third has no colour of its own and takes the row's.
+    assert!(columns(white, 0, 20) > 3, "first");
+    assert!(columns(red, 20, 40) > 3, "second");
+    assert_eq!(columns(red, 0, 20) + columns(red, 40, 64), 0);
+    assert!(columns(white, 40, 64) > 3, "third");
+    assert_eq!(columns(white, 20, 40), 0);
+}

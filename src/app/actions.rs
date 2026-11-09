@@ -67,7 +67,7 @@ impl App<'_> {
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
                     self.building_type_price();
                 }
-                _ => {}
+                action => _ = self.game.is_some() && self.zoo_window_action(action),
             }
         }
         for id in selected {
@@ -145,7 +145,7 @@ impl App<'_> {
                         game.animal.clock.force = true;
                     }
                 }
-                _ if self.game.is_some() => self.build(Some(id)),
+                _ if self.game.is_some() && !self.zoo_window_pressed(id) => self.build(Some(id)),
                 _ if self.game.is_none() => {
                     if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
                         let (lines, exit) = menu.selected(self.renderer.vfs(), ui, id);

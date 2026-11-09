@@ -12,6 +12,20 @@ use crate::text::to_cp1252;
 /// The layouts the building panel shows: the two building panels and the filter panel.
 const LAYOUTS: [i32; 3] = [panel::CHARGING, panel::PLAIN, panel::FILTER];
 
+/// The number typed into the money field `id`: the currency symbol and the group separator are
+/// cut out and the rest is read as a decimal number, 0 for none.
+pub(super) fn typed_number(ui: &Interface, id: i32) -> f64 {
+    let text = ui.text(id).unwrap_or_default();
+    let symbol = ui.string(SYMBOL);
+    let symbol = if symbol.trim().is_empty() {
+        "$"
+    } else {
+        &symbol
+    };
+    let group = to_cp1252(crate::text::format::money_group());
+    panel::typed(&text, &to_cp1252(symbol), &group)
+}
+
 impl App<'_> {
     /// The panel of entity `id`, if it is a guest building or a tank filter: the charging layout
     /// for a building that charges, the other one for the rest, the filter's own for a filter.
@@ -107,18 +121,7 @@ impl App<'_> {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
             return;
         };
-        let text = ui.text(panel::PRICE).unwrap_or_default();
-        let symbol = ui.string(SYMBOL);
-        let symbol = if symbol.trim().is_empty() {
-            "$"
-        } else {
-            &symbol
-        };
-        let value = panel::typed(
-            &text,
-            &to_cp1252(symbol),
-            &to_cp1252(crate::text::format::money_group()),
-        );
+        let value = typed_number(ui, panel::PRICE);
         let max = game.world.units.prices.max;
         if game.building.layout == panel::CHARGING {
             self.set_price(|kind, price| kind.typed(price, max, value));
