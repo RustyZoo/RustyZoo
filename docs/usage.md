@@ -127,7 +127,7 @@ play a map without a window (a game shows the main panel, layout 2, over the map
 
 the same with the interface drawn over the map (here the main menu layout 26).
 
-- the script may also move the mouse (`mouse X Y`, `down`, `up`, `double` for the second press of a double click, `right` for the right button going up, `wheel N`, `skip`), press keys (`key enter`, `char A`), and write or open a game (`save FILE`, `load FILE`: the name runs to the end of the line; a failed save is a warning, a failed load a message)
+- the script may also move the mouse (`mouse X Y`, `down`, `up`, `double` for the second press of a double click, `right` for the right button going up, `wheel N`, `skip`), press keys (`key enter`, `char A`), and write or open a game (`save FILE`, `load FILE`: the name runs to the end of the line; a failed save is a warning, a failed load a message), or start a scenario from the menu as its Play button does (`scenario scenario/scn01/scn01.scn`, listed or not; a file without a map to start is a message)
 - `--rows 11504 30` fills the freeform map list with 30 made-up rows to scroll and select and `--text 11510 1234` gives the starting cash field a text
 - `--ask 45000 yes,no,cancel` opens the question layout over the game (a modal question: only it gets the mouse, Enter, Escape, Y and N answer it, the game is paused meanwhile)
 - the log has `ui tooltip X Y W H` when a tooltip shows (30 pixels under the pointer, gone after its 3 seconds) and `ui answer 6` for a question's answer (1 OK, 2 Cancel, 6 Yes, 7 No)

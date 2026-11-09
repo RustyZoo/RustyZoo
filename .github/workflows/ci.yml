@@ -414,6 +414,23 @@ jobs:
           fi
           exit "$status"
 
+      # Every scenario and map of the trials plays a month, and a made-up scenario is won and another lost
+      # (about two minutes on the self-hosted runner). Linux only: the checks read the same log on every system.
+      - name: Play the scenarios of the trials and win and lose one
+        if: runner.os == 'Linux'
+        run: |
+          trials="${RUNNER_TEMP//\\//}/trials"
+          if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
+            echo "::warning title=Scenarios skipped::No trial data on this runner."
+            exit 0
+          fi
+          status=0
+          for trial in base-trial expansion-trial; do
+            ci/check-scenarios.sh ${{ matrix.bin }} "$trials/$trial" || status=1
+            ci/check-ends.sh ${{ matrix.bin }} "$trials/$trial" || status=1
+          done
+          exit "$status"
+
       # Self-hosted: the freeform game of ci/playable-full.txt on the full English and French installs
       # (as verify-fix plays it), side by side. Only the status lines are printed.
       - name: Play the freeform game on the English and French installs
@@ -432,6 +449,29 @@ jobs:
             [ "$(cat "$RUNNER_TEMP/$v.status")" = 0 ] || status=1
           done
           rm -f "$RUNNER_TEMP"/ZT_DATA_DIR*.out
+          exit "$status"
+
+      # Self-hosted: every scenario and map of the full English and French installs plays a month (eight at a
+      # time, side by side), and the made-up win and loss and the third scenario's loss end as they should.
+      # Only the status lines are printed.
+      - name: Play the scenarios of the English and French installs
+        if: runner.environment == 'self-hosted'
+        run: |
+          : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
+          for v in ZT_DATA_DIR ZT_DATA_DIR_FR; do
+            (SCENARIO_JOBS=6 ci/check-scenarios.sh ${{ matrix.bin }} "${!v}" >"$RUNNER_TEMP/$v.out" 2>&1
+              swept=$?
+              ci/check-ends.sh ${{ matrix.bin }} "${!v}" >>"$RUNNER_TEMP/$v.out" 2>&1
+              echo $((swept | $?))) >"$RUNNER_TEMP/$v.status" &
+          done
+          wait
+          status=0
+          for v in ZT_DATA_DIR ZT_DATA_DIR_FR; do
+            echo "$v:"
+            grep -E '^(ok|FAILED):' "$RUNNER_TEMP/$v.out" | cut -c1-300 || true
+            [ "$(cat "$RUNNER_TEMP/$v.status")" = 0 ] || status=1
+          done
+          rm -f "$RUNNER_TEMP"/ZT_DATA_DIR*.out "$RUNNER_TEMP"/ZT_DATA_DIR*.status
           exit "$status"
 
   play-full:
