@@ -270,6 +270,14 @@ impl App<'_> {
         self.open(&start, read)
     }
 
+    /// `scenario FILE` of a script: the menu starts the scenario as its Play button does. Without a
+    /// menu (a run of a map) there is nothing to start it from.
+    pub(super) fn play_scenario(&mut self, file: &str) {
+        let Some(menu) = &mut self.menu else { return };
+        menu.start_file(self.renderer.vfs(), file);
+        self.requested();
+    }
+
     /// The economy file the scenario `file` names under `[start] economy` comes over the settings
     /// (zoo status 3.1); a file that cannot be read is a warning.
     pub(super) fn scenario_economy(&mut self, file: &str) {

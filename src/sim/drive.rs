@@ -369,10 +369,7 @@ impl Run {
         }
     }
 
-    /// A unit of the class (and the type, when it is given; the first sex of the data, or the
-    /// subtype of the sex asked for, which the animal then has even when the species has no such
-    /// subtype) on tile `(x, y)`, hired without the hiring cost; whether there is such a tile and
-    /// such a type.
+    /// A unit of the class (and the type, when it is given) on tile `(x, y)`: see [`add_unit`].
     fn add_unit(
         &mut self,
         class: &str,
@@ -381,81 +378,15 @@ impl Run {
         y: i32,
         sex: Option<bool>,
     ) -> bool {
-        let named =
-            |t: &&crate::entity::EntityType| name.is_none_or(|n| t.type_name == n.as_bytes());
-        let mut found = self
-            .cat
-            .types
-            .iter()
-            .filter(named)
-            .filter(|t| t.class == class);
-        let wanted = sex.map(|female| if female { b"f" } else { b"m" });
-        let first = found.clone().next();
-        let Some(ty) = found
-            .find(|t| wanted.is_some_and(|w| t.subtype == w))
-            .or(first)
-        else {
-            return false;
-        };
-        let Some(tile) = self.world.tile_index(x, y) else {
-            return false;
-        };
-        let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
-        let label = match class {
-            "tour" => "Guide",
-            "keeper" => "Keeper",
-            "maint" => "Worker",
-            _ => "Animal",
-        };
-        let label = (self.world.units.names.get(&ty.name_id)).map_or(label.into(), Clone::clone);
-        let name = crate::place::unit::name(&mut self.world, ty, &label);
-        let entity = crate::zoo::Entity {
-            class: ty.class.into(),
-            type_name: text(&ty.type_name),
-            subtype: text(&ty.subtype),
-            body_size: None,
-            common: Some(crate::zoo::Common {
-                x: x * 64 + 32,
-                y: y * 64 + 32,
-                z: self.world.zoo.tiles[tile].elevation * 16,
-                rotation: 0,
-                id: 0,
-                name,
-                colors: Vec::new(),
-                fence: None,
-                ..Default::default()
-            }),
-        };
-        let shape = crate::world::Shape {
-            kind: crate::render::order::Kind::of_class("tour"),
-            footprint: (ty.footprint[0], ty.footprint[1]),
-            fence: false,
-            wall: false,
-            gate: false,
-            gated: false,
-            tank: crate::world::TankKind::NONE,
-            walkable: (false, false),
-            forms: None,
-            rubbleable: false,
-        };
-        let Some(id) = self.world.add(entity, Some(shape)) else {
-            return false;
-        };
-        if let (Some(female), Some(unit)) = (sex, self.world.units.get_mut(id)) {
-            unit.sex = Some(female);
-        }
-        if let Some(at) = self.world.find(id) {
-            crate::staff::make(&mut self.world, &self.cat, &mut self.sim.rng, at);
-            // The colours the creation drew are kept with the entity, as the interface hire does.
-            let colours = match self.world.units.get(id).map(|u| &u.part) {
-                Some(crate::unit::Part::Staff(s)) => s.colours.clone(),
-                _ => Vec::new(),
-            };
-            if let Some(c) = self.world.zoo.entities[at].common.as_mut() {
-                c.colors = colours;
-            }
-        }
-        true
+        add_unit(
+            &mut self.world,
+            &self.cat,
+            &mut self.sim.rng,
+            class,
+            name,
+            (x, y),
+            sex,
+        )
     }
 
     /// A tank filter facing `facing` on tile `(x, y)`; whether there is such a tile and such a
@@ -568,4 +499,88 @@ impl Run {
     pub fn hash(&self) -> u64 {
         hash::state(&self.sim, &self.world, &self.money)
     }
+}
+
+/// A unit of the class (and the type, when it is given; the first sex of the data, or the
+/// subtype of the sex asked for, which the animal then has even when the species has no such
+/// subtype) on tile `(x, y)`, hired without the hiring cost; whether there is such a tile and
+/// such a type.
+pub(crate) fn add_unit(
+    world: &mut World,
+    cat: &Catalogue,
+    rng: &mut super::rng::Rng,
+    class: &str,
+    name: Option<&str>,
+    (x, y): (i32, i32),
+    sex: Option<bool>,
+) -> bool {
+    let named = |t: &&crate::entity::EntityType| name.is_none_or(|n| t.type_name == n.as_bytes());
+    let mut found = cat.types.iter().filter(named).filter(|t| t.class == class);
+    let wanted = sex.map(|female| if female { b"f" } else { b"m" });
+    let first = found.clone().next();
+    let Some(ty) = found
+        .find(|t| wanted.is_some_and(|w| t.subtype == w))
+        .or(first)
+    else {
+        return false;
+    };
+    let Some(tile) = world.tile_index(x, y) else {
+        return false;
+    };
+    let text = |bytes: &[u8]| bytes.iter().map(|&b| char::from(b)).collect::<String>();
+    let label = match class {
+        "tour" => "Guide",
+        "keeper" => "Keeper",
+        "maint" => "Worker",
+        _ => "Animal",
+    };
+    let label = (world.units.names.get(&ty.name_id)).map_or(label.into(), Clone::clone);
+    let name = crate::place::unit::name(world, ty, &label);
+    let entity = crate::zoo::Entity {
+        class: ty.class.into(),
+        type_name: text(&ty.type_name),
+        subtype: text(&ty.subtype),
+        body_size: None,
+        common: Some(crate::zoo::Common {
+            x: x * 64 + 32,
+            y: y * 64 + 32,
+            z: world.zoo.tiles[tile].elevation * 16,
+            rotation: 0,
+            id: 0,
+            name,
+            colors: Vec::new(),
+            fence: None,
+            ..Default::default()
+        }),
+    };
+    let shape = crate::world::Shape {
+        kind: crate::render::order::Kind::of_class("tour"),
+        footprint: (ty.footprint[0], ty.footprint[1]),
+        fence: false,
+        wall: false,
+        gate: false,
+        gated: false,
+        tank: crate::world::TankKind::NONE,
+        walkable: (false, false),
+        forms: None,
+        rubbleable: false,
+    };
+    let Some(id) = world.add(entity, Some(shape)) else {
+        return false;
+    };
+    if let (Some(female), Some(unit)) = (sex, world.units.get_mut(id)) {
+        unit.sex = Some(female);
+    }
+    if let Some(at) = world.find(id) {
+        crate::staff::make(world, cat, rng, at);
+        // The colours the creation drew are kept with the entity, as the interface hire does.
+        let colours = match world.units.get(id).map(|u| &u.part) {
+            Some(crate::unit::Part::Staff(s)) => s.colours.clone(),
+            _ => Vec::new(),
+        };
+        if let Some(c) = world.zoo.entities[at].common.as_mut() {
+            c.colors = colours;
+        }
+    }
+    true
 }

@@ -10,13 +10,17 @@
 #   play     ci/check-playable.sh with ci/playable-full.txt on $ZT_DATA_DIR (the
 #            full game; about eight minutes); skipped when unset
 #   play-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
+#   scen     ci/check-scenarios.sh and ci/check-ends.sh on $ZT_DATA_DIR (every scenario and map plays a
+#            month, a scenario is won and one lost; about eight minutes); skipped when unset
+#   scen-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
+#   scen-trials  the same on both trials; skipped without the argument
 #   trials   ci/check-trials.sh on the trials dir (see ci/fetch-trials.sh);
 #            skipped without the argument
 #   play-trials  as CI does: ci/playable.txt on base-trial and ci/playable-tank.txt on expansion-trial
 #            (a trial folder missing from the trials dir fails the step); skipped without the argument
 #
-# The release binary is built once (a failure shows as step "build"), then play, play-fr, trials and
-# play-trials run at the same time, each with its own log; their lines are printed together at the end.
+# The release binary is built once (a failure shows as step "build"), then play, play-fr, trials,
+# play-trials and the scen steps run at the same time, each with its own log; their lines are printed together at the end.
 # Runs on the repository that contains the current directory, so a copy of this script can gate
 # another checkout. Every step runs, even after a failure; the output of a failed step follows its
 # line. Exit status: 0 when no step failed (skipped steps do not fail), 1 otherwise.
@@ -66,6 +70,16 @@ play_step() { # play_step <game folder>
   ci/check-playable.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$1" ci/playable-full.txt
 }
 
+scen_step() { # scen_step <game folder>...
+  bin=${CARGO_TARGET_DIR:-target}/release/rustyzoo
+  status=0
+  for dir in "$@"; do
+    ci/check-scenarios.sh "$bin" "$dir" || status=1
+    ci/check-ends.sh "$bin" "$dir" || status=1
+  done
+  return $status
+}
+
 play_trials_step() {
   bin=${CARGO_TARGET_DIR:-target}/release/rustyzoo
   status=0
@@ -81,13 +95,16 @@ if [ -n "${ZT_DATA_DIR:-}" ]; then step full cargo test -- --ignored; else skip 
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then
   step full-fr env ZT_DATA_DIR="$ZT_DATA_DIR_FR" cargo test -- --ignored
 else skip full-fr "ZT_DATA_DIR_FR is not set"; fi
-# The four long steps only share the release binary: build it once, then run them side by side.
+# The long steps only share the release binary: build it once, then run them side by side.
 long=()
 if [ -n "${ZT_DATA_DIR:-}" ]; then long+=(play); else skip play "ZT_DATA_DIR is not set"; fi
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then long+=(play-fr); else skip play-fr "ZT_DATA_DIR_FR is not set"; fi
-if [ -n "$trials" ]; then long+=(trials play-trials); else
+if [ -n "${ZT_DATA_DIR:-}" ]; then long+=(scen); else skip scen "ZT_DATA_DIR is not set"; fi
+if [ -n "${ZT_DATA_DIR_FR:-}" ]; then long+=(scen-fr); else skip scen-fr "ZT_DATA_DIR_FR is not set"; fi
+if [ -n "$trials" ]; then long+=(trials play-trials scen-trials); else
   skip trials "no trials dir given"
   skip play-trials "no trials dir given"
+  skip scen-trials "no trials dir given"
 fi
 if [ ${#long[@]} != 0 ] && step build cargo build --release; then
   for name in "${long[@]}"; do
@@ -96,6 +113,9 @@ if [ ${#long[@]} != 0 ] && step build cargo build --release; then
     play-fr) run play-fr play_step "$ZT_DATA_DIR_FR" & ;;
     trials) run trials trials_step & ;;
     play-trials) run play-trials play_trials_step & ;;
+    scen) run scen scen_step "$ZT_DATA_DIR" & ;;
+    scen-fr) run scen-fr scen_step "$ZT_DATA_DIR_FR" & ;;
+    scen-trials) run scen-trials scen_step "$trials/base-trial" "$trials/expansion-trial" & ;;
     esac
   done
   wait

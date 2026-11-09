@@ -48,6 +48,10 @@ impl App<'_> {
             None => return,
         };
         for id in ids {
+            // The scenario's rules ask about these buttons too (zoom, rotate, pause, play).
+            if let Some(scenario) = self.sim.scenario() {
+                scenario.gui().pressed(id, None);
+            }
             self.main_button(id);
         }
     }

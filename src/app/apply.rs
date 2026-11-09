@@ -15,6 +15,12 @@ impl App<'_> {
         let listing = self.listing_open();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
+            // A press of an element by its id: what a click on it does, while nothing modal is open.
+            (Command::Press(id), _) if !modal => {
+                if let Some(ui) = &mut self.ui {
+                    ui.press_button(id);
+                }
+            }
             (Command::Quit, _) => self.quit = true,
             (Command::Mouse(mouse), _) => self.mouse(mouse, listing),
             (Command::Scroll(x, y), Some(game)) if keys && !following => {
@@ -144,6 +150,7 @@ impl App<'_> {
                 self.load_saved(file);
             }
             Command::Save(file) => self.save_game(file),
+            Command::Scenario(file) => self.play_scenario(file),
             Command::Award(id) => {
                 if let Some(game) = &mut self.game {
                     crate::award::add(&mut game.world.zoo.awards, id);

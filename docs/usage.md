@@ -127,7 +127,7 @@ play a map without a window (a game shows the main panel, layout 2, over the map
 
 the same with the interface drawn over the map (here the main menu layout 26).
 
-- the script may also move the mouse (`mouse X Y`, `down`, `up`, `double` for the second press of a double click, `right` for the right button going up, `wheel N`, `skip`), press keys (`key enter`, `char A`), and write or open a game (`save FILE`, `load FILE`: the name runs to the end of the line; a failed save is a warning, a failed load a message)
+- the script may also move the mouse (`mouse X Y`, `down`, `up`, `double` for the second press of a double click, `right` for the right button going up, `wheel N`, `skip`), press keys (`key enter`, `char A`), and write or open a game (`save FILE`, `load FILE`: the name runs to the end of the line; a failed save is a warning, a failed load a message), or start a scenario from the menu as its Play button does (`scenario scenario/scn01/scn01.scn`, listed or not; a file without a map to start is a message)
 - `--rows 11504 30` fills the freeform map list with 30 made-up rows to scroll and select and `--text 11510 1234` gives the starting cash field a text
 - `--ask 45000 yes,no,cancel` opens the question layout over the game (a modal question: only it gets the mouse, Enter, Escape, Y and N answer it, the game is paused meanwhile)
 - the log has `ui tooltip X Y W H` when a tooltip shows (30 pixels under the pointer, gone after its 3 seconds) and `ui answer 6` for a question's answer (1 OK, 2 Cancel, 6 Yes, 7 No)
@@ -159,6 +159,7 @@ the same with the interface drawn over the map (here the main menu layout 26).
 - the Z character presses the zoo status button (element 1014) and opens or closes its window, whose Finances tab (a layout of ui/zoofin1.lyt) shows the income and expenses of the current month and the three before it: the table is written when the tab is shown and, while the window is shown, at the interface update at most every 10 s of clock (the first time at once), and the log has `money cell 3932 ff0000 ($40)` (element, text colour, text) for each cell it changes
 - the Messages button (id 1006) shows and hides the message history (layout 29, list 7201): every message posted since the game began, newest first, in the colour of its kind, with a crosshair icon when it names an animal or another entity; a click on a row (or on the message line) centres the view on that entity and selects it, and ends the message on the line; the texts of the research dialogs and of the escaped animal alert are only listed, never on the line; `[UI] MessageDisplay=0` drops every message
 - `award add ID` gives the zoo an award (the log then has `awards C`, the count it holds)
+- `press ID` presses the button with that id and releases it, as a hotkey does, without a pixel: nothing happens when the button is not shown, is greyed, does not exist (0, a negative or a huge id included) or a question is open (the log has `ui press ID` when it was pressed); the buttons a scenario goal asks about (the zoom, rotate and pause buttons too) see the press
 - the log tells scroll bar positions (`ui scroll 11505 3`), list selections (`ui row 11504 4`, `ui select 11504 4`) and field texts (`ui text 11510 1234`)
 
 `rustyzoo run maps/default.zoo --headless --passes 30 --clock 20 --cash 50000 --script bulldoze.txt`

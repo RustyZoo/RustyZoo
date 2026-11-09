@@ -77,8 +77,11 @@ pub enum Mouse {
 /// interface `mouse X Y`, `down`, `up`, `double` (the second press of a double click), `right` (the right button went up), `wheel N`, `key NAME [ctrl] [shift]` (NAME: enter, escape,
 /// tab, backspace, delete, left, right, up, down, home, end, pageup, pagedown, y, n, s, l; Ctrl+S saves and Ctrl+L loads) and
 /// `char C` (a byte, as a number from 0 to 255 or as one character that is not a digit).
+/// `press ID` presses the button with that id as a click would, when it is shown and enabled and no
+/// question is open (a script does not need the pixel of an element).
 /// `save FILE` writes the game to a file and `load FILE` opens a saved game as Continue does (the
-/// file name runs to the end of the line; the name is kept for the rest of the run).
+/// file name runs to the end of the line; the name is kept for the rest of the run), and
+/// `scenario FILE` starts a scenario from the menu (a listed one or not).
 /// A window reads `fullscreen` in a script as a request to switch, and makes the command itself
 /// when the window has switched, so a log replays it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,8 +120,12 @@ pub enum Command {
     Skip,
     /// `award add ID`: the zoo holds the award (`awards.md` 4.1).
     Award(i32),
+    /// `press ID`: the button with this id is pressed and released, as a hotkey does.
+    Press(i32),
     Save(&'static str),
     Load(&'static str),
+    /// `scenario FILE`: starts the scenario file from the menu, as its Play button does.
+    Scenario(&'static str),
 }
 
 impl fmt::Display for Command {
@@ -155,8 +162,10 @@ impl fmt::Display for Command {
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
             Command::Award(id) => write!(f, "award add {id}"),
+            Command::Press(id) => write!(f, "press {id}"),
             Command::Save(file) => write!(f, "save {file}"),
             Command::Load(file) => write!(f, "load {file}"),
+            Command::Scenario(file) => write!(f, "scenario {file}"),
         }
     }
 }
@@ -173,8 +182,10 @@ impl FromStr for Command {
         };
         Ok(match words.as_slice() {
             ["award", "add", id] => Command::Award(number(id)?),
+            ["press", id] => Command::Press(number(id)?),
             ["save", ..] => Command::Save(file("save")?),
             ["load", ..] => Command::Load(file("load")?),
+            ["scenario", ..] => Command::Scenario(file("scenario")?),
             ["scroll", x, y] => {
                 let (x, y) = (number(x)?, number(y)?);
                 if !(-1..=1).contains(&x) || !(-1..=1).contains(&y) {
