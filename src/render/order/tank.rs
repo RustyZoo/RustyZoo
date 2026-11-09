@@ -149,8 +149,8 @@ impl Painter<'_> {
         }
     }
 
-    /// The things of tile `i` that the sorting of 9.5 puts in a row: the units of its list and
-    /// the objects of its quadrants that `keep` accepts, the latter once the last of their
+    /// The things of tile `i` that the sorting of 9.5 puts in a row: the units and transients
+    /// of its list and the objects of its quadrants that `keep` accepts, the latter once the last of their
     /// quadrants is reached.
     pub(super) fn tile_entries(&mut self, i: usize, keep: &dyn Fn(usize) -> bool) -> Vec<Entry> {
         let scene = self.scene;
@@ -161,7 +161,10 @@ impl Painter<'_> {
             let (px, py) = project(scene.rotation, obj.x, obj.y, obj.z);
             list.push((obj.late, forced, py, px, o));
         };
-        for &o in &scene.list[t] {
+        // The transients of a tank tile are painted by the tank itself (9.7.4); the others stand
+        // in the row with the units.
+        let transient = scene.tank[t].is_none().then_some(&scene.transient[t]);
+        for &o in scene.list[t].iter().chain(transient.into_iter().flatten()) {
             if keep(o) {
                 push(&mut list, 0, o);
             }

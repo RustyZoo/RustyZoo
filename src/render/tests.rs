@@ -3466,3 +3466,54 @@ fn a_connector_wall_takes_the_connector_keys_for_its_top_and_single_pieces() {
     assert_eq!(names("l", 1, &none), ["tblidle"]);
     assert_eq!(names("lr", 1, &none), ["idle"]);
 }
+
+
+fn ripple_install() -> (Install, Zoo) {
+    use crate::sprite::tests::{sized, sprite_file};
+    let mut frame = Vec::new();
+    for field in [1u16, 1, 0, 0, 0] {
+        frame.extend(field.to_le_bytes());
+    }
+    frame.extend([1, 0, 1, 1]);
+    let ani = b"[animation]\ndir0 = a\ndir1 = idle\nanimation = N\n".to_vec();
+    let install = Install::new(
+        "ripple",
+        &[
+            (
+                "scenery.cfg",
+                b"[objects]\nother\n[other]\nwaterwv1 = wave.ai\n".to_vec(),
+            ),
+            (
+                "wave.ai",
+                b"[Characteristics/Integers]\ncIsTransient = 1\n[Animations]\nidle = idle\n".to_vec(),
+            ),
+            ("objects/waterwv1/idle/idle.ani", ani),
+            (
+                "a/idle/N",
+                sprite_file(None, 3, &[sized(&frame), sized(&frame), sized(&frame)]),
+            ),
+        ],
+    );
+    (install, tile_with(&[("objects", "other", "waterwv1")]))
+}
+
+#[test]
+fn a_ripple_of_the_flat_water_outside_a_tank_is_painted_once() {
+    let (install, zoo) = ripple_install();
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&zoo, 0, false, &Extra::default())
+        .unwrap();
+    assert_eq!(shown_frames_of(&staged), [0]);
+}
+
+#[test]
+fn a_ripple_of_the_flat_water_holds_no_quadrant() {
+    let (install, zoo) = ripple_install();
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let world = crate::world::World::new(zoo, |e| shape_of(&catalogue, e));
+    let t = world.tile_index(0, 0).unwrap();
+    assert!(world.is_empty(t) && (0..4).all(|q| world.quadrant(t, q).is_none()));
+}
