@@ -51,7 +51,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 ## Self-hosted CI
 
-- The Linux legs of `build` and `play` run on the self-hosted runners (labels `self-hosted, linux, x64, gamedata, rustyzoo`) for a push and a pull request by the maintainer from this repository; any other pull request (a fork, a Dependabot branch) runs them on a GitHub-hosted runner, so Dependabot pull requests never touch the game data. The runners also run the ignored tests on the full English and French installs and the freeform game of `ci/playable-full.txt` on both. Never use `pull_request_target`. The self-hosted legs upload no artifact.
+- The Linux legs of `build` and `play` run on the self-hosted runners (labels `self-hosted, linux, x64, gamedata, rustyzoo`) for a push and a pull request by the maintainer from this repository; any other pull request (a fork, a Dependabot branch), and any pull request that changes a file under `.github/` (job `scope`, output `workflows`), runs them on a GitHub-hosted runner, so Dependabot pull requests never touch the game data. The runners also run the ignored tests on the full English and French installs and the freeform game of `ci/playable-full.txt` on both. Never use `pull_request_target`. The self-hosted legs upload no artifact.
 - The game data never leaves the runner: no `upload-artifact` or `actions/cache` step may pick up a folder that holds it, and a step prints no game text (the full-game steps print only test names, totals and status lines; their folders are masked in the logs).
 
 ## Dependencies

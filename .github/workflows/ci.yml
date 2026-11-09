@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       legs: ${{ steps.legs.outputs.legs }}
+      workflows: ${{ steps.legs.outputs.workflows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,11 +46,16 @@ jobs:
             legs=linux
           fi
           echo "legs=$legs" | tee -a "$GITHUB_OUTPUT"
+          # A pull request that touches .github/ never reaches the self-hosted runners (see `build`).
+          if grep -q '^\.github/' <<<"$files"; then workflows=true; else workflows=false; fi
+          echo "workflows=$workflows" | tee -a "$GITHUB_OUTPUT"
 
   # The Linux leg, then the other systems (only with the legs `all`): the same job. The Linux legs of
   # `build` and `play` run on the self-hosted runners (they hold the full game installs, see the steps
   # marked self-hosted) for a push and a pull request by the maintainer from this repository, on a
-  # GitHub-hosted runner for any other pull request (a fork, a Dependabot branch). Never `pull_request_target`: a fork's code must not meet the game data.
+  # GitHub-hosted runner for any other pull request (a fork, a Dependabot branch) and for one that changes
+  # anything under .github/ (its own workflow would run on the game data before any review; the check is
+  # in the job `scope`). Never `pull_request_target`: a fork's code must not meet the game data.
   build:
     name: build (${{ matrix.os }})
     needs: scope
@@ -58,6 +64,7 @@ jobs:
       (github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login == 'SlendyMilky' &&
+      needs.scope.outputs.workflows != 'true' &&
       !startsWith(github.head_ref, 'dependabot/'))) &&
       fromJSON('["self-hosted","linux","x64","gamedata","rustyzoo"]') || matrix.os }}
     timeout-minutes: 60
