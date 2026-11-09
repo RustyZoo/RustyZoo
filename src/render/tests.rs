@@ -1107,6 +1107,7 @@ fn a_tank_animal_is_drawn_with_the_animation_and_frame_its_player_holds() {
             food: 0,
             tint: None,
             wall: 0,
+            connector: false,
             shown: Some((name, frame)),
             idle: None,
             look: None,
