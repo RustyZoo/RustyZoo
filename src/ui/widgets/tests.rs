@@ -106,6 +106,7 @@ fn fit(n: usize, visible: i32) -> Heights {
         rows: vec![12; n],
         spacing: 0,
         inner: 12 * visible,
+        map: None,
     }
 }
 
@@ -126,6 +127,7 @@ fn the_rows_that_fit_and_the_row_under_a_point() {
         rows: vec![10, 20, 8, 8, 40],
         spacing: 2,
         inner: 30,
+        map: None,
     };
     assert_eq!((h.fit_from(0), h.fit_from(1), h.fit_from(4)), (1, 2, 1));
     assert_eq!(h.max_top(), 4, "the last row alone is taller than the list");
@@ -140,12 +142,14 @@ fn the_rows_that_fit_and_the_row_under_a_point() {
         rows: vec![20, 20],
         spacing: 0,
         inner: 41,
+        map: None,
     };
     assert_eq!((wide.fit_from(0), wide.max_top()), (2, 0));
     let huge = Heights {
         rows: vec![i32::MAX; 3],
         spacing: i32::MAX,
         inner: i32::MAX,
+        map: None,
     };
     assert_eq!((huge.fit_from(0), huge.max_top()), (1, 2));
     assert_eq!(huge.row_at(0, i32::MAX), None);
@@ -349,4 +353,52 @@ fn a_numeric_field_takes_a_leading_minus_and_one_point() {
         typed("a", at(1, 1), EditKey::Char(b'-'), false, FREE).0,
         "a-"
     );
+}
+
+/// Rows 1 and 2 of 6 hidden: the shown ones are 0, 3, 4 and 5, 12 pixels each, two at a time.
+fn hiding() -> (Rows, Heights) {
+    let mut r = rows(6);
+    r.hidden = vec![false, true, true, false, false, false];
+    let h = Heights {
+        rows: vec![12; 4],
+        spacing: 0,
+        inner: 24,
+        map: Some(vec![0, 3, 4, 5]),
+    };
+    (r, h)
+}
+
+#[test]
+fn hidden_rows_take_no_room_and_a_point_finds_the_row_by_its_number() {
+    let (_, h) = hiding();
+    assert_eq!((h.fit_from(0), h.max_top()), (2, 2));
+    assert_eq!(h.row_at(0, 13), Some(3), "the second shown row is row 3");
+    assert_eq!(h.row_at(2, 0), Some(4));
+    assert_eq!(h.row_at(0, 24), Some(4));
+    assert_eq!(h.row_at(0, 48), None);
+}
+
+#[test]
+fn the_keys_skip_hidden_rows_and_the_selection_scrolls_by_shown_rows() {
+    let (mut r, h) = hiding();
+    assert!(r.select_by_key(ListKey::Down, &h) && r.selected == Some(0));
+    assert!(r.select_by_key(ListKey::Down, &h) && r.selected == Some(3));
+    assert!(r.select_by_key(ListKey::End, &h) && r.selected == Some(5));
+    assert_eq!(r.top, 2, "the last page of shown rows");
+    assert!(r.select_by_key(ListKey::Up, &h) && r.selected == Some(4));
+    assert!(r.select_by_key(ListKey::Home, &h) && r.selected == Some(0) && r.top == 0);
+    // A selection on a hidden row scrolls nothing and a key moves on from the top.
+    r.selected = Some(1);
+    r.show_selection(&h);
+    assert_eq!(r.top, 0);
+    // Everything hidden: no key does anything.
+    let mut none = rows(3);
+    none.hidden = vec![true; 3];
+    let empty = Heights {
+        rows: vec![],
+        spacing: 0,
+        inner: 24,
+        map: Some(vec![]),
+    };
+    assert!(!none.select_by_key(ListKey::Down, &empty) && none.selected.is_none());
 }
