@@ -24,8 +24,8 @@ const LABELS: [i32; 2] = [2451, 2452];
 /// The swatch buttons of the palette.
 pub(crate) const SWATCHES: RangeInclusive<i32> = 2401..=2424;
 /// The colour tab of the charging panel and of the other one, and the first tab of each.
-const TAB: [i32; 2] = [TABS[5], TABS[2]];
-const FIRST: [i32; 2] = [TABS[3], TABS[0]];
+const TAB: [i32; 2] = [TABS[2], TABS[5]];
+const FIRST: [i32; 2] = [TABS[0], TABS[3]];
 
 /// One colour group of a building type: the string of its title, the swatch of each variant in
 /// the group's own order, and the position of its default variant.
@@ -117,7 +117,7 @@ impl Panel {
         (ty, colors): (&EntityType, &[u8]),
         charging: bool,
     ) {
-        let which = usize::from(!charging);
+        let which = usize::from(!charging); // 0: the charging panel
         let on = replaced(ty);
         ui.set_hidden(TAB[which], !on);
         ui.set_enabled(TAB[which], on);
@@ -150,6 +150,7 @@ impl Panel {
         vfs: &Vfs,
         g: usize,
     ) {
+        self.choosing = None;
         let group =
             (self.building(world, cat)).and_then(|(_, ty)| groups(ty, vfs).into_iter().nth(g));
         let Some(group) = group else { return };

@@ -97,14 +97,26 @@ use crate::unit::testing::{centre, entity, world};
 struct Texts;
 
 impl Strings for Texts {
-    fn string(&self, _: i32) -> String {
-        String::new()
+    fn string(&self, id: i32) -> String {
+        match id {
+            2300 => "Roof".into(),
+            _ => String::new(),
+        }
     }
 
     fn text_entry(&self, _: &[u8]) -> Vec<u8> {
         vec![]
     }
 }
+
+/// The shared colour groups: `a` has four variants, two of them (`ra`, the first and the fourth)
+/// with the same swatch, which sort after `rb` and `rc`.
+const BUILDING_AI: &str = "[cr_a]\nncolors=4\npal=p/a.pal\nui_info=ra\npal=p/b.pal\nui_info=rb\n\
+    pal=p/c.pal\nui_info=rc\npal=p/d.pal\nui_info=ra\n\
+    [cr_b]\nncolors=2\npal=p/a.pal\nui_info=ra\n\
+    [ra]\nforecolor=200\nforecolor=0\nforecolor=0\n\
+    [rb]\nforecolor=10\nforecolor=50\nforecolor=0\n\
+    [rc]\nforecolor=10\nforecolor=20\nforecolor=99\n";
 
 /// The panel `layout` with the elements the refresh fills, a map with one building (entity 1) of
 /// a type with the idle animation of [`follow::members`] and the integer settings `ints`.
@@ -116,27 +128,43 @@ fn panel_in(name: &str, layout: i32, ints: &str) -> (Interface, Vfs, World, Cata
             "UIButton",
             &[
                 4557, 4556, 4516, 4580, 4616, 4575, 4576, 4577, 4678, 4631, 4632, 4633, 4634, 4635,
+                4675, 4677, 2461, 2462, 2401, 2402, 2403, 2404, 2405, 2406, 2407, 2408, 2409, 2410,
+                2411, 2412, 2413, 2414, 2415, 2416, 2417, 2418, 2419, 2420, 2421, 2422, 2423, 2424,
             ],
         ),
         (
             "UIText",
             &[
                 4531, 4533, 4535, 4559, 4561, 4591, 4573, 4563, 4565, 4592, 4664, 4666, 4662, 4668,
-                4696, 4642, 4643, 4644, 4645, 4646,
+                4696, 4642, 4643, 4644, 4645, 4646, 2451, 2452,
             ],
         ),
     ];
     let elements: String = ids
         .iter()
         .flat_map(|(kind, ids)| ids.iter().map(move |id| (kind, id)))
-        .map(|(kind, id)| format!("[e{id}]\ntype={kind}\nid={id}\nx=0\ny=0\ndx=10\ndy=4\n"))
+        .map(|(kind, id)| {
+            // The tab buttons stay down when pressed.
+            let sticky = if [4675, 4677].contains(id) {
+                "state=4096\n"
+            } else {
+                ""
+            };
+            format!("[e{id}]\ntype={kind}\nid={id}\nx=0\ny=0\ndx=10\ndy=4\n{sticky}")
+        })
         .collect();
-    let text = format!("[LayoutInfo]\nid={layout}\nx=0\ny=0\ndx=90\ndy=90\n{elements}");
+    // The tabs of the plain panel are a radio set, and the palette is a layout of its own.
+    let tabs = "[t]\ntype=UIRadioSet\nid=4674\nbutton=4675\nbutton=4677\n";
+    let text = format!("[LayoutInfo]\nid={layout}\nx=0\ny=0\ndx=90\ndy=90\n{elements}{tabs}");
     let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
-        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n";
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n[b]\ntype=UILayout\nlayout=ui/p.lyt\n\
+        [c]\ntype=UILayout\nlayout=ui/c.lyt\nstate=1\n";
+    let palette = "[LayoutInfo]\nid=37\nx=0\ny=0\ndx=20\ndy=20\n";
     let mut files = vec![
         ("ui/root.lyt", root.as_bytes().to_vec()),
         ("ui/p.lyt", text.into_bytes()),
+        ("ui/c.lyt", palette.as_bytes().to_vec()),
+        ("building.ai", BUILDING_AI.as_bytes().to_vec()),
     ];
     let members = follow::members();
     files.extend(members.iter().map(|(n, b)| (n.as_str(), b.clone())));
@@ -358,18 +386,21 @@ fn hiding_the_commerce_info_leaves_everything_below_the_price_alone() {
             .map(|id| (state(&ui, id) & HIDDEN != 0, state(&ui, id) & DISABLED != 0));
         (told, kept, items, tabs)
     };
-    let (told, kept, items, tabs) = run("cCommerce = 1\n", "building-panel-info");
+    let (told, kept, items, tabs) = run(
+        "cCommerce = 1\ncIsColorReplaced = 1\n",
+        "building-panel-info",
+    );
     assert!(!kept && told.contains(" income $0 "), "{told}");
     assert!(!items, "the item icon is shown");
     assert_eq!(tabs, [(false, false); 3]);
     let (told, kept, items, tabs) = run(
-        "cCommerce = 1\ncHideCommerceInfo = 1\n",
+        "cCommerce = 1\ncIsColorReplaced = 1\ncHideCommerceInfo = 1\n",
         "building-panel-info-hidden",
     );
     assert!(kept, "the layout's text stays");
     assert!(items, "the item row is not touched");
     assert_eq!(told, "building 1 \"\" price $2.00");
-    // The status and finance tabs are hidden and disabled; the colour tab stays.
+    // The status and finance tabs are hidden and disabled; the colour tab of a colour type stays.
     assert_eq!(tabs, [(true, true), (true, true), (false, false)]);
 }
 
@@ -443,4 +474,195 @@ fn the_programs_tab_shows_the_upgrades_of_the_type_and_the_current_one() {
     assert!(told.ends_with(" upgrades 2 current none"), "{told}");
     assert_eq!(pressed(&ui), [false; 5]);
     assert!(BONUS.iter().flatten().all(|&e| hidden(&ui, e)));
+}
+
+/// `ints` and the colour page `rep` of a type of the colour groups of [`BUILDING_AI`].
+fn coloured(ints: &str, rep: &str) -> String {
+    format!(
+        "{ints}[colorrep]\ncolor = cr_color\n{rep}[Characteristics/Strings]\ncInfoImageName = ui/z/z\n"
+    )
+}
+
+const ONE_GROUP: &str = "replace = cr_a\ntitle = 2300\ndefaultpal = p/b.pal\n";
+const TWO_GROUPS: &str =
+    "replace = cr_a\ntitle = 2300\ndefaultpal = p/b.pal\nreplace = cr_b\ntitle = 2301\n";
+
+/// The panel of a type given as a whole file, selected and refreshed.
+fn colour_panel(
+    name: &str,
+    layout: i32,
+    ints: &str,
+    rep: &str,
+) -> (Interface, Vfs, World, Catalogue, Panel) {
+    let (mut ui, vfs, world, mut cat) = panel_in(name, layout, "");
+    let text = coloured(&format!("[Characteristics/Integers]\n{ints}"), rep);
+    cat.types[0].config = Some(std::sync::Arc::new(Config::parse(text.as_bytes()).unwrap()));
+    let mut panel = Panel::default();
+    panel.select(1, layout);
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    (ui, vfs, world, cat, panel)
+}
+
+fn off(ui: &Interface, id: i32) -> (bool, bool) {
+    (state(ui, id) & HIDDEN != 0, state(ui, id) & DISABLED != 0)
+}
+
+#[test]
+fn the_colour_tab_shows_for_a_type_with_colour_replacement_only() {
+    for (layout, tab) in [(CHARGING, 4577), (PLAIN, 4677)] {
+        for (ints, shown) in [
+            ("cIsColorReplaced = 1\n", true),
+            ("cIsColorReplaced = 0\n", false),
+            ("", false),
+            ("cIsColorReplaced = 2\n", false),
+            ("cIsColorReplaced = -1\n", false),
+            ("cIsColorReplaced = 99999999999\n", false),
+        ] {
+            let (ui, ..) = colour_panel("building-colour-tab", layout, ints, ONE_GROUP);
+            assert_eq!(off(&ui, tab), (!shown, !shown), "{layout} {ints:?}");
+        }
+    }
+}
+
+#[test]
+fn a_building_without_a_colour_tab_leaves_the_colour_page_for_the_first_tab() {
+    let (mut ui, vfs, world, mut cat, mut panel) = colour_panel(
+        "building-colour-leave",
+        PLAIN,
+        "cIsColorReplaced = 1\n",
+        ONE_GROUP,
+    );
+    ui.set_down(4677, true);
+    cat.types[0].config = Some(std::sync::Arc::new(Config::parse(b"").unwrap()));
+    panel.reselect();
+    panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(off(&ui, 4677), (true, true));
+    assert!(ui.is_down(4675) && !ui.is_down(4677));
+}
+
+#[test]
+fn the_colour_buttons_show_the_swatch_of_the_chosen_variant_and_the_group_title() {
+    let colour = |ui: &Interface, id| ui.fore_color(id).unwrap();
+    let (mut ui, vfs, mut world, cat, mut panel) = colour_panel(
+        "building-colour-fill",
+        PLAIN,
+        "cIsColorReplaced = 1\n",
+        TWO_GROUPS,
+    );
+    // Nothing stored: the default variants (`p/b.pal`, and the first of the second group).
+    assert_eq!(
+        [colour(&ui, 2461), colour(&ui, 2462)],
+        [[10, 50, 0], [200, 0, 0]]
+    );
+    assert_eq!(ui.text(2451).unwrap(), b"Roof");
+    assert_eq!(ui.text(2452).unwrap(), b"");
+    assert!(
+        [2461, 2451, 2462, 2452]
+            .iter()
+            .all(|&e| off(&ui, e) == (false, false))
+    );
+    // Stored choices, one of them past the variants (black).
+    for (stored, want) in [
+        (vec![2, 0], [[10, 20, 99], [200, 0, 0]]),
+        (vec![9, 5], [[0; 3]; 2]),
+    ] {
+        let at = world.find(1).unwrap();
+        world.zoo.entities[at].common.as_mut().unwrap().colors = stored;
+        panel.reselect();
+        panel.refresh(&mut ui, &world, &cat, &vfs, 0);
+        assert_eq!([colour(&ui, 2461), colour(&ui, 2462)], want);
+    }
+}
+
+#[test]
+fn fewer_than_two_groups_hide_the_unused_colour_buttons_and_labels() {
+    for (rep, hidden) in [(ONE_GROUP, [false, true]), ("", [true, true])] {
+        let (ui, ..) = colour_panel("building-colour-few", PLAIN, "cIsColorReplaced = 1\n", rep);
+        for (g, hide) in hidden.into_iter().enumerate() {
+            assert_eq!(off(&ui, 2461 + g as i32).0, hide, "{rep:?} {g}");
+            assert_eq!(off(&ui, 2451 + g as i32).0, hide, "{rep:?} {g}");
+        }
+        // A hidden button is never hit: it does not hold the never-shown flag off.
+        assert_eq!(
+            state(&ui, 2462) & crate::ui::layout::NEVER_SHOWN != 0,
+            hidden[1]
+        );
+    }
+}
+
+#[test]
+fn the_palette_shows_the_swatches_sorted_and_a_press_chooses_the_variant() {
+    let (mut ui, vfs, mut world, cat, mut panel) = colour_panel(
+        "building-colour-pick",
+        CHARGING,
+        "cIsColorReplaced = 1\n",
+        ONE_GROUP,
+    );
+    ui.set_hidden(PALETTE, true);
+    panel.pick(&mut ui, &world, &cat, &vfs, 0);
+    assert!(ui.shown(PALETTE));
+    // Red, then green, then blue: rc (10, 20, 99), rb (10, 50, 0), then ra twice.
+    let swatches: Vec<_> = SWATCHES
+        .map(|id| ui.fore_color(id).unwrap())
+        .take(4)
+        .collect();
+    assert_eq!(
+        swatches,
+        [[10, 20, 99], [10, 50, 0], [200, 0, 0], [200, 0, 0]]
+    );
+    // The buttons past the four variants are hidden (and the four shown).
+    assert!(
+        SWATCHES
+            .map(|id| off(&ui, id).0)
+            .eq([false, false, false, false].into_iter().chain([true; 20]))
+    );
+    // A press on the first: its variant is the third of the group, written as the choice.
+    let line = panel.choose(&mut ui, &mut world, &cat, &vfs, 0);
+    assert_eq!(line.as_deref(), Some("colour 1 0 2"));
+    let at = world.find(1).unwrap();
+    assert_eq!(world.zoo.entities[at].common.as_ref().unwrap().colors, [2]);
+    assert!(world.take_dirty(), "the picture is due");
+    assert_eq!(ui.fore_color(2461), Some([10, 20, 99]));
+    assert!(!ui.shown(PALETTE));
+    // Another press needs a palette that is open.
+    assert_eq!(panel.choose(&mut ui, &mut world, &cat, &vfs, 0), None);
+}
+
+#[test]
+fn equal_swatches_choose_the_first_variant_of_the_group_and_a_bad_press_changes_nothing() {
+    let (mut ui, vfs, mut world, cat, mut panel) = colour_panel(
+        "building-colour-ties",
+        PLAIN,
+        "cIsColorReplaced = 1\n",
+        TWO_GROUPS,
+    );
+    // The third and fourth sorted swatches are those of the variants 0 and 3: the first is chosen,
+    // on the second group, with the first group filled with its default.
+    panel.pick(&mut ui, &world, &cat, &vfs, 1);
+    let line = panel.choose(&mut ui, &mut world, &cat, &vfs, 0);
+    assert_eq!(line.as_deref(), Some("colour 1 1 0"));
+    let at = world.find(1).unwrap();
+    assert_eq!(
+        world.zoo.entities[at].common.as_ref().unwrap().colors,
+        [1, 0]
+    );
+    // Press numbers past the variants, a group the type lacks, and no building: nothing happens.
+    panel.pick(&mut ui, &world, &cat, &vfs, 0);
+    for k in [4, 23, 24, usize::MAX] {
+        assert_eq!(
+            panel.choose(&mut ui, &mut world, &cat, &vfs, k),
+            None,
+            "{k}"
+        );
+    }
+    assert!(ui.shown(PALETTE));
+    panel.pick(&mut ui, &world, &cat, &vfs, 2);
+    assert_eq!(
+        panel.choose(&mut ui, &mut world, &cat, &vfs, 0),
+        None,
+        "no third group"
+    );
+    world.remove(1);
+    panel.pick(&mut ui, &world, &cat, &vfs, 0);
+    assert_eq!(panel.choose(&mut ui, &mut world, &cat, &vfs, 0), None);
 }

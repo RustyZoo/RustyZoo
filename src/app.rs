@@ -930,6 +930,8 @@ mod cheat_tests;
 #[cfg(test)]
 mod random_use_tests;
 #[cfg(test)]
+mod recovery_panel_tests;
+#[cfg(test)]
 mod tank_panel_tests;
 #[cfg(test)]
 mod tests;
