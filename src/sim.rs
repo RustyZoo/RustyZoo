@@ -765,17 +765,6 @@ impl Sim {
         self.step_hooked(data, cat, world, money, step, update, &mut |_, _| {})
     }
 
-    /// Hands the zoo settings and the AI constants to the units for this step.
-    fn share_settings(&self, world: &mut World) {
-        let settings = &self.status.settings;
-        world.units.guest_join = (settings.join_happiness, settings.join_chance);
-        world.units.donation_factor = settings.donation_factor;
-        world.units.variable_speeds = self.ai.variable_unit_speeds != 0;
-        world.units.attraction_score = self.ai.use_attraction_attractiveness != 0;
-        world.units.show.distance = self.ai.max_dist_to_go_to_show;
-        world.units.prices = settings.prices;
-    }
-
     /// [`Sim::step_game`] with the date hook: `created` runs inside the guest creation, once the
     /// new guest is in the world and its admission booked, so what it adds to the world moves in
     /// this very step and its draws come before those of the entities (ambients 3.1).
@@ -839,7 +828,13 @@ impl Sim {
         }
         crate::show::settle(world, cat);
         world.units.ai_ticks = self.ai_ticks;
-        self.share_settings(world);
+        let settings = &self.status.settings;
+        world.units.guest_join = (settings.join_happiness, settings.join_chance);
+        world.units.donation_factor = settings.donation_factor;
+        world.units.variable_speeds = self.ai.variable_unit_speeds != 0;
+        world.units.attraction_score = self.ai.use_attraction_attractiveness != 0;
+        world.units.show.distance = self.ai.max_dist_to_go_to_show;
+        world.units.prices = settings.prices;
         let count = world.zoo.entities.len();
         for at in 0..count {
             // Read again at each index, as the original does.
