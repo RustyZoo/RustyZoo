@@ -64,9 +64,8 @@ impl App<'_> {
         world.units.set_period(self.sim.ai.status_period);
         self.set_up_loaded(file.as_deref(), saved, &world.zoo);
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
-        // The overlay of the types comes first; the animals are cut by the types as the file leaves
-        // them and the programs lengthen them after (save games 15.5). Their availability follows
-        // the scenario's resume.
+        // The animals are cut by the types as the file leaves them, the programs lengthen them
+        // after (save games 15.5). Their availability follows the scenario's resume.
         let applied = tree
             .as_mut()
             .map(|t| t.apply(self.renderer.catalogue(), &mut world.research));
@@ -167,8 +166,7 @@ impl App<'_> {
         let mut forced = false;
         if let Some(scenario) = scenario {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
-            // The research section replaces what a forced research does to the types (7.3); the
-            // animals still get its lengthening, before the section's own.
+            // The section replaces a forced research for the types (7.3), not for the animals.
             if let Some(s) = self.sim.scenario() {
                 forced = !s.gui().take_forced().is_empty();
             }
@@ -182,15 +180,9 @@ impl App<'_> {
         self.look_up_unlocks();
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
-            let cat = self.renderer.catalogue();
-            let mut life = if forced {
-                tree.forced_life(cat)
-            } else {
-                Vec::new()
-            };
-            life.extend(section_life);
+            let life = tree.loaded_life(self.renderer.catalogue(), forced, section_life);
             crate::animal::lengthen(&mut game.world, &life);
-            game.build.start_research(cat, &flags);
+            game.build.start_research(self.renderer.catalogue(), &flags);
             // The resumed scenario sets the selector over the file's value if it has a rule for it.
             game.build.set_scenario(tree.off, tree.selection);
             game.world.units.upgrades = research::upgrades(&tree);
