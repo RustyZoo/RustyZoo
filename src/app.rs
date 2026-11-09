@@ -928,6 +928,8 @@ mod cheat_season_tests;
 #[cfg(test)]
 mod cheat_tests;
 #[cfg(test)]
+mod colour_tab_tests;
+#[cfg(test)]
 mod random_use_tests;
 #[cfg(test)]
 mod recovery_panel_tests;
