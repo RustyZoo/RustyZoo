@@ -133,7 +133,17 @@ pub(crate) fn pending(
     let t = cat.types.get(ty)?;
     let form = if is_egg(t) { Form::Egg } else { Form::Plain };
     let dir = facing(0, view);
-    pending_of(world, cat, water, ty, dir, view, aim, price(t, october), form)
+    pending_of(
+        world,
+        cat,
+        water,
+        ty,
+        dir,
+        view,
+        aim,
+        price(t, october),
+        form,
+    )
 }
 
 /// The type the pending unit of the tool `tool` is made from (unit placing 5.4), given the type
@@ -348,14 +358,7 @@ fn lets_through(world: &World, object: usize) -> bool {
 /// The checks of 6.1 for an animal (6.2: a crate may stand on the zoo grounds), of 6.3 for a staff
 /// member or of 6.4 for a guest, in order. `tanked`: the tank point found a tank, so the unit is in
 /// tank mode.
-fn check(
-    p: &mut Pending,
-    world: &World,
-    t: &EntityType,
-    water: &[bool],
-    tanked: bool,
-    form: Form,
-) {
+fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool, form: Form) {
     let crated = form == Form::Crate;
     let staff = staff::is_staff(t);
     let guest = t.class == "guests";
@@ -723,7 +726,10 @@ pub(crate) fn refuse(
     let Some(at) = world.find(id) else {
         return false;
     };
-    let (keys, sickly) = (crate::animal::keys(world, cat, at), crate::animal::breed::sickly(cat));
+    let (keys, sickly) = (
+        crate::animal::keys(world, cat, at),
+        crate::animal::breed::sickly(cat),
+    );
     let egg = match world.units.get_mut(id).map(|u| &mut u.part) {
         Some(Part::Animal(a)) if a.egg => {
             if a.hatch < 1 {
@@ -752,17 +758,25 @@ pub(crate) fn refuse(
         return false;
     };
     let width = world.zoo.width as usize;
-    let (x, y) = ((spot % width) as i32 * 64 + 32, (spot / width) as i32 * 64 + 32);
+    let (x, y) = (
+        (spot % width) as i32 * 64 + 32,
+        (spot / width) as i32 * 64 + 32,
+    );
     let z = ground_height(&world.zoo.tiles[spot], 32, 32);
     world.show_moved(at, false);
     world.lift_unit(at);
     let from = (world.zoo.entities[at].common.as_ref())
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
-    let rotation = world.zoo.entities[at].common.as_ref().map_or(0, |c| c.rotation);
+    let rotation = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .map_or(0, |c| c.rotation);
     world.place_unit(at, (x, y, z), rotation);
     world.show_moved(at, true);
     swim::put(world, id);
-    from.into_iter().chain([spot]).for_each(|t| world.mark_rating(t));
+    from.into_iter()
+        .chain([spot])
+        .for_each(|t| world.mark_rating(t));
     true
 }
 

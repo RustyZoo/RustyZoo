@@ -437,7 +437,10 @@ impl App<'_> {
                         crate::animal::breed::pending(&game.world, cat, ty, rng)
                             .map(|(ty, a)| (ty, crate::unit::Part::Animal(a)))
                     }
-                    _ => Some((ty, crate::unit::Part::Staff(crate::staff::create(Some(t), kind, rng)))),
+                    _ => Some((
+                        ty,
+                        crate::unit::Part::Staff(crate::staff::create(Some(t), kind, rng)),
+                    )),
                 };
                 game.placing.made = made.and_then(|(ty, part)| {
                     Some(place::unit::Made {

@@ -3,9 +3,9 @@
 
 use super::*;
 use crate::behaviour::NoData;
-use crate::sim::Rng;
 use crate::config::Config;
 use crate::fixtures;
+use crate::sim::Rng;
 use crate::world::TankKind;
 use crate::zoo::{Common, Fence, Tile, Zoo};
 
@@ -375,7 +375,15 @@ fn an_animal_is_bought_booked_numbered_and_one_that_is_refused_costs_nothing() {
     money.set_cash(1000.0);
     let zebra = &cat.types[ZEBRA];
     let p = at(&w, ZEBRA, (2, 2));
-    let placed = place(&mut w, &mut money, zebra, "Test Zebra", &p, shape, (None, &NoData));
+    let placed = place(
+        &mut w,
+        &mut money,
+        zebra,
+        "Test Zebra",
+        &p,
+        shape,
+        (None, &NoData),
+    );
     let Outcome::Placed(id) = placed else {
         panic!("{placed:?}")
     };
@@ -681,7 +689,15 @@ fn hiring_books_the_wages_of_the_class_names_the_member_and_empties_the_undo_lis
     money.set_cash(1700.0);
     let mut hire = |w: &mut World, ty: usize, tile| {
         let p = at(w, ty, tile);
-        place(w, &mut money, &cat.types[ty], "Staff", &p, shape, (None, &NoData))
+        place(
+            w,
+            &mut money,
+            &cat.types[ty],
+            "Staff",
+            &p,
+            shape,
+            (None, &NoData),
+        )
     };
     assert!(matches!(hire(&mut w, KEEPER, (4, 3)), Outcome::Placed(_)));
     assert!(matches!(hire(&mut w, GUIDE, (3, 3)), Outcome::Placed(_)));
@@ -1232,7 +1248,13 @@ fn the_tank_point_looks_48_plus_the_tank_limit_steps() {
             w.set_tank_config(crate::exhibit::TankConfig { limit, ..config });
         }
         let id = w.tank_at(2 * 8 + 2).unwrap();
-        w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap().level = 60;
+        w.exhibits_mut()
+            .get_mut(id)
+            .unwrap()
+            .tank
+            .as_mut()
+            .unwrap()
+            .level = 60;
         over(&w, HIPPO, behind_the_tank(60)).map(|p| p.tile)
     };
     // No tanks.cfg: the program's 30 gives 78 steps. The limit 13 gives 61, the last step being
@@ -1256,7 +1278,11 @@ fn the_ladder_row_also_refuses_a_unit_that_covers_the_middle_of_the_gate_tile() 
         let rect = (3 * 64, 2 * 64 + 32, half, half);
         tank_message(&w, id, 19, &cat.types[ty], rect, Form::Plain)
     };
-    assert_eq!(row(MAINT, 32), Some(Some(LADDER)), "32 apart, bounds included");
+    assert_eq!(
+        row(MAINT, 32),
+        Some(Some(LADDER)),
+        "32 apart, bounds included"
+    );
     assert_ne!(row(MAINT, 31), Some(Some(LADDER)));
     assert_ne!(row(KEEPER, 32), Some(Some(LADDER)));
     for half in [0, -5, i32::MAX] {
@@ -1393,8 +1419,10 @@ fn a_placed_unit_keeps_the_id_and_the_state_it_was_made_with_and_is_in_tank_mode
     let id = w.take_id().unwrap();
     assert_eq!(id, 1001, "the counter moved at the creation");
     // The creation state: an animal with a happiness no other path gives.
-    let mut made = crate::animal::Animal::default();
-    made.happiness = -77;
+    let made = crate::animal::Animal {
+        happiness: -77,
+        ..Default::default()
+    };
     let made = Made {
         ty: HIPPO,
         id,
@@ -1436,7 +1464,15 @@ fn a_hired_staff_member_marks_its_exhibit_for_a_new_rating_and_an_animal_does_to
         money.set_cash(5000.0);
         w.exhibits_mut().get_mut(pen).unwrap().rating.dirty = false;
         let p = at(&w, ty, (2, 2));
-        let done = place(&mut w, &mut money, &cat.types[ty], "x", &p, shape, (None, &NoData));
+        let done = place(
+            &mut w,
+            &mut money,
+            &cat.types[ty],
+            "x",
+            &p,
+            shape,
+            (None, &NoData),
+        );
         assert!(matches!(done, Outcome::Placed(_)), "{done:?}");
         assert!(w.exhibits().get(pen).unwrap().rating.dirty, "{ty}");
     }
@@ -1460,7 +1496,12 @@ fn an_animal_refused_by_a_tank_is_crated_and_moved_and_an_egg_never_crated() {
     let width = 8;
     let moved = |w: &World, e: u32| {
         let c = w.zoo.entities[w.find(e).unwrap()].common.clone().unwrap();
-        (c.x.div_euclid(64), c.y.div_euclid(64), c.x.rem_euclid(64), c.y.rem_euclid(64))
+        (
+            c.x.div_euclid(64),
+            c.y.div_euclid(64),
+            c.x.rem_euclid(64),
+            c.y.rem_euclid(64),
+        )
     };
     assert!(refuse(&mut w, &cat, id, 0, &NoData));
     let (x, y, lx, ly) = moved(&w, id);

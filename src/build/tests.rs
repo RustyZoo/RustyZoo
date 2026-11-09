@@ -1170,7 +1170,8 @@ fn the_adopt_panel_lists_each_species_once_as_the_sex_chosen_in_the_order_of_the
 fn a_shelter_shows_its_capacity_as_a_plain_number_until_the_unselect_or_a_rebuild() {
     let (mut ui, vfs, _install) = interface("capacity");
     let shelter = |name: &str, keys: &str, id: i32| {
-        let ini = format!("[Member]\nshelters\n[Characteristics/Integers]\ncPurchaseCost=50\n{keys}");
+        let ini =
+            format!("[Member]\nshelters\n[Characteristics/Integers]\ncPurchaseCost=50\n{keys}");
         EntityType {
             name_id: id,
             ..ty("building", name, "", &ini)
@@ -1193,7 +1194,10 @@ fn a_shelter_shows_its_capacity_as_a_plain_number_until_the_unselect_or_a_rebuil
     ui.set_button(3255, true, true);
     build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
     assert_eq!(build.list, [2, 3, 4]);
-    assert_eq!((shown(&ui), text(&ui, 2091)), ([true, true], "1234567".into()));
+    assert_eq!(
+        (shown(&ui), text(&ui, 2091)),
+        ([true, true], "1234567".into())
+    );
     // A building file with no key holds 1, and a negative number is written as it is.
     for (at, want) in [(1, "1"), (2, "-5")] {
         build.selected(&mut ui, &vfs, &cat, 1_000_000 + 2019 * 1000 + at, &mut log);

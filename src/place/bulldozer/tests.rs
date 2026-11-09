@@ -566,7 +566,10 @@ fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
         cash: 1000.0,
         ..Money::default()
     };
-    assert!(!removable(&w, &cat, 0), "the bulldozer never removes a unit");
+    assert!(
+        !removable(&w, &cat, 0),
+        "the bulldozer never removes a unit"
+    );
     assert_eq!(refund(&cat, &w.zoo.entities[0]), 0.0);
     assert_eq!(check(&w, &cat, 0, true, &[]), Check::Ask(Question::Fire));
     assert_eq!(Question::Fire.pair(), None);

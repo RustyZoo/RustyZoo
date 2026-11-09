@@ -748,7 +748,11 @@ fn an_animal_sold_with_no_answer_stays_and_its_panel_is_closed() {
         s.app.game.as_mut().unwrap().selected = Some(id);
         s.app.animal_sell();
         assert!(s.asking());
-        assert_eq!(s.app.game.as_ref().unwrap().selected, None, "the panel closes");
+        assert_eq!(
+            s.app.game.as_ref().unwrap().selected,
+            None,
+            "the panel closes"
+        );
         s.pass(&[Command::Key(Key::N, false, false)]);
         assert_eq!((s.count(), s.cash()), (1, 50_000.0));
         // Nothing selected: the button does nothing.
@@ -979,6 +983,35 @@ fn objects_in_a_new_tank_are_asked_about_and_yes_sells_them_before_the_name() {
         let world = &s.app.game.as_ref().unwrap().world;
         assert!(world.refused(1).is_empty());
         assert_eq!(world.exhibits().list().len(), 1);
+    });
+}
+
+#[test]
+fn yes_to_the_tank_question_crates_a_land_animal_and_moves_it_to_the_grounds_unsold() {
+    with_game("tank-yes-animal", "[UI]\nconfirmSell=0\n", |s| {
+        let zebra = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.game.as_mut().unwrap().world.begin();
+        for side in [0, 2, 4, 6] {
+            s.fence(5, 20, 20, side);
+        }
+        s.app.exhibits_told();
+        assert!(s.asking());
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert!(
+            !told.iter().any(|l| l.starts_with("world remove")),
+            "{told:?}"
+        );
+        let world = &s.app.game.as_ref().unwrap().world;
+        let at = world.find(zebra).expect("the zebra is not sold");
+        let c = world.zoo.entities[at].common.as_ref().unwrap();
+        let (tx, ty) = (c.x.div_euclid(64), c.y.div_euclid(64));
+        assert_eq!((c.x.rem_euclid(64), c.y.rem_euclid(64)), (32, 32));
+        assert!((tx - 20).abs() + (ty - 20).abs() >= 3, "{tx},{ty}");
+        assert!(matches!(
+            world.units.get(zebra).map(|u| &u.part),
+            Some(crate::unit::Part::Animal(a)) if a.crated
+        ));
+        assert_eq!(s.cash(), 50_000.0, "nothing was paid back");
     });
 }
 

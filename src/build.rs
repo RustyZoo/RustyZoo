@@ -889,7 +889,10 @@ impl Build {
             let shelters = tag == "shelters";
             let [label, number_id] = CAPACITY;
             let capacity = number(ty, "cCapacity").unwrap_or(1.0) as i64;
-            ui.set_text(number_id, &to_cp1252(&crate::text::format::integer(capacity, false)));
+            ui.set_text(
+                number_id,
+                &to_cp1252(&crate::text::format::integer(capacity, false)),
+            );
             ui.set_hidden(label, !shelters);
             ui.set_hidden(number_id, !(shelters && ty.class == "building"));
         }
