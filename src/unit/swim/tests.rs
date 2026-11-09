@@ -390,3 +390,88 @@ fn a_swimmer_standing_in_water_chooses_from_the_water_table() {
     a.egg = true;
     assert_eq!(place(&w, 1), Place::Land);
 }
+
+fn animal(edit: impl FnOnce(&mut Unit, &mut crate::animal::Animal)) -> Unit {
+    let mut unit = Unit::new(1, Kind::Animal);
+    let mut a = crate::animal::Animal::default();
+    edit(&mut unit, &mut a);
+    unit.part = Part::Animal(a);
+    unit
+}
+
+#[test]
+fn the_idle_animation_of_a_unit_follows_the_order_of_its_states() {
+    let names = |u: &Unit, wet| {
+        let r = rest(u, wet);
+        (r.forced, r.named)
+    };
+    // Land: the plain idle.
+    assert_eq!(names(&animal(|_, _| ()), false), (None, "idle"));
+    // The egg test first, then the crate, then the water, whatever the tank mode.
+    let diver = |u: &mut Unit| (u.mover.swims, u.mover.underwater, u.tank) = (true, true, 4);
+    let both = animal(|u, a| {
+        diver(u);
+        (a.egg, a.crated) = (true, true);
+    });
+    assert_eq!(names(&both, true).0, Some("egg_idle"));
+    let crated = animal(|u, a| {
+        diver(u);
+        a.crated = true;
+    });
+    assert_eq!(names(&crated, true).0, Some("box_idle"));
+    // A swimmer on water takes the water idle before the tank modes; an egg never swims.
+    let swimmer = animal(|u, _| diver(u));
+    assert_eq!(names(&swimmer, true), (Some("water_idle"), "subidle"));
+    assert_eq!(names(&swimmer, false), (None, "subidle"));
+    let land = animal(|u, _| (u.mover.swims, u.mover.underwater) = (false, false));
+    assert_eq!(names(&land, true), (None, "idle"));
+    // The tank modes, with the tank test.
+    let tank = |mode, swims| {
+        animal(|u, _| (u.mover.underwater, u.tank, u.mover.swims) = (true, mode, swims))
+    };
+    assert_eq!(names(&tank(3, false), true), (None, "surfidle"));
+    assert_eq!(names(&tank(4, false), false), (None, "subidle"));
+    assert_eq!(names(&tank(0, false), false), (None, "idle"));
+    // An egg is not a diver: its tank mode names nothing.
+    let egg = animal(|u, a| (u.mover.underwater, u.tank, a.egg) = (true, 4, true));
+    assert_eq!(names(&egg, false), (Some("egg_idle"), "idle"));
+    // Guests and staff swim too; a helicopter's idle name follows its flight.
+    let mut guest = Unit::new(2, Kind::Guest);
+    guest.mover.swims = true;
+    assert_eq!(names(&guest, true), (Some("water_idle"), "idle"));
+    let mut heli = Unit::new(3, Kind::Heli);
+    let mut staff = crate::unit::Staff::default();
+    heli.part = Part::Staff(staff.clone());
+    assert_eq!(names(&heli, false), (None, "idle"));
+    staff.heli.flying = true;
+    heli.part = Part::Staff(staff);
+    assert_eq!(names(&heli, false), (None, "level"));
+}
+
+#[test]
+fn the_unit_hands_its_idle_animation_to_the_runner_before_each_run() {
+    // Unit 1 stands on a water tile, unit 2 on dry ground.
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32), (2, (8, 6), 0)]);
+    w.set_water(vec![false, true]);
+    w.zoo.tiles[tile((3, 3))].terrain = 1;
+    let rested = |w: &mut World, id| {
+        let at = w.find(id).unwrap();
+        let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
+        nesting(&mut unit, w, at);
+        let rest = unit.runner.rest;
+        *w.units.get_mut(id).unwrap() = unit;
+        (rest.forced, rest.named)
+    };
+    for id in [1, 2] {
+        let u = w.units.get_mut(id).unwrap();
+        (u.typed, u.mover.swims, u.tank) = (true, true, 0);
+    }
+    assert_eq!(rested(&mut w, 2), (None, "idle"));
+    assert!(wet(&w, w.find(1).unwrap()));
+    assert_eq!(rested(&mut w, 1), (Some("water_idle"), "idle"));
+    let Part::Animal(a) = &mut w.units.get_mut(2).unwrap().part else {
+        panic!("not an animal");
+    };
+    a.egg = true;
+    assert_eq!(rested(&mut w, 2).0, Some("egg_idle"));
+}

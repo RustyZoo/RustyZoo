@@ -1,5 +1,5 @@
 use super::*;
-use crate::behaviour::parse_call;
+use crate::behaviour::{Number, Row, parse_call};
 use crate::zoo::Behaviour as Saved;
 use std::collections::HashMap;
 
@@ -369,7 +369,7 @@ fn a_new_base_waits_for_the_loop_in_progress_and_a_cut_ends_it() {
     // With the base showing and nothing queued the cut stays, and takes the next queued sequence.
     anim.cut();
     anim.advance(10, &timing);
-    anim.queue(vec![Entry::new("c", false)]);
+    anim.queue(vec![Entry::new("c", false)], "idle");
     anim.advance(10, &timing);
     assert_eq!(anim.name, "c");
 }
@@ -576,7 +576,7 @@ fn a_stop_at_end_hold_is_never_left() {
     let mut held = Animation::default();
     held.advance(0, &timing);
     held.stop = true;
-    held.queue(vec![Entry::new("a", false)]);
+    held.queue(vec![Entry::new("a", false)], "idle");
     held.advance(5000, &timing);
     held.advance(5000, &timing);
     assert_eq!((held.shown(), held.stopped), (2, true));
@@ -592,7 +592,7 @@ fn set_base_lasts_until_the_next_play() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![Entry::new("a", false)]);
+    anim.queue(vec![Entry::new("a", false)], "idle");
     anim.advance(200, &timing);
     assert_eq!(anim.name, "a");
     // `fSetBase` cuts the sequence and shows the new base at once, from its first frame.
@@ -606,7 +606,7 @@ fn set_base_lasts_until_the_next_play() {
         assert_eq!(anim.name, "b");
     }
     // A play call makes the idle animation the base again.
-    anim.queue(vec![Entry::new("c", false)]);
+    anim.queue(vec![Entry::new("c", false)], "idle");
     anim.advance(200, &timing);
     assert_eq!(anim.name, "c");
     anim.advance(200, &timing);
@@ -631,7 +631,7 @@ fn a_sound_starts_at_the_next_advance() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![sounding("a"), Entry::new("b", false)]);
+    anim.queue(vec![sounding("a"), Entry::new("b", false)], "idle");
     // The entry becomes current at the end of this advance: no sound yet, and none for a step of 0.
     anim.advance(300, &timing);
     assert_eq!(anim.name, "a");
@@ -647,11 +647,14 @@ fn a_sound_starts_at_the_next_advance() {
     // An entry that a long step skips whole never sounds.
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue(vec![
-        Entry::new("a", false),
-        sounding("b"),
-        Entry::new("c", false),
-    ]);
+    anim.queue(
+        vec![
+            Entry::new("a", false),
+            sounding("b"),
+            Entry::new("c", false),
+        ],
+        "idle",
+    );
     anim.advance(300, &timing);
     anim.advance(650, &timing);
     assert_eq!((anim.name.as_str(), anim.entry), ("c", 2));
@@ -772,11 +775,14 @@ fn an_animation_a_sequence_names_but_the_type_lacks_ends_it() {
         })
     };
     anim.advance(0, &timing);
-    anim.queue(vec![
-        Entry::new("a", false),
-        Entry::new("zz", false),
-        Entry::new("a", false),
-    ]);
+    anim.queue(
+        vec![
+            Entry::new("a", false),
+            Entry::new("zz", false),
+            Entry::new("a", false),
+        ],
+        "idle",
+    );
     // The type has no base animation: the player takes the sequence at once.
     anim.advance(0, &timing);
     assert_eq!(anim.name, "a");
@@ -798,7 +804,7 @@ fn a_huge_time_is_cut_and_a_huge_step_skips_whole_animations() {
     };
     let mut anim = Animation::default();
     anim.advance(0, &timing);
-    anim.queue((0..5).map(|_| Entry::new("d", false)).collect());
+    anim.queue((0..5).map(|_| Entry::new("d", false)).collect(), "idle");
     anim.advance(0, &timing);
     // 5 entries of 200 ms; 450 ms skips two and lands 50 ms into the third.
     anim.advance(450, &timing);
@@ -1050,4 +1056,63 @@ fn a_nested_set_is_saved_inside_its_parent() {
         rig.runner.saved(&odd, |_| None).unwrap().levels[0].list_b,
         ["fNoSuchCall(a)"]
     );
+}
+
+/// The base a play call of `rest` leaves, `None` when the call fails.
+fn played_base(extra: &[&str], rest: Rest) -> Option<String> {
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    for name in extra {
+        rig.data.timings.insert(
+            name.to_string(),
+            Timing {
+                count: 1,
+                delay: 100,
+            },
+        );
+    }
+    rig.runner.rest = rest;
+    rig.tick(100);
+    (!rig.anim.queue.is_empty()).then(|| rig.anim.base.clone())
+}
+
+#[test]
+fn a_play_call_makes_the_idle_animation_of_the_unit_the_base() {
+    let rest = |forced, named| Rest { forced, named };
+    let base = |extra: &[&str], r| played_base(extra, r);
+    // The plain idle on land.
+    assert_eq!(base(&[], rest(None, "idle")).as_deref(), Some("idle"));
+    // The named idle, or the plain idle when the type has no animation of that name.
+    assert_eq!(
+        base(&["subidle"], rest(None, "subidle")).as_deref(),
+        Some("subidle")
+    );
+    assert_eq!(base(&[], rest(None, "surfidle")).as_deref(), Some("idle"));
+    // The forced idle of an egg, a crate or the water.
+    assert_eq!(
+        base(&["egg_idle", "subidle"], rest(Some("egg_idle"), "subidle")).as_deref(),
+        Some("egg_idle")
+    );
+    assert_eq!(
+        base(&["water_idle"], rest(Some("water_idle"), "idle")).as_deref(),
+        Some("water_idle")
+    );
+}
+
+#[test]
+fn a_play_call_fails_when_the_unit_has_no_idle_animation() {
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)", "fPlay(c)"])]);
+    rig.runner.rest = Rest {
+        forced: Some("box_idle"),
+        named: "idle",
+    };
+    // The type has `idle` but not the crate idle: no fallback, the call fails and ends the set.
+    rig.tick(100);
+    rig.tick(100);
+    assert!(!rig.runner.running() && rig.anim.queue.is_empty());
+    // With no idle at all the call fails too.
+    let mut rig = Rig::new(&[("bAmbient", &["fPlay(a)"])]);
+    rig.data.timings.remove("idle");
+    rig.tick(100);
+    rig.tick(100);
+    assert!(!rig.runner.running() && rig.anim.queue.is_empty());
 }
