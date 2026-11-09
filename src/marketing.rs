@@ -124,8 +124,11 @@ impl Marketing {
     }
 }
 
+/// A file as the shared reader loads it: missing, empty or without a section header is unreadable.
 fn read(vfs: &Vfs, name: &str) -> Option<Config> {
-    Config::parse(&vfs.read(name).ok()?).ok()
+    Config::parse(&vfs.read(name).ok()?)
+        .ok()
+        .filter(Config::has_header)
 }
 
 /// The levels the `funding` values of the file name, in order; a missing key or section leaves 0.

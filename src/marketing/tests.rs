@@ -91,6 +91,11 @@ fn no_key_or_an_unreadable_outer_file_makes_no_configuration() {
         Marketing::default()
     );
     assert_eq!(setup("empty", "marketing=\n", &[]), Marketing::default());
+    // An outer file that is empty or has no section header is unreadable too.
+    for (n, body) in [("emptyfile", ""), ("noheader", "marketing=ghost.cfg\n")] {
+        let files = [("m.cfg", body)];
+        assert_eq!(setup(n, "marketing=m.cfg\n", &files), Marketing::default());
+    }
     // Without a configuration nothing is charged and nothing is added to the rating.
     let (mut m, mut cash) = (Marketing::default(), money(100.0));
     m.step(100_000, &mut cash);
