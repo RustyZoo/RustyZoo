@@ -463,6 +463,12 @@ impl Build {
         self.held = Some(ty);
     }
 
+    /// The catalogue positions the chosen tab lists, in its order, as a test looks for an item.
+    #[cfg(test)]
+    pub(crate) fn listed(&self) -> &[usize] {
+        &self.list
+    }
+
     /// The staff type `ty` makes a pending staff member without a choice in the panels: the new
     /// pending unit of the same item after a hire (unit placing 7.1 step 6), or a test.
     pub(crate) fn chose(&mut self, ty: usize) {
