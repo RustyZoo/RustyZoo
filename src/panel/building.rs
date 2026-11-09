@@ -14,7 +14,9 @@
 mod colour;
 mod filter;
 
-pub(crate) use colour::{BUTTONS as COLOUR_BUTTONS, LAYOUT as COLOURS, PALETTE, SWATCHES};
+pub(crate) use colour::{
+    BUTTONS as COLOUR_BUTTONS, LAYOUT as COLOURS, PALETTE, SWATCHES, is_colour,
+};
 pub(crate) use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SELL};
 
 use crate::building::{Kind, Live, moveable, upgrade};

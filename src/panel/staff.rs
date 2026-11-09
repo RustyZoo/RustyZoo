@@ -235,12 +235,11 @@ pub(crate) fn job_text(
         })
     };
     let show = |id: u16| scheduled(world, cat, id).map(|name_id| ui.string(name_id));
-    let text = duty(unit, type_id, place, animal, show).map_or(String::new(), |(s, name)| {
+    duty(unit, type_id, place, animal, show).map_or(String::new(), |(s, name)| {
         let none = Words::new(|_| String::new());
         let args = name.iter().map(|n| Arg::Text(n)).collect::<Vec<_>>();
         format::expand(&none, &ui.string(s), &args)
-    });
-    text
+    })
 }
 
 /// The selected staff member and the refresh clock.

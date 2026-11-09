@@ -2,7 +2,6 @@
 //! button, the palette and the choice, on the map of the bulldozer tests with made-up layouts.
 
 use super::bulldozer_tests::{ROOT, Session, catalogue, ty, with_game_of};
-use super::*;
 use crate::panel::building::{COLOUR_BUTTONS, COLOURS, PALETTE};
 
 const PANEL: &str = "[LayoutInfo]\nid=20\nlayer=7\nx=0\ny=0\ndx=60\ndy=60\n\

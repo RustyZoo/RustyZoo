@@ -150,26 +150,42 @@ impl App<'_> {
         game.building.clock.force = true;
     }
 
-    /// A colour button of the colour page (guest buildings 20 point 4): its palette opens.
-    pub(super) fn building_colour(&mut self, button: i32) {
-        playing!(self, game, ui);
-        let group = panel::COLOUR_BUTTONS.iter().position(|&b| b == button);
-        if let Some(g) = group {
-            let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
-            game.building.pick(ui, &game.world, cat, vfs, g);
+    /// A button of the building panels was pressed: the price buttons, the sell and pick-up
+    /// buttons, an upgrade, a colour button or swatch, or a tab (which forces a refresh);
+    /// whether it was one of them.
+    pub(super) fn building_pressed(&mut self, id: i32) -> bool {
+        match id {
+            panel::UP | panel::DOWN => self.building_price(id == panel::UP),
+            panel::SELL | panel::PLAIN_SELL | panel::FILTER_SELL => self.building_sell(),
+            panel::PICK_UP => self.building_pick_up(),
+            t if panel::UPGRADES.contains(&t) => self.building_upgrade(t),
+            t if panel::is_colour(t) => self.building_colour(t),
+            t if panel::TABS.contains(&t) => {
+                if let Some(game) = &mut self.game {
+                    game.building.clock.force = true;
+                }
+            }
+            _ => return false,
         }
+        true
     }
 
-    /// A swatch of the palette (guest buildings 20 point 5): the building takes that colour for
-    /// the group. Logs `building colour ID GROUP VARIANT`.
-    pub(super) fn building_swatch(&mut self, button: i32) {
+    /// A colour button of the colour page (guest buildings 20 point 4): its palette opens. A
+    /// swatch of the palette (point 5): the building takes that colour for the group. Logs
+    /// `building colour ID GROUP VARIANT`.
+    fn building_colour(&mut self, button: i32) {
         playing!(self, game, ui);
-        let k = usize::try_from(button - *panel::SWATCHES.start()).unwrap_or(0);
         let (cat, vfs) = (self.renderer.catalogue(), self.renderer.vfs());
-        let line = game.building.choose(ui, &mut game.world, cat, vfs, k);
-        self.lines
-            .panel
-            .extend(line.map(|l| format!("building {l}")));
+        match panel::COLOUR_BUTTONS.iter().position(|&b| b == button) {
+            Some(g) => game.building.pick(ui, &game.world, cat, vfs, g),
+            None => {
+                let k = usize::try_from(button - *panel::SWATCHES.start()).unwrap_or(0);
+                let line = game.building.choose(ui, &mut game.world, cat, vfs, k);
+                self.lines
+                    .panel
+                    .extend(line.map(|l| format!("building {l}")));
+            }
+        }
     }
 
     /// The sell button (placing 7): the selected building goes as the bulldozer removes it, after

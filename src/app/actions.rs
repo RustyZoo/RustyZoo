@@ -112,29 +112,7 @@ impl App<'_> {
                 recovery::FIRE if self.game.is_some() => self.recovery_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
-                panel_building::UP | panel_building::DOWN if self.game.is_some() => {
-                    self.building_price(id == panel_building::UP);
-                }
-                panel_building::SELL | panel_building::PLAIN_SELL | panel_building::FILTER_SELL
-                    if self.game.is_some() =>
-                {
-                    self.building_sell();
-                }
-                panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
-                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
-                    self.building_upgrade(t);
-                }
-                t if panel_building::COLOUR_BUTTONS.contains(&t) && self.game.is_some() => {
-                    self.building_colour(t);
-                }
-                t if panel_building::SWATCHES.contains(&t) && self.game.is_some() => {
-                    self.building_swatch(t);
-                }
-                t if panel_building::TABS.contains(&t) && self.game.is_some() => {
-                    if let Some(game) = &mut self.game {
-                        game.building.clock.force = true;
-                    }
-                }
+                _ if self.game.is_some() && self.building_pressed(id) => {}
                 staff::REMOVE | staff::REMOVE_ALL if self.game.is_some() => {
                     self.staff_remove(id == staff::REMOVE_ALL);
                 }
