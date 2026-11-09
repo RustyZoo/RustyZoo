@@ -144,6 +144,7 @@ impl App<'_> {
                 self.load_saved(file);
             }
             Command::Save(file) => self.save_game(file),
+            Command::Scenario(file) => self.play_scenario(file),
             Command::Award(id) => {
                 if let Some(game) = &mut self.game {
                     crate::award::add(&mut game.world.zoo.awards, id);
