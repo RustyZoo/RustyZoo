@@ -162,6 +162,14 @@ fn with_staff(name: &str, sexes: &[&str], test: impl FnOnce(&mut App)) {
     test(&mut app);
 }
 
+/// Chooses the unit item `ty` as the panel does: it is the tool and its pending unit is made.
+pub(super) fn hold(app: &mut App, ty: usize) {
+    let game = app.game.as_mut().unwrap();
+    game.build.hold(ty);
+    game.build.chose(ty);
+    app.make_pending();
+}
+
 /// The log lines of the pass `pass` that are about the world, the tool or the money.
 fn said(app: &App, pass: u64) -> Vec<String> {
     let lead = format!("pass {pass} t={pass} ");
@@ -187,7 +195,7 @@ pub(super) fn click(app: &mut App, pass: u64, to: Command) -> Vec<String> {
 #[test]
 fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
     with_app("app-adopt", |app| {
-        app.game.as_mut().unwrap().build.hold(2);
+        hold(app, 2);
         let camera = app.camera().unwrap().clone();
         let at = |lx: i32, ly: i32| point(&camera, 20 * 64 + lx, 20 * 64 + ly);
         // Two animals in the pen, one in the first quarter of the tile and one in the last.
@@ -229,7 +237,7 @@ fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_draw
     with_app("app-hire", |app| {
         // The clock stands still, so the only draws are the hire's.
         app.game.as_mut().unwrap().paused = true;
-        app.game.as_mut().unwrap().build.hold(3);
+        hold(app, 3);
         let camera = app.camera().unwrap().clone();
         let grounds = point(&camera, 19 * 64 + 32, 20 * 64 + 32);
         let mut generator = app.sim.rng.clone();
@@ -383,7 +391,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
 #[test]
 fn an_adoption_plays_the_place_sound_of_its_type_and_a_hire_place_wav() {
     with_app("app-adopt-sound", |app| {
-        app.game.as_mut().unwrap().build.hold(2);
+        hold(app, 2);
         let camera = app.camera().unwrap().clone();
         let heard = |app: &App| {
             let sounds = app.unit_sounds().iter();
@@ -394,7 +402,7 @@ fn an_adoption_plays_the_place_sound_of_its_type_and_a_hire_place_wav() {
         let want = (101, "animals/zebra/zplace.wav".to_string(), 1500);
         assert_eq!(heard(app), (vec![want], false));
         // The keeper has none: `place.wav` alone.
-        app.game.as_mut().unwrap().build.hold(3);
+        hold(app, 3);
         click(app, 20, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
         assert_eq!(heard(app), (vec![], true));
     });

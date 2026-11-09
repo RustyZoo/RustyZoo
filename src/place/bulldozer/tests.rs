@@ -206,7 +206,7 @@ fn a_tank_filter_sells_for_less_once_decayed_and_for_nothing_broken() {
 }
 
 #[test]
-fn only_paths_deletable_scenery_and_animals_in_the_zoo_can_be_removed() {
+fn only_paths_and_deletable_scenery_in_the_zoo_can_be_removed_never_a_unit() {
     let cat = catalogue();
     let w = world(vec![
         path(1, 1),
@@ -216,8 +216,8 @@ fn only_paths_deletable_scenery_and_animals_in_the_zoo_can_be_removed() {
         piece("f", 5, 5, 2),
     ]);
     let can: Vec<bool> = (0..5).map(|e| removable(&w, &cat, e)).collect();
-    // An animal is sold; the other units never are.
-    assert_eq!(can, [true, true, false, true, true]);
+    // An animal is sold from its panel, never by the bulldozer.
+    assert_eq!(can, [true, true, false, false, true]);
     assert!(!removable(&w, &cat, 99));
 }
 
@@ -566,7 +566,7 @@ fn a_staff_member_is_fired_after_a_question_and_nothing_is_refunded() {
         cash: 1000.0,
         ..Money::default()
     };
-    assert!(removable(&w, &cat, 0));
+    assert!(!removable(&w, &cat, 0), "the bulldozer never removes a unit");
     assert_eq!(refund(&cat, &w.zoo.entities[0]), 0.0);
     assert_eq!(check(&w, &cat, 0, true, &[]), Check::Ask(Question::Fire));
     assert_eq!(Question::Fire.pair(), None);

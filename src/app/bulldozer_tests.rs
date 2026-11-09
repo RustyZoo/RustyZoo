@@ -676,18 +676,27 @@ fn the_sell_button_does_not_test_cdeletable_but_the_bulldozer_does() {
 }
 
 #[test]
-fn a_staff_member_is_fired_after_a_question_that_names_the_salary_and_costs_nothing() {
+fn the_bulldozer_leaves_a_unit_and_the_fire_button_asks_with_its_name_and_salary() {
     with_game("fire", "", |s| {
-        s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let id = s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let at = s.app.game.as_ref().unwrap().world.find(id).unwrap();
+        let game = s.app.game.as_mut().unwrap();
+        game.world.zoo.entities[at].common.as_mut().unwrap().name = "Joe".into();
+        // The bulldozer neither prices, highlights nor asks about it.
         s.pass(&[DELETE]);
         let over = s.at(20, 20, 32, 32);
         s.pass(&[over]);
-        assert_eq!(s.cost(), Some(0));
-        assert_eq!(s.click(over), ["tool bulldoze ask Fire"]);
+        assert_eq!(s.cost(), None);
+        s.click(over);
+        assert_eq!((s.count(), s.asking()), (1, false));
+        s.pass(&[Command::Key(Key::Escape, false, false)]);
+        s.app.game.as_mut().unwrap().staff.select(id);
+        s.app.staff_fire();
+        assert!(s.asking());
         let game = s.app.game.as_ref().unwrap();
         let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
-        let text = bulldozer::question_text(ui, cat, &game.world, 0, Question::Fire);
-        assert_eq!(text, "fire Shop?\nsalary: $650", "cut to whole units");
+        let text = bulldozer::question_text(ui, cat, &game.world, at, Question::Fire);
+        assert_eq!(text, "fire Joe?\nsalary: $650", "cut to whole units");
         let told = s.pass(&[Command::Key(Key::Y, false, false)]);
         let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
         assert!(removed.starts_with("world remove keeper/keeper/m 20,20 id"));
