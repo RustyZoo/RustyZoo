@@ -11,9 +11,8 @@ use std::collections::HashMap;
 
 use crate::animal;
 use crate::entity::Catalogue;
+use crate::exhibit::members::{animals_exhibit, suitability_in, type_at};
 use crate::guest;
-use crate::panel::animal::suitability_in;
-use crate::panel::exhibit::{animals_exhibit, type_at};
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use crate::ui::layout::Rgb;

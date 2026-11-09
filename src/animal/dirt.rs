@@ -9,7 +9,7 @@ use super::{DIED, Keys};
 use crate::behaviour::Data;
 use crate::build::number;
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::sim::Rng;
 
 /// The event a pile of dung on the zoo grounds posts for the maintenance task pool (the same

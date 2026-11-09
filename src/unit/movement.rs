@@ -428,8 +428,7 @@ fn set_speed(unit: &mut Unit, world: &World, cat: &Catalogue, at: usize, rate: u
     let entity = &world.zoo.entities[at];
     if world.units.cheat.keeper_speed_double
         && entity.class == "keeper"
-        && crate::place::bulldozer::type_of(cat, entity)
-            .is_some_and(|t| t.name_id == crate::cheat::SCIENTIST)
+        && crate::entity::type_of(cat, entity).is_some_and(|t| t.name_id == crate::cheat::SCIENTIST)
     {
         unit.speed = unit.speed.saturating_mul(2);
     }

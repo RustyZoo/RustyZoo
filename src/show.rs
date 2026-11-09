@@ -14,8 +14,8 @@ use crate::building::kind_of;
 use crate::building::leave::push_out;
 use crate::config::{Config, to_float, to_int};
 use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::exhibit::viewing::{self, Ground};
-use crate::place::bulldozer::type_of;
 use crate::sim::{Event, Events, Rng, SHOW_CHANNEL};
 use crate::unit::{Part, Unit};
 use crate::vfs::Vfs;
@@ -514,7 +514,7 @@ fn upkeeps(world: &World, cat: &Catalogue) -> Vec<(u16, f32)> {
     let sight = Sight::of(world, cat);
     (sight.stands.iter())
         .map(|&(id, at)| {
-            let cost = crate::place::bulldozer::type_of(cat, &world.zoo.entities[at])
+            let cost = crate::entity::type_of(cat, &world.zoo.entities[at])
                 .map_or(0.0, |ty| crate::month::upkeep_of(&world.units, ty, id));
             (sight.seen(world, at), cost)
         })

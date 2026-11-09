@@ -2,10 +2,10 @@
 //! of that fence type at the piece's place, and a click moves the exhibit's gate there.
 //! Valid places are green where a keeper passes and in the highlight colour elsewhere.
 
-use super::bulldozer::type_of;
 use super::{LIFE, NO_FUNDS, Outcome, Pending, STRENGTH, Verdict};
 use crate::build::{cost, number};
 use crate::entity::Catalogue;
+use crate::entity::type_of;
 use crate::money::{CONSTRUCTION, Money};
 use crate::world::World;
 

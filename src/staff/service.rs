@@ -5,12 +5,12 @@ use std::cmp::Reverse;
 
 use crate::animal::{self, food};
 use crate::build::number;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
+use crate::exhibit::members::animals_in;
 use crate::goal::DUTIES;
-use crate::panel::exhibit::animals_in;
 use crate::path::{self, Mover};
-use crate::place::bulldozer::type_of;
 use crate::unit::{Kind, Part};
 use crate::world::World;
 

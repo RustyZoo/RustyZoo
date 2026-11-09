@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::Config;
+use crate::exhibit::members::{animals_exhibit, animals_in};
 use crate::exhibit::rating::bit;
 use crate::render::order::Kind;
 use crate::timing::Date;

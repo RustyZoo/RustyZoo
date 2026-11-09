@@ -3,11 +3,11 @@
 
 use super::{Shape, World};
 use crate::building::Kind;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::goal;
 use crate::guest::thought::Thought;
-use crate::place::bulldozer::type_of;
 use crate::render::tank_kind;
 use crate::unit::{Part, Unit};
 use crate::zoo::{Common, Entity, Target, Zoo, animal_new, fresh};

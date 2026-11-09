@@ -3,8 +3,8 @@
 
 use crate::build::number;
 use crate::building::lift;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
-use crate::place::bulldozer::type_of;
 use crate::render::order::ground_height;
 use crate::sim::Rng;
 use crate::unit::gate::heard_of;

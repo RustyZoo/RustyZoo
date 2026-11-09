@@ -5,8 +5,8 @@
 
 use crate::behaviour::Heard;
 use crate::config::to_int;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
-use crate::place::bulldozer::type_of;
 use crate::sim::Rng;
 use crate::world::World;
 

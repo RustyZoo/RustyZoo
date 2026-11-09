@@ -7,7 +7,7 @@ mod validate;
 use super::{KEEPER, event, performer};
 use crate::behaviour::{Data, NoData};
 use crate::entity::Catalogue;
-use crate::place::bulldozer::type_of;
+use crate::entity::type_of;
 use crate::sim::{Event, Events, KEEPER_CHANNEL, Rng, SHOW_CHANNEL, UNIT_CHANNEL, WORLD_CHANNEL};
 use crate::timing::file_time;
 use crate::world::World;

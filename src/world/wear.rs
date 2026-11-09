@@ -7,9 +7,9 @@
 use super::World;
 use crate::build::number;
 use crate::config::{Config, to_int};
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
-use crate::place::bulldozer::type_of;
 use crate::place::{LIFE, STRENGTH};
 use crate::sim::TASK_CHANNEL;
 use crate::single;

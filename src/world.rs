@@ -339,7 +339,7 @@ impl World {
             if same && !blank {
                 continue;
             }
-            let name = match crate::place::bulldozer::type_of(cat, e) {
+            let name = match crate::entity::type_of(cat, e) {
                 Some(t) => crate::place::unit::named(self, t),
                 None => String::new(),
             };

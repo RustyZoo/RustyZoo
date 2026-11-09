@@ -4,9 +4,9 @@
 
 use super::*;
 use crate::building::Kind;
+use crate::entity::type_of;
 use crate::panel::building as panel;
 use crate::panel::unitlist as lists;
-use crate::place::bulldozer::type_of;
 use crate::text::to_cp1252;
 
 /// The layouts the building panel shows: the two building panels and the filter panel.

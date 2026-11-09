@@ -21,9 +21,22 @@
 
 mod catalogue;
 pub use catalogue::Catalogue;
+
+/// The type of an entity: the first type of its class with its names, `None` when there is none.
+/// A name outside ASCII is looked up by its low bytes (one byte per character).
+pub(crate) fn type_of<'a>(cat: &'a Catalogue, e: &crate::zoo::Entity) -> Option<&'a EntityType> {
+    fn bytes(s: &str) -> Cow<'_, [u8]> {
+        match s.is_ascii() {
+            true => Cow::Borrowed(s.as_bytes()),
+            false => Cow::Owned(s.chars().map(|c| c as u8).collect()),
+        }
+    }
+    cat.find(&e.class, &bytes(&e.type_name), &bytes(&e.subtype))
+}
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
 use std::iter;

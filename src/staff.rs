@@ -8,10 +8,10 @@
 
 use crate::behaviour::Data;
 use crate::build::{cost, number};
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::money::{GUIDE_WAGES, KEEPER_WAGES, MAINT_WAGES};
-use crate::place::bulldozer::type_of;
 use crate::research::Overlay;
 use crate::sim::Rng;
 use crate::unit::{Ctx, Kind, Part, Staff, Unit};

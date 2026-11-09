@@ -9,6 +9,7 @@ use crate::timing::Date;
 use crate::vfs::Vfs;
 use crate::world::World;
 
+pub mod members;
 pub mod price;
 pub mod rating;
 pub mod viewing;

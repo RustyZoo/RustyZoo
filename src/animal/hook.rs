@@ -384,7 +384,7 @@ pub(crate) fn checks(
         meal,
         sets,
         boost: world.units.cheat.breeding_boost
-            && crate::place::bulldozer::type_of(ctx.cat, entity)
+            && crate::entity::type_of(ctx.cat, entity)
                 .is_some_and(|t| crate::cheat::BREEDERS.contains(&t.name_id)),
         adult: matches!(entity.subtype.as_str(), "m" | "f"),
         baby: entity.subtype == "y",

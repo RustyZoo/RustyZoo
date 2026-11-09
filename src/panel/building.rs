@@ -18,9 +18,10 @@ pub(crate) use filter::{LAYOUT as FILTER, NAME as FILTER_NAME, SELL as FILTER_SE
 use crate::building::{Kind, Live, moveable, upgrade};
 use crate::config::to_double;
 use crate::entity::{Catalogue, EntityType};
+use crate::exhibit::members::type_at;
 use crate::money::{SYMBOL, Symbol};
 use crate::month::upkeep_of;
-use crate::panel::exhibit::{Clock, type_at};
+use crate::panel::exhibit::Clock;
 use crate::text::format;
 use crate::text::to_cp1252;
 use crate::timing::DAY_MS;

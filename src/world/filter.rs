@@ -10,9 +10,10 @@
 use super::{Shape, TankKind, World, piece_event};
 use crate::build::number;
 use crate::config::to_int;
+use crate::entity::type_of;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::BUILDING_UPKEEP;
-use crate::place::bulldozer::{refund, type_of};
+use crate::place::bulldozer::refund;
 use crate::render::FilterLook;
 use crate::render::order::Kind;
 use crate::research::Overlay;

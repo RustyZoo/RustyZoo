@@ -147,7 +147,7 @@ impl Species {
     /// The species of the animal or guest entity `e`, none for another entity; `egg` is the
     /// animal's egg flag, which an egg never swims by.
     pub(crate) fn of(cat: &Catalogue, e: &Entity, egg: bool) -> Option<Species> {
-        let ty = crate::place::bulldozer::type_of(cat, e)
+        let ty = crate::entity::type_of(cat, e)
             .filter(|_| ["animals", "guests"].contains(&e.class.as_str()))?;
         Some(Species {
             animal: e.class == "animals",
@@ -551,7 +551,7 @@ pub(crate) fn load(world: &mut World, cat: &Catalogue, at: usize) {
     let Some(record) = e.common.as_ref().and_then(|c| c.building.clone()) else {
         return;
     };
-    let Some(ty) = crate::place::bulldozer::type_of(cat, e) else {
+    let Some(ty) = crate::entity::type_of(cat, e) else {
         return;
     };
     let kind = Kind::of(ty, world.units.prices.default);
@@ -794,7 +794,7 @@ pub(crate) fn kind_of(cat: &Catalogue, e: &Entity, default: f32) -> Option<Kind>
     if e.class != "building" {
         return None;
     }
-    crate::place::bulldozer::type_of(cat, e).map(|ty| Kind::of(ty, default))
+    crate::entity::type_of(cat, e).map(|ty| Kind::of(ty, default))
 }
 
 /// A slot, entrance or exit position `rel` of the file on the map: turned by the building's
