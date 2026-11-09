@@ -525,7 +525,7 @@ check expansion-trial 'focus11510;text115107;text1151097;unfocus11510;key39enter
 tooltip_use() {
   d=$(mktemp -d)
   printf '1 mouse 512 365\n5 mouse 513 366\n' >"$d/script"
-  rz run "$1" --seed 1 --headless --passes 40 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
+  rz run "$1" --seed 1 --headless --passes 60 --clock 100 --show 26 --script "$d/script" 2>/dev/null |
     grep ' ui \(tooltip\|hide\)' | sed 's/^pass \([0-9]*\) .* ui /\1 /' | tr '\n' ';'
   echo
   rm -rf "${d:?}"
