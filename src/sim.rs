@@ -5,9 +5,9 @@
 //! What a unit does with its step is the [`unit`] module's: [`Sim::step`] runs [`unit::update`]
 //! for each entity in list order, then hands the entity to the caller's `update` (for the kinds
 //! of entity that have no live state yet). The zoo status checks of the game manager are the
-//! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. Missing
-//! so far: the shows and the spawn list of the ambient creatures. The scenario manager is [`crate::scenario`]'s (most of its rules and
-//! triggers are stubs).
+//! [`crate::status::zoo`] module's, and the guests it lets in the [`crate::guest`] module's. The
+//! shows are [`crate::show`]'s, the spawn list of the ambient creatures [`crate::flight`]'s
+//! and the scenario manager [`crate::scenario`]'s.
 //!
 //! [`hash::state`] is the hash of the whole state that the `sim` command prints, and [`drive`]
 //! the commands such a run applies at a step.
