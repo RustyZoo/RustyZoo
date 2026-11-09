@@ -864,15 +864,18 @@ check expansion-trial "open,closed,open,closed," "show_panel maps/scn28.zoo"
 # A grandstand that faces the show tank opens the window; the exhibit list button then shows the
 # exhibit panel, which hides it (19.3 point 7). The grandstand is the one at 472 316 once the view
 # is scrolled ten times.
-show_stand_window() { # show_stand_window <map>
+show_stand_window() { # show_stand_window <map> [seed]
   d=$(mktemp -d)
   { echo '2 pause'; for i in $(seq 1 10); do echo "$((2 + i)) scroll 1 0"; done
     printf '20 mouse 472 316\n21 down\n22 up\n30 mouse 965 750\n31 down\n32 up\n'; } >"$d/script"
-  rz run "$1" --headless --passes 40 --clock 67 --script "$d/script" 2>/dev/null |
+  rz run "$1" --headless --passes 40 --clock 67 ${2:+--seed "$2"} --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
 }
 check expansion-trial "open,closed," "show_stand_window maps/scn28.zoo"
+# A water sparkle holds no quadrant and blocks no line of sight, whatever tile the seed puts it on.
+check expansion-trial "open,closed,open,closed,open,closed,open,closed," \
+  'for s in 156 157 158 159; do show_stand_window maps/scn28.zoo $s | tr -d "\n"; done'
 
 # The exhibit list button and a row click show the status tab's layout with no tab click: the
 # frame is the one that a click on the Donations tab and then on the Status tab leaves (the mouse

@@ -113,4 +113,49 @@ mod tests {
         assert_eq!(kind("fences", "cIsTransient=1\n"), Some(Kind::Edge));
         assert_eq!(kind("tankwall", "cIsTransient=1\n"), Some(Kind::Wall));
     }
+
+    #[test]
+    fn a_water_sparkle_on_the_map_holds_no_quadrant_and_stands_in_no_unit_list() {
+        let ini = "[Characteristics/Integers]\ncIsTransient=1\n";
+        let mut cat = Catalogue::default();
+        cat.push(EntityType {
+            class: "objects",
+            type_name: b"other".to_vec(),
+            subtype: b"twaterwv".to_vec(),
+            file: None,
+            config: Some(Arc::new(Config::parse(ini.as_bytes()).unwrap())),
+            name_id: 0,
+            footprint: [1, 1, 1],
+            height: 0,
+        });
+        let tile = crate::zoo::Tile {
+            elevation: 0,
+            shape: 0,
+            terrain: 0,
+            edges: 0,
+        };
+        let zoo = crate::zoo::Zoo {
+            width: 2,
+            height: 2,
+            tiles: vec![tile; 4],
+            ..Default::default()
+        };
+        let mut world = crate::world::World::new(zoo, |e| shape_of(&cat, e));
+        let sparkle = Entity {
+            class: "objects".into(),
+            type_name: "other".into(),
+            subtype: "twaterwv".into(),
+            body_size: None,
+            common: Some(Common {
+                x: 96,
+                y: 96,
+                ..Default::default()
+            }),
+        };
+        let shape = shape_of(&cat, &sparkle);
+        assert!(world.add_wave(sparkle, shape.unwrap()).is_some());
+        let t = world.tile_index(1, 1).unwrap();
+        assert!((0..4).all(|q| world.quadrant(t, q).is_none()));
+        assert!(world.is_empty(t) && world.units_on(t).next().is_none());
+    }
 }
