@@ -328,6 +328,109 @@ fn the_meal_calls_raise_their_flags_once_and_are_done_at_once() {
     assert!(rig.runner.take_meal(true) && !rig.runner.take_meal(true));
 }
 
+/// The animation and the sound the cloud of `fDustBall` plays for a unit in tank mode `mode` on
+/// a water tile or not whose type has the animations `anims` and the sounds `sounds`; none when
+/// the call fails. The cloud is the whole set, followed by `fPlay(d)`.
+fn cloud(mode: u8, wet: bool, anims: &[&str], sounds: &[&str]) -> Option<(String, Option<String>)> {
+    let mut rig = Rig::new(&[("bAmbient", &["fDustBall()", "fPlay(d)"])]);
+    for name in anims {
+        rig.data.timings.insert(
+            (*name).into(),
+            Timing {
+                count: 2,
+                delay: 100,
+            },
+        );
+    }
+    for key in sounds {
+        rig.data.sounds.insert((*key).into(), "x.wav".into());
+    }
+    (rig.runner.tank_mode, rig.runner.wet) = (mode, wet);
+    rig.tick(100);
+    assert!(
+        !rig.runner.take_meal(false),
+        "nothing is eaten while the cloud queues"
+    );
+    let shown = rig.tick(100).0;
+    if !rig.runner.running() {
+        assert!(!rig.runner.take_meal(false), "a failed call eats nothing");
+        return None;
+    }
+    assert!(
+        rig.runner.take_meal(false),
+        "the prey is eaten as the cloud starts"
+    );
+    assert_eq!(rig.anim.queue.len(), 1, "fPlay(d) queued in the same run");
+    rig.notes();
+    rig.tick(100);
+    let sound = rig.notes().into_iter().find_map(|n| match n {
+        Note::Sound(key) => Some(key),
+        _ => None,
+    });
+    Some((shown, sound))
+}
+
+#[test]
+fn the_dust_ball_plays_the_cloud_of_the_tank_mode_and_the_tile_with_its_fallbacks() {
+    let all = ["dustball", "waterball", "surfaceball", "submergedball"];
+    let some = |a: &str, s: &str| Some((a.to_string(), Some(s.to_string())));
+    // The key: the tank modes first, then a water tile, then land; the mode needs no tank.
+    for (mode, wet, key) in [
+        (3, false, "surfaceball"),
+        (3, true, "surfaceball"),
+        (4, false, "submergedball"),
+        (4, true, "submergedball"),
+        (0, true, "waterball"),
+        (1, true, "waterball"),
+        (0, false, "dustball"),
+        (2, false, "dustball"),
+        (u8::MAX, false, "dustball"),
+    ] {
+        assert_eq!(cloud(mode, wet, &all, &all), some(key, key), "{mode} {wet}");
+    }
+    // Each is looked up on its own and falls back to the land cloud.
+    assert_eq!(
+        cloud(4, false, &["dustball"], &all),
+        some("dustball", "submergedball")
+    );
+    assert_eq!(
+        cloud(0, true, &all, &["dustball"]),
+        some("waterball", "dustball")
+    );
+    assert_eq!(
+        cloud(0, true, &["dustball"], &[]),
+        Some(("dustball".into(), None))
+    );
+    // A sound without a cloud animation plays on the empty default animation; neither fails.
+    let empty = |s: &str| Some((String::new(), Some(s.to_string())));
+    assert_eq!(cloud(0, false, &["waterball"], &all), empty("dustball"));
+    assert_eq!(cloud(0, false, &[], &all), empty("dustball"));
+    assert_eq!(cloud(0, true, &[], &["waterball"]), empty("waterball"));
+    assert_eq!(cloud(0, false, &[], &[]), None);
+}
+
+#[test]
+fn the_dust_ball_is_done_when_the_player_took_it_and_the_prey_is_eaten_once_in_that_run() {
+    let mut rig = Rig::new(&[("bAmbient", &["fDustBall()", "fPlay(d)"])]);
+    rig.data.timings.insert(
+        "dustball".into(),
+        Timing {
+            count: 3,
+            delay: 100,
+        },
+    );
+    assert_eq!(rig.tick(100).0, "idle");
+    assert!(!rig.runner.take_meal(false));
+    // The cloud shows, still playing: the call ends and the prey is eaten in this step.
+    assert_eq!(rig.tick(100).0, "dustball");
+    assert!(rig.runner.take_meal(false) && !rig.runner.take_meal(false));
+    // The cloud plays on its own player to its end, then the base shows again.
+    assert_eq!(rig.tick(100), ("dustball".into(), 1));
+    assert_eq!(rig.tick(100), ("dustball".into(), 2));
+    assert_eq!(rig.tick(100).0, "d");
+    assert!(!rig.runner.take_meal(false));
+}
+
 #[test]
 fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
     // (class, call, done, still running): the other classes' calls do nothing and stay.
