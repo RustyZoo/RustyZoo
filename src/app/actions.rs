@@ -10,6 +10,7 @@ impl App<'_> {
     pub(super) fn acts(&mut self) {
         self.main_pressed();
         self.lists_acted();
+        self.options_acted();
         let Some(ui) = &mut self.ui else { return };
         // The list of saved games was closed by its own Back button, or by a game that started.
         if self.listing.is_some() && !ui.shown(crate::menu::FREEFORM_LAYOUT) {

@@ -346,6 +346,32 @@ impl Interface {
         true
     }
 
+    /// Selects the button `id` as a release would, without the click: the other members of its
+    /// radio sets are deselected with their deselect actions and its own select action runs.
+    /// `false` if there is no such button.
+    pub(crate) fn select_member(&mut self, id: i32) -> bool {
+        let Some(b) = self.tree.find(id).filter(|&b| self.is_button(b)) else {
+            return false;
+        };
+        self.flag(b, SELECTED, true);
+        self.radio_select(b);
+        self.select(b);
+        true
+    }
+
+    /// Makes the button `id` the selected member of its radio sets without running any action.
+    /// `false` if there is no such button.
+    pub(crate) fn pick(&mut self, id: i32) -> bool {
+        let Some(b) = self.tree.find(id).filter(|&b| self.is_button(b)) else {
+            return false;
+        };
+        for m in self.radio_members(b).into_iter().filter(|&m| m != b) {
+            self.flag(m, SELECTED, false);
+        }
+        self.flag(b, SELECTED, true);
+        true
+    }
+
     /// Runs the select action of the first of the buttons `ids` that is down, as a press would
     /// (a radio set settled by a show has hidden its page).
     pub(crate) fn reselect(&mut self, ids: &[i32]) {

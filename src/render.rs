@@ -346,6 +346,8 @@ pub struct MapRenderer<'a> {
     vfs: &'a Vfs,
     catalogue: &'a Catalogue,
     blend: Vec<bool>,
+    /// The ground blends its neighbours (`[advanced] level` above 0, map drawing 12).
+    blending: bool,
     /// The cliff pieces 1 to 15, as the names of their root bitmaps.
     fringe: HashMap<u32, String>,
     /// For each shape (decimal), the north and east grid sprites and the highlight.
@@ -476,6 +478,7 @@ impl<'a> MapRenderer<'a> {
             vfs,
             catalogue,
             blend: terrain_blend(vfs),
+            blending: true,
             fringe,
             grid,
             flats: HashMap::new(),

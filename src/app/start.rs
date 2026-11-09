@@ -30,8 +30,7 @@ impl App<'_> {
 
     /// The `[UI] userAttenuation` global term of the sound rules.
     fn global_term(&self) -> i32 {
-        crate::config::Config::parse(self.renderer.vfs().ini())
-            .map_or(0, |ini| crate::music::global_term(&ini))
+        self.options.global
     }
 
     /// The build panel of a game that opens, with the rewards its ini unlocks.
