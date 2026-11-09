@@ -116,7 +116,7 @@ struct Game {
     bars: Option<[i32; 3]>,
     /// What the Finances table of the zoo status window holds.
     finances: Finances,
-    /// What the marketing part of the Zoo Information tab holds.
+    /// What the marketing part of the zoo status window holds.
     funding: crate::panel::marketing::Funding,
     /// Whether the status window was shown at the last look, for the Awards page.
     awards_page: Awards,

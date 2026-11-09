@@ -1,4 +1,4 @@
-//! The marketing part of the Zoo Information tab of the zoo status window (marketing 6): the
+//! The marketing part of the first tab of the zoo status window (marketing 6): the
 //! funding text and the two funding buttons, written from the marketing of the game.
 
 use crate::marketing::Marketing;
