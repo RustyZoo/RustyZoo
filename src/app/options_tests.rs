@@ -311,6 +311,9 @@ fn a_missing_key_takes_the_built_in_value_and_odd_values_are_quantised() {
             assert!(t.down(id), "{id}");
         }
         assert_eq!(t.app.user_term(), 0);
+        // No tooltipDuration: the tooltip keeps the 3 s of its layout.
+        let tip = t.ui().tree.find(7003).unwrap();
+        assert_eq!(t.ui().tree.elements[tip].timer_duration, 3000);
     });
     for (volume, slider, term) in [
         (37, 98, 30),

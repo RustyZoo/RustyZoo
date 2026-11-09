@@ -185,7 +185,11 @@ impl App<'_> {
             }
         }
         self.tooltip_delay((i64::from(delay) - 1) / 10);
-        self.tooltip_duration((i64::from(duration) - 500) / 100);
+        // An ini file without the key leaves the tooltip its own duration (the file of the layout):
+        // an install with no ini file keeps the 3 s its tooltip always had.
+        if ini_whole(&self.options.ini, "UI", "tooltipDuration").is_some() {
+            self.tooltip_duration((i64::from(duration) - 500) / 100);
+        }
         self.set_scroll(scroll);
         self.put("UI", "mouseScrollY", scroll, Some(32));
         self.put("UI", "mouseScrollX", scroll, Some(32));
@@ -223,8 +227,9 @@ impl App<'_> {
     /// at once, and the four keys are written.
     fn terrain_level(&mut self, level: i32, start: bool) {
         let (blend, normal, click, drag) = preset(level);
-        self.renderer.set_blending(blend);
-        if let Some(game) = &mut self.game {
+        if self.renderer.set_blending(blend)
+            && let Some(game) = &mut self.game
+        {
             game.world.touch();
         }
         let keys = [

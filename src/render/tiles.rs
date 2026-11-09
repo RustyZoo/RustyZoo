@@ -24,9 +24,10 @@ impl<'a> MapRenderer<'a> {
         self.blending
     }
 
-    /// Switches the blending of the ground on or off: off, every tile shows its own type.
-    pub(crate) fn set_blending(&mut self, on: bool) {
-        self.blending = on;
+    /// Switches the blending of the ground on or off: off, every tile shows its own type. Whether
+    /// that changed it.
+    pub(crate) fn set_blending(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.blending, on) != on
     }
 
     /// Whether the way from tile `t` across the edge in map direction `d` is open for blending.
