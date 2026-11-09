@@ -218,16 +218,16 @@ fn the_cells_are_centred_numbers_in_black_and_right_aligned_money_in_red_or_gree
             })
             .collect::<Vec<_>>()
     };
-    let black = Some([0, 0, 0]);
     let (red, green) = (Some([255, 0, 0]), Some([0, 255, 0]));
     let a = cells(first);
+    // The numbers take the list's colour (none) and all four cells are right-aligned.
     assert_eq!(
         (a[0].0.as_str(), a[0].1, a[0].2),
-        ("2", black, Justify::Center)
+        ("2", None, Justify::Right)
     );
     assert_eq!(
         (a[1].0.as_str(), a[1].1, a[1].2),
-        ("7", black, Justify::Center)
+        ("7", None, Justify::Right)
     );
     assert_eq!((a[2].1, a[2].2), (red, Justify::Right));
     assert_eq!((a[3].1, a[3].2), (red, Justify::Right));

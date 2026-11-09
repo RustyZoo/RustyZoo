@@ -986,6 +986,23 @@ fn a_bar_graph_draws_a_box_for_each_point_and_no_line() {
 }
 
 #[test]
+fn the_x_labels_of_a_bar_graph_sit_where_those_of_a_line_graph_do() {
+    let points = [(0, 4), (1, 10), (2, 0)];
+    let strip = |style: &str| {
+        let mut tree = graph_tree("graph-x-labels", style, &points);
+        let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+        // The black pixels of the label row (the labels' colour; dots and bars are not black).
+        (36..48)
+            .flat_map(|y| (0..64).map(move |x| (x, y)))
+            .filter(|&(x, y)| at(&frame, x, y) == [0, 0, 0])
+            .collect::<Vec<_>>()
+    };
+    let (bars, line) = (strip("b"), strip("l"));
+    assert!(!bars.is_empty(), "labels are drawn");
+    assert!(bars == line, "{bars:?} {line:?}");
+}
+
+#[test]
 fn the_labels_below_zero_take_the_negative_colour_and_the_others_the_positive_one() {
     let neg = rgb(text_color([0, 255, 255]));
     let pos = rgb(text_color([255, 0, 255]));

@@ -521,7 +521,7 @@ fn a_double_click_hides_the_window_with_a_building_selected_and_a_single_click_d
 }
 
 #[test]
-fn delete_in_the_list_sells_the_selected_building_and_gives_the_list_the_focus_back() {
+fn delete_in_the_commerce_list_sells_nothing() {
     run("zw-commerce-delete", |s| {
         let amy = shop(s, BURGER, 5, "Amy", (9, 10.0, 40.0));
         let zed = shop(s, STALL, 3, "Zed", (5, 100.0, 40.0));
@@ -536,25 +536,10 @@ fn delete_in_the_list_sells_the_selected_building_and_gives_the_list_the_focus_b
         let cash = s.cash();
         s.pass(&[Command::Key(Key::Delete, false, false)]);
         let world = &s.app.game.as_ref().unwrap().world;
-        assert!(world.find(amy).is_none() && world.find(zed).is_some());
-        assert!(s.cash() > cash, "refunded");
-        // The list is made again and has the focus.
-        s.pass(&[]);
-        assert_eq!(names(s), ["Zed"]);
-        assert!(s.app.interface().unwrap().has_focus(4172));
-    });
-}
-
-#[test]
-fn delete_with_nothing_selected_does_not_press_the_bulldozer_from_the_list() {
-    run("zw-commerce-delete-none", |s| {
-        shop(s, BURGER, 5, "Amy", (9, 10.0, 40.0));
-        show_commerce(s);
-        assert!(s.app.interface().unwrap().focus(4172));
-        let lines = s.pass(&[Command::Key(Key::Delete, false, false)]);
-        assert!(lines.is_empty(), "{lines:?}");
+        assert!(world.find(amy).is_some() && world.find(zed).is_some());
+        assert_eq!(s.cash(), cash);
         assert!(!s.app.game.as_ref().unwrap().build.bulldozing());
-        assert_eq!(names(s), ["Amy"]);
+        assert_eq!(names(s), ["Amy", "Zed"]);
     });
 }
 

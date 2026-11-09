@@ -149,3 +149,18 @@ fn the_name_is_the_building_on_the_entrance_tile() {
     let outside = world_with((10, 10), |zoo| zoo.entrance = (u32::MAX, 5));
     assert_eq!(entrance(&outside), None);
 }
+
+#[test]
+fn the_entrance_building_is_the_one_that_holds_the_last_quarter_of_the_tile() {
+    let with = |dx: i32, dy: i32| {
+        world_with((10, 10), |zoo| {
+            zoo.entrance = (9, 5);
+            zoo.entities
+                .push(entity("building", "shed", 1, (9 * 64 + dx, 5 * 64 + dy), 0));
+        })
+    };
+    assert_eq!(entrance(&with(48, 48)), Some(0));
+    for (dx, dy) in [(16, 16), (48, 16), (16, 48)] {
+        assert_eq!(entrance(&with(dx, dy)), None, "{dx} {dy}");
+    }
+}

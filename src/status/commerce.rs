@@ -25,7 +25,6 @@ pub(crate) const OTHER: [u8; 3] = [255, 228, 173];
 /// The colours of a loss and of a gain.
 const LOSS: [u8; 3] = [255, 0, 0];
 const GAIN: [u8; 3] = [0, 255, 0];
-const BLACK: [u8; 3] = [0, 0, 0];
 
 /// One building of the list.
 #[derive(Clone, Debug, PartialEq)]
@@ -125,29 +124,30 @@ pub(crate) fn order(rows: &mut [Row], sort: &Sort) {
     }
 }
 
-/// The rows of the list: the name, then the months and the guests centred in black, then the
-/// profit and the average right-aligned, red below 0 and green else.
+/// The rows of the list: the name, then the months, the guests, the profit and the average, all
+/// right-aligned; the months and the guests take the list's colour, the money is red below 0 and
+/// green else.
 pub(crate) fn list(rows: &[Row], symbol: &Symbol) -> Vec<ListRow> {
     let money = |v: f32| {
         let colour = if v < 0.0 { LOSS } else { GAIN };
         let text = to_cp1252(&money_cents(symbol, f64::from(v), true));
         (text, Some(colour))
     };
-    let cell = |(text, color): (Vec<u8>, Option<[u8; 3]>), justify| Cell {
+    let cell = |(text, color): (Vec<u8>, Option<[u8; 3]>)| Cell {
         text,
         color,
-        justify,
+        justify: Justify::Right,
     };
     rows.iter()
         .map(|r| {
-            let number = |n: String| (n.into_bytes(), Some(BLACK));
+            let number = |n: String| (n.into_bytes(), None);
             ListRow {
                 text: r.name.clone(),
                 cells: vec![
-                    cell(number(r.months.to_string()), Justify::Center),
-                    cell(number(r.guests.to_string()), Justify::Center),
-                    cell(money(r.profit), Justify::Right),
-                    cell(money(r.average), Justify::Right),
+                    cell(number(r.months.to_string())),
+                    cell(number(r.guests.to_string())),
+                    cell(money(r.profit)),
+                    cell(money(r.average)),
                 ],
                 ..ListRow::default()
             }

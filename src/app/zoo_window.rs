@@ -16,9 +16,8 @@ pub(super) struct Window {
     shown: bool,
     commerce_shown: bool,
     sort: commerce::Sort,
-    /// The entity of each row of the commerce list, and the one that was selected.
+    /// The entity of each row of the commerce list.
     ids: Vec<u32>,
-    selected: Option<u32>,
     /// How many buildings the world held at the last look.
     buildings: usize,
     /// The last zoo name the field showed or accepted.
@@ -228,9 +227,9 @@ impl App<'_> {
     fn commerce_fill(&mut self) {
         playing!(self, game, ui);
         let w = &mut game.window;
-        w.selected = (ui.selected_row(commerce::LIST))
-            .and_then(|r| w.ids.get(r).copied())
-            .or(w.selected);
+        let selected = ui
+            .selected_row(commerce::LIST)
+            .and_then(|r| w.ids.get(r).copied());
         let now = self.sim.calendar().elapsed_ms();
         let mut rows = commerce::rows(
             &game.world,
@@ -242,9 +241,7 @@ impl App<'_> {
         w.ids = rows.iter().map(|r| r.id).collect();
         let symbol = Symbol::new(ui.string(SYMBOL));
         ui.refill_rows(commerce::LIST, commerce::list(&rows, &symbol));
-        let again = w
-            .selected
-            .and_then(|id| w.ids.iter().position(|&i| i == id));
+        let again = selected.and_then(|id| w.ids.iter().position(|&i| i == id));
         ui.select_row(commerce::LIST, again);
         for (key, header) in commerce::HEADERS.into_iter().enumerate() {
             let colour = if key == w.sort.key {
@@ -264,7 +261,6 @@ impl App<'_> {
             .ok()
             .and_then(|r| game.window.ids.get(r).copied());
         let Some(id) = id else { return };
-        game.window.selected = Some(id);
         if game.world.find(id).is_some() && game.selected != Some(id) {
             self.centre_select(id);
         }
@@ -278,23 +274,6 @@ impl App<'_> {
             && let Some(ui) = &mut self.ui
         {
             ui.set_hidden(WINDOW, true);
-        }
-    }
-
-    /// Whether the commerce list has the keyboard focus in the shown window.
-    pub(super) fn commerce_focused(&self) -> bool {
-        (self.ui.as_ref()).is_some_and(|ui| ui.shown(WINDOW) && ui.has_focus(commerce::LIST))
-    }
-
-    /// The Delete key in the commerce list (21.4 step 8): the selected building is sold as the
-    /// sell button of its panel does, and the list gets the keyboard focus back.
-    pub(super) fn commerce_sell(&mut self) {
-        let selected = self.game.as_ref().and_then(|g| g.selected);
-        if let Some(id) = selected.filter(|&id| self.building_layout(id).is_some()) {
-            self.remove_one(id);
-        }
-        if let Some(ui) = &mut self.ui {
-            ui.focus(commerce::LIST);
         }
     }
 }

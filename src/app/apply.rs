@@ -13,7 +13,6 @@ impl App<'_> {
         let shown = self.ui.as_ref().is_none_or(Interface::map_view_shown);
         let modal = self.modal();
         let listing = self.listing_open();
-        let sells = self.commerce_focused();
         match (command, &mut self.game) {
             (Command::Pointer(at), _) => self.pointer = at,
             // A press of an element by its id: what a click on it does, while nothing modal is open.
@@ -70,10 +69,6 @@ impl App<'_> {
                 if let (Some(ui), Command::Char(key)) = (&mut self.ui, command) {
                     ui.press_button(if key == b'+' { PLUS } else { MINUS });
                 }
-            }
-            // The Delete key in the commerce list sells the selected building (zoo status 21.4).
-            (Command::Key(Key::Delete, ..), Some(_)) if sells => {
-                self.commerce_sell();
             }
             // The Delete key presses the clear button, the bulldozer (input 10).
             (Command::Key(Key::Delete, ..), Some(_)) if keys => {

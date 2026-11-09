@@ -191,7 +191,8 @@ impl Painter {
                 );
             }
         }
-        // The X labels stop at the first point whose x does not follow the one before.
+        // The X labels stop at the first point whose x does not follow the one before; they sit at
+        // equal steps from the first to the last point, bars or not.
         let mut previous = None;
         for (i, p) in g.points.iter().enumerate() {
             if previous.is_some_and(|x| p.x != x + 1) {
@@ -202,7 +203,7 @@ impl Painter {
                 canvas,
                 font,
                 &p.label,
-                (at(i), b + g.x_label_padding),
+                (g.x_at_line(i, (l, r)), b + g.x_label_padding),
                 g.x_label,
                 text::Justify::Center,
             );
