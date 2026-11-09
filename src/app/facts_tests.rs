@@ -401,3 +401,109 @@ fn the_drt_base_shows_the_helicopter_and_an_item_that_is_no_staff_leaves_the_pla
         }
     });
 }
+
+#[test]
+fn a_new_hire_choice_rewrites_the_open_staff_plaque() {
+    with_facts("facts-hire-follow", |s| {
+        hold(&mut s.app, RANGER);
+        press(s, 3699);
+        assert_eq!(text(s, 40003), "keeps");
+        hold(&mut s.app, BASE);
+        s.pass(&[]);
+        assert!(shown(s, 33) && down(s, 3699));
+        assert_eq!(
+            text(s, 40003),
+            "foxes",
+            "the helicopter's text after the new choice"
+        );
+        // An item that is no staff changes nothing; the plaque is kept.
+        hold(&mut s.app, 0);
+        s.pass(&[]);
+        assert_eq!(text(s, 40003), "foxes");
+    });
+}
+
+/// The yeti, a user-made animal (name id in the user range) with `info` as its language section.
+fn with_yeti(
+    name: &str,
+    info: &str,
+    member: Option<&[u8]>,
+    body: impl FnOnce(&mut Session, usize),
+) {
+    let mut cat = types();
+    let yeti = cat.types.len();
+    let ini = format!(
+        "[Global]\nDefaultSubtype=m\n[1033]\ncName=Yeti\n{info}\
+         [m/Characteristics/Strings]\ncGeneralInfoTextName=FOX\n\
+         [m/Characteristics/Integers]\ncPurchaseCost=100\n"
+    );
+    cat.push(EntityType {
+        name_id: 19001,
+        ..ty("animals", b"yeti", b"m", &ini, [1, 1, 1])
+    });
+    let mut files = files();
+    files.extend(member.map(|b| ("yeti.txt".into(), b.to_vec())));
+    let more: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    with_game_of(name, "", (cat, &root(), &more), |s| {
+        for id in [2050, 3699] {
+            s.app.interface().unwrap().set_hidden(id, false);
+        }
+        s.pass(&[]);
+        body(s, yeti);
+    });
+}
+
+#[test]
+fn a_user_animal_plaque_shows_its_info_file() {
+    let key = "cGeneralInfoFileName=yeti.txt\n";
+    with_yeti("facts-yeti", key, Some(b"Abominable"), |s, yeti| {
+        open_species(s, yeti);
+        assert!(shown(s, 27));
+        assert_eq!(text(s, 25003), "Abominable");
+    });
+    // Read again each time the plaque is written, not kept.
+    with_yeti("facts-yeti-twice", key, Some(b"Abominable"), |s, yeti| {
+        open_species(s, yeti);
+        press(s, 2050);
+        s.app.interface().unwrap().set_text(25003, b"stale");
+        press(s, 2050);
+        assert_eq!(text(s, 25003), "Abominable");
+    });
+}
+
+#[test]
+fn a_user_animal_plaque_is_empty_when_its_info_file_is_missing_or_unnamed() {
+    let key = "cGeneralInfoFileName=yeti.txt\n";
+    for (n, info, member) in [
+        ("facts-yeti-nomember", key, None),
+        ("facts-yeti-empty", key, Some(&b""[..])),
+        ("facts-yeti-nokey", "", Some(&b"Abominable"[..])),
+        (
+            "facts-yeti-blank",
+            "cGeneralInfoFileName=\n",
+            Some(&b"x"[..]),
+        ),
+    ] {
+        with_yeti(n, info, member, |s, yeti| {
+            open_species(s, yeti);
+            assert_eq!(text(s, 25003), "", "{n}");
+        });
+    }
+}
+
+#[test]
+fn the_info_file_is_read_for_the_species_plaque_of_user_animals_only() {
+    // A built-in animal and the staff plaque keep their text entries.
+    with_yeti(
+        "facts-yeti-others",
+        "cGeneralInfoFileName=yeti.txt\n",
+        Some(b"Abominable"),
+        |s, _| {
+            open_species(s, FOX);
+            assert_eq!(text(s, 25003), "foxes");
+            hold(&mut s.app, RANGER);
+            press(s, 3699);
+            assert_eq!(text(s, 40003), "keeps");
+        },
+    );
+}

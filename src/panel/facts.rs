@@ -67,8 +67,9 @@ pub(crate) struct Panel {
     /// The animal selected and the one held at the last look.
     seen: Option<u32>,
     held: Option<u32>,
-    /// The staff plaque was shown.
+    /// The staff plaque was shown, and the type it was written for.
     staff: bool,
+    written: Option<usize>,
 }
 
 impl Panel {
@@ -85,10 +86,13 @@ impl Panel {
         let staff = ui.shown(STAFF);
         if staff != self.staff {
             ui.set_button(HIRE_BUTTON, staff, true);
-            if let Some(ty) = look.staff.filter(|_| staff) {
-                write_staff(ui, vfs, &cat.types[ty]);
-            }
             self.staff = staff;
+            self.written = None;
+        }
+        // The plaque follows the Hire list while its button is down (point 7).
+        if let Some(ty) = look.staff.filter(|&t| staff && self.written != Some(t)) {
+            write_staff(ui, vfs, &cat.types[ty]);
+            self.written = Some(ty);
         }
         back
     }
@@ -209,6 +213,16 @@ fn general_text(ui: &mut Interface, id: i32, ty: &EntityType) {
     ui.set_text(id, &entry.unwrap_or_default());
 }
 
+/// The text of the species plaque: for a user-made animal, the file its language section names,
+/// read each time (empty when the key or the member is missing); else the general text entry.
+fn species_text(ui: &mut Interface, vfs: &Vfs, id: i32, ty: &EntityType) {
+    if !crate::usertext::NAMES.contains(&ty.name_id) {
+        return general_text(ui, id, ty);
+    }
+    let file = crate::usertext::info_file(ui, ty).and_then(|n| vfs.read(&n).ok());
+    ui.set_text(id, &file.unwrap_or_default());
+}
+
 /// Writes the species plaque for `ty` (point 5) and sets the keeper button (point 6), enabled
 /// when the plaque was opened from an animal's panel.
 fn write_species(ui: &mut Interface, vfs: &Vfs, ty: &EntityType, from_animal: bool) {
@@ -242,7 +256,7 @@ fn write_species(ui: &mut Interface, vfs: &Vfs, ty: &EntityType, from_animal: bo
     for id in SHOWS {
         ui.set_hidden(id, !shows);
     }
-    general_text(ui, TEXT, ty);
+    species_text(ui, vfs, TEXT, ty);
     let kind = keeper_kind(number(ty, "cKeeper").map_or(9500, |v| v as i32));
     ui.set_image(KEEPER, kind);
     ui.use_tooltip(KEEPER, kind);
