@@ -167,9 +167,8 @@ fn a_full_game_freeform_map_lists_its_extra_goals_in_the_order_of_the_spec() {
         panic!("no freeform map");
     };
     let s = Scenario::prepare(&vfs, map).unwrap();
-    // The timer, the 19 donation goals, the 45 award goals, the 5 of `unlock.scn`, then the 37 of the
-    // numbered unlock files.
-    assert_eq!(s.goals.len(), 107, "{map}");
+    // The timer, the 19 donation goals, the 45 award goals, the 5 of `unlock.scn`, then those of the
+    // numbered unlock files (37 on the English edition, 36 on the French).
     let names: Vec<&str> = s.goals.iter().map(|g| g.name.as_str()).collect();
     assert_eq!(names[0], "timer");
     // The goals of each extra file follow, file after file, in the order the file lists them.
@@ -200,7 +199,9 @@ fn a_full_game_freeform_map_lists_its_extra_goals_in_the_order_of_the_spec() {
         .chain(&numbered)
         .flat_map(|f| listed(f))
         .collect();
-    assert_eq!(unlocks.len(), 42, "{numbered:?}");
+    // The French edition lacks `unlock22.scn` (one goal fewer); the other editions have 22 files.
+    assert!(unlocks.len() >= 41, "{numbered:?}");
+    assert_eq!(s.goals.len(), 65 + unlocks.len(), "{map}");
     assert_eq!(names[65..], unlocks[..]);
     // Several files name their goals alike: the first pass shows the files' order, by the block each
     // `DEFAULT_ITEMS` makes available.
