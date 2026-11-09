@@ -248,7 +248,7 @@ the staff panel: a click on a staff member (hire one first) opens it at the bott
 - the log has `panel staff ...` lines and `tool assign ...`
 - keepers do not walk their exhibits yet, the list is only kept
 
-the recovery team panel (Dinosaur Digs): a click on the helicopter opens its own panel, not the staff panel, with its name field, a follow button, a fire button that asks as a sale does, its monthly cost, the text of its current job, the recoveries (the animals its base has darted) and the duty icons of its training (the shipped layout has no fields for them), refreshed every second of clock while shown and not while the game is paused; the log has `panel team ID "NAME" cost C duty "TEXT" recoveries N` and `panel team none`
+the recovery team panel (Dinosaur Digs): a click on the helicopter selects its base, and a click on the base itself selects it too; the base's own panel opens, not the staff panel, with its name field (the base's), a follow button, a fire button that removes the base and asks as a sale does, the monthly cost and the text of the current job of the base's first helicopter, the recoveries (the animals the base has darted) and the duty icons of its training (the shipped layout has no fields for them), refreshed every second of clock while shown and not while the game is paused; the log has `panel team ID "NAME" cost C duty "TEXT" recoveries N` and `panel team none`
 
 `rustyzoo run maps/scn19.zoo --headless --passes 14 --clock 67 --seed 3 --script guestpanel.txt`
 
