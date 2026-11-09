@@ -270,7 +270,7 @@ fn the_snapshot_button_and_ctrl_p_write_the_next_numbered_picture_and_say_so() {
             assert_eq!(&jpeg[..2], &[0xff, 0xd8], "{ini:?}");
             assert_eq!(
                 snap_text(s),
-                format!("Wrote screenshot in {}.", shots.join(&name).display())
+                format!("saved in {}", shots.join(&name).display())
             );
         });
     }
@@ -311,7 +311,7 @@ fn a_snapshot_that_cannot_be_written_says_so_and_the_game_goes_on() {
     TEST_FOLDER.with(|f| *f.borrow_mut() = Some(dir.0.join("blocker").join("shots")));
     play("view-snap-fail", "", |s| {
         s.pass(&click_on(SNAPSHOT));
-        assert_eq!(snap_text(s), "Failed to write screenshot.");
+        assert_eq!(snap_text(s), "not saved");
         s.pass(&[]);
     });
 }
