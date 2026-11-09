@@ -460,3 +460,16 @@ fn a_list_notices_a_unit_that_came_or_went_and_a_rename() {
     animal(&mut w, 5).dying = true;
     assert!(win.changed(&entries(ANIMALS, &w)));
 }
+
+#[test]
+fn an_extreme_threshold_never_overflows() {
+    let (mut ui, vfs) = interface("unitlist-extreme");
+    let mut w = animals();
+    for t in [0, -1, i32::MIN, i32::MAX] {
+        w.units.class.ui_threshold = t;
+        animal(&mut w, 5).happiness = i32::MIN;
+        animal(&mut w, 5).hunger = i32::MAX;
+        let shown = counts(ANIMALS, &w, &mut ui, &vfs);
+        assert_eq!(shown[0], "5", "threshold {t}");
+    }
+}

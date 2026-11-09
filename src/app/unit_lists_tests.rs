@@ -238,10 +238,12 @@ fn a_row_click_selects_the_unit_centres_the_view_and_ends_the_follow() {
         // The row of the selected unit is the selected row.
         assert_eq!(s.app.interface().unwrap().selected_row(3805), Some(1));
         // A row that is not there changes nothing; a click on no row clears the selection.
-        s.app.list_row(ANIMALS, 7);
-        s.pass(&[]);
-        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[0]));
-        s.app.list_row(ANIMALS, -1);
+        for row in [7, i32::MAX] {
+            s.app.list_row(ANIMALS, row);
+            s.pass(&[]);
+            assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[0]));
+        }
+        s.app.list_row(ANIMALS, i32::MIN);
         s.pass(&[]);
         assert_eq!(s.app.game.as_ref().unwrap().selected, None);
         assert!(!shown(s, 6));
