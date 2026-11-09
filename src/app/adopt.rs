@@ -18,9 +18,10 @@ impl App<'_> {
 
     /// A release on the map with an animal or a staff member as the tool: a valid place gets the
     /// unit, paid and booked as animal purchase or in the wages of its class, and logs `world add
-    /// CLASS/TYPE/SUBTYPE X,Y id N name=NAME` and `money book CATEGORY PRICE`; the placement
-    /// sound plays, and a new pending unit of the same item follows the mouse. A hire draws the
-    /// sex of the next one and makes the list again. A place that is not valid, or too dear,
+    /// CLASS/TYPE/SUBTYPE X,Y id N name=NAME` and `money book CATEGORY PRICE`; the unit keeps the
+    /// id and the state of the pending unit (an egg layer is placed as its egg); the drop rule of
+    /// its kind runs, the placement sound plays, and a new pending unit of the same item follows
+    /// the mouse. A hire draws the sex of the next one and makes the list again. A place that is not valid, or too dear,
     /// plays the refusal sound and shows its message (`tool message N`, or `tool refused`
     /// without one).
     pub(super) fn adopt(&mut self) {
