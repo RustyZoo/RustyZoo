@@ -303,6 +303,16 @@ mod tests {
             Some(Command::Key(Key::L, true, false))
         );
         assert_eq!(press(Scancode::Return, Mod::LALTMOD), None);
-        assert_eq!(press(Scancode::F1, Mod::NOMOD), None);
+        // F1 opens the help window; with Ctrl it is the game's own, and with Alt a system key.
+        assert_eq!(
+            press(Scancode::F1, Mod::NOMOD),
+            Some(Command::Key(Key::F1, false, false))
+        );
+        assert_eq!(
+            press(Scancode::F1, Mod::LCTRLMOD),
+            Some(Command::Key(Key::F1, true, false))
+        );
+        assert_eq!(press(Scancode::F1, Mod::LALTMOD), None);
+        assert_eq!(press(Scancode::F2, Mod::NOMOD), None);
     }
 }

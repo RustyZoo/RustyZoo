@@ -335,9 +335,14 @@ fn a_missing_key_takes_the_built_in_value_and_odd_values_are_quantised() {
 #[test]
 fn a_terrain_level_without_a_button_selects_and_changes_nothing() {
     for level in ["4", "-1", "99999"] {
-        let ini = format!("[advanced]\nlevel={level}\nnormal=7\n");
+        let ini = format!("[UI]\nmouseScrollX=40\n[advanced]\nlevel={level}\nnormal=7\n");
         with_options(&format!("level{level}"), &ini, |t, dir| {
             t.pass(&[]);
+            assert_eq!(
+                written(dir, "UI", "mouseScrollY"),
+                Some(40),
+                "the start-up ran"
+            );
             assert!([1590, 1591, 1592, 1593].iter().all(|&id| !t.down(id)));
             assert_eq!(written(dir, "advanced", "normal"), None);
             assert!(t.app.renderer.blending());
