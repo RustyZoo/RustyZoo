@@ -222,6 +222,37 @@ impl Game {
         )
     }
 
+    /// The rotor loops of the helicopters that play, as the sound object holds them (staff 7.11.2):
+    /// the voice is one per helicopter, and the sound is not placed again.
+    pub(super) fn rotor_sounds(&self) -> Vec<UnitSound> {
+        let rotors = self.world.units.iter().filter_map(|u| {
+            let crate::unit::Part::Staff(s) = &u.part else {
+                return None;
+            };
+            let r = s.heli.rotor.as_ref().filter(|r| r.playing)?;
+            Some(UnitSound {
+                id: u.id,
+                file: r.file.clone()?,
+                voice: format!("rotor {}", u.id),
+                base: r.heard.0,
+                at: (0, 0),
+                distance: r.heard.1,
+                pan: r.pan,
+            })
+        });
+        rotors.collect()
+    }
+
+    /// Where the sounds are heard from, for the units' sound rules.
+    pub(super) fn hearing(&self) -> crate::staff::rotor::Hearing {
+        crate::staff::rotor::Hearing {
+            listener: self.listener(),
+            rotation: self.camera.rotation,
+            zoom: self.camera.zoom,
+            global: self.global,
+        }
+    }
+
     /// Places sounds (entity, file, voice, base term) at their entity's position in the view
     /// space of the camera, heard from the centre of the map view (sound 5). A sound whose entity
     /// is gone is dropped.

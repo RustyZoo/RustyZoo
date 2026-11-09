@@ -434,6 +434,8 @@ pub struct Units {
     /// The session flags of the cheats, set by the step from the program's (cheats 2.4). The
     /// breeding flag goes down here when a roll uses it, and the step hands that back.
     pub(crate) cheat: crate::cheat::Flags,
+    /// Where the sounds are heard from, set by the program before each step (sound 5).
+    pub(crate) hearing: crate::staff::rotor::Hearing,
     /// The live state of the guest buildings and the prices of the economy file (guest buildings).
     pub(crate) buildings: crate::building::Table,
     pub(crate) prices: crate::building::Prices,
@@ -494,6 +496,7 @@ impl Default for Units {
             service_interval: 90,
             attraction_score: false,
             eggs_hatch_fast: false,
+            hearing: Default::default(),
             spent: Vec::new(),
             lines: Vec::new(),
             animal_lines: Vec::new(),

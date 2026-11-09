@@ -16,9 +16,7 @@ impl Cx<'_, '_> {
     }
 
     fn flying(&mut self, on: bool) {
-        if let Part::Staff(s) = &mut self.unit.part {
-            s.heli.set_flying(on);
-        }
+        heli::set_flying(self.unit, self.world, self.data, self.at, on);
     }
 
     /// The helicopter's destination setter (point 8.1).

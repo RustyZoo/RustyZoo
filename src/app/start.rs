@@ -154,6 +154,8 @@ impl App<'_> {
             carry: None,
             held: None,
             vehicles: Vec::new(),
+            global: crate::config::Config::parse(self.renderer.vfs().ini())
+                .map_or(0, |ini| crate::music::global_term(&ini)),
         });
         // The game screen's set-up: running, the pause button shown; the zoom buttons follow the
         // zoom of the file (camera 8.4 point 5, ui layout 7.11 point 4).

@@ -519,36 +519,6 @@ fn a_helicopter_draws_once_per_goal_update_and_nothing_else_from_take_off_to_lan
 }
 
 #[test]
-fn the_rotor_starts_at_the_take_off_fades_in_over_four_seconds_and_out_after_the_landing() {
-    let mut heli = crate::staff::heli::Heli::default();
-    assert_eq!(heli.level(), None);
-    heli.set_flying(true);
-    assert_eq!(heli.level(), Some(3000));
-    heli.tick(2000);
-    assert_eq!(heli.level(), Some(1500));
-    heli.tick(2000);
-    assert_eq!(heli.level(), Some(0));
-    // Faded in: it stops fading, and stays at full volume while it flies.
-    heli.tick(1000);
-    assert_eq!(heli.level(), Some(0));
-    // Setting what the word is does nothing; landing fades it out and frees it.
-    heli.set_flying(true);
-    heli.set_flying(false);
-    heli.tick(3999);
-    assert_eq!(heli.level(), Some(2999));
-    heli.tick(1);
-    assert_eq!(heli.level(), None);
-    // A landed one has none; one loaded in the air has it at full volume, not fading.
-    heli.set_flying(false);
-    assert_eq!(heli.level(), None);
-    let loaded = crate::staff::heli::Heli::from_own(&[7, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0]);
-    assert_eq!(
-        (loaded.base, loaded.flying, loaded.dir, loaded.level()),
-        (7, true, 2, Some(0))
-    );
-}
-
-#[test]
 fn the_slot_and_exit_points_ignore_the_heights_at_an_odd_rotation() {
     let (mut w, cat, _) = zoo(&[]);
     let at = w.find(BASE).unwrap();

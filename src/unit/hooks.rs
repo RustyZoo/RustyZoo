@@ -99,7 +99,7 @@ impl Hooks for Standard<'_> {
         unit.animation
             .advance(ms, &|name| self.data.timing(entity, name));
         self.tell(unit, world, at);
-        crate::staff::heli::rotor(unit, ms);
+        crate::staff::heli::rotor(unit, world, self.data, at, ms);
     }
 
     fn behaviour(&mut self, unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
