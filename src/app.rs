@@ -247,8 +247,7 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     /// The show panel's tab of the program's first showing (info-panels 19.3 point 4).
     show_tab: Option<i32>,
-    /// The animal, guest and staff list windows: their filters last as long as the program
-    /// (information panels 20.1).
+    /// The animal, guest and staff list windows (information panels 20.1).
     lists: crate::panel::unitlist::Lists,
     timers: Timers,
     quit: bool,
