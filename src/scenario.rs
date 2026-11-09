@@ -25,8 +25,6 @@ use crate::vfs::Vfs;
 
 pub(crate) use apply::{Marks, built_line};
 pub(crate) use gui::{Act, Avail, Deed, Effect, Gui, Tell, Which};
-#[cfg(test)]
-pub(crate) use popup::Hint;
 pub(crate) use popup::{Op, Popup};
 pub(crate) use rules::Game;
 

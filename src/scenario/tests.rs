@@ -377,7 +377,7 @@ fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
     assert_eq!(p.pictures, ["bg", "", "pic", ""]);
     assert_eq!((p.ok, p.cancel), (true, false));
     assert_eq!(p.hint.layout, 45400);
-    assert_eq!((p.hint.short, p.hint.button), (-1, 45406));
+    assert_eq!((p.hint.short, p.hint.button), (-1, false));
     // No section of its own: the default one alone; no default section: all defaults.
     let q = Popup::read(&cfg(POPUPS), 4).unwrap();
     assert_eq!((q.layout, q.long[0].as_str()), (45100, "BASE"));
@@ -386,10 +386,6 @@ fn a_popup_is_its_section_over_the_default_one_with_its_defaults() {
         none,
         Popup {
             ok: true,
-            hint: Hint {
-                button: 45406,
-                ..Hint::default()
-            },
             ..Popup::default()
         }
     );
