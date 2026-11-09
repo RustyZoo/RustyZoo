@@ -621,11 +621,12 @@ impl<'a> App<'a> {
             self.acts();
         }
         let modal = self.modal();
+        let held = self.scenario_held();
         let mut month_end = false;
         self.scenario_sync();
         if let Some(game) = &mut self.game
             && let Some(step) = self.fired.step
-            && !(game.paused || modal)
+            && !(game.paused || modal || held)
         {
             let data = Library {
                 catalogue: self.renderer.catalogue(),
@@ -665,9 +666,13 @@ impl<'a> App<'a> {
                 self.guest_created(trio);
             }
             self.research_done();
-            self.scenario_over();
         }
         self.scenario_effects();
+        // The end is decided at the end of the pass: its dialog comes after every popup of the pass
+        // was answered (scenarios 8.5 point 5).
+        if !self.scenario_held() && !self.question_open() {
+            self.scenario_over();
+        }
         self.undo_button();
         self.panel_pass(now);
         self.tell_money(now);

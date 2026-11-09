@@ -7,6 +7,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
+use super::Line;
 use super::popup::{Op, Popup};
 
 /// Something a trigger does to the interface, in order.
@@ -271,18 +272,79 @@ impl Gui {
         std::mem::take(&mut g.out)
     }
 
-    /// The oldest run of things the triggers left, of one kind: triggers that ran one after the
-    /// other are carried out in that order, whatever they do (`awards.md` 6.2).
+    /// The oldest thing the triggers left: triggers that ran one after the other are carried out in
+    /// that order, whatever they do (`awards.md` 6.2), and one at a time, so that a modal popup
+    /// holds what comes after it (`scenarios.md` 8.5).
     pub(crate) fn take_run(&self) -> Option<Act> {
         let mut g = self.0.borrow_mut();
         let first = *g.order.first()?;
-        let n = g.order.iter().take_while(|&&q| q == first).count();
-        g.order.drain(..n);
+        g.order.remove(0);
         Some(match first {
-            Queue::Avail => Act::Avail(g.avail.drain(..n).collect()),
-            Queue::Deed => Act::Deed(g.deeds.drain(..n).collect()),
-            Queue::Effect => Act::Effects(g.out.drain(..n).collect()),
+            Queue::Avail => Act::Avail(g.avail.drain(..1).collect()),
+            Queue::Deed => Act::Deed(g.deeds.drain(..1).collect()),
+            Queue::Effect => Act::Effects(g.out.drain(..1).collect()),
         })
+    }
+
+    /// Whether the triggers left something that the application has not carried out yet.
+    pub(crate) fn pending(&self) -> bool {
+        !self.0.borrow().order.is_empty()
+    }
+
+    /// Popups of a deed or an availability change, to show next: before whatever the later triggers
+    /// of the pass left, in this order (`scenarios.md` 8.5 point 3).
+    pub(crate) fn popups_next(&self, popups: Vec<Popup>) {
+        let mut g = self.0.borrow_mut();
+        for (at, popup) in popups.into_iter().enumerate() {
+            g.out.insert(at, Effect::Popup(popup));
+            g.order.insert(at, Queue::Effect);
+        }
+    }
+
+    /// Where the queues end now, for [`Gui::hint`].
+    pub(super) fn mark(&self) -> Mark {
+        let g = self.0.borrow();
+        Mark(g.out.len(), g.avail.len(), g.deeds.len())
+    }
+
+    /// Gives the popups left since `mark` the line of the first goal in progress, for the ones whose
+    /// hint is -1: the line is taken when the trigger runs (`scenarios.md` 8.3 point 1, 8.5 point 6).
+    pub(super) fn hint(&self, mark: Mark, line: &dyn Fn() -> Option<Line>) {
+        let mut g = self.0.borrow_mut();
+        let g = &mut *g;
+        let mut popups: Vec<&mut Popup> = Vec::new();
+        popups.extend(g.out.iter_mut().skip(mark.0).filter_map(Effect::popup_mut));
+        popups.extend(g.avail.iter_mut().skip(mark.1).filter_map(Avail::popup_mut));
+        popups.extend(g.deeds.iter_mut().skip(mark.2).filter_map(Deed::popup_mut));
+        popups.retain(|p| p.hint.short == -1);
+        if !popups.is_empty() {
+            let line = line();
+            popups.into_iter().for_each(|p| p.hint.goal = line);
+        }
+    }
+}
+
+/// The ends of the three queues.
+#[derive(Clone, Copy)]
+pub(super) struct Mark(usize, usize, usize);
+
+impl Avail {
+    fn popup_mut(&mut self) -> Option<&mut Popup> {
+        match &mut self.tell {
+            Some(Tell::Popup(p)) => Some(p),
+            _ => None,
+        }
+    }
+}
+
+impl Deed {
+    fn popup_mut(&mut self) -> Option<&mut Popup> {
+        match self {
+            Deed::Boxed { popup, .. } | Deed::Remove { popup, .. } | Deed::Sale { popup, .. } => {
+                popup.as_mut()
+            }
+            _ => None,
+        }
     }
 }
 

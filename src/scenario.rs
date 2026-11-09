@@ -671,31 +671,15 @@ impl Scenario {
         &self.gui
     }
 
-    /// The effects the triggers left since the last call. A popup whose hint is -1 takes the line
-    /// of the goal in progress now (8.3): the text it shows is built from that line.
+    /// The effects the triggers left since the last call.
     #[cfg(test)]
     pub(crate) fn effects(&self) -> Vec<Effect> {
-        let mut effects = self.gui.take_effects();
-        self.give_hint(&mut effects);
-        effects
+        self.gui.take_effects()
     }
 
-    /// The oldest run of what the triggers left, in the order they ran.
+    /// The oldest thing the triggers left, in the order they ran.
     pub(crate) fn next_act(&self) -> Option<Act> {
-        let mut act = self.gui.take_run()?;
-        if let Act::Effects(effects) = &mut act {
-            self.give_hint(effects);
-        }
-        Some(act)
-    }
-
-    fn give_hint(&self, effects: &mut [Effect]) {
-        let line = self.hint_line();
-        for popup in effects.iter_mut().filter_map(Effect::popup_mut) {
-            if popup.hint.short == -1 {
-                popup.hint.goal = line;
-            }
-        }
+        self.gui.take_run()
     }
 
     #[cfg(test)]
@@ -742,7 +726,7 @@ impl Scenario {
     }
 
     /// The line a hint of -1 shows (8.3): the first goal in progress, timer first, that has a text.
-    fn hint_line(&self) -> Option<Line> {
+    pub(crate) fn hint_line(&self) -> Option<Line> {
         self.goals.iter().find_map(|g| match g.body {
             _ if g.reported() != 0 => None,
             Body::Timer(_) => self.timer_line(),
@@ -777,9 +761,11 @@ impl Scenario {
     /// The start triggers fire, in the order listed.
     pub(crate) fn start(&self, log: &mut Vec<String>) {
         log.push(format!("scenario start {} {}", self.file, self.goals.len()));
+        let mark = self.gui.mark();
         for (name, trigger) in &self.start {
             trigger.fire(name, "start", true, log, &self.gui);
         }
+        self.gui.hint(mark, &|| self.hint_line());
     }
 
     /// A saved game that holds this scenario loads (5.3): the `[resume]` triggers run as fresh ones,
@@ -812,8 +798,15 @@ impl Scenario {
         out
     }
 
-    /// The timer is the first goal; the others are updated in list order.
+    /// One goal is updated, and the popups its trigger left take the hint line as it is then (8.3).
     fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
+        let mark = self.gui.mark();
+        self.update_one(at, env, log);
+        self.gui.hint(mark, &|| self.hint_line());
+    }
+
+    /// The timer is the first goal; the others are updated in list order.
+    fn update_one(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         let total = env.total_months();
         let gui = &self.gui;
         let (timer, rest) = self.goals.split_first_mut().expect("the timer");
