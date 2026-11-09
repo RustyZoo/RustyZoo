@@ -83,8 +83,9 @@ impl Painter {
         // Whole rows only, inside the borders.
         let mut y = e.y_border;
         let end = h.saturating_sub(e.y_border);
-        for (n, row) in l.rows.rows.iter().enumerate().skip(l.rows.top) {
-            let row_height = heights.rows.get(n).copied().unwrap_or(line);
+        let shown = (l.rows.rows.iter().enumerate()).filter(|&(n, _)| !l.rows.hidden(n));
+        for (place, (n, row)) in shown.enumerate().skip(l.rows.top) {
+            let row_height = heights.rows.get(place).copied().unwrap_or(line);
             if y.saturating_add(row_height) > end {
                 break;
             }
@@ -211,11 +212,12 @@ impl Painter {
     ) -> Heights {
         let (dx, dy) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
         let width = dx.saturating_sub(e.x_border.saturating_mul(2)) - l.minicon_width;
-        let rows = l
-            .rows
-            .rows
+        let shown: Vec<_> = (l.rows.rows.iter().enumerate())
+            .filter(|&(n, _)| !l.rows.hidden(n))
+            .collect();
+        let rows = shown
             .iter()
-            .map(|row| {
+            .map(|(_, row)| {
                 let icon = row.icon.map_or(0, |p| pictures.size(p).1);
                 self.text_height(e, strings, &row.text, width)
                     .max(l.minicon_height.max(icon))
@@ -225,6 +227,8 @@ impl Painter {
             rows,
             spacing: l.spacing.max(0),
             inner: dy.saturating_sub(e.y_border.saturating_mul(2)),
+            map: (l.rows.hidden.iter().any(|&h| h))
+                .then(|| shown.iter().map(|&(n, _)| n).collect()),
         }
     }
 

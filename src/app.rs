@@ -249,6 +249,8 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     /// The show panel's tab of the program's first showing (info-panels 19.3 point 4).
     show_tab: Option<i32>,
+    /// The animal, guest and staff list windows (information panels 20.1).
+    lists: crate::panel::unitlist::Lists,
     timers: Timers,
     quit: bool,
     /// The paused message (string 400) is on the message line (input 4.5).
@@ -445,6 +447,7 @@ impl<'a> App<'a> {
             game: None,
             cheats: Default::default(),
             show_tab: None,
+            lists: Default::default(),
             timers,
             quit: false,
             pause_said: false,
@@ -929,6 +932,7 @@ mod tank_panel;
 mod terrain;
 mod told;
 mod undo;
+mod unit_lists;
 mod zoo_window;
 
 #[cfg(test)]
@@ -978,6 +982,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod unit_lists_tests;
 
 #[cfg(test)]
 mod filter_tests;

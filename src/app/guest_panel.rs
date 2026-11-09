@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::panel::guest;
+use crate::panel::unitlist as lists;
 
 impl App<'_> {
     /// Selects the guest with entity id `id` and shows its panel, filled at once (4.3).
@@ -34,7 +35,10 @@ impl App<'_> {
             game.guest.deselect();
             ui.set_hidden(guest::LAYOUT, true);
         }
-        ui.set_alt(guest::LAYOUT, ui.shown(exhibit::LAYOUT));
+        ui.set_alt(
+            guest::LAYOUT,
+            ui.shown(exhibit::LAYOUT) || lists::any_shown(ui),
+        );
     }
 
     /// The pick-up button: the selected guest is picked up as a second click does.

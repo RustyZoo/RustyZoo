@@ -387,7 +387,13 @@ fn a_graph_reads_its_keys_and_draws_its_own_background_unless_the_file_says_not(
         panic!("not a graph");
     };
     assert_eq!(
-        (g.style, g.y_is_money, g.forced_max, g.forced_min, g.y_labels),
+        (
+            g.style,
+            g.y_is_money,
+            g.forced_max,
+            g.forced_min,
+            g.y_labels
+        ),
         (crate::ui::graph::Style::Bar, true, 100, -1, 4)
     );
     // The graph clears its canvas with its own colour: opaque unless the file says otherwise.
