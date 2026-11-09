@@ -176,3 +176,15 @@ fn the_line_of_the_hint_shows_the_popup_again_with_the_goals_as_they_are_then() 
         assert_eq!(hint(app), Some(b"hint 1 ".to_vec()));
     });
 }
+
+#[test]
+fn the_simulation_steps_in_the_frame_after_a_start_whose_triggers_left_effects() {
+    let files = [("s/steps.scn", STEPS.to_vec())];
+    with_game("start-step", "", &files, None, |app, _| {
+        // The frame of the start (pass 1) leaves the effects of the start triggers; its step runs.
+        let at = play(app, "s/steps.scn");
+        let start = app.log_lines(1, at);
+        assert_eq!(count(&start, "sim step"), 1, "{start:?}");
+        assert!(disabled(app, 2001));
+    });
+}
