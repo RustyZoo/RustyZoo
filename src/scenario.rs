@@ -763,6 +763,13 @@ impl Scenario {
         self.gathered = ms;
     }
 
+    /// The names of the top-level goals still in progress.
+    #[cfg(test)]
+    pub(crate) fn pending(&self) -> Vec<&str> {
+        let open = self.goals.iter().zip(&self.reported).filter(|g| *g.1 == 0);
+        open.map(|(g, _)| g.name.as_str()).collect()
+    }
+
     /// The milliseconds gathered towards the next pass.
     pub(crate) fn gathered(&self) -> u32 {
         self.gathered
