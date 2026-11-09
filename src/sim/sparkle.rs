@@ -22,7 +22,7 @@ impl Sim {
         dt: u32,
     ) -> bool {
         let events = world.event_count();
-        for id in world.sparkle_tanks() {
+        for id in world.tank_ids() {
             world.step_tank_water(id);
             self.wet_changed(world, cat, data);
             world.decay_tank_water(id, dt);
@@ -221,10 +221,11 @@ mod tests {
         world.push_sparkle(id, 7);
         world.sparkle_tick(id, u32::MAX);
         assert_eq!(world.doomed(), [7]);
+        assert_eq!(world.hidden_sparkles(), [7], "aged out: hidden at once");
     }
 
     #[test]
-    fn the_level_back_to_0_and_a_save_flag_every_sparkle_for_removal_and_hide_it() {
+    fn the_level_back_to_0_and_a_save_flag_every_sparkle_for_removal_without_hiding_it() {
         let cat = catalogue();
         let (mut world, mut sim, id) = setup(true);
         run(&mut world, &mut sim, &cat, 100);
@@ -234,9 +235,11 @@ mod tests {
         world.drain(id);
         assert!(world.sparkles().all(|s| s.1.list.is_empty()));
         assert_eq!(world.doomed().len(), made);
+        assert!(world.hidden_sparkles().is_empty(), "flagged, not hidden");
         // The next removal pass takes them out.
         sim.step_in(&mut world, &cat, 0, |_, _, _| {});
         assert!(found(&world).is_empty() && world.doomed().is_empty());
+        assert!(world.hidden_sparkles().is_empty());
         // A save removes them, with animatedwater on.
         world.set_paused(false);
         world.fill(id);
@@ -278,5 +281,20 @@ mod tests {
                 "{seed}"
             );
         }
+    }
+
+    #[test]
+    fn a_deleted_tank_flags_its_sparkles_at_once_without_hiding_them() {
+        let cat = catalogue();
+        let (mut world, mut sim, id) = setup(false);
+        run(&mut world, &mut sim, &cat, 100);
+        let made = world.sparkles().map(|s| s.1.list.len()).sum::<usize>();
+        assert!(made > 0);
+        let wall = world.zoo.entities.iter().find(|e| e.class == "tankwall").unwrap();
+        assert!(world.remove(wall.common.as_ref().unwrap().id));
+        assert!(world.exhibits().get(id).is_none(), "the tank is gone");
+        assert_eq!(world.doomed().len(), made, "flagged for removal at once");
+        assert!(world.hidden_sparkles().is_empty(), "flagged, not hidden");
+        assert!(world.sparkles().next().is_none());
     }
 }

@@ -21,17 +21,23 @@ impl World {
         self.sparkles.iter().map(|(&id, s)| (id, s))
     }
 
-    /// The sparkles flagged for removal and not yet gone: they are not drawn.
+    /// The sparkles flagged for removal and not yet gone.
     pub(crate) fn doomed(&self) -> &[u32] {
         &self.doomed
     }
 
+    /// The aged-out sparkles, hidden at once; the others flagged stay drawn until the removal pass.
+    pub(crate) fn hidden_sparkles(&self) -> &[u32] {
+        &self.hidden
+    }
+
     /// The sparkles flagged for removal, for the next removal pass.
     pub(crate) fn take_doomed(&mut self) -> Vec<u32> {
+        self.hidden.clear();
         std::mem::take(&mut self.doomed)
     }
 
-    /// Every sparkle of tank `id` is flagged for removal at once and the list emptied; the timer
+    /// Every sparkle of tank `id` is flagged for removal at once (not hidden) and the list emptied; the timer
     /// stays (9.7.10 point 6).
     pub(crate) fn drop_sparkles(&mut self, id: u32) {
         if let Some(s) = self.sparkles.get_mut(&id) {
@@ -45,9 +51,9 @@ impl World {
         ids.into_iter().for_each(|id| self.drop_sparkles(id));
     }
 
-    /// The ids of the tanks that are, in list order, for one pass of the sparkles; the sparkles of
-    /// a tank that is gone are flagged for removal first (it was deleted).
-    pub(crate) fn sparkle_tanks(&mut self) -> Vec<u32> {
+    /// The sparkles of the tanks that are gone (deleted or merged away) are flagged for removal at
+    /// once, with their timer (9.7.10 point 6).
+    pub(super) fn drop_gone_sparkles(&mut self) {
         let tanks = self.tank_ids();
         let gone: Vec<u32> = (self.sparkles.keys().copied())
             .filter(|id| !tanks.contains(id))
@@ -56,7 +62,6 @@ impl World {
             self.drop_sparkles(id);
             self.sparkles.remove(&id);
         }
-        tanks
     }
 
     /// Point 2 and 3: every sparkle of tank `id` ages by `dt`, those above 4000 ms go; then the
@@ -74,6 +79,7 @@ impl World {
             }
             keep
         });
+        self.hidden.extend(&gone);
         self.doomed.extend(gone);
         s.timer = s.timer.wrapping_sub(dt as i32);
         let due = s.timer < 0;

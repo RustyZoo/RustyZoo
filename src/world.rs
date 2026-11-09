@@ -171,8 +171,10 @@ pub struct World {
     waves: std::collections::HashSet<u32>,
     /// The water sparkles of each tank (map drawing 9.7.10), not saved.
     sparkles: BTreeMap<u32, Sparkles>,
-    /// The sparkles flagged for removal at the next removal pass: hidden at once.
+    /// The sparkles flagged for removal at the next removal pass.
     doomed: Vec<u32>,
+    /// Those of them that aged out: hidden at once.
+    hidden: Vec<u32>,
     /// The level and purity of each tank the last `world water` line told (not saved, not hashed).
     told_water: BTreeMap<u32, (u32, u32)>,
     /// The tanks whose water level or wall height moved since the last [`World::take_wet`]: the
@@ -263,6 +265,7 @@ impl World {
             waves: Default::default(),
             sparkles: BTreeMap::new(),
             doomed: Vec::new(),
+            hidden: Vec::new(),
             told_water: BTreeMap::new(),
             wet: Vec::new(),
             draws: Vec::new(),
