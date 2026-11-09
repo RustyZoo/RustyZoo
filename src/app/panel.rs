@@ -4,9 +4,9 @@
 //! refresh on the interface clock (information panels 4, 5, 6, 10).
 
 use super::*;
-use crate::panel::unitlist as lists;
 use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
+use crate::panel::unitlist as lists;
 use crate::panel::{animal, guest, research, staff};
 use crate::text::from_cp1252;
 use crate::unit::Part;

@@ -734,7 +734,11 @@ fn a_hidden_row_takes_no_room_and_the_first_row_counts_shown_rows() {
     list.rows.hidden = vec![false, true, true, false, false];
     list.rows.selected = Some(3);
     let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
-    assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0], "right under the first row");
+    assert_eq!(
+        at(&frame, 43, 4 + 15),
+        [255, 0, 0],
+        "right under the first row"
+    );
     let Kind::ListBox(list) = &mut tree.elements[1].kind else {
         unreachable!();
     };

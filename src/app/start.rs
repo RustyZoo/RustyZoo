@@ -162,7 +162,6 @@ impl App<'_> {
             research: Default::default(),
             building: Default::default(),
             show: Default::default(),
-            lists: Default::default(),
             selected: None,
             carry: None,
             held: None,

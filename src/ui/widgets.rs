@@ -184,7 +184,9 @@ pub(crate) struct Heights {
 impl Heights {
     /// The number among all the rows of the shown row `n`.
     fn full(&self, n: usize) -> usize {
-        self.map.as_ref().map_or(n, |m| m.get(n).copied().unwrap_or(n))
+        self.map
+            .as_ref()
+            .map_or(n, |m| m.get(n).copied().unwrap_or(n))
     }
 
     /// The place among the shown rows of row `row`; none for a hidden one.

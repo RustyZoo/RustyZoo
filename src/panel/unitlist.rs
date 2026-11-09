@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use crate::animal;
 use crate::entity::Catalogue;
 use crate::guest;
-use crate::panel::exhibit::{animals_exhibit, type_at};
 use crate::panel::animal::suitability_in;
+use crate::panel::exhibit::{animals_exhibit, type_at};
 use crate::text::to_cp1252;
 use crate::ui::interface::Interface;
 use crate::ui::layout::Rgb;
@@ -117,6 +117,14 @@ pub(crate) fn any_shown(ui: &Interface) -> bool {
 /// The window whose list box is `id`.
 pub(crate) fn list_of(id: i32) -> Option<usize> {
     SPECS.iter().position(|s| s.list == id)
+}
+
+/// The buttons of every filter.
+pub(crate) fn buttons() -> Vec<i32> {
+    SPECS
+        .iter()
+        .flat_map(|s| s.filters.iter().map(|f| f.button))
+        .collect()
 }
 
 /// The number of filters of window `which`.
@@ -262,7 +270,9 @@ impl<'a> Tests<'a> {
 /// default subtype, then the plain one.
 fn list_picture(ty: &crate::entity::EntityType) -> Option<String> {
     let config = ty.config.as_deref()?;
-    let default = config.section("Global").and_then(|g| g.get("DefaultSubtype"));
+    let default = config
+        .section("Global")
+        .and_then(|g| g.get("DefaultSubtype"));
     let sections = [
         [&ty.subtype[..], b"/Characteristics/Strings"].concat(),
         [default.unwrap_or_default(), b"/Characteristics/Strings"].concat(),
@@ -328,7 +338,11 @@ impl Window {
     pub(crate) fn choose(&mut self, which: usize, i: usize, ui: &mut Interface) {
         let spec = &SPECS[which];
         if self.colours.is_empty() {
-            self.colours = spec.filters.iter().map(|f| ui.fore_color(f.count)).collect();
+            self.colours = spec
+                .filters
+                .iter()
+                .map(|f| ui.fore_color(f.count))
+                .collect();
         }
         let i = i.min(spec.filters.len() - 1);
         if let Some(c) = self.colours.get(self.filter).copied().flatten() {
@@ -370,15 +384,18 @@ impl Window {
         let mut counts = vec![0; spec.filters.len()];
         for (k, e) in list.iter().enumerate() {
             let results: Vec<bool> = (0..counts.len()).map(|i| tests.pass(which, i, e)).collect();
-            counts.iter_mut().zip(&results).for_each(|(c, &r)| *c += i32::from(r));
+            counts
+                .iter_mut()
+                .zip(&results)
+                .for_each(|(c, &r)| *c += i32::from(r));
             let passes = results.get(self.filter).copied().unwrap_or(true);
             let heli = (world.units.get(e.id)).and_then(|u| match &u.part {
                 Part::Staff(s) if u.kind == Kind::Heli => Some(s.heli.base),
                 _ => None,
             });
-            let base = heli.and_then(|b| world.find(b)).filter(|&b| {
-                world.zoo.entities[b].class == "building"
-            });
+            let base = heli
+                .and_then(|b| world.find(b))
+                .filter(|&b| world.zoo.entities[b].class == "building");
             match (heli.is_some(), passes, base) {
                 // The helicopter's row shows its base; with none it stays as it was (20.3 point 4).
                 (true, true, Some(b)) => {
@@ -398,7 +415,12 @@ impl Window {
         self.names = list.into_iter().map(|e| e.name).collect();
         let row = (0..self.ids.len()).find(|&k| !self.hidden[k] && Some(targets[k]) == selected);
         let top = ui.list_top(spec.list);
-        ui.fill_rows(spec.list, self.rows.clone(), self.hidden.clone(), (row, top));
+        ui.fill_rows(
+            spec.list,
+            self.rows.clone(),
+            self.hidden.clone(),
+            (row, top),
+        );
         for (f, n) in spec.filters.iter().zip(counts) {
             ui.set_text(f.count, n.to_string().as_bytes());
         }

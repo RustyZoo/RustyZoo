@@ -1000,7 +1000,11 @@ fn rows_filled_with_hidden_ones_keep_their_numbers_and_the_bar_counts_shown_rows
     // Ten rows, every even one hidden: five shown, three at a time.
     let hidden: Vec<bool> = (0..10).map(|n| n % 2 == 0).collect();
     assert!(ui.fill_rows(20, rows(10), hidden.clone(), (Some(3), 99)));
-    assert_eq!(range(&ui), (2, 2), "the first shown row is clamped to the last page");
+    assert_eq!(
+        range(&ui),
+        (2, 2),
+        "the first shown row is clamped to the last page"
+    );
     assert_eq!(ui.selected_row(20), Some(3));
     assert_eq!(ui.list_top(20), 2);
     // The rows shown from the third shown one on are 5, 7 and 9: a click on the second is row 7.

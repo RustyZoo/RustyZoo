@@ -3,9 +3,9 @@
 //! and pick-up buttons, and the look at what the player did to them. The panels themselves are [`crate::panel::building`].
 
 use super::*;
-use crate::panel::unitlist as lists;
 use crate::building::Kind;
 use crate::panel::building as panel;
+use crate::panel::unitlist as lists;
 use crate::place::bulldozer::type_of;
 use crate::text::to_cp1252;
 

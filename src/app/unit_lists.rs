@@ -16,16 +16,21 @@ impl App<'_> {
         let (vfs, cat) = (self.renderer.vfs(), self.renderer.catalogue());
         let selected = game.selected;
         for (which, spec) in SPECS.iter().enumerate() {
-            let w = &mut game.lists.windows[which];
+            let w = &mut self.lists.windows[which];
             let shown = ui.shown(spec.layout);
             if shown != std::mem::replace(&mut w.shown, shown) {
                 ui.set_button(spec.button, shown, true);
                 if shown {
-                    let plaques = if which == 0 { &PLAQUES[..0] } else { &PLAQUES[..] };
+                    let plaques = if which == 0 {
+                        &PLAQUES[..0]
+                    } else {
+                        &PLAQUES[..]
+                    };
                     for id in HIDES.iter().chain(plaques) {
                         ui.set_hidden(*id, true);
                     }
-                    let pressed = (0..lists::filters(which)).find(|&i| ui.is_down(lists::button(which, i)));
+                    let pressed =
+                        (0..lists::filters(which)).find(|&i| ui.is_down(lists::button(which, i)));
                     w.choose(which, pressed.unwrap_or(w.filter), ui);
                 }
             }
@@ -45,11 +50,23 @@ impl App<'_> {
         }
     }
 
-    /// The filter button `id` was selected (20.5).
-    pub(super) fn list_filter(&mut self, id: i32) {
-        playing!(self, game, ui);
-        if let Some((which, i)) = lists::button_of(id) {
-            game.lists.windows[which].choose(which, i, ui);
+    /// What the player did to the windows since the last look: the filter buttons selected
+    /// (20.5) and the rows of the lists (20.6).
+    pub(super) fn lists_acted(&mut self) {
+        let Some(ui) = &mut self.ui else { return };
+        for id in ui.take_selected_of(&lists::buttons()) {
+            if let Some((which, i)) = lists::button_of(id) {
+                self.lists.windows[which].choose(which, i, ui);
+            }
+        }
+        let rows: Vec<(usize, i32)> = (self.ui_actions[self.acted..].iter())
+            .filter_map(|a| match *a {
+                Action::Row(id, row) => Some((lists::list_of(id)?, row)),
+                _ => None,
+            })
+            .collect();
+        for (which, row) in rows {
+            self.list_row(which, row);
         }
     }
 
@@ -64,7 +81,7 @@ impl App<'_> {
             game.selected = None;
             return;
         };
-        let w = &game.lists.windows[which];
+        let w = &self.lists.windows[which];
         let Some(id) = (w.unit_of(row)).filter(|&id| game.world.find(id).is_some()) else {
             return;
         };
@@ -74,7 +91,11 @@ impl App<'_> {
         });
         let heli = which == STAFF && base.is_some();
         let target = match base.filter(|_| heli) {
-            Some(base) => game.world.find(base).filter(|&at| game.world.zoo.entities[at].class == "building").map(|_| base),
+            Some(base) => game
+                .world
+                .find(base)
+                .filter(|&at| game.world.zoo.entities[at].class == "building")
+                .map(|_| base),
             None => Some(id),
         };
         let Some(target) = target else { return };

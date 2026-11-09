@@ -4,6 +4,7 @@
 
 use super::bulldozer_tests::{Session, catalogue, ty, with_game_of};
 use crate::panel::unitlist::{ANIMALS, GUESTS, STAFF};
+use super::{Command, Mouse};
 use crate::ui::layout::{HIDDEN, Kind};
 
 /// The root of the bulldozer tests with the three windows, the panels they replace and the
@@ -38,7 +39,10 @@ fn window(layout: i32, list: i32, title: i32, buttons: &[i32]) -> (String, Vec<u
     }
     let radio = format!("[r]\ntype=UIRadioSet\nid={}\n", layout * 1000);
     let members: String = buttons.iter().map(|b| format!("button={b}\n")).collect();
-    (format!("ui/w{layout}.lyt"), (text + &radio + &members).into_bytes())
+    (
+        format!("ui/w{layout}.lyt"),
+        (text + &radio + &members).into_bytes(),
+    )
 }
 
 fn empty(layout: i32) -> (String, Vec<u8>) {
@@ -103,7 +107,10 @@ fn shown(s: &mut Session, id: i32) -> bool {
 
 fn row_texts(s: &mut Session, list: i32) -> Vec<String> {
     let ui = s.app.interface().unwrap();
-    (0..).map_while(|r| ui.row_text(list, r)).map(|t| String::from_utf8_lossy(t).into()).collect()
+    (0..)
+        .map_while(|r| ui.row_text(list, r))
+        .map(|t| String::from_utf8_lossy(t).into())
+        .collect()
 }
 
 fn hidden_rows(s: &mut Session, list: i32) -> Vec<bool> {
@@ -115,7 +122,8 @@ fn hidden_rows(s: &mut Session, list: i32) -> Vec<bool> {
 }
 
 #[test]
-fn showing_a_window_hides_the_status_and_show_panels_and_the_plaques_but_the_animal_list_keeps_them() {
+fn showing_a_window_hides_the_status_and_show_panels_and_the_plaques_but_the_animal_list_keeps_them()
+ {
     with_lists("lists-show", |s, _| {
         for window in [16, 12, 31] {
             for id in [14, 803, 41, 27, 28] {
@@ -123,7 +131,10 @@ fn showing_a_window_hides_the_status_and_show_panels_and_the_plaques_but_the_ani
             }
             s.app.interface().unwrap().show(window);
             s.pass(&[]);
-            assert!(![14, 803, 41].iter().any(|&id| shown(s, id)), "window {window}");
+            assert!(
+                ![14, 803, 41].iter().any(|&id| shown(s, id)),
+                "window {window}"
+            );
             assert_eq!(shown(s, 27), window == 16, "window {window}");
             assert!(window == 16 || !shown(s, 28), "window {window}");
             s.app.interface().unwrap().set_hidden(window, true);
@@ -166,7 +177,7 @@ fn a_shown_window_lists_its_units_and_the_filter_buttons_hide_rows_and_keep_the_
         // The hungry filter: 3821. The press runs the same pass; the list holds every row, hidden.
         assert!(s.app.interface().unwrap().press_button(3821));
         s.pass(&[]);
-        assert_eq!(s.app.game.as_ref().unwrap().lists.windows[ANIMALS].filter, 3);
+        assert_eq!(s.app.lists.windows[ANIMALS].filter, 3);
         assert_eq!(hidden_rows(s, 3805), [true, false]);
         let ui = s.app.interface().unwrap();
         assert_eq!(ui.text(3816).unwrap(), b"2", "all");
@@ -177,7 +188,7 @@ fn a_shown_window_lists_its_units_and_the_filter_buttons_hide_rows_and_keep_the_
         s.app.interface().unwrap().show(16);
         s.pass(&[]);
         assert_eq!(hidden_rows(s, 3805), [true, false]);
-        assert_eq!(s.app.game.as_ref().unwrap().lists.windows[GUESTS].filter, 0);
+        assert_eq!(s.app.lists.windows[GUESTS].filter, 0);
     });
 }
 
@@ -219,7 +230,10 @@ fn a_row_click_selects_the_unit_centres_the_view_and_ends_the_follow() {
         assert_eq!(game.selected, Some(ids[0]), "row 1 is Bo");
         assert_ne!(s.app.camera().unwrap().scroll, before, "the view moved");
         assert!(!s.app.interface().unwrap().is_down(3114), "no follow");
-        assert!(!s.app.interface().unwrap().is_down(1028), "the bulldozer is off");
+        assert!(
+            !s.app.interface().unwrap().is_down(1028),
+            "the bulldozer is off"
+        );
         assert!(shown(s, 6), "the animal panel");
         // The row of the selected unit is the selected row.
         assert_eq!(s.app.interface().unwrap().selected_row(3805), Some(1));
@@ -249,7 +263,11 @@ fn the_staff_list_row_of_the_helicopter_selects_its_base_and_a_followed_base_sta
         assert_eq!(row_texts(s, 4205), ["Kay", "Base"]);
         let before = s.app.camera().unwrap().scroll;
         s.app.list_row(STAFF, 1);
-        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[5]), "the base");
+        assert_eq!(
+            s.app.game.as_ref().unwrap().selected,
+            Some(ids[5]),
+            "the base"
+        );
         let moved = s.app.camera().unwrap().scroll;
         assert_ne!(moved, before);
         // The view follows the helicopter (its button is down) and the base is selected: the
@@ -289,8 +307,29 @@ fn the_selected_entity_selects_its_row_in_a_window_that_is_not_shown() {
         s.app.game.as_mut().unwrap().selected = None;
         s.pass(&[]);
         assert_eq!(s.app.interface().unwrap().selected_row(3705), None);
-        assert_eq!(s.app.interface().unwrap().shown(12), false);
+        assert!(!s.app.interface().unwrap().shown(12));
         let ui = s.app.interface().unwrap();
-        assert_ne!(ui.tree.elements[ui.tree.find(12).unwrap()].state & HIDDEN, 0);
+        assert_ne!(
+            ui.tree.elements[ui.tree.find(12).unwrap()].state & HIDDEN,
+            0
+        );
+    });
+}
+
+#[test]
+fn a_mouse_click_on_a_row_runs_the_same_selection() {
+    with_lists("lists-mouse", |s, ids| {
+        s.app.interface().unwrap().show(16);
+        s.pass(&[]);
+        let before = s.app.camera().unwrap().scroll;
+        // The second row (12 pixels each, from the top of the list) is Bo.
+        let click = [
+            Command::Mouse(Mouse::Move(5, 14)),
+            Command::Mouse(Mouse::Down),
+            Command::Mouse(Mouse::Up),
+        ];
+        s.pass(&click);
+        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(ids[0]));
+        assert_ne!(s.app.camera().unwrap().scroll, before);
     });
 }

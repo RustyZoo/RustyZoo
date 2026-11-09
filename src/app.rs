@@ -162,8 +162,6 @@ struct Game {
     building: crate::panel::building::Panel,
     /// The show panel (Marine Mania).
     show: crate::panel::show::Panel,
-    /// The animal, guest and staff list windows.
-    lists: crate::panel::unitlist::Lists,
     /// The unit the player selected, and the one it carries (unit placing 8).
     selected: Option<u32>,
     carry: Option<place::unit::Carry>,
@@ -249,6 +247,9 @@ pub struct App<'a> {
     cheats: crate::cheat::Cheats,
     /// The show panel's tab of the program's first showing (info-panels 19.3 point 4).
     show_tab: Option<i32>,
+    /// The animal, guest and staff list windows: their filters last as long as the program
+    /// (information panels 20.1).
+    lists: crate::panel::unitlist::Lists,
     timers: Timers,
     quit: bool,
     /// The paused message (string 400) is on the message line (input 4.5).
@@ -445,6 +446,7 @@ impl<'a> App<'a> {
             game: None,
             cheats: Default::default(),
             show_tab: None,
+            lists: Default::default(),
             timers,
             quit: false,
             pause_said: false,
