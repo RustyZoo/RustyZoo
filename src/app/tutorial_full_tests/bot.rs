@@ -53,6 +53,12 @@ impl Play<'_, '_> {
             }
             // The undo button waits for something to undo: a bench.
             (10, 1..) if a == 1075 && self.disabled(a) => self.supply(6050, 1),
+            // The window of a show opens on the exhibit of a show tank.
+            (10, 1..) if a == 11113 => {
+                self.show_window();
+                self.click_row(11111, 0);
+                self.press(a);
+            }
             (10, 1..) => self.press(a),
             // The bulldozer takes out a piece of fence.
             (1, _) => self.delete_fence(),
@@ -67,38 +73,59 @@ impl Play<'_, '_> {
         }
     }
 
-    /// A row of the list of expansions: row `value`, or with `b` not 0 the row that reads the
-    /// string `text`.
+    /// A row of a list opened by its button: row `value`, or with `b` not 0 the row that reads
+    /// the string `text`.
     fn pick_row(&mut self, list: i32, b: i32, text: i32, value: i32) {
         if !self.app.ui.as_ref().unwrap().shown(list) {
-            let shown = |p: &(i32, i32, i32, &[i32]), ui: &Interface| ui.shown(p.1);
-            let open = PANELS.iter().position(|p| shown(p, self.app.ui.as_ref().unwrap()));
-            let open = open.or_else(|| (0..4).find(|&n| !self.disabled(PANELS[n].0))).unwrap_or(0);
-            if !shown(&PANELS[open], self.app.ui.as_ref().unwrap()) {
-                self.press(PANELS[open].0);
+            if list == 11191 {
+                self.show_window();
+                self.press(11108);
+            } else {
+                self.open_selector();
             }
-            self.press(SELECTORS[open]);
         }
-        let ui = self.app.ui.as_mut().unwrap();
-        let i = ui.tree.find(list).unwrap();
-        let Kind::ListBox(l) = &ui.tree.elements[i].kind else {
+        let ui = self.app.ui.as_ref().unwrap();
+        let Some(Kind::ListBox(l)) = ui.tree.find(list).map(|i| &ui.tree.elements[i].kind) else {
             return;
         };
         let want = crate::text::to_cp1252(&ui.string(text));
-        let row = if b == 0 {
-            Some(value as usize)
-        } else {
-            l.rows.rows.iter().position(|r| r.text == want)
+        let row = match b {
+            0 => Some(value as usize),
+            _ => l.rows.rows.iter().position(|r| r.text == want),
         };
-        let Some(row) = row else { return };
-        let (x, y, _, h) = ui.tree.rect(i);
+        if let Some(row) = row {
+            self.click_row(list, row);
+        }
+    }
+
+    /// The list of expansions of an enabled panel.
+    fn open_selector(&mut self) {
+        let shown = |n: usize, ui: &Interface| ui.shown(PANELS[n].1);
+        let open = (0..4).find(|&n| shown(n, self.app.ui.as_ref().unwrap()));
+        let open = open.or_else(|| (0..4).find(|&n| !self.disabled(PANELS[n].0)));
+        let open = open.unwrap_or(0);
+        if !shown(open, self.app.ui.as_ref().unwrap()) {
+            self.press(PANELS[open].0);
+        }
+        self.press(SELECTORS[open]);
+    }
+
+    /// A click on row `row` of a list box: its place is found by hovering down the list.
+    fn click_row(&mut self, list: i32, row: usize) {
+        let ui = self.app.ui.as_mut().unwrap();
+        let i = ui.tree.find(list).unwrap();
+        let (x, y, w, h) = ui.tree.rect(i);
+        println!("ROW {list} {row} rect {x} {y} {w} {h} shown {} layout41 {} 11115 {:?} sel {:?}", ui.shown(list), ui.shown(41), ui.selected_row(11115), ui.selected_row(11196));
         for y in (y..y + h).step_by(2) {
-            ui.mouse(Mouse::Move(x + 5, y));
+            ui.mouse(Mouse::Move(x + w / 2, y));
             let Kind::ListBox(l) = &ui.tree.elements[i].kind else {
+                println!("ROW not a list");
                 return;
             };
+            if (y - 361) % 10 == 0 { println!("ROW y {y} hover {:?} rows {} state {:x}", l.rows.hover, l.rows.rows.len(), ui.tree.elements[i].state); }
             if l.rows.hover == Some(row) {
-                let click = [Mouse::Move(x + 5, y), Mouse::Down, Mouse::Up];
+                println!("ROW found {y}");
+                let click = [Mouse::Move(x + w / 2, y), Mouse::Down, Mouse::Up];
                 return self.tick(50, &click.map(Command::Mouse));
             }
         }
@@ -165,6 +192,24 @@ impl Play<'_, '_> {
         self.app.open_exhibit(id);
         self.press(crate::panel::exhibit::TANK_TAB);
         self.press(if h < height { crate::panel::exhibit::WALL_UP } else { crate::panel::exhibit::WALL_DOWN });
+    }
+
+    /// The exhibit panel on a show tank, which opens the window of its show.
+    fn show_window(&mut self) {
+        let world = &self.app.game.as_ref().unwrap().world;
+        let list = world.exhibits().list();
+        let tank = list.iter().find(|x| crate::show::info_of(world, x.id).is_some());
+        if let Some(id) = tank.map(|x| x.id) {
+            self.app.open_exhibit(id);
+            for k in 0..3 {
+                self.tick(STEP, &[]);
+                let ui = self.app.ui.as_ref().unwrap();
+                let n = |l: i32| match ui.tree.find(l).map(|i| &ui.tree.elements[i].kind) { Some(Kind::ListBox(b)) => b.rows.rows.len() as i32, _ => -1 };
+                println!("SHOWWIN {k} {} {} {} {}", n(11111), n(11115), n(11196), n(11191));
+                let dup: Vec<_> = ui.tree.elements.iter().enumerate().filter(|(_, e)| e.id == 11111).map(|(i, e)| (i, e.state, matches!(e.kind, Kind::ListBox(_)))).collect();
+                println!("DUP {dup:?} {:?}", ui.tree.find(11111));
+            }
+        }
     }
 
     /// The held animal goes in an exhibit with no animal, or the last one.
