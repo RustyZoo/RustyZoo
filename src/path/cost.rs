@@ -81,7 +81,7 @@ fn crowded(w: &World, m: &Mover, t: usize) -> bool {
 
 /// Whether any of the edge slots of the tiles within `r - 1` tiles of `t` (a square; `t` itself
 /// for `r` 1) holds a piece.
-fn near_edge(w: &World, t: usize, r: u32) -> bool {
+pub(crate) fn near_edge(w: &World, t: usize, r: u32) -> bool {
     let width = w.zoo.width as i32;
     let r = r.min(w.zoo.width.max(w.zoo.height)) as i32;
     let (x, y) = (t as i32 % width, t as i32 / width);
