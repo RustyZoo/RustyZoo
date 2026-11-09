@@ -282,30 +282,40 @@ impl World {
         self.set_purity(id, purity - i64::from(by));
     }
 
-    /// One simulation step of the water of every tank (3.10): one elevation step up while filled
-    /// and below the full level, one down while not filled and above 0; a tank that comes empty
-    /// with another target salinity takes it and is filled again.
-    /// Whether a level moved.
+    /// How many events the world has told.
+    pub(crate) fn event_count(&self) -> usize {
+        self.events.len()
+    }
+
+    /// One simulation step of the water of every tank (3.10), for a test.
+    #[cfg(test)]
     pub(crate) fn step_water(&mut self) -> bool {
         let before = self.events.len();
         for id in self.tank_ids() {
-            let mut swapped = false;
-            self.edit_tank(id, |t, config| {
-                let top = config.top(t.height);
-                if t.filled && t.level < top {
-                    t.level += 1;
-                } else if !t.filled && t.level > 0 {
-                    t.level -= 1;
-                    if t.level == 0 && t.target != t.salt {
-                        (t.salt, swapped) = (t.target, true);
-                    }
-                }
-            });
-            if swapped {
-                self.fill(id);
-            }
+            self.step_tank_water(id);
         }
         self.events.len() > before
+    }
+
+    /// One simulation step of the water of tank `id` (3.10): one elevation step up while filled
+    /// and below the full level, one down while not filled and above 0; a tank that comes empty
+    /// with another target salinity takes it and is filled again.
+    pub(crate) fn step_tank_water(&mut self, id: u32) {
+        let mut swapped = false;
+        self.edit_tank(id, |t, config| {
+            let top = config.top(t.height);
+            if t.filled && t.level < top {
+                t.level += 1;
+            } else if !t.filled && t.level > 0 {
+                t.level -= 1;
+                if t.level == 0 && t.target != t.salt {
+                    (t.salt, swapped) = (t.target, true);
+                }
+            }
+        });
+        if swapped {
+            self.fill(id);
+        }
     }
 
     /// Fills tank `id` (3.10): refused, silently, while something in it may not be in water; the

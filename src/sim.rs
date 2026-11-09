@@ -897,12 +897,7 @@ impl Sim {
             }
             crate::show::open_portals(world, cat, id);
         }
-        let water_moved = world.step_water();
-        // Buildings on a tank whose water moved are validated again (guest buildings 11.1.1).
-        self.wet_changed(world, cat, data);
-        world.decay_water(step);
-        self.draw_ripples(world, cat, data);
-        self.sparkle_step(world, cat, step);
+        let water_moved = self.tank_updates(world, cat, data, step);
         self.water_effects(world, cat, step);
         self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).

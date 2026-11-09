@@ -10,14 +10,30 @@ use crate::world::World;
 use crate::zoo::{Common, Entity};
 
 impl Sim {
-    /// One simulation step of the sparkles of every tank, `dt` ms long; in the original this is
-    /// part of each tank's update, so the draws of one tank come after those of its water.
-    pub(super) fn sparkle_step(&mut self, world: &mut World, cat: &Catalogue, dt: u32) {
+    /// The update of every tank, one after the other (exhibits and money 3.10, map drawing 9.7.8
+    /// point 4 and 9.7.10 point 7): its level step, the buildings on it validated again (guest
+    /// buildings 11.1.1), its purity decay and the ripples they owe, then its sparkles, `dt` ms
+    /// long. Whether a level moved.
+    pub(super) fn tank_updates(
+        &mut self,
+        world: &mut World,
+        cat: &Catalogue,
+        data: &dyn crate::behaviour::Data,
+        dt: u32,
+    ) -> bool {
+        let events = world.event_count();
         for id in world.sparkle_tanks() {
+            world.step_tank_water(id);
+            self.wet_changed(world, cat, data);
+            world.decay_tank_water(id, dt);
+            self.draw_ripples(world, cat, data);
             if world.sparkle_tick(id, dt) {
                 self.sparkle(world, cat, id);
             }
         }
+        // What the edits of the player left owed (and the case of no tank at all).
+        self.wet_changed(world, cat, data);
+        world.event_count() > events
     }
 
     /// The entities to remove in this pass: those asked for, then the sparkles flagged.
@@ -230,5 +246,37 @@ mod tests {
         assert!(world.sparkles().all(|s| s.1.list.is_empty()));
         assert!(!world.doomed().is_empty());
         let _ = Money::default();
+    }
+
+    #[test]
+    fn each_tank_updates_in_turn_so_a_tank_sparkles_before_the_next_ones_ripples() {
+        let cat = catalogue();
+        // The first tank is full; the second is empty and filled, so its ripples are set up in
+        // this step, with draws of their own. The first tank's tile comes from the first draw.
+        for seed in 1..=6 {
+            let mut world = crate::unit::testing::show_world(&[]);
+            let ids = world.tank_ids();
+            assert_eq!(ids.len(), 2);
+            let empty = world.exhibits_mut().get_mut(ids[1]).unwrap();
+            empty.tank.as_mut().unwrap().level = 0;
+            let tiles = world.exhibits().get(ids[0]).unwrap().order.clone();
+            let mut sim = Sim::new(b"");
+            sim.set_seed(seed);
+            // The set-ups owed since the world was made are done first.
+            sim.wet_changed(&mut world, &cat, &crate::behaviour::NoData);
+            let first = sim.rng.clone().rand() as usize;
+            sim.tank_updates(&mut world, &cat, &crate::behaviour::NoData, 67);
+            let sparkle = (world.zoo.entities.iter())
+                .find(|e| matches!(e.subtype.as_str(), "twaterwv" | "frshwav"))
+                .and_then(|e| e.common.as_ref())
+                .expect("the first tank made a sparkle");
+            let t = tiles[first % tiles.len()] as i32;
+            let w = world.zoo.width as i32;
+            assert_eq!(
+                (sparkle.x, sparkle.y),
+                (t % w * 64 + 32, t / w * 64 + 32),
+                "{seed}"
+            );
+        }
     }
 }
