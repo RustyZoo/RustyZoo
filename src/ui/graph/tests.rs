@@ -24,7 +24,10 @@ fn with(points: &[i32], keys: &str) -> Graph {
 fn the_top_of_the_axis_goes_up_by_the_leading_digit() {
     let up = |v| super::up(v);
     assert_eq!([up(0), up(9), up(-1), up(-9)], [10, 10, 0, 0]);
-    assert_eq!([up(10), up(57), up(99), up(100), up(999)], [20, 60, 100, 200, 1000]);
+    assert_eq!(
+        [up(10), up(57), up(99), up(100), up(999)],
+        [20, 60, 100, 200, 1000]
+    );
     assert_eq!(up(1234), 2000);
 }
 
@@ -51,10 +54,16 @@ fn zero_is_always_inside_the_range_and_a_forced_bound_stands() {
     // Zero is a point of the graph, so the top is the one of 0.
     assert_eq!(with(&[-57, -30], "").range(), (-50, 10));
     assert_eq!(with(&[-2756, 123_351], "").range(), (-2800, 200_000));
-    assert_eq!(with(&[57], "ForcedMinY=0\nForcedMaxY=100\n").range(), (0, 100));
+    assert_eq!(
+        with(&[57], "ForcedMinY=0\nForcedMaxY=100\n").range(),
+        (0, 100)
+    );
     assert_eq!(with(&[-57], "ForcedMinY=0\n").range(), (0, 10));
     // -1 is not forced.
-    assert_eq!(with(&[57], "ForcedMinY=-1\nForcedMaxY=-1\n").range(), (0, 60));
+    assert_eq!(
+        with(&[57], "ForcedMinY=-1\nForcedMaxY=-1\n").range(),
+        (0, 60)
+    );
 }
 
 #[test]
@@ -67,7 +76,12 @@ fn the_labels_of_the_rating_graph_run_from_100_to_0() {
 fn the_label_step_is_at_least_one_and_a_count_of_0_or_1_is_safe() {
     let g = with(&[], "ForcedMinY=0\nForcedMaxY=3\nNumYLabels=5\n");
     assert_eq!(g.y_values(), [3, 2, 1, 0, -1]);
-    for keys in ["NumYLabels=0\n", "NumYLabels=1\n", "NumYLabels=-4\n", "NumYLabels=99999999\n"] {
+    for keys in [
+        "NumYLabels=0\n",
+        "NumYLabels=1\n",
+        "NumYLabels=-4\n",
+        "NumYLabels=99999999\n",
+    ] {
         let n = with(&[5], keys).y_values().len();
         assert!(n <= 1000, "{keys}: {n}");
     }
@@ -77,7 +91,10 @@ fn the_label_step_is_at_least_one_and_a_count_of_0_or_1_is_safe() {
 
 #[test]
 fn a_value_is_placed_from_the_bottom_less_the_padding() {
-    let g = with(&[0, 100], "ForcedMinY=0\nForcedMaxY=100\nVertPaddingPixels=5\n");
+    let g = with(
+        &[0, 100],
+        "ForcedMinY=0\nForcedMaxY=100\nVertPaddingPixels=5\n",
+    );
     // The plot spans rows 0 to 100: 100 is at the top padding, 0 at the bottom padding.
     assert_eq!(g.y_at(100, (0, 100)), 5);
     assert_eq!(g.y_at(0, (0, 100)), 95);
@@ -104,7 +121,10 @@ fn a_line_graph_spreads_the_points_between_the_paddings() {
 
 #[test]
 fn a_bar_graph_takes_a_step_of_the_room_cut_to_the_widest_bar() {
-    let g = with(&[1; 12], "HorizPaddingPixels=20\nBarSpacing=10\nMaxBarWidth=50\n");
+    let g = with(
+        &[1; 12],
+        "HorizPaddingPixels=20\nBarSpacing=10\nMaxBarWidth=50\n",
+    );
     // (10 + 460 - 40) / 12 = 35.
     assert_eq!(g.bar_at(0, (0, 460)), (35, 20));
     assert_eq!(g.bar_at(2, (0, 460)), (35, 90));

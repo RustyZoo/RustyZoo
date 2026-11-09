@@ -53,7 +53,12 @@ pub struct Graph {
 impl Graph {
     /// The widget of a layout section; a missing key keeps the value of the shipped layouts.
     pub(crate) fn read(s: &Section) -> Graph {
-        let int = |key: &str, default: i32| s.get(key).and_then(to_int).unwrap_or(default);
+        let int = |key: &str, default: i32| {
+            s.get(key)
+                .and_then(to_int)
+                .unwrap_or(default)
+                .clamp(-(FAR as i32), FAR as i32)
+        };
         let flag = |key: &str| s.get(key).and_then(to_flag).unwrap_or(false);
         let colour = |key: &str| color(s, key).unwrap_or([0; 3]);
         Graph {
@@ -112,12 +117,12 @@ impl Graph {
     /// The pixel row of a value inside the plot rectangle `(top, bottom)` (21.3 step 5).
     pub fn y_at(&self, value: i32, (top, bottom): (i32, i32)) -> i32 {
         let (min, max) = self.range();
-        let room = (bottom - top - 2 * self.vert_padding) as f32;
+        let room = (i64::from(bottom) - i64::from(top) - 2 * i64::from(self.vert_padding)) as f32;
         let share = match max > min {
             true => (value as f32 - min as f32) / (max - min) as f32,
             false => 0.0,
         };
-        bottom - (share * room) as i32 - self.vert_padding
+        px(i64::from(bottom) - i64::from((share * room) as i32) - i64::from(self.vert_padding))
     }
 
     /// The pixel column of the point of rank `rank` in a line or point graph inside the plot
@@ -125,26 +130,34 @@ impl Graph {
     pub fn x_at_line(&self, rank: usize, (left, right): (i32, i32)) -> i32 {
         let (first, last) = self.x_span();
         let x = self.points.get(rank).map_or(first, |p| p.x);
-        let from = left + self.horiz_padding;
+        let from = i64::from(left) + i64::from(self.horiz_padding);
         if first == last {
-            return from;
+            return px(from);
         }
-        let share = (x - first) as f32 / (last - first) as f32;
-        (share * (right - 2 * self.horiz_padding - left) as f32 + from as f32) as i32
+        let share =
+            (i64::from(x) - i64::from(first)) as f32 / (i64::from(last) - i64::from(first)) as f32;
+        let room = i64::from(right) - 2 * i64::from(self.horiz_padding) - i64::from(left);
+        px(i64::from((share * room as f32) as i32) + from)
     }
 
     /// The width a bar step takes and the left edge of the bar of rank `rank` (21.3 step 5).
     pub fn bar_at(&self, rank: usize, (left, right): (i32, i32)) -> (i32, i32) {
-        let n = self.points.len().max(1) as i32;
-        let room = (self.bar_spacing + right - 2 * self.horiz_padding - left).max(0);
-        let step = (room / n).min(self.max_bar.max(0));
-        (step, step * rank as i32 + left + self.horiz_padding)
+        let n = self.points.len().max(1) as i64;
+        let room = i64::from(self.bar_spacing) + i64::from(right)
+            - 2 * i64::from(self.horiz_padding)
+            - i64::from(left);
+        let step = (room.max(0) / n).min(i64::from(self.max_bar.max(0)));
+        (
+            px(step),
+            px(step * rank as i64 + i64::from(left) + i64::from(self.horiz_padding)),
+        )
     }
 
     /// The width a bar is drawn with: its step less the spacing (21.3 step 6).
     pub fn bar_width(&self, (left, right): (i32, i32)) -> i32 {
-        let n = self.points.len().max(1) as i32;
-        ((right - left) / n).min(self.max_bar.max(0)) - self.bar_spacing
+        let n = self.points.len().max(1) as i64;
+        let step = ((i64::from(right) - i64::from(left)) / n).min(i64::from(self.max_bar.max(0)));
+        px(step - i64::from(self.bar_spacing))
     }
 
     /// The text of the Y labels from the top: the value and its text, for the range `(min, max)`
@@ -158,6 +171,14 @@ impl Graph {
             .map(|k| (max as f32 - k as f32 * step) as i32)
             .collect()
     }
+}
+
+/// The farthest a pixel coordinate goes: a point beyond it is drawn there, out of any canvas.
+const FAR: i64 = 1 << 14;
+
+/// A pixel coordinate held in a range every sum of two of them fits in.
+fn px(v: i64) -> i32 {
+    v.clamp(-FAR, FAR) as i32
 }
 
 /// The power of ten of the leading digit of `v` (1 for 0).

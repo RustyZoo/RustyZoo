@@ -84,7 +84,10 @@ fn the_figures_are_the_months_open_the_guests_and_the_profit_and_its_average() {
     assert_eq!(r.average, 600.25 / 3.0);
     // Never less than one month, and a loss stays a loss.
     let new = listed(&[Shop("stall", "S", 0, 0.0, 42.0, 5)], 5);
-    assert_eq!((new[0].months, new[0].profit, new[0].average), (1, -42.0, -42.0));
+    assert_eq!(
+        (new[0].months, new[0].profit, new[0].average),
+        (1, -42.0, -42.0)
+    );
     // Built after now: still one month.
     let future = listed(&[Shop("stall", "S", 0, 0.0, 0.0, 90)], 0);
     assert_eq!(future[0].months, 1);
@@ -142,13 +145,28 @@ fn the_other_keys_sort_by_their_number_and_equal_keys_keep_the_order_of_the_list
 
 #[test]
 fn a_number_that_is_not_one_does_not_break_the_sort() {
-    let mut rows = vec![row(1, "a", "x", 1, 0, f32::NAN), row(2, "b", "x", 1, 0, 1.0)];
+    let mut rows = vec![
+        row(1, "a", "x", 1, 0, f32::NAN),
+        row(2, "b", "x", 1, 0, 1.0),
+    ];
     for key in 0..=4 {
-        order(&mut rows, &Sort { key, ..Sort::default() });
+        order(
+            &mut rows,
+            &Sort {
+                key,
+                ..Sort::default()
+            },
+        );
     }
     assert_eq!(rows.len(), 2);
     // A key out of range uses the last one.
-    order(&mut rows, &Sort { key: 99, ascending: [true; 5] });
+    order(
+        &mut rows,
+        &Sort {
+            key: 99,
+            ascending: [true; 5],
+        },
+    );
 }
 
 #[test]
@@ -189,18 +207,33 @@ fn the_cells_are_centred_numbers_in_black_and_right_aligned_money_in_red_or_gree
     let cells = |r: &ListRow| {
         r.cells
             .iter()
-            .map(|c| (String::from_utf8(c.text.clone()).unwrap(), c.color, c.justify))
+            .map(|c| {
+                (
+                    String::from_utf8(c.text.clone()).unwrap(),
+                    c.color,
+                    c.justify,
+                )
+            })
             .collect::<Vec<_>>()
     };
     let black = Some([0, 0, 0]);
     let (red, green) = (Some([255, 0, 0]), Some([0, 255, 0]));
     let a = cells(first);
-    assert_eq!((a[0].0.as_str(), a[0].1, a[0].2), ("2", black, Justify::Center));
-    assert_eq!((a[1].0.as_str(), a[1].1, a[1].2), ("7", black, Justify::Center));
+    assert_eq!(
+        (a[0].0.as_str(), a[0].1, a[0].2),
+        ("2", black, Justify::Center)
+    );
+    assert_eq!(
+        (a[1].0.as_str(), a[1].1, a[1].2),
+        ("7", black, Justify::Center)
+    );
     assert_eq!((a[2].1, a[2].2), (red, Justify::Right));
     assert_eq!((a[3].1, a[3].2), (red, Justify::Right));
     let money = |v: f64| money_cents(&symbol, v, true);
-    assert_eq!((a[2].0.clone(), a[3].0.clone()), (money(-1234.5), money(-617.25)));
+    assert_eq!(
+        (a[2].0.clone(), a[3].0.clone()),
+        (money(-1234.5), money(-617.25))
+    );
     let b = cells(second);
     assert_eq!((b[2].1, b[3].1), (green, green));
     assert_eq!((b[2].0.clone(), b[3].0.clone()), (money(8.0), money(2.0)));
