@@ -28,6 +28,7 @@ use crate::tga::Texture;
 use crate::vfs::{Vfs, normalise};
 
 use super::resolve::Placed;
+use super::graph::Graph;
 use super::widgets::{Bar, Caret, Rows};
 
 /// State flag: not drawn, not hit. Every element starts with it.
@@ -338,7 +339,7 @@ pub enum Kind {
     StatusImage(Levels),
     ImageSet(Levels),
     ScrollingRegion(Region),
-    Graph,
+    Graph(Box<Graph>),
     MapView,
     MiniMap,
     MessageQueue,
@@ -361,7 +362,7 @@ impl Kind {
             Kind::StatusImage(_) => "UIStatusImage",
             Kind::ImageSet(_) => "UIImageSet",
             Kind::ScrollingRegion(_) => "UIScrollingRegion",
-            Kind::Graph => "UIGraph",
+            Kind::Graph(_) => "UIGraph",
             Kind::MapView => "ZTMapView",
             Kind::MiniMap => "ZTMiniMap",
             Kind::MessageQueue => "ZTMessageQueue",

@@ -174,7 +174,7 @@ impl Tree {
                 },
                 ..Region::default()
             }),
-            b"UIGraph" => Kind::Graph,
+            b"UIGraph" => Kind::Graph(Box::new(Graph::read(s))),
             b"ZTMapView" => Kind::MapView,
             b"ZTMiniMap" => Kind::MiniMap,
             b"ZTMessageQueue" => Kind::MessageQueue,
@@ -210,7 +210,10 @@ impl Tree {
         let border = int("border", 0);
         let button = matches!(kind, Kind::Button(_));
         let text = matches!(kind, Kind::Text(_));
-        let own_background = matches!(kind, Kind::Text(_) | Kind::ListBox(_) | Kind::ScrollBar(_));
+        let own_background = matches!(
+            kind,
+            Kind::Text(_) | Kind::ListBox(_) | Kind::ScrollBar(_) | Kind::Graph(_)
+        );
         let mut look = Look {
             animation: Vec::new(),
             normal: None,

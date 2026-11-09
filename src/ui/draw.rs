@@ -30,6 +30,7 @@
 //! The other widgets that later milestones fill draw nothing yet.
 
 mod controls;
+mod graph;
 mod pixels;
 
 use std::collections::HashMap;
@@ -276,6 +277,12 @@ impl Painter {
                 });
                 copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
             }
+            Kind::Graph(g) => {
+                let canvas = self.canvas(i, (w, h), dirty, |painter, canvas| {
+                    painter.graph(e, g, strings, canvas);
+                });
+                copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
+            }
             Kind::StatusImage(levels) => self.bar(pictures, levels, screen, frame),
             Kind::MapView => map(frame, screen),
             // The message line: its picture and the text, centred in the rectangle the borders
@@ -437,7 +444,11 @@ impl Painter {
         let (w, h) = e.placed.map_or((0, 0), |p| (p.dx, p.dy));
         let canvas = matches!(
             e.kind,
-            Kind::Text(_) | Kind::EditableText(_) | Kind::ListBox(_) | Kind::ScrollBar(_)
+            Kind::Text(_)
+                | Kind::EditableText(_)
+                | Kind::ListBox(_)
+                | Kind::ScrollBar(_)
+                | Kind::Graph(_)
         ) || (matches!(e.kind, Kind::Image) && (e.dynamic_width || e.dynamic_height));
         if canvas {
             let (made, pixels) = self.canvases.get(&i)?;
