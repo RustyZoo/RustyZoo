@@ -90,6 +90,9 @@ impl Data for Flier {
     fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<Heard> {
         None
     }
+    fn loop_sound(&self, _: &crate::zoo::Entity) -> Option<(String, i32)> {
+        Some(("sounds/helicopt.wav".into(), 1200))
+    }
 }
 
 /// The base and its helicopter (made as a base placed in play makes it), and the herons
@@ -519,36 +522,6 @@ fn a_helicopter_draws_once_per_goal_update_and_nothing_else_from_take_off_to_lan
 }
 
 #[test]
-fn the_rotor_starts_at_the_take_off_fades_in_over_four_seconds_and_out_after_the_landing() {
-    let mut heli = crate::staff::heli::Heli::default();
-    assert_eq!(heli.level(), None);
-    heli.set_flying(true);
-    assert_eq!(heli.level(), Some(3000));
-    heli.tick(2000);
-    assert_eq!(heli.level(), Some(1500));
-    heli.tick(2000);
-    assert_eq!(heli.level(), Some(0));
-    // Faded in: it stops fading, and stays at full volume while it flies.
-    heli.tick(1000);
-    assert_eq!(heli.level(), Some(0));
-    // Setting what the word is does nothing; landing fades it out and frees it.
-    heli.set_flying(true);
-    heli.set_flying(false);
-    heli.tick(3999);
-    assert_eq!(heli.level(), Some(2999));
-    heli.tick(1);
-    assert_eq!(heli.level(), None);
-    // A landed one has none; one loaded in the air has it at full volume, not fading.
-    heli.set_flying(false);
-    assert_eq!(heli.level(), None);
-    let loaded = crate::staff::heli::Heli::from_own(&[7, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0]);
-    assert_eq!(
-        (loaded.base, loaded.flying, loaded.dir, loaded.level()),
-        (7, true, 2, Some(0))
-    );
-}
-
-#[test]
 fn the_slot_and_exit_points_ignore_the_heights_at_an_odd_rotation() {
     let (mut w, cat, _) = zoo(&[]);
     let at = w.find(BASE).unwrap();
@@ -656,4 +629,110 @@ fn a_helicopter_of_a_loaded_zoo_draws_its_work_and_chase_counters_once() {
     let mut birth = Rng::default();
     births(&mut zoo(&[]).0, &cat, BASE, &mut birth, 9, testing::shape);
     assert_eq!(birth, want);
+}
+
+fn rotor(w: &World, id: u32) -> Option<crate::staff::rotor::Rotor> {
+    heli(w, id).rotor
+}
+
+#[test]
+fn the_rotor_starts_with_the_take_off_fades_in_and_is_freed_after_the_landing() {
+    let (mut w, cat, h) = zoo(&[(HERON, (19, 10))]);
+    let mut rng = Rng::default();
+    // The listener is where the helicopter stands, so the sound plays.
+    let (x, y) = crate::render::order::project(0, SLOT.0, SLOT.1, SLOT.2);
+    w.units.hearing.listener = (i64::from(x), i64::from(y));
+    assert!(rotor(&w, h).is_none(), "none on the ground");
+    until(&mut w, &cat, &mut rng, h, 80, |w| heli(w, h).flying);
+    let r = rotor(&w, h).unwrap();
+    assert_eq!(
+        (r.file.as_deref(), r.playing),
+        (Some("sounds/helicopt.wav"), true)
+    );
+    // It fades in over 4 s, 67 ms a step whatever the pace of the animation (a moving unit's
+    // animation runs at its speed percentage), and is not freed while it flies.
+    let mut last = r.level();
+    for _ in 0..20 {
+        w.units.get_mut(h).unwrap().anim_speed = 300;
+        step(&mut w, &cat, &mut rng, h, 67);
+        let level = rotor(&w, h).unwrap().level();
+        assert!((49..=51).contains(&(last - level)), "{last} then {level}");
+        last = level;
+    }
+    until(&mut w, &cat, &mut rng, h, 90, |w| {
+        rotor(w, h).is_some_and(|r| r.level() == 0)
+    });
+    let r = rotor(&w, h).unwrap();
+    assert!(r.playing, "the chase stays in earshot");
+    // The landing: flying goes to 0, the sound fades out in 4 s, then it is freed.
+    until(&mut w, &cat, &mut rng, h, 2000, |w| !heli(w, h).flying);
+    assert!(rotor(&w, h).is_some_and(|r| r.level() < 3000 || r.playing));
+    until(&mut w, &cat, &mut rng, h, 100, |w| rotor(w, h).is_none());
+}
+
+#[test]
+fn a_helicopter_loaded_in_the_air_starts_its_sound_at_its_first_update_and_a_landed_one_has_none() {
+    let (mut w, cat, h) = zoo(&[]);
+    let mut rng = Rng::default();
+    let (x, y) = crate::render::order::project(0, SLOT.0, SLOT.1, SLOT.2);
+    w.units.hearing.listener = (i64::from(x), i64::from(y));
+    let own = |flying: u8| [BASE as u8, 0, 0, 0, flying, 0, 0, 0, 0xff, 0xff, 0xff, 0xff];
+    let load = |w: &mut World, flying| {
+        if let Part::Staff(s) = &mut w.units.get_mut(h).unwrap().part {
+            s.heli = crate::staff::heli::Heli::from_own(&own(flying));
+        }
+    };
+    load(&mut w, 0);
+    step(&mut w, &cat, &mut rng, h, 67);
+    assert!(rotor(&w, h).is_none(), "a landed one has no sound");
+    load(&mut w, 1);
+    assert!(
+        rotor(&w, h).is_some_and(|r| r.file.is_none() && !r.playing),
+        "not started yet"
+    );
+    step(&mut w, &cat, &mut rng, h, 67);
+    let r = rotor(&w, h).unwrap();
+    // Started at level 3000, then 0 with no fade: the full level at the first refresh.
+    assert_eq!(
+        (r.file.as_deref(), r.playing, r.level(), r.heard),
+        (Some("sounds/helicopt.wav"), true, 0, (1200, 0))
+    );
+    // The same out of earshot: the start is refused and the helicopter stays silent for good.
+    load(&mut w, 1);
+    w.units.hearing.listener = (i64::from(x) + 5000, i64::from(y));
+    step(&mut w, &cat, &mut rng, h, 67);
+    w.units.hearing.listener = (i64::from(x), i64::from(y));
+    for _ in 0..5 {
+        step(&mut w, &cat, &mut rng, h, 67);
+    }
+    assert!(rotor(&w, h).is_some_and(|r| !r.playing));
+}
+
+#[test]
+fn the_rotor_fade_has_moved_in_the_update_that_takes_off() {
+    let (mut w, cat, h) = zoo(&[(HERON, (19, 10))]);
+    let mut rng = Rng::default();
+    let (x, y) = crate::render::order::project(0, SLOT.0, SLOT.1, SLOT.2);
+    w.units.hearing.listener = (i64::from(x), i64::from(y));
+    until(&mut w, &cat, &mut rng, h, 80, |w| heli(w, h).flying);
+    // The counter has moved by the 67 ms step of that very update: 4000 - 67 = 3933.
+    assert_eq!(rotor(&w, h).unwrap().level(), 2950);
+}
+
+#[test]
+fn a_helicopter_loaded_in_the_air_starts_its_sound_at_the_stored_position() {
+    // At the 6000 limit (1200 + 3000 + X <= 6000): X = 2.75 * 650 = 1787 at the stored position,
+    // and the 16 units of the first movement take it over for some side of the listener.
+    for (dx, dy) in [(650, 0), (-650, 0), (0, 650), (0, -650)] {
+        let (mut w, cat, mut rng, h) = chasing(&[(HERON, (19, 10))]);
+        if let Part::Staff(s) = &mut w.units.get_mut(h).unwrap().part {
+            s.heli.rotor = Some(crate::staff::rotor::Rotor::loaded_in_air());
+        }
+        let (px, py, pz) = point(&w, h);
+        let (x, y) = crate::render::order::project(0, px, py, pz);
+        w.units.hearing.listener = (i64::from(x) + dx, i64::from(y) + dy);
+        step(&mut w, &cat, &mut rng, h, 67);
+        assert_eq!(point(&w, h).0 - px, 16, "it moved");
+        assert!(rotor(&w, h).unwrap().playing, "({dx}, {dy})");
+    }
 }

@@ -297,6 +297,9 @@ impl Tree {
                 ..look
             };
         }
+        let helps: Vec<i32> = (s.get_all("helpid").iter())
+            .filter_map(|v| to_int(v))
+            .collect();
         let index = self.elements.len();
         self.elements.push(Element {
             kind,
@@ -321,11 +324,8 @@ impl Tree {
             layer: int("layer", 0),
             x_border: int("xborder", border),
             y_border: int("yborder", border),
-            help_id: s
-                .get_all("helpid")
-                .iter()
-                .filter_map(|v| to_int(v))
-                .collect(),
+            help_id: helps.clone(),
+            helps,
             action: int("action", 0),
             target: in_layout(int("target", id)),
             alias: in_layout(int("alias", 0)),

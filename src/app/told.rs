@@ -69,7 +69,9 @@ impl App<'_> {
         // voices: ambients 6.2).
         let vehicles = (game.vehicles.iter())
             .map(|&(id, file, base)| (id, file.to_string(), format!("vehicle {id}"), base));
-        game.placed(loops.chain(vehicles))
+        let mut placed = game.placed(loops.chain(vehicles));
+        placed.extend(game.rotor_sounds());
+        placed
     }
 
     /// Writes the three bars (when they changed), and the date and the money text at each refresh, and

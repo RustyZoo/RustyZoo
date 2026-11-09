@@ -112,6 +112,19 @@ impl Interface {
         true
     }
 
+    /// Makes the tooltip of element `id` the `i`-th `helpid` of its layout; an index outside the
+    /// list changes nothing (information panels 6.5). `false` if nothing changed.
+    pub(crate) fn use_tooltip(&mut self, id: i32, i: usize) -> bool {
+        let Some(e) = self.tree.find(id).map(|x| &mut self.tree.elements[x]) else {
+            return false;
+        };
+        let Some(&help) = e.helps.get(i) else {
+            return false;
+        };
+        e.help_id = vec![help];
+        true
+    }
+
     /// The tooltip element is never hit.
     pub(super) fn start_tooltip(&mut self) {
         if let Some(i) = self.tooltip_element() {

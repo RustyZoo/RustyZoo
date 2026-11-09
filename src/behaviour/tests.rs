@@ -443,3 +443,66 @@ fn a_call_keeps_its_text_but_the_debug_form_does_not_show_it() {
     assert_eq!(call.text, "fPlay(a)");
     assert!(!format!("{call:?}").contains("fPlay(a)"));
 }
+
+#[test]
+fn the_library_gives_the_loop_sound_of_a_type_when_its_file_can_be_read() {
+    use crate::fixtures::Install;
+    let install = Install::new(
+        "library-loop-sound",
+        &[
+            (
+                "guests.cfg",
+                b"[guests]\nman = man.ai\nmute = mute.ai\ngone = gone.ai\nbare = bare.ai\n"
+                    .to_vec(),
+            ),
+            (
+                "man.ai",
+                b"[Characteristics/Strings]\ncLoopSoundName = sounds/helicopt.wav\n\
+                  [Characteristics/Integers]\ncLoopSoundAtten = 1200\n"
+                    .to_vec(),
+            ),
+            (
+                "mute.ai",
+                b"[Characteristics/Strings]\ncLoopSoundName = sounds/helicopt.wav\n".to_vec(),
+            ),
+            (
+                "gone.ai",
+                b"[Characteristics/Strings]\ncLoopSoundName = sounds/nothere.wav\n\
+                  [Characteristics/Integers]\ncLoopSoundAtten = 5\n"
+                    .to_vec(),
+            ),
+            (
+                "bare.ai",
+                b"[Characteristics/Integers]\ncLoopSoundAtten = 5\n".to_vec(),
+            ),
+            ("sounds/helicopt.wav", vec![0]),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = crate::entity::Catalogue::load(&vfs).unwrap();
+    let timings = Timings::default();
+    let library = Library {
+        catalogue: &catalogue,
+        vfs: &vfs,
+        timings: &timings,
+    };
+    let sound = |name: &str| {
+        let unit = crate::zoo::Entity {
+            class: "guests".into(),
+            type_name: name.into(),
+            subtype: String::new(),
+            body_size: None,
+            common: None,
+        };
+        library.loop_sound(&unit)
+    };
+    assert_eq!(sound("man"), Some(("sounds/helicopt.wav".into(), 1200)));
+    assert_eq!(
+        sound("mute"),
+        Some(("sounds/helicopt.wav".into(), 0)),
+        "no attenuation: 0"
+    );
+    assert_eq!(sound("gone"), None, "a file that cannot be read");
+    assert_eq!(sound("bare"), None, "no name");
+    assert_eq!(sound("nobody"), None, "no such type");
+}
