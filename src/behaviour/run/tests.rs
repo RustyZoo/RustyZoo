@@ -1054,12 +1054,12 @@ fn a_nested_set_is_saved_inside_its_parent() {
 
 #[test]
 fn a_set_saved_before_its_first_run_is_saved_again_with_its_empty_parsed_call() {
-    // The saved parsed call has no name (the set was started and saved before it ran): until the
-    // first step the save holds it as read, then the call the step parsed (save games 15.8).
+    // The record is as the shipped files hold it, no parsed call and no current-call text (the set
+    // was started and saved before it ran): until the first step the save holds it as read, then
+    // the call the step parsed (save games 15.8).
     let mut rig = Rig::new(&[]);
     let mut before = saved("bUse", &["fPlayTime(b,2)", "fPlay(c)"], [1, 0, 1, 0]);
-    before.levels[0].text = "fPlayTime(b,2)".into();
-    assert!(before.levels[0].call.is_empty());
+    assert!(before.levels[0].call.is_empty() && before.levels[0].text.is_empty());
     rig.runner.restore(&before);
     let at_once = rig.runner.saved(&before, |_| None).unwrap();
     assert_eq!(at_once, before);
@@ -1067,6 +1067,7 @@ fn a_set_saved_before_its_first_run_is_saved_again_with_its_empty_parsed_call() 
     let later = rig.runner.saved(&before, |_| None).unwrap();
     assert_eq!(later.levels[0].call, "fPlayTime");
     assert_eq!(later.levels[0].args, ["b", "2"]);
+    assert_eq!(later.levels[0].text, "fPlayTime(b,2)");
     // A parsed call that was saved with a name is written from the live set as before.
     let mut named = before.clone();
     named.levels[0].call = "fOther".into();

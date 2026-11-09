@@ -696,12 +696,12 @@ impl Runner {
                 if i == 0 {
                     out.flag = u8::from(self.interruptible);
                 }
-                out.text = text.to_string();
-                // A set saved before its first run holds an empty parsed call: the first run parses it,
-                // so until then the save writes it as read (save games 15.8).
+                // A set saved before its first run holds an empty parsed call and current-call text:
+                // the first run parses them, so until then the save writes them as read (save games 15.8).
                 let unrun = self.fresh
                     && (base.levels.get(i)).is_some_and(|b| b.name == l.name && b.call.is_empty());
                 if !unrun {
+                    out.text = text.to_string();
                     out.call = current.map_or(String::new(), |c| c.name.to_string());
                     out.args = if current.is_some() { args } else { Vec::new() };
                 }
