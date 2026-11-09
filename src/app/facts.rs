@@ -25,7 +25,7 @@ impl App<'_> {
             staff: facts::staff_of(cat, tool),
             selected,
         };
-        if let Some(id) = game.facts.sync(ui, vfs, cat, &look) {
+        if let Some(id) = game.animal.facts.sync(ui, vfs, cat, &look) {
             ui.set_button(animal::RECOMMENDATIONS, true, true);
             game.panel.show_plaque(id);
         }

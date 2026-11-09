@@ -55,7 +55,7 @@ pub(crate) struct Look {
 }
 
 /// What the two plaques showed at the last look.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Panel {
     /// The species plaque was shown, and its Adopt button down.
     shown: bool,

@@ -140,8 +140,6 @@ struct Game {
     panel: crate::panel::exhibit::Panel,
     /// The animal panel and the animal selected.
     animal: crate::panel::animal::Panel,
-    /// The species and staff plaques.
-    facts: crate::panel::facts::Panel,
     /// The staff panel and the staff member selected.
     staff: crate::panel::staff::Panel,
     /// The guest panel and the guest selected.

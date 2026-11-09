@@ -159,7 +159,6 @@ impl App<'_> {
             naming: Default::default(),
             panel: Default::default(),
             animal: Default::default(),
-            facts: Default::default(),
             staff: Default::default(),
             guest: Default::default(),
             research: Default::default(),
