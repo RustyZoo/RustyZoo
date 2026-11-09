@@ -352,6 +352,12 @@ impl App<'_> {
         }
     }
 
+    /// What the player did in the unit lists and the options window since the last look.
+    pub(super) fn windows_acted(&mut self) {
+        self.lists_acted();
+        self.options_acted();
+    }
+
     /// The buttons and sliders of the window that the player used since the last look.
     pub(super) fn options_acted(&mut self) {
         let Some(ui) = &mut self.ui else { return };
