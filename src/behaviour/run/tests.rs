@@ -1058,7 +1058,7 @@ fn a_set_saved_before_its_first_run_is_saved_again_with_its_empty_parsed_call() 
     // was started and saved before it ran): until the first step the save holds it as read, then
     // the call the step parsed (save games 15.8).
     let mut rig = Rig::new(&[]);
-    let mut before = saved("bUse", &["fPlayTime(b,2)", "fPlay(c)"], [1, 0, 1, 0]);
+    let before = saved("bUse", &["fPlayTime(b,2)", "fPlay(c)"], [1, 0, 1, 0]);
     assert!(before.levels[0].call.is_empty() && before.levels[0].text.is_empty());
     rig.runner.restore(&before);
     let at_once = rig.runner.saved(&before, |_| None).unwrap();
