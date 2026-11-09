@@ -181,7 +181,11 @@ the Adopt panel (the left bar button 1000, layout 3): the Animals tab lists each
 
 - the animal chosen follows the pointer, green where it may stand (inside an exhibit, on land unless it swims) and red elsewhere with its message (`tool message 10108` on the grounds, 10569 on water, 10554, 10553, 10560 or 10562 over a tank, the first row of the tank check that applies; an underwater species or a guest is put at the water of the tank under the pointer)
 - a click adopts it: `world add animals/TYPE/SUBTYPE X,Y id N name=NAME` with a number from a counter per type name, the price booked as animal purchase, and the animal joins the units (`unit add`); an adoption or a hire plays the type's `placesound`, else `sounds/place.wav`
-- the bulldozer on an animal asks for the sale and refunds its sell price
+- each animal item chosen makes a pending animal: it takes the next entity id and draws its counters from the generator then, and the placed animal keeps both (an item chosen and not placed uses up an id); an egg layer is made from the young type of its species as an egg of the sex of the button (nothing is made, and no pending unit follows, for a species with no young type); an egg is judged by its egg footprint, does not swim (`tool message 10570` on water or in a tank) and is drawn as an egg, and a click makes the next pending egg of the same sex
+- a swimmer is put at the water of a tank up to `48 + maximumTankHeight` steps toward the viewer, and is in the tank mode from the click; a tank refuses a unit too near the ladder, an animal too deep for what stands in the tile, a swimmer that keeps off the walls (`cAvoidEdges`) and a floating object in the fourth quarter of the tile (the last two with no message)
+- the shelters tab shows the capacity of the chosen shelter without digit grouping, until the item is released or the list is built again
+- the animal panel's sell button asks (with the name of the animal) and refunds its sell price from its live happiness and health; the bulldozer never removes a unit
+- the animals a new tank refuses are crated where they stand and moved to a free tile of the grounds (an egg is moved, never crated), and sold at their live price when no tile is free
 
 `rustyzoo run maps/default.zoo --headless --passes 46 --clock 20 --script panel.txt`
 
@@ -197,12 +201,12 @@ a click on the gate of an exhibit (no tool chosen) or the exhibit list button (i
 the Hire panel (the left bar button 1005, layout 10, no tabs): the staff types of one sex, the keeper class (the zookeeper, the scientist, the marine specialist) first, then the tour guide, then the maintenance worker, the catalogue order kept within a kind (the scientist and the marine specialist only with their expansion), with the monthly salary and the duties of the chosen one.
 
 - the sex is drawn from the simulation's generator at the start of the program, right after its first seeding (loading a map draws nothing), and after every hire, so two runs with one `--seed` hire the same sexes
-- each staff item chosen makes a pending staff member, which draws its two colours and its work and chase counters (a guide also its crowd countdown) from the same generator, and the hire keeps them
+- each staff item chosen makes a pending staff member, which takes the next entity id and draws its two colours and its work and chase counters (a guide also its crowd countdown) from the same generator, and the hire keeps them
 - a hire makes the new pending one of the same item before the next sex is drawn, and the list rebuilt for that sex makes another
 - the staff member follows the pointer, green where a unit may stand (an exhibit is fine, water is not; a tank says `tool message 10563`) and red elsewhere
 - a click hires it: `world add keeper/TYPE/SUBTYPE X,Y id N name=NAME` (a counter per type name, `Zookeeper 1`), `money book CATEGORY PRICE` with the wages of its class (keeper 11, tour guide 12, maintenance worker 13) and the purchase cost, and `tool item staff ...` for the next one
 - hiring cannot be undone
-- the bulldozer on a staff member asks whether to fire it (string 155, with the monthly salary) and refunds nothing
+- the fire button of the staff panel asks whether to fire it (string 155, with its name and the monthly salary) and refunds nothing; a keeper hired inside an exhibit starts his duties there at once, and a hire marks its exhibit for a new rating
 
 `rustyzoo run maps/default.zoo --headless --passes 12 --clock 67 --seed 1 --script expansion.txt`
 
@@ -226,7 +230,7 @@ picking a unit up by hand (no tool chosen): a click on an animal, a guest or a s
 the staff panel: a click on a staff member (hire one first) opens it at the bottom right with the name field, the monthly salary, the text of its job (a keeper's, a worker's or a guide's; empty between two jobs) and, on the second tab, the exhibits assigned to a keeper or tour guide or the check boxes of a maintenance worker's duties (a click flips one), refreshed every second of clock while shown and not while the game is paused.
 
 - the assign button (the second tab) starts the assign mode: the exhibit under the pointer is tinted green where the keeper may serve it and red where not (fewer than 2 tiles, a land exhibit for a marine specialist, no animal of his kind), a click puts it first in the list or says why not, a row of the list centres the view on its gate and opens the exhibit panel, the clear buttons remove one or all, Escape or the right button end the mode
-- the fire button asks as the bulldozer does and the pick-up button picks the unit up
+- the fire button asks as a sale does and the pick-up button picks the unit up
 - the log has `panel staff ...` lines and `tool assign ...`
 - keepers do not walk their exhibits yet, the list is only kept
 
