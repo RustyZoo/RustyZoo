@@ -618,8 +618,11 @@ impl Data for Once {
     fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
         &[]
     }
-    fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
-        None
+    fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        matches!(name, "idle" | "dustball").then_some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
     }
     fn number(&self, unit: &Entity, number: &crate::behaviour::Number) -> i32 {
         NoData.number(unit, number)
@@ -686,6 +689,43 @@ fn a_guest_or_staff_member_turns_at_once_to_its_own_target_tile() {
     w.units.get_mut(3).unwrap().part = Part::Staff(Staff::default());
     behave(&mut w, &data, 3, "bFace");
     assert_eq!(rotation(&w, 3), 6);
+}
+
+#[test]
+fn a_dust_ball_eats_the_prey_when_its_cloud_starts_and_not_before() {
+    // The animal 1 caught the keeper 3 (the target of its record); the cloud is its own picture.
+    let mut w = world(&[("animals", 1), ("keeper", 3)]);
+    w.units.get_mut(1).unwrap().goal.record.target.id = 3;
+    w.units.get_mut(3).unwrap().predator = 1;
+    let data = Once::new(&[("bCaughtPrey", "fDustBall()")]);
+    let at = w.find(1).unwrap();
+    let mut unit = std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
+    unit.runner.queue("bCaughtPrey", true, true);
+    let (mut rng, mut removals) = (Rng::default(), Vec::new());
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        let mut ctx = Ctx {
+            rng: &mut rng,
+            events: &Events::default(),
+            removals: &mut removals,
+            step: 100,
+            cat: &crate::entity::Catalogue::default(),
+        };
+        let mut hooks = Standard { data: &data };
+        hooks.animate(&mut unit, &mut w, &mut ctx, at, 100);
+        hooks.behaviour(&mut unit, &mut w, &mut ctx, at);
+        seen.push((unit.animation.name.clone(), ctx.removals.clone()));
+    }
+    // The set starts and queues the cloud behind the base loop; the player takes it and the prey
+    // goes in that step, with the cloud still playing.
+    assert_eq!(seen[0], ("idle".to_string(), vec![]));
+    assert_eq!(seen[1], ("dustball".to_string(), vec![3]));
+    assert_eq!(seen[2].1, [3]);
+    assert_eq!(
+        w.units.take_messages().len(),
+        1,
+        "the eaten keeper is announced"
+    );
 }
 
 #[test]
