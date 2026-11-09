@@ -255,7 +255,7 @@ impl Play<'_, '_> {
             let is = kinds
                 .iter()
                 .any(|&t| cat.types[t].type_name == e.type_name.as_bytes());
-            let home = crate::panel::exhibit::animals_exhibit(world, at);
+            let home = crate::exhibit::members::animals_exhibit(world, at);
             if let (true, Some(x)) = (is, home)
                 && !homes.contains(&(x, e.type_name.clone()))
             {
@@ -280,7 +280,7 @@ impl Play<'_, '_> {
         let game = self.app.game.as_ref().unwrap();
         let cat = self.app.renderer.catalogue();
         let rate = |&(x, ref key): &(u32, String)| {
-            crate::panel::animal::suitability_in(&game.world, cat, x, key)
+            crate::exhibit::members::suitability_in(&game.world, cat, x, key)
         };
         let Some(low) = homes.iter().find(|h| rate(h) < target) else {
             return;

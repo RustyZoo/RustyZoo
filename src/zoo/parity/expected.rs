@@ -168,7 +168,7 @@ fn empty(world: &World, x: u32) -> bool {
 /// points 1 and 1b): the sender and the kind of each.
 fn posted(world: &World, cat: &Catalogue) -> Vec<(u32, u16)> {
     let number = |e: &Entity, key: &str| {
-        crate::place::bulldozer::type_of(cat, e).and_then(|t| crate::build::number(t, key))
+        crate::entity::type_of(cat, e).and_then(|t| crate::build::number(t, key))
     };
     let mut out = Vec::new();
     for e in &world.zoo.entities {
@@ -179,7 +179,7 @@ fn posted(world: &World, cat: &Catalogue) -> Vec<(u32, u16)> {
         }
         // A fence piece or a tank wall (placing 7.4): broken again, or decayed.
         if let Some(f) = c.fence {
-            let ty = crate::place::bulldozer::type_of(cat, e);
+            let ty = crate::entity::type_of(cat, e);
             let limit = number(e, "cDecayedLife").unwrap_or(0.0) as i64;
             if f.life < 1 {
                 if ty.is_some_and(crate::world::deteriorates) {
@@ -252,7 +252,7 @@ fn seated(world: &World, cat: &Catalogue) -> Vec<u32> {
 /// The life the original writes for an animal record (15.5): cut to the type's `cTimeDeath - 1`,
 /// then lengthened once for each completion of the longevity research of the Marine Mania species.
 fn life(cat: &Catalogue, e: &Entity, stored: i32, lengthened: u32) -> Option<i32> {
-    let ty = crate::place::bulldozer::type_of(cat, e)?;
+    let ty = crate::entity::type_of(cat, e)?;
     let death = crate::build::number(ty, "cTimeDeath")?;
     let aquatic = crate::build::plain(ty, "cExpansionID") == Some(2.0);
     let mut life = i64::from(stored.min(death as i32 - 1));
@@ -356,7 +356,7 @@ struct Naming<'a> {
 
 impl Naming<'_> {
     fn entity(&mut self, e: &Entity) -> Option<Vec<u8>> {
-        let ty = crate::place::bulldozer::type_of(self.cat, e)?;
+        let ty = crate::entity::type_of(self.cat, e)?;
         let text = match ty.class {
             "guests" => self.tables.string(9507),
             _ => self.tables.string(ty.name_id as u32),
