@@ -316,6 +316,7 @@ impl App<'_> {
     pub(super) fn panel_pass(&mut self, now: u64) {
         self.panel_sync();
         self.units_sync();
+        self.facts_sync();
         self.animal_sync();
         self.staff_sync();
         self.guest_sync();

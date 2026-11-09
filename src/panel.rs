@@ -4,6 +4,7 @@
 pub mod animal;
 pub mod building;
 pub mod exhibit;
+pub mod facts;
 pub mod follow;
 pub mod guest;
 pub mod marketing;

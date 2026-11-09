@@ -31,7 +31,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use items::*;
-pub(crate) use items::{cost, drt_base, number, plain};
+pub(crate) use items::{cost, drt_base, infoimg, number, plain, unit_text};
 use panel::*;
 
 /// The expansions a type can be a member of, by selector value minus 1 (the entry ids of

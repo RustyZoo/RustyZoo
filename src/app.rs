@@ -152,6 +152,8 @@ struct Game {
     panel: crate::panel::exhibit::Panel,
     /// The animal panel and the animal selected.
     animal: crate::panel::animal::Panel,
+    /// The species and staff plaques.
+    facts: crate::panel::facts::Panel,
     /// The staff panel and the staff member selected.
     staff: crate::panel::staff::Panel,
     /// The guest panel and the guest selected.
@@ -883,6 +885,7 @@ mod cheat_guest;
 mod cheat_staff;
 mod command;
 mod exhibits;
+mod facts;
 mod gates;
 mod guest_panel;
 mod history;
