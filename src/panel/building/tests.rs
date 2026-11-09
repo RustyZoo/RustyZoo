@@ -636,12 +636,25 @@ fn equal_swatches_choose_the_first_variant_of_the_group_and_a_bad_press_changes_
         "cIsColorReplaced = 1\n",
         TWO_GROUPS,
     );
-    // The third and fourth sorted swatches are those of the variants 0 and 3: the first is chosen,
-    // on the second group, with the first group filled with its default.
+    // The third and fourth sorted swatches are those of the variants 0 and 3: both choose the
+    // first of them.
+    for k in [2, 3] {
+        panel.pick(&mut ui, &world, &cat, &vfs, 0);
+        let line = panel.choose(&mut ui, &mut world, &cat, &vfs, k);
+        assert_eq!(line.as_deref(), Some("colour 1 0 0"), "{k}");
+    }
+    // The second group of a building that stores nothing: the first group is filled in with its
+    // default variant.
+    let at = world.find(1).unwrap();
+    world.zoo.entities[at]
+        .common
+        .as_mut()
+        .unwrap()
+        .colors
+        .clear();
     panel.pick(&mut ui, &world, &cat, &vfs, 1);
     let line = panel.choose(&mut ui, &mut world, &cat, &vfs, 0);
     assert_eq!(line.as_deref(), Some("colour 1 1 0"));
-    let at = world.find(1).unwrap();
     assert_eq!(
         world.zoo.entities[at].common.as_ref().unwrap().colors,
         [1, 0]
