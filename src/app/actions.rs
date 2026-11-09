@@ -67,8 +67,7 @@ impl App<'_> {
                 Action::Edited(panel_building::PRICE) if self.game.is_some() => {
                     self.building_type_price();
                 }
-                action if self.game.is_some() && self.zoo_window_action(action) => {}
-                _ => {}
+                action => _ = self.game.is_some() && self.zoo_window_action(action),
             }
         }
         for id in selected {
