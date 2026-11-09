@@ -44,18 +44,18 @@ fn an_egg_and_a_crate_restart_their_own_idle_picture() {
     fish(&mut w, 1, 1, |_| ());
     let unit = w.units.get_mut(1).unwrap();
     unit.tank = 3;
-    assert_eq!(idle_name(unit), "surfidle");
+    assert_eq!(restart_name(unit), "surfidle");
     let Part::Animal(a) = &mut unit.part else {
         panic!("not an animal");
     };
     a.crated = true;
-    assert_eq!(idle_name(unit), "box_idle");
+    assert_eq!(restart_name(unit), "box_idle");
     // An egg comes first, and it does not dive or surface as its species does.
     let Part::Animal(a) = &mut unit.part else {
         panic!("not an animal");
     };
     a.egg = true;
-    assert_eq!(idle_name(unit), "egg_idle");
+    assert_eq!(restart_name(unit), "egg_idle");
 }
 
 #[test]

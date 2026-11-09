@@ -310,7 +310,7 @@ pub(crate) fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usi
 /// animation, step 3).
 pub(crate) fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
     let entity = &world.zoo.entities[at];
-    let name = swim::idle_name(unit);
+    let name = swim::restart_name(unit);
     if data.timing(entity, name).is_some() {
         unit.animation.base_to(name);
     }

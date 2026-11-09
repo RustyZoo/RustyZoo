@@ -177,16 +177,20 @@ fn rest(unit: &Unit, wet: bool) -> Rest {
 
 /// 9.1: the idle animation of the unit by its tank mode.
 pub(crate) fn idle_name(unit: &Unit) -> &'static str {
-    // An egg shows its own picture, a crate its box (unit placing 9.1).
-    match &unit.part {
-        Part::Animal(a) if a.egg => return "egg_idle",
-        Part::Animal(a) if a.crated => return "box_idle",
-        _ => {}
-    }
     match (diver(unit), unit.tank) {
         (true, 4) => "subidle",
         (true, 3) => "surfidle",
         _ => "idle",
+    }
+}
+
+/// The picture a unit restarts when it stands (unit placing 9.1): an egg's, a crate's, else the
+/// idle one of its tank mode.
+pub(crate) fn restart_name(unit: &Unit) -> &'static str {
+    match &unit.part {
+        Part::Animal(a) if a.egg => "egg_idle",
+        Part::Animal(a) if a.crated => "box_idle",
+        _ => idle_name(unit),
     }
 }
 
