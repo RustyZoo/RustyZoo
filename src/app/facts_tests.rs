@@ -120,7 +120,7 @@ fn files() -> Vec<(String, Vec<u8>)> {
         ),
         (
             "ui/animal2.lyt".into(),
-            (format!("[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\n")
+            ("[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=40\ndy=10\n".to_string()
                 + &button(3100, 0, "target=6\naction=2\n")
                 + &button(3122, 10, "state=2048\n"))
                 .into_bytes(),
@@ -235,6 +235,10 @@ fn the_adopt_button_does_nothing_without_a_held_animal() {
         hold(&mut s.app, RANGER);
         press(s, 2050);
         assert!(!shown(s, 27));
+        press(s, 2050);
+        // The same button opens it once an animal is held.
+        open_species(s, FOX);
+        assert!(shown(s, 27));
     });
 }
 
