@@ -54,8 +54,12 @@ impl UiStrings for Texts {
         }
     }
 
-    fn text_entry(&self, _: &[u8]) -> Vec<u8> {
-        vec![]
+    fn text_entry(&self, name: &[u8]) -> Vec<u8> {
+        match name {
+            b"FOX" => b"foxes".to_vec(),
+            b"KEEPER" => b"keeps".to_vec(),
+            _ => vec![],
+        }
     }
 }
 

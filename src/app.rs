@@ -963,6 +963,8 @@ mod terrain_tests;
 #[cfg(test)]
 mod bulldozer_tests;
 #[cfg(test)]
+mod facts_tests;
+#[cfg(test)]
 mod unit_lists_tests;
 #[cfg(test)]
 mod view_buttons_tests;
