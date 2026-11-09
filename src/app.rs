@@ -188,28 +188,6 @@ impl Game {
         Some((c.x, c.y))
     }
 
-    /// The animation and frame each unit holds, for the picture.
-    fn shown(&self) -> Vec<Shown> {
-        (self.world.units.iter())
-            .filter(|u| !u.animation.name.is_empty())
-            .map(|u| Shown {
-                id: u.id,
-                animation: u.animation.name.clone(),
-                frame: u.animation.shown(),
-            })
-            .chain(self.world.units.gate_frames().map(|(id, frame)| Shown {
-                id,
-                animation: "idle".into(),
-                frame,
-            }))
-            .chain(self.world.portal_frames().map(|(id, frame)| Shown {
-                id,
-                animation: "portal".into(),
-                frame,
-            }))
-            .collect()
-    }
-
     /// Sets or clears the pause flag (the buttons are the app's, `main_buttons`).
     fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
