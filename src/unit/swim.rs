@@ -184,6 +184,16 @@ pub(crate) fn idle_name(unit: &Unit) -> &'static str {
     }
 }
 
+/// The picture a unit restarts when it stands (unit placing 9.1): an egg's, a crate's, else the
+/// idle one of its tank mode.
+pub(crate) fn restart_name(unit: &Unit) -> &'static str {
+    match &unit.part {
+        Part::Animal(a) if a.egg => "egg_idle",
+        Part::Animal(a) if a.crated => "box_idle",
+        _ => idle_name(unit),
+    }
+}
+
 /// 9.2: the move animation a unit in a tank shows, whatever the speed band; none out of one.
 pub(crate) fn move_name(unit: &Unit) -> Option<&'static str> {
     match (diver(unit), unit.tank, unit.vertical) {

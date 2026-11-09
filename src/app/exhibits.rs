@@ -249,10 +249,17 @@ impl App<'_> {
                     let Some(game) = &mut self.game else { continue };
                     match animal {
                         false => game.world.move_unit(e, t),
-                        true => match place::unit::crate_spot(&game.world, t) {
-                            Some(spot) => game.world.move_unit(e, spot),
-                            None => self.bulldoze_remove(e),
-                        },
+                        true => {
+                            let cat = self.renderer.catalogue();
+                            let data = crate::behaviour::Library {
+                                catalogue: cat,
+                                vfs: self.renderer.vfs(),
+                                timings: &self.timings,
+                            };
+                            if !place::unit::refuse(&mut game.world, cat, e, t, &data) {
+                                self.bulldoze_remove(e);
+                            }
+                        }
                     }
                 }
                 (true, ..) => {}

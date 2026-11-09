@@ -217,6 +217,34 @@ fn the_claim_and_the_dart_are_saved_with_the_animal_and_the_crate_drops_them() {
 }
 
 #[test]
+fn a_loaded_crate_shows_its_own_picture_and_an_open_animal_its_idle_one() {
+    let (cat, mut world) = (
+        zebras(),
+        pens_with(|n, x0| match n {
+            0 => vec![
+                entity("animals", "f", (x0, 2), 0, 500),
+                entity("animals", "f", (4, 6), 0, 700),
+            ],
+            _ => Vec::new(),
+        }),
+    );
+    let at = world.find(500).unwrap();
+    world.zoo.entities[at].common.as_mut().unwrap().animal = Some(Box::new(AnimalRecord {
+        crated: true,
+        ..record()
+    }));
+    let mut sim = Sim::new(b"");
+    sim.set_seed(1);
+    sim.start_game(64, Clocks::default());
+    sim.load(&mut world, &cat);
+    for _ in 0..3 {
+        sim.step_with(&Life::new().idling(), &cat, &mut world, 67, |_, _, _| {});
+    }
+    let name = |id| world.units.get(id).unwrap().animation.name.clone();
+    assert_eq!((name(500), name(700)), ("box_idle".into(), "idle".into()));
+}
+
+#[test]
 fn a_darted_animal_chooses_no_ambient_set() {
     let (log, _) = crates(&Life::new().idling(), |w| {
         // The crate at 700 is open and darted instead.

@@ -8,9 +8,9 @@ pub(super) struct Placing {
     /// The pending object: the tool at the place under the pointer, while the pointer (as the
     /// last move left it) is over the map view and a tool is chosen.
     pub(super) pending: Option<Pending>,
-    /// The pending staff member made when its item was chosen (staff 4.2): the type and the
-    /// counters it drew; the hire gives them to the unit.
-    pub(super) made: Option<(usize, crate::unit::Staff)>,
+    /// The pending animal or staff member made when its item was chosen (unit placing 5.4): the
+    /// type, the id it took and the state it drew; the placed unit keeps them.
+    pub(super) made: Option<place::unit::Made>,
     /// The random use time drawn when the pending building was made (guest buildings 10.1 point
     /// 2.5): the type and the time; the building placed keeps it.
     pub(super) used: Option<(usize, u32)>,
@@ -62,6 +62,8 @@ impl App<'_> {
         };
         let at = |ty, point: (i64, i64)| {
             if cat.types.get(ty).is_some_and(place::unit::is_unit) {
+                let made = game.placing.made.as_ref().map(|m| m.ty);
+                let ty = place::unit::made_type(cat, made, ty)?;
                 return place::unit::pending(&game.world, cat, &game.water, ty, view, aim, october);
             }
             place::pending(
@@ -418,8 +420,10 @@ impl App<'_> {
         }
     }
 
-    /// Makes the pending staff member of each staff item chosen since the last call: its two
-    /// counters are drawn now (staff 4.2), the last one made is the pending one.
+    /// Makes the pending animal or staff member of each unit item chosen since the last call
+    /// (unit placing 5.4): it takes the next entity id and draws its creation state now, as the
+    /// type's creation does; the last one made is the pending one. An egg layer is made from its
+    /// young type, and from nothing when the species has none.
     pub(super) fn make_pending(&mut self) {
         playing!(self, game);
         let cat = self.renderer.catalogue();
@@ -427,8 +431,24 @@ impl App<'_> {
             let t = &cat.types[ty];
             pending_use(&mut game.placing, &mut self.sim, t, ty);
             if let Some(kind) = crate::unit::Kind::of_class(t.class) {
-                game.placing.made =
-                    Some((ty, crate::staff::create(Some(t), kind, &mut self.sim.rng)));
+                let rng = &mut self.sim.rng;
+                let made = match kind {
+                    crate::unit::Kind::Animal => {
+                        crate::animal::breed::pending(&game.world, cat, ty, rng)
+                            .map(|(ty, a)| (ty, crate::unit::Part::Animal(a)))
+                    }
+                    _ => Some((
+                        ty,
+                        crate::unit::Part::Staff(crate::staff::create(Some(t), kind, rng)),
+                    )),
+                };
+                game.placing.made = made.and_then(|(ty, part)| {
+                    Some(place::unit::Made {
+                        ty,
+                        id: game.world.take_id()?,
+                        part,
+                    })
+                });
             }
         }
     }

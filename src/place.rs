@@ -224,6 +224,7 @@ pub(crate) fn extra_of(pieces: &[Pending], tints: &Tints) -> Extra {
             facing: p.facing,
             tint,
             wall: p.wall,
+            anim: None,
         });
         for &e in &p.blocking {
             if !extra.tinted.iter().any(|t| t.0 == e) {

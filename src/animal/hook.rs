@@ -225,9 +225,11 @@ pub(crate) fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
             };
             unit.goal.record = task;
         }
-        // An egg shows its own picture (animals-needs 13.1).
+        // An egg shows its own picture (animals-needs 13.1), a crate its box (unit placing 9.1).
         if animal.egg {
             unit.animation.base_to("egg_idle");
+        } else if animal.crated {
+            unit.animation.base_to("box_idle");
         }
         unit.part = Part::Animal(animal);
         unit.started = true;

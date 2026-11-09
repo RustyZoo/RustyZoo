@@ -78,6 +78,15 @@ impl App<'_> {
                 .map_or_else(Extra::default, |p| p.extra(&game.placing.tints)),
             false => place::extra_of(&game.placing.run, &game.placing.tints),
         };
+        // A pending or carried egg or crate is drawn as one (unit placing 9.1).
+        let carried = (game.carry.as_ref()).and_then(|c| Some(&game.world.units.get(c.id)?.part));
+        let part = carried.or(game.placing.made.as_ref().map(|m| &m.part));
+        let anim = match part {
+            Some(crate::unit::Part::Animal(a)) if a.egg => Some("egg_idle"),
+            Some(crate::unit::Part::Animal(a)) if a.crated => Some("box_idle"),
+            _ => None,
+        };
+        want.ghosts.iter_mut().for_each(|g| g.anim = anim);
         want.marks.clone_from(&game.marks);
         want.shown = game.shown();
         want.hidden.extend(game.carry.as_ref().map(|c| c.id));

@@ -80,7 +80,7 @@ pub(crate) fn mixed_tanks(world: &World, e: usize) -> bool {
 /// Whether the bulldozer can remove the entity at position `e` (placing 7.1): its tile is in the
 /// zoo and it is a path or one of the scenery classes whose type is deletable (`cDeletable` 1,
 /// which is the default); a tank wall between two tanks only when both are show tanks or
-/// neither. Animals, guests and staff never are.
+/// neither. Animals, guests and staff never are (unit placing 10.1).
 pub(crate) fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
     let (Some(entity), Some(shape)) = (world.zoo.entities.get(e), world.shape(e)) else {
         return false;
@@ -101,10 +101,9 @@ pub(crate) fn removable(world: &World, cat: &Catalogue, e: usize) -> bool {
             Kind::Edge | Kind::Wall | Kind::Fixed => {
                 number(ty, "cDeletable").is_none_or(|n| n == 1.0)
             }
-            // An animal is sold and a staff member fired (the unit's panel buttons, until the
-            // panels exist).
-            Kind::Unit => unit::is_unit(ty),
-            Kind::Overlay | Kind::Flight | Kind::Sparkle => false,
+            // The bulldozer never removes a unit: an animal is sold and a staff member fired from
+            // its panel (unit placing 10.1).
+            Kind::Unit | Kind::Overlay | Kind::Flight | Kind::Sparkle => false,
         }
 }
 

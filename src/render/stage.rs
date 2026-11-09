@@ -242,7 +242,7 @@ impl<'a> MapRenderer<'a> {
                 food: 0,
                 tint: Some(ghost.tint),
                 wall: ghost.wall.min(order::MAX_ELEVATION as u32) as i32,
-                shown: None,
+                shown: ghost.anim.map(|a| (a, 0)),
                 idle: None,
                 look: None,
             });
