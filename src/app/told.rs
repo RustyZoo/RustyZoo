@@ -5,6 +5,21 @@ use super::*;
 use crate::soundscape::Shot;
 use crate::ui::interface::Message;
 
+/// A sound a unit's animation began: the member of the file (behaviours 5.2), the place of the
+/// unit in the view space, and the distance term and the pan of that place from the centre of the
+/// map view (sound 5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitSound {
+    pub id: u32,
+    pub file: String,
+    /// The voice of the type and key, and the base term of the sound (sound 4.4, 9.1).
+    pub voice: String,
+    pub base: i32,
+    pub at: (i64, i64),
+    pub distance: i32,
+    pub pan: i32,
+}
+
 /// Where a one-shot is heard, `listener` being the centre of the map view: a soundscape shot at
 /// its offset from the centre, a creature's call at its map position as it stands, never moved to
 /// the view (the original's bug, ambients 6.4 point 5).
