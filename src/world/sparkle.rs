@@ -22,6 +22,7 @@ impl World {
     }
 
     /// The sparkles flagged for removal and not yet gone.
+    #[cfg(test)]
     pub(crate) fn doomed(&self) -> &[u32] {
         &self.doomed
     }

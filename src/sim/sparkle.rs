@@ -290,7 +290,12 @@ mod tests {
         run(&mut world, &mut sim, &cat, 100);
         let made = world.sparkles().map(|s| s.1.list.len()).sum::<usize>();
         assert!(made > 0);
-        let wall = world.zoo.entities.iter().find(|e| e.class == "tankwall").unwrap();
+        let wall = world
+            .zoo
+            .entities
+            .iter()
+            .find(|e| e.class == "tankwall")
+            .unwrap();
         assert!(world.remove(wall.common.as_ref().unwrap().id));
         assert!(world.exhibits().get(id).is_none(), "the tank is gone");
         assert_eq!(world.doomed().len(), made, "flagged for removal at once");
