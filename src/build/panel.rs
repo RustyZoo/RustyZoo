@@ -83,7 +83,8 @@ pub(super) const PANELS: [Panel; PANEL_COUNT] = [
         cost_text: 2014,
         tabs: &[2075, 3255, 3254, 2076],
         other_tabs: &[],
-        // The Young button and the shelter capacity (not drawn yet).
+        // The Young button, which only a developer key shows (unit placing 3.3 item 7), and the
+        // shelter capacity, which a rebuild of the list hides (item 6).
         hidden: &[2051, 2090, 2091],
         pictures: [2045, 2047, 2046],
         details: [2082, 0, 0],

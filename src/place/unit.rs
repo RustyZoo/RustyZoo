@@ -16,15 +16,17 @@ use super::{
     NO_FUNDS, NOT_IN_THE_ZOO, Outcome, Pending, Verdict, entity, facing, fail, fenced, path_shape,
     snap, uneven,
 };
-use crate::behaviour::{Animation, Runner};
+use crate::behaviour::{Animation, Data, Runner};
 use crate::build::{cost, number, plain};
 use crate::camera::zoom_view;
 use crate::entity::{Catalogue, EntityType};
 use crate::exhibit::GROUNDS;
 use crate::money::{ANIMAL_PURCHASE, Money};
 use crate::place::Class;
+use crate::render::Form;
 use crate::render::order::{Kind, ground_height, project};
 use crate::staff;
+use crate::unit::{Part, Unit, movement, swim};
 use crate::world::{Shape, World};
 use crate::zoo::Entity;
 
@@ -44,9 +46,10 @@ const NOT_IN_TANKS: i32 = 10553;
 const NOT_FOR_STAFF: i32 = 10563;
 /// An animal that cannot swim stands on land.
 const NOT_ON_WATER_UNIT: i32 = 10569;
-/// The tank point looks this many steps toward the viewer (unit placing 5.1: 48, plus a setting of
-/// the map view that is 0).
+/// The tank point looks `48 + maximumTankHeight` steps toward the viewer (unit placing 5.1).
 const TANK_STEPS: i32 = 48;
+/// The message of an egg on water or in a tank.
+const EGG_ON_LAND: i32 = 10570;
 /// The crate search goes this far, in tiles of Manhattan distance (unit placing 9.3).
 const CRATE_RANGE: i32 = 50;
 
@@ -127,9 +130,40 @@ pub(crate) fn pending(
     aim: Aim,
     october: bool,
 ) -> Option<Pending> {
-    let price = price(cat.types.get(ty)?, october);
+    let t = cat.types.get(ty)?;
+    let form = if is_egg(t) { Form::Egg } else { Form::Plain };
     let dir = facing(0, view);
-    pending_of(world, cat, water, ty, dir, view, aim, price, false)
+    pending_of(
+        world,
+        cat,
+        water,
+        ty,
+        dir,
+        view,
+        aim,
+        price(t, october),
+        form,
+    )
+}
+
+/// The type the pending unit of the tool `tool` is made from (unit placing 5.4), given the type
+/// `made` its creation used: the same species, as a young for an egg. An animal with none made
+/// has no pending unit (an egg layer with no young type makes nothing, 3.3 item 8).
+pub(crate) fn made_type(cat: &Catalogue, made: Option<usize>, tool: usize) -> Option<usize> {
+    let t = cat.types.get(tool)?;
+    let same = |m: &&EntityType| {
+        (m.class, &m.type_name) == (t.class, &t.type_name) && (m.subtype == t.subtype || is_egg(m))
+    };
+    match made.filter(|&m| cat.types.get(m).is_some_and(|m| same(&m))) {
+        None if is_animal(t) => None,
+        made => made.or(Some(tool)),
+    }
+}
+
+/// Whether the pending animal of this type is an egg (unit placing 3.3 item 8): the young type of
+/// a species that lays eggs, which is the only one made for it.
+pub(crate) fn is_egg(ty: &EntityType) -> bool {
+    is_animal(ty) && ty.subtype == b"y" && number(ty, "cLaysEggs") == Some(1.0)
 }
 
 /// The pending unit of the one the player carries (8.3): its own facing turned with the view, so
@@ -151,8 +185,11 @@ pub(crate) fn carried(
         view,
         aim,
         0.0,
-        matches!(world.units.get(carry.id).map(|u| &u.part),
-            Some(crate::unit::Part::Animal(a)) if a.crated),
+        match world.units.get(carry.id).map(|u| &u.part) {
+            Some(crate::unit::Part::Animal(a)) if a.egg => Form::Egg,
+            Some(crate::unit::Part::Animal(a)) if a.crated => Form::Crate,
+            _ => Form::Plain,
+        },
     )
 }
 
@@ -173,7 +210,7 @@ fn pending_of(
     view: u8,
     aim: Aim,
     price: f32,
-    crated: bool,
+    form: Form,
 ) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let ground = (
@@ -207,7 +244,7 @@ fn pending_of(
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, world, t, water, lifted.is_some(), crated);
+    check(&mut p, world, t, water, lifted.is_some(), form);
     Some(p)
 }
 
@@ -217,7 +254,7 @@ fn water_height(level: u32) -> i32 {
 }
 
 /// The tank point (unit placing 5.1): from the ground point under the pointer, step toward the
-/// viewer by 32 world units on each axis, 48 times (the start is step 0), and keep the last point
+/// viewer by 32 world units on each axis, `48 + maximumTankHeight` times (the start is step 0), and keep the last point
 /// over a tank whose floor, projected at the tile's elevation, lies below the pointer's row by
 /// exactly the water level in steps: `(floor row - pointer row) / step`, truncated toward zero.
 /// So the pointer is at the water surface or less than one step above it. A step is 16 rows at
@@ -236,7 +273,8 @@ fn tank_point(
         _ => 16,
     };
     let mut found = None;
-    for k in 0..TANK_STEPS {
+    // The setting is cut to 255 when it is read; the bound keeps a loose number from looping.
+    for k in 0..TANK_STEPS + world.tank_config().limit.min(255) as i32 {
         let x = ground.0.saturating_add(32 * k * (a - b));
         let y = ground.1.saturating_add(32 * k * (a + b));
         let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
@@ -254,12 +292,13 @@ fn tank_point(
     found
 }
 
-/// The footprint of the type in quarters, or of its crate, along the axes of the map for the
-/// facing.
-fn footprint(t: &EntityType, dir: u32, crated: bool) -> (i32, i32) {
-    let [x, y] = match crated {
-        true => t.form_footprint(false),
-        false => [t.footprint[0], t.footprint[1]],
+/// The footprint of the type in quarters, or of its egg or crate, along the axes of the map for
+/// the facing.
+fn footprint(t: &EntityType, dir: u32, form: Form) -> (i32, i32) {
+    let [x, y] = match form {
+        Form::Egg => t.form_footprint(true),
+        Form::Crate => t.form_footprint(false),
+        Form::Plain => [t.footprint[0], t.footprint[1]],
     };
     let own = (x.clamp(0, 64), y.clamp(0, 64));
     match dir % 4 {
@@ -319,14 +358,8 @@ fn lets_through(world: &World, object: usize) -> bool {
 /// The checks of 6.1 for an animal (6.2: a crate may stand on the zoo grounds), of 6.3 for a staff
 /// member or of 6.4 for a guest, in order. `tanked`: the tank point found a tank, so the unit is in
 /// tank mode.
-fn check(
-    p: &mut Pending,
-    world: &World,
-    t: &EntityType,
-    water: &[bool],
-    tanked: bool,
-    crated: bool,
-) {
+fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool, form: Form) {
+    let crated = form == Form::Crate;
     let staff = staff::is_staff(t);
     let guest = t.class == "guests";
     let Some(tile) = world
@@ -336,9 +369,10 @@ fn check(
         return fail(p, Some(NOT_IN_THE_ZOO));
     };
     let flag = |key: &str| number(t, key) == Some(1.0);
-    // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1).
-    let (swims, only) = (flag("cSwims"), flag("cOnlyUnderwater"));
-    let (fx, fy) = footprint(t, p.facing, crated);
+    // The messages about water read `cOnlyUnderwater`, whatever the class (unit placing 6.1). An
+    // egg does not swim.
+    let (swims, only) = (flag("cSwims") && form != Form::Egg, flag("cOnlyUnderwater"));
+    let (fx, fy) = footprint(t, p.facing, form);
     // A large animal runs the footprint check of placing 5.2 (items 1, 3 to 6): its quarters.
     let large = fx > 2 || fy > 2;
     let (x0, y0) = (p.x - 16 * (fx - 1), p.y - 16 * (fy - 1));
@@ -384,7 +418,11 @@ fn check(
     };
     let wet = wet_at(tile);
     if wet && !swims && !guest {
-        let message = if only { NEEDS_WATER } else { NOT_ON_WATER_UNIT };
+        let message = match (only, form) {
+            (true, _) => NEEDS_WATER,
+            (_, Form::Egg) => EGG_ON_LAND,
+            _ => NOT_ON_WATER_UNIT,
+        };
         fail(p, (!staff).then_some(message));
     }
     // A large animal holds no quarter, stands flat at one height and crosses no fence or cliff.
@@ -414,9 +452,12 @@ fn check(
     let tank = world.tank_at(tile);
     if let Some(id) = tank {
         // The tank check runs on a place that is still valid (6.1 step 3).
-        let message = tank_message(world, id, tile, t).filter(|_| p.verdict == Verdict::Valid);
+        let message = match p.verdict {
+            Verdict::Valid => tank_message(world, id, tile, t, (p.x, p.y, hx, hy), form),
+            _ => None,
+        };
         if let Some(message) = message {
-            fail(p, Some(message));
+            fail(p, message);
         }
     } else if only && !crated {
         fail(p, Some(NEEDS_WATER));
@@ -446,31 +487,68 @@ pub(crate) fn gate_inside(world: &World, id: u32) -> Option<usize> {
     }
 }
 
-/// The message of the tank check of 6.5 for a unit on `tile` of tank `id`: the first row of the
-/// table that applies, in the table's order.
-fn tank_message(world: &World, id: u32, tile: usize, t: &EntityType) -> Option<i32> {
+/// The tank check of 6.5 for a unit on `tile` of tank `id`, whose blocking rectangle is centred at
+/// `(x, y)` with the half sides `(hx, hy)`: the first row of the table that applies refuses, with
+/// its message, if it has one (rows 7 and 8 have none).
+fn tank_message(
+    world: &World,
+    id: u32,
+    tile: usize,
+    t: &EntityType,
+    (x, y, hx, hy): (i32, i32, i32, i32),
+    form: Form,
+) -> Option<Option<i32>> {
     let tank = world.tank(id)?;
-    let under = number(t, "cUnderwater") == Some(1.0);
-    let depth = number(t, "cDepth").unwrap_or(0.0);
-    // Only a keeper stands at the ladder.
-    if gate_inside(world, id) == Some(tile) && t.class != "keeper" {
-        return Some(LADDER);
+    let flag = |key: &str| number(t, key) == Some(1.0);
+    let (under, animal) = (flag("cUnderwater"), is_animal(t));
+    // Only a keeper stands at the ladder: on its tile, or with the tile's centre under the unit.
+    let width = world.zoo.width as i32;
+    let gate = gate_inside(world, id);
+    let centre = |g: usize| ((g as i32 % width) * 64 + 32, (g as i32 / width) * 64 + 32);
+    let covers = |g: usize| {
+        let (cx, cy) = centre(g);
+        (x - cx).abs() <= hx && (y - cy).abs() <= hy
+    };
+    if t.class != "keeper" && gate.is_some_and(|g| g == tile || covers(g)) {
+        return Some(Some(LADDER));
     }
-    // The filled tank and the depth are an animal's.
-    if is_animal(t) && under && (!tank.filled || tank.level < 1) {
-        return Some(NEEDS_WATER);
+    if animal && form == Form::Egg {
+        return Some(Some(EGG_ON_LAND));
     }
-    if is_animal(t) && depth > tank.level as f32 {
-        return Some(DEEPER);
+    let filled = tank.filled && tank.level >= 1;
+    if animal && under && form != Form::Crate && !filled {
+        return Some(Some(NEEDS_WATER));
+    }
+    // The depth is raised to the height of each object in a quarter that does not let it through.
+    let tall = flag("cTall");
+    let held = (0..4).filter_map(|q| world.quadrant(tile, q));
+    let blocks = held.filter_map(|o| world.shape(o)).filter(|s| match tall {
+        true => !s.walkable.1,
+        false => !s.walkable.0,
+    });
+    let depth = blocks.fold(number(t, "cDepth").unwrap_or(0.0), |d, s| {
+        d.max(s.tank.height as f32)
+    });
+    if animal && depth > tank.level as f32 {
+        return Some(Some(DEEPER));
     }
     if !under {
-        return Some(if staff::is_staff(t) {
+        return Some(Some(if staff::is_staff(t) {
             NOT_FOR_STAFF
         } else {
             NOT_IN_TANKS
-        });
+        }));
     }
-    (tank.show && plain(t, "cShow") != Some(1.0)).then_some(NOT_FOR_SHOWS)
+    if tank.show && plain(t, "cShow") != Some(1.0) {
+        return Some(Some(NOT_FOR_SHOWS));
+    }
+    // A swimmer that keeps off the walls, and a floating object in the fourth quarter: no message.
+    let edges = number(t, "cAvoidEdges").map_or(0, |r| r.max(0.0) as u32);
+    let floating = world
+        .quadrant(tile, 3)
+        .and_then(|o| world.shape(o))
+        .is_some_and(|s| s.tank.surface);
+    (floating || edges >= 1 && crate::path::near_edge(world, tile, edges)).then_some(None)
 }
 
 /// The name of a new entity of the type, `text` being the type's name: [`numbered`], kept only
@@ -536,11 +614,22 @@ pub(crate) fn category(ty: &EntityType) -> usize {
     staff::wages(ty).unwrap_or(ANIMAL_PURCHASE)
 }
 
+/// The state a pending unit was made with (unit placing 5.4): the type it was made from, the id it
+/// took and its creation state. The placed unit keeps all three.
+#[derive(Debug, Clone)]
+pub(crate) struct Made {
+    pub ty: usize,
+    pub id: u32,
+    pub part: Part,
+}
+
 /// Releases the button over a pending unit (unit placing 7.1): a valid place is paid with the
 /// cash, booked in its [`category`], and gets the unit named `text` (the type's name, numbered
 /// by [`name`]); a place that is not valid shows its stored message, a cash that does not cover
 /// the cost the message of insufficient funds. The undo list records the placement of an animal;
-/// hiring a staff member empties it.
+/// hiring a staff member empties it. The unit takes the id and the state of the pending unit,
+/// `made`, if it has one; at the add it takes the tank mode and the terrain mode of where it
+/// stands, and a staff member marks its exhibit for a new rating (7.1 items 1 and 4).
 pub(crate) fn place(
     world: &mut World,
     money: &mut Money,
@@ -548,6 +637,7 @@ pub(crate) fn place(
     text: &str,
     p: &Pending,
     shape: impl Fn(&Entity) -> Option<Shape>,
+    (made, data): (Option<Made>, &dyn Data),
 ) -> Outcome {
     if p.verdict == Verdict::Invalid {
         return Outcome::Refused(p.message);
@@ -558,10 +648,18 @@ pub(crate) fn place(
     let mut unit = entity(ty, p, Vec::new(), &world.research, world.units.now);
     if let Some(common) = unit.common.as_mut() {
         common.name = name(world, ty, text);
+        if let Some(Part::Staff(s)) = made.as_ref().map(|m| &m.part) {
+            common.colors.clone_from(&s.colours);
+        }
     }
     let shape = shape(&unit);
-    match world.add(unit, shape) {
+    let tile = world.tile_index(p.tile.0, p.tile.1);
+    match world.add_made(unit, shape, true, made.as_ref().map(|m| m.id)) {
         Some(id) => {
+            arrive(world, id, made.map(|m| m.part), data);
+            if let Some(t) = tile.filter(|_| !is_animal(ty)) {
+                world.mark_rating(t);
+            }
             world.priced(p.price);
             if staff::is_staff(ty) {
                 world.clear_undo();
@@ -571,6 +669,115 @@ pub(crate) fn place(
         }
         None => Outcome::Refused(None),
     }
+}
+
+/// The unit `id` just added takes the state it was made with, if it was, and what the add gives
+/// it (unit placing 7.1 item 1): the tank position check and the terrain mode, and the picture of
+/// an egg or a crate.
+fn arrive(world: &mut World, id: u32, part: Option<Part>, data: &dyn Data) {
+    let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
+        return;
+    };
+    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+    if let Some(part) = part {
+        unit.part = part;
+        unit.started = true;
+    }
+    movement::read_type(&mut unit, data, &world.zoo.entities[at]);
+    unit.typed = true;
+    swim::check(&mut unit, world, at);
+    swim::add_to_map(&mut unit, world, at);
+    if matches!(&unit.part, Part::Animal(a) if a.egg || a.crated) {
+        movement::idle(&mut unit, world, data, at);
+    }
+    if let Some(slot) = world.units.get_mut(id) {
+        *slot = unit;
+    }
+}
+
+/// The unit `id` shows its idle picture: the egg's or the crate's for an egg or a crate (unit
+/// placing 9.1).
+pub(crate) fn show_idle(world: &mut World, id: u32, data: &dyn Data) {
+    let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
+        return;
+    };
+    if !matches!(&slot.part, Part::Animal(a) if a.egg || a.crated) {
+        return;
+    }
+    let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
+    movement::idle(&mut unit, world, data, at);
+    if let Some(slot) = world.units.get_mut(id) {
+        *slot = unit;
+    }
+}
+
+/// The animal `id`, refused by a new tank, is put out of it (unit placing 9.1, 9.3), starting the
+/// search at tile `start`: crated where it stands, an egg never (one whose countdown is spent is
+/// put in its egg state again, the countdown kept), then moved to the middle of the tile
+/// [`crate_spot`] finds, where it takes the tank mode and the terrain mode. `false` when no tile
+/// qualifies: it stays where it is, for the caller to sell.
+pub(crate) fn refuse(
+    world: &mut World,
+    cat: &Catalogue,
+    id: u32,
+    start: usize,
+    data: &dyn Data,
+) -> bool {
+    let Some(at) = world.find(id) else {
+        return false;
+    };
+    let (keys, sickly) = (
+        crate::animal::keys(world, cat, at),
+        crate::animal::breed::sickly(cat),
+    );
+    let egg = match world.units.get_mut(id).map(|u| &mut u.part) {
+        Some(Part::Animal(a)) if a.egg => {
+            if a.hatch < 1 {
+                a.refresh_egg(&keys, sickly);
+            }
+            true
+        }
+        Some(Part::Animal(a)) => {
+            crate::animal::boxed::crate_up(a);
+            (a.playing, a.caught_prey, a.prey) = (false, false, 0);
+            false
+        }
+        _ => return false,
+    };
+    if !egg {
+        crate::animal::boxed::snap(world, at);
+        if let Some(unit) = world.units.get_mut(id) {
+            crate::goal::stop_all(unit);
+            unit.animation = Animation::default();
+            unit.predator = 0;
+        }
+        swim::put(world, id);
+        show_idle(world, id, data);
+    }
+    let Some(spot) = crate_spot(world, start) else {
+        return false;
+    };
+    let width = world.zoo.width as usize;
+    let (x, y) = (
+        (spot % width) as i32 * 64 + 32,
+        (spot / width) as i32 * 64 + 32,
+    );
+    let z = ground_height(&world.zoo.tiles[spot], 32, 32);
+    world.show_moved(at, false);
+    world.lift_unit(at);
+    let from = (world.zoo.entities[at].common.as_ref())
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)));
+    let rotation = world.zoo.entities[at]
+        .common
+        .as_ref()
+        .map_or(0, |c| c.rotation);
+    world.place_unit(at, (x, y, z), rotation);
+    world.show_moved(at, true);
+    swim::put(world, id);
+    from.into_iter()
+        .chain([spot])
+        .for_each(|t| world.mark_rating(t));
+    true
 }
 
 /// The tile for the crate of an animal that was put out of a tank, searched from `start` (unit

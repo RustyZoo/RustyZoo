@@ -102,7 +102,12 @@ impl Cx<'_, '_> {
             return;
         };
         let target = self.target_unit().map(|(id, _)| id);
-        let eaten = target.or_else(|| Some(kept).filter(|&k| self.world.find(k).is_some()));
+        let eaten = target.or_else(|| {
+            Some(kept).filter(|&k| {
+                self.world.find(k).is_some()
+                    && self.world.units.get(k).is_some_and(|u| !u.suspended())
+            })
+        });
         let Some(id) = eaten else {
             return self.mark(|a| a.prey = 0);
         };

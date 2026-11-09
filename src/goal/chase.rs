@@ -60,14 +60,18 @@ impl Cx<'_, '_> {
     }
 
     /// The target unit of the record: its id and place in the entity list, none
-    /// when it names no unit or a removed one.
+    /// when it names no unit, a removed one or a suspended one (carried or being placed).
     pub(super) fn target_unit(&self) -> Option<(u32, usize)> {
         let id = self.unit.goal.record.target.id;
         let at = self
             .world
             .find(id)
             .filter(|_| !self.ctx.removals.contains(&id))?;
-        self.world.units.get(id).map(|_| (id, at))
+        self.world
+            .units
+            .get(id)
+            .filter(|u| !u.suspended())
+            .map(|_| (id, at))
     }
 
     /// The species key `key` of the entity at `at` is exactly 1.

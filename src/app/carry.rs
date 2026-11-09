@@ -73,6 +73,7 @@ impl App<'_> {
                 timings: &self.timings,
             };
             crate::goal::picked_up(&mut game.world, cat, &mut self.sim.rng, &data, id);
+            place::unit::show_idle(&mut game.world, id, &data);
             game.selected = None;
             game.carry = Some(carry);
             self.lines.world.push(format!("carry {id}"));
@@ -126,7 +127,7 @@ impl App<'_> {
     }
 
     /// The drop rule of the unit `id` put down (8.5).
-    fn drop_rule(&mut self, id: u32) {
+    pub(super) fn drop_rule(&mut self, id: u32) {
         playing!(self, game);
         let cat = self.renderer.catalogue();
         let data = Library {
@@ -218,6 +219,12 @@ impl App<'_> {
         let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
         game.carry = None;
         if done {
+            let data = Library {
+                catalogue: cat,
+                vfs: self.renderer.vfs(),
+                timings: &self.timings,
+            };
+            place::unit::show_idle(&mut game.world, carry.id, &data);
             let change = animal.then(|| rating::Change::Animal {
                 ids: rating::Likes::of(ty).ids,
                 sign: 1,
@@ -251,6 +258,12 @@ impl App<'_> {
         }
         if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
             game.selected = Some(carry.id);
+            let data = Library {
+                catalogue: self.renderer.catalogue(),
+                vfs: self.renderer.vfs(),
+                timings: &self.timings,
+            };
+            place::unit::show_idle(&mut game.world, carry.id, &data);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
             self.lines.world.push(line);

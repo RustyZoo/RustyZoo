@@ -20,13 +20,35 @@ impl World {
     /// plain entity add of an animal's dung pile marks none).
     pub(crate) fn add_rated(
         &mut self,
-        mut entity: Entity,
+        entity: Entity,
         shape: Option<Shape>,
         rated: bool,
     ) -> Option<u32> {
-        let common = entity.common.as_mut()?;
+        self.add_made(entity, shape, rated, None)
+    }
+
+    /// The next entity id, taken now: a pending unit is made with its id (unit placing 5.4), and
+    /// [`World::add_made`] gives it to the unit when it is placed.
+    pub(crate) fn take_id(&mut self) -> Option<u32> {
         let id = self.zoo.id_counter.checked_add(1)?;
-        (self.zoo.id_counter, common.id) = (id, id);
+        self.zoo.id_counter = id;
+        Some(id)
+    }
+
+    /// The same with the id the entity was made with, if any (taken with [`World::take_id`]).
+    pub(crate) fn add_made(
+        &mut self,
+        mut entity: Entity,
+        shape: Option<Shape>,
+        rated: bool,
+        made: Option<u32>,
+    ) -> Option<u32> {
+        let common = entity.common.as_mut()?;
+        let id = match made {
+            Some(id) => id,
+            None => self.zoo.id_counter.checked_add(1)?,
+        };
+        (self.zoo.id_counter, common.id) = (self.zoo.id_counter.max(id), id);
         self.zoo.entities.push(entity);
         self.shapes.push(shape);
         self.changed(None);

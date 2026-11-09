@@ -62,7 +62,8 @@ pub(super) const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\
     [h]\ntype=UILayout\nlayout=ui/exhibit.lyt\nstate=1\n\
     [j]\ntype=UILayout\nlayout=ui/filter.lyt\nstate=1\n";
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
-    [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n";
+    [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n\
+    [s]\ntype=UIButton\nid=3111\nx=10\ndx=8\ndy=8\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n\
     [b]\ntype=UIText\nid=4868\ndx=8\ndy=8\n[c]\ntype=UIText\nid=4881\ndx=8\ndy=8\n\
@@ -676,23 +677,93 @@ fn the_sell_button_does_not_test_cdeletable_but_the_bulldozer_does() {
 }
 
 #[test]
-fn a_staff_member_is_fired_after_a_question_that_names_the_salary_and_costs_nothing() {
+fn the_bulldozer_leaves_a_unit_and_the_fire_button_asks_with_its_name_and_salary() {
     with_game("fire", "", |s| {
-        s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let id = s.add(12, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let at = s.app.game.as_ref().unwrap().world.find(id).unwrap();
+        let game = s.app.game.as_mut().unwrap();
+        game.world.zoo.entities[at].common.as_mut().unwrap().name = "Joe".into();
+        // The bulldozer neither prices, highlights nor asks about it.
         s.pass(&[DELETE]);
         let over = s.at(20, 20, 32, 32);
         s.pass(&[over]);
-        assert_eq!(s.cost(), Some(0));
-        assert_eq!(s.click(over), ["tool bulldoze ask Fire"]);
+        assert_eq!(s.cost(), None);
+        s.click(over);
+        assert_eq!((s.count(), s.asking()), (1, false));
+        s.pass(&[Command::Key(Key::Escape, false, false)]);
+        s.app.game.as_mut().unwrap().staff.select(id);
+        s.app.staff_fire();
+        assert!(s.asking());
         let game = s.app.game.as_ref().unwrap();
         let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
-        let text = bulldozer::question_text(ui, cat, &game.world, 0, Question::Fire);
-        assert_eq!(text, "fire Shop?\nsalary: $650", "cut to whole units");
+        let text = bulldozer::question_text(ui, cat, &game.world, at, Question::Fire);
+        assert_eq!(text, "fire Joe?\nsalary: $650", "cut to whole units");
         let told = s.pass(&[Command::Key(Key::Y, false, false)]);
         let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
         assert!(removed.starts_with("world remove keeper/keeper/m 20,20 id"));
         assert!(removed.ends_with("refund 0"), "{removed}");
         assert_eq!((s.count(), s.cash()), (0, 50_000.0));
+    });
+}
+
+#[test]
+fn the_sell_button_of_the_animal_panel_asks_with_the_animals_name_and_pays_its_live_price() {
+    with_game("sell-animal", "", |s| {
+        let id = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        let game = s.app.game.as_mut().unwrap();
+        let at = game.world.find(id).unwrap();
+        game.world.zoo.entities[at].common.as_mut().unwrap().name = "Zed".into();
+        let unit = game.world.units.get_mut(id).unwrap();
+        unit.started = true;
+        if let crate::unit::Part::Animal(a) = &mut unit.part {
+            (a.happiness, a.health) = (100, 250);
+        }
+        // The bulldozer neither prices nor removes it.
+        s.pass(&[DELETE]);
+        let over = s.at(20, 20, 32, 32);
+        s.pass(&[over]);
+        assert_eq!(s.cost(), None);
+        s.click(over);
+        assert_eq!((s.count(), s.asking()), (1, false));
+        s.pass(&[Command::Key(Key::Escape, false, false)]);
+        // The button: the question names the animal, the price is from its live state.
+        s.app.game.as_mut().unwrap().animal.select(id);
+        s.app.animal_sell();
+        assert!(s.asking());
+        let game = s.app.game.as_ref().unwrap();
+        let (ui, cat) = (s.app.ui.as_ref().unwrap(), s.app.renderer.catalogue());
+        let text = bulldozer::question_text(ui, cat, &game.world, at, Question::Sell);
+        assert_eq!(text, "sell Zed?\nRefund: $480");
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        let removed = told.iter().find(|l| l.starts_with("world remove")).unwrap();
+        assert!(removed.ends_with("refund 480"), "{removed}");
+        assert_eq!((s.count(), s.cash()), (0, 50_480.0));
+    });
+}
+
+#[test]
+fn an_animal_sold_with_no_answer_stays_and_its_panel_is_closed() {
+    with_game("sell-animal-no", "", |s| {
+        let id = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.game.as_mut().unwrap().animal.select(id);
+        s.app.game.as_mut().unwrap().selected = Some(id);
+        // The sell button of the panel, pressed.
+        assert!(s.app.interface().unwrap().show(6));
+        s.pass(&[Command::Mouse(Mouse::Move(14, 4))]);
+        s.pass(&[Command::Mouse(Mouse::Down)]);
+        s.pass(&[Command::Mouse(Mouse::Up)]);
+        assert!(s.asking());
+        assert_eq!(
+            s.app.game.as_ref().unwrap().selected,
+            None,
+            "the panel closes"
+        );
+        s.pass(&[Command::Key(Key::N, false, false)]);
+        assert_eq!((s.count(), s.cash()), (1, 50_000.0));
+        // Nothing selected: the button does nothing.
+        s.app.game.as_mut().unwrap().animal.selected = None;
+        s.app.animal_sell();
+        assert!(!s.asking());
     });
 }
 
@@ -917,6 +988,35 @@ fn objects_in_a_new_tank_are_asked_about_and_yes_sells_them_before_the_name() {
         let world = &s.app.game.as_ref().unwrap().world;
         assert!(world.refused(1).is_empty());
         assert_eq!(world.exhibits().list().len(), 1);
+    });
+}
+
+#[test]
+fn yes_to_the_tank_question_crates_a_land_animal_and_moves_it_to_the_grounds_unsold() {
+    with_game("tank-yes-animal", "[UI]\nconfirmSell=0\n", |s| {
+        let zebra = s.add(13, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.game.as_mut().unwrap().world.begin();
+        for side in [0, 2, 4, 6] {
+            s.fence(5, 20, 20, side);
+        }
+        s.app.exhibits_told();
+        assert!(s.asking());
+        let told = s.pass(&[Command::Key(Key::Y, false, false)]);
+        assert!(
+            !told.iter().any(|l| l.starts_with("world remove")),
+            "{told:?}"
+        );
+        let world = &s.app.game.as_ref().unwrap().world;
+        let at = world.find(zebra).expect("the zebra is not sold");
+        let c = world.zoo.entities[at].common.as_ref().unwrap();
+        let (tx, ty) = (c.x.div_euclid(64), c.y.div_euclid(64));
+        assert_eq!((c.x.rem_euclid(64), c.y.rem_euclid(64)), (32, 32));
+        assert!((tx - 20).abs() + (ty - 20).abs() >= 3, "{tx},{ty}");
+        assert!(matches!(
+            world.units.get(zebra).map(|u| &u.part),
+            Some(crate::unit::Part::Animal(a)) if a.crated
+        ));
+        assert_eq!(s.cash(), 50_000.0, "nothing was paid back");
     });
 }
 

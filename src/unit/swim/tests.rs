@@ -39,6 +39,26 @@ fn checked(w: &mut World, id: u32) -> (u8, u32) {
 }
 
 #[test]
+fn an_egg_and_a_crate_restart_their_own_idle_picture() {
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
+    fish(&mut w, 1, 1, |_| ());
+    let unit = w.units.get_mut(1).unwrap();
+    unit.tank = 3;
+    assert_eq!(restart_name(unit), "surfidle");
+    let Part::Animal(a) = &mut unit.part else {
+        panic!("not an animal");
+    };
+    a.crated = true;
+    assert_eq!(restart_name(unit), "box_idle");
+    // An egg comes first, and it does not dive or surface as its species does.
+    let Part::Animal(a) = &mut unit.part else {
+        panic!("not an animal");
+    };
+    a.egg = true;
+    assert_eq!(restart_name(unit), "egg_idle");
+}
+
+#[test]
 fn the_tank_position_check_keeps_a_unit_between_the_floor_and_the_surface() {
     let mut w = tank_world(
         5,

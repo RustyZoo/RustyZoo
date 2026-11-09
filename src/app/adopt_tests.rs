@@ -141,6 +141,22 @@ fn with_staff(name: &str, sexes: &[&str], test: impl FnOnce(&mut App)) {
         footprint: [2, 2, 1],
         height: 0,
     });
+    // 6 the young of a species that lays eggs, 7 and 8 its adults; 9 an adult of a species with
+    // no young.
+    let eggs = "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncPurchaseCost=500\ncLaysEggs=1\n";
+    for (name, sub) in [
+        ("trike", "y"),
+        ("trike", "m"),
+        ("trike", "f"),
+        ("lone", "m"),
+    ] {
+        catalogue.push(EntityType {
+            type_name: name.into(),
+            subtype: sub.into(),
+            config: Some(std::sync::Arc::new(Config::parse(eggs.as_bytes()).unwrap())),
+            ..animal(sub, 500)
+        });
+    }
     let mut app = App::new(
         MapRenderer::new(&vfs, &catalogue),
         map(),
@@ -160,6 +176,14 @@ fn with_staff(name: &str, sexes: &[&str], test: impl FnOnce(&mut App)) {
     });
     app.pass(0, &[]);
     test(&mut app);
+}
+
+/// Chooses the unit item `ty` as the panel does: it is the tool and its pending unit is made.
+pub(super) fn hold(app: &mut App, ty: usize) {
+    let game = app.game.as_mut().unwrap();
+    game.build.hold(ty);
+    game.build.chose(ty);
+    app.make_pending();
 }
 
 /// The log lines of the pass `pass` that are about the world, the tool or the money.
@@ -187,7 +211,7 @@ pub(super) fn click(app: &mut App, pass: u64, to: Command) -> Vec<String> {
 #[test]
 fn an_animal_is_adopted_into_the_pen_named_booked_and_refused_on_the_grounds() {
     with_app("app-adopt", |app| {
-        app.game.as_mut().unwrap().build.hold(2);
+        hold(app, 2);
         let camera = app.camera().unwrap().clone();
         let at = |lx: i32, ly: i32| point(&camera, 20 * 64 + lx, 20 * 64 + ly);
         // Two animals in the pen, one in the first quarter of the tile and one in the last.
@@ -229,7 +253,7 @@ fn a_staff_member_is_hired_anywhere_booked_in_the_wages_and_the_next_sex_is_draw
     with_app("app-hire", |app| {
         // The clock stands still, so the only draws are the hire's.
         app.game.as_mut().unwrap().paused = true;
-        app.game.as_mut().unwrap().build.hold(3);
+        hold(app, 3);
         let camera = app.camera().unwrap().clone();
         let grounds = point(&camera, 19 * 64 + 32, 20 * 64 + 32);
         let mut generator = app.sim.rng.clone();
@@ -285,7 +309,10 @@ fn a_hire_draws_a_pending_staff_member_before_the_sex_and_another_after_it() {
         };
         let made = |app: &App| {
             let made = app.game.as_ref().unwrap().placing.made.clone();
-            made.map(|(ty, s)| (ty, s.work, s.chase))
+            made.and_then(|m| match m.part {
+                crate::unit::Part::Staff(s) => Some((m.ty, s.work, s.chase)),
+                _ => None,
+            })
         };
         // The Hire panel opens on the sex drawn: its first item, the zookeeper (3 or 4), is chosen
         // and makes the pending staff member.
@@ -361,7 +388,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
             0,
             "the empty label shows"
         );
-        let pending = game.placing.made.as_ref().map(|m| m.0);
+        let pending = game.placing.made.as_ref().map(|m| m.ty);
         assert!(pending.is_some(), "pending kept");
         assert!(game.build.tool().is_some(), "tool kept");
         // The next placement hires the pending woman and draws the sex again.
@@ -380,7 +407,7 @@ fn an_empty_hire_list_keeps_the_pending_staff_member_and_the_next_hire_draws_aga
 #[test]
 fn an_adoption_plays_the_place_sound_of_its_type_and_a_hire_place_wav() {
     with_app("app-adopt-sound", |app| {
-        app.game.as_mut().unwrap().build.hold(2);
+        hold(app, 2);
         let camera = app.camera().unwrap().clone();
         let heard = |app: &App| {
             let sounds = app.unit_sounds().iter();
@@ -391,8 +418,162 @@ fn an_adoption_plays_the_place_sound_of_its_type_and_a_hire_place_wav() {
         let want = (101, "animals/zebra/zplace.wav".to_string(), 1500);
         assert_eq!(heard(app), (vec![want], false));
         // The keeper has none: `place.wav` alone.
-        app.game.as_mut().unwrap().build.hold(3);
+        hold(app, 3);
         click(app, 20, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
         assert_eq!(heard(app), (vec![], true));
+    });
+}
+
+/// The unit `id` of the world, as an animal.
+fn animal_of(app: &App, id: u32) -> crate::animal::Animal {
+    match app
+        .game
+        .as_ref()
+        .unwrap()
+        .world
+        .units
+        .get(id)
+        .map(|u| &u.part)
+    {
+        Some(crate::unit::Part::Animal(a)) => a.clone(),
+        _ => panic!("no animal {id}"),
+    }
+}
+
+#[test]
+fn a_pending_animal_takes_its_id_and_draws_when_it_is_made_and_the_placed_one_keeps_them() {
+    with_app("app-adopt-made", |app| {
+        let before = app.sim.rng.clone();
+        hold(app, 2);
+        assert_ne!(app.sim.rng, before, "the creation drew its counters");
+        let first = app.game.as_ref().unwrap().placing.made.clone().unwrap();
+        assert_eq!(first.id, 101);
+        // Choosing again uses another id: the first one is lost with its pending unit.
+        hold(app, 2);
+        let made = app.game.as_ref().unwrap().placing.made.clone().unwrap();
+        assert_eq!(made.id, 102);
+        assert_eq!(app.game.as_ref().unwrap().world.zoo.id_counter, 102);
+        // Its state is the unit's when it is placed, and the click draws nothing for it.
+        let game = app.game.as_mut().unwrap();
+        if let Some(crate::unit::Part::Animal(a)) = game.placing.made.as_mut().map(|m| &mut m.part)
+        {
+            a.happiness = -77;
+        }
+        let camera = app.camera().unwrap().clone();
+        let said = click(app, 10, point(&camera, 20 * 64 + 10, 20 * 64 + 10));
+        assert_eq!(
+            said[0],
+            "world add animals/zebra/m 20,20 id 102 name=text5004 1"
+        );
+        let a = animal_of(app, 102);
+        assert_eq!(a.happiness, -77);
+        let unit = app.game.as_ref().unwrap().world.units.get(102).unwrap();
+        assert!(unit.started, "no creation at the first turn");
+        // The next pending unit of the item took the next id.
+        let next = app.game.as_ref().unwrap().placing.made.clone().unwrap();
+        assert_eq!(next.id, 103);
+        // The first turn draws no creation counters: the animal keeps what it was made with.
+        app.pass(50, &[]);
+        assert_eq!(animal_of(app, 102).counters, a.counters);
+    });
+}
+
+#[test]
+fn an_egg_layer_is_adopted_as_an_egg_of_the_sex_of_the_button_and_the_next_is_the_same() {
+    with_app("app-adopt-egg", |app| {
+        let camera = app.camera().unwrap().clone();
+        for (adult, female) in [(7, false), (8, true)] {
+            hold(app, adult);
+            let made = app.game.as_ref().unwrap().placing.made.clone().unwrap();
+            assert_eq!(made.ty, 6, "the young of the species");
+            let a = match &made.part {
+                crate::unit::Part::Animal(a) => a.clone(),
+                _ => panic!("not an animal"),
+            };
+            assert!(a.egg && a.female == female);
+            // The pending egg is judged by the egg footprint and priced as the species.
+            let said = click(
+                app,
+                10 * adult as u64,
+                point(&camera, 20 * 64 + 32, 20 * 64 + 32),
+            );
+            let want = format!(
+                "world add animals/trike/y 20,20 id {} name=text5004 {}",
+                made.id,
+                adult - 6
+            );
+            assert_eq!(said[0], want);
+            let placed = animal_of(app, made.id);
+            assert!(placed.egg && placed.female == female);
+            // The successor is an egg of the same sex, with its own id.
+            let next = app.game.as_ref().unwrap().placing.made.clone().unwrap();
+            assert_eq!(next.ty, 6);
+            assert!(
+                matches!(&next.part, crate::unit::Part::Animal(a) if a.egg && a.female == female)
+            );
+            assert_eq!(next.id, made.id + 1);
+            // An egg makes no sound of its type: `place.wav`.
+            assert!(app.sounds().contains(&"place"));
+            // The tile holds it: the second egg waits for the next test round.
+            app.game.as_mut().unwrap().world.remove(made.id);
+        }
+    });
+}
+
+#[test]
+fn a_species_with_no_young_type_makes_no_pending_unit_and_places_nothing() {
+    with_app("app-adopt-no-young", |app| {
+        hold(app, 9);
+        assert!(app.game.as_ref().unwrap().placing.made.is_none());
+        let camera = app.camera().unwrap().clone();
+        let units = app.game.as_ref().unwrap().world.units.len();
+        let said = click(app, 10, point(&camera, 20 * 64 + 32, 20 * 64 + 32));
+        assert!(said.is_empty(), "{said:?}");
+        assert_eq!(app.game.as_ref().unwrap().world.units.len(), units);
+        assert!(app.game.as_ref().unwrap().placing.pending.is_none());
+    });
+}
+
+#[test]
+fn a_keeper_hired_in_an_exhibit_starts_his_duties_there_at_once_and_one_on_the_grounds_does_not() {
+    with_app("app-hire-drop-rule", |app| {
+        let camera = app.camera().unwrap().clone();
+        let task = |app: &App, id: u32| {
+            app.game
+                .as_ref()
+                .unwrap()
+                .world
+                .units
+                .get(id)
+                .unwrap()
+                .goal
+                .record
+                .task
+        };
+        hold(app, 3);
+        let id = app.game.as_ref().unwrap().placing.made.as_ref().unwrap().id;
+        click(app, 10, point(&camera, 20 * 64 + 32, 20 * 64 + 32));
+        assert_eq!(task(app, id), crate::goal::DUTIES);
+        let id = app.game.as_ref().unwrap().placing.made.as_ref().unwrap().id;
+        click(app, 20, point(&camera, 19 * 64 + 32, 20 * 64 + 32));
+        assert_ne!(task(app, id), crate::goal::DUTIES);
+    });
+}
+
+#[test]
+fn the_ghost_of_a_pending_egg_is_drawn_as_an_egg_and_a_pending_zebra_as_itself() {
+    with_app("app-adopt-ghost", |app| {
+        let camera = app.camera().unwrap().clone();
+        let ghost = |app: &mut App, pass: u64, ty: usize| {
+            hold(app, ty);
+            app.pass(pass, &[point(&camera, 20 * 64 + 32, 20 * 64 + 32)]);
+            assert!(app.game.as_ref().unwrap().placing.pending.is_some());
+            app.restage();
+            let ghosts = &app.game.as_ref().unwrap().extra.ghosts;
+            assert_eq!(ghosts.len(), 1);
+            ghosts[0].anim
+        };
+        assert_eq!(ghost(app, 10, 7), Some("egg_idle"));
+        assert_eq!(ghost(app, 20, 2), None);
     });
 }

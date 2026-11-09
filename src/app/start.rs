@@ -64,11 +64,12 @@ impl App<'_> {
         world.units.set_period(self.sim.ai.status_period);
         self.set_up_loaded(file.as_deref(), saved, &world.zoo);
         let mut tree = research.and_then(|(file, section)| self.loaded_research(file?, &section));
-        // The programs complete come before the animals are read: their life counters are cut by
-        // the changed types (research 7.2). Their availability follows the scenario's resume.
-        let flags = tree
+        // The animals are cut by the types as the file leaves them, the programs lengthen them
+        // after (save games 15.5). Their availability follows the scenario's resume.
+        let applied = tree
             .as_mut()
-            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research).0);
+            .map(|t| t.apply(self.renderer.catalogue(), &mut world.research));
+        let (flags, section_life) = applied.map_or((None, Vec::new()), |(f, l)| (Some(f), l));
         world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
@@ -164,11 +165,12 @@ impl App<'_> {
         let scenario = file.and_then(|f| Scenario::prepare(self.renderer.vfs(), &f));
         // The scenario resumes first (its triggers, then the goal states), then the research
         // section completes the programs over their availability, then the ini rewards (7.3).
+        let mut forced = false;
         if let Some(scenario) = scenario {
             self.sim.resume_scenario(scenario, &goals.0, goals.1);
-            // The research section replaces what a forced research would do (7.3).
+            // The section replaces a forced research for the types (7.3), not for the animals.
             if let Some(s) = self.sim.scenario() {
-                s.gui().take_forced();
+                forced = !s.gui().take_forced().is_empty();
             }
             self.scenario_avail();
             // The start hook follows the resume triggers; a saved game without a scenario block,
@@ -180,6 +182,8 @@ impl App<'_> {
         self.look_up_unlocks();
         if let (Some(tree), Some(flags), Some(game)) = (tree, flags, &mut self.game) {
             let ini = scenario_ui::reward_ini(&self.menu, self.renderer.vfs());
+            let life = tree.loaded_life(self.renderer.catalogue(), forced, section_life);
+            crate::animal::lengthen(&mut game.world, &life);
             game.build.start_research(self.renderer.catalogue(), &flags);
             // The resumed scenario sets the selector over the file's value if it has a rule for it.
             game.build.set_scenario(tree.off, tree.selection);

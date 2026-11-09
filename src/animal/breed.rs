@@ -63,8 +63,13 @@ impl Animal {
     /// `setEgg` (13.1) for a new animal: the hatch countdown, and the health that gives a keeper
     /// something to heal. `sickly` is the keeper's `cSicklyAnimalPct`.
     pub(crate) fn set_egg(&mut self, k: &Keys, sickly: i64) {
-        self.egg = true;
         self.hatch = k.time_to_hatch;
+        self.refresh_egg(k, sickly);
+    }
+
+    /// `setEgg` with the argument 0 (13.1): the countdown is kept, the health is recomputed from it.
+    pub(crate) fn refresh_egg(&mut self, k: &Keys, sickly: i64) {
+        self.egg = true;
         let start = i64::from(threshold(k)) - 1 + i64::from(self.hatch);
         let top = i64::from(k.max_hits);
         let cap = (100 - sickly.clamp(0, 100)) * top / 100;
@@ -73,6 +78,38 @@ impl Animal {
             .min(cap)
             .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
     }
+}
+
+/// The pending animal of the chosen type `ty` (unit placing 3.3 item 8, 5.4): the type it is made
+/// from and its creation state, with the draws. An egg layer is made from the first `y` type of
+/// its species, its sex set by the button (the chosen type's subtype `m`) and put in its egg
+/// state; a species with no `y` type makes nothing. The state is the unit's when it is placed.
+pub(crate) fn pending(
+    world: &World,
+    cat: &Catalogue,
+    ty: usize,
+    rng: &mut Rng,
+) -> Option<(usize, Animal)> {
+    let chosen = cat.types.get(ty)?;
+    let class = &world.units.class;
+    let keys = |t: &EntityType| Keys::of(t, class).researched(t, &world.research);
+    let eggs = keys(chosen).lays_eggs == 1;
+    let made = match eggs {
+        true => cat.position("animals", &chosen.type_name, b"y")?,
+        false => ty,
+    };
+    let t = &cat.types[made];
+    let mut k = keys(t);
+    let mut a = Animal::create(&k, class, &String::from_utf8_lossy(&t.subtype), rng);
+    (a.fed, a.slept) = (world.units.now, world.units.now);
+    if eggs {
+        if world.units.eggs_hatch_fast {
+            k.time_to_hatch = EGG_HATCH_FAST;
+        }
+        a.female = chosen.subtype != b"m";
+        a.set_egg(&k, sickly(cat));
+    }
+    Some((made, a))
 }
 
 /// The egg check (13.2), before the egg branch of the order: the time to hatch counts down while
@@ -254,7 +291,7 @@ pub(crate) fn pair(world: &mut World, id: u32, out: &Out) {
 }
 
 /// The keeper's `cSicklyAnimalPct`: one value for the whole game, the last keeper type's (staff 2).
-fn sickly(cat: &Catalogue) -> i64 {
+pub(crate) fn sickly(cat: &Catalogue) -> i64 {
     let value = |t: &&EntityType| crate::build::number(t, "cSicklyAnimalPct");
     let keepers = cat.types.iter().filter(|t| t.class == "keeper");
     keepers

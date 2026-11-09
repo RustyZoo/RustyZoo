@@ -317,6 +317,26 @@ impl Tree {
         (flags, life)
     }
 
+    /// The changes of the life counter a load gives the live animals (save games 15.5): those of a
+    /// forced research of the whole tree when the scenario's `[resume]` forces it (6.8, every
+    /// program, in tree order), then the `section` ones of the programs the file completes.
+    pub(crate) fn loaded_life(
+        &self,
+        cat: &Catalogue,
+        forced: bool,
+        section: Vec<Life>,
+    ) -> Vec<Life> {
+        let mut scratch = Overlay::default();
+        let all = self
+            .programs()
+            .filter(|p| forced && matches!(p.effect, 2 | 4 | 5));
+        let mut life: Vec<Life> = all
+            .flat_map(|p| scratch.apply(cat, p.effect, p.target, p.vals))
+            .collect();
+        life.extend(section);
+        life
+    }
+
     /// Completes every program not complete, in tree order (6.8, `force(all, set_progress)`): the
     /// effects 2 to 7 are laid on `over` here, with `set_progress` the progress is also set to the
     /// cost, and each branch then chooses its current program. The programs forced come back for

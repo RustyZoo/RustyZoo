@@ -169,9 +169,14 @@ pub(super) fn kinds(world: &World, near: &[u32]) -> [usize; 3] {
 
 /// The keys of the animal at position `at` of the entity list.
 pub(crate) fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
+    keys_over(world, cat, at, &world.research)
+}
+
+/// The same with the changes of research `over`.
+fn keys_over(world: &World, cat: &Catalogue, at: usize, over: &crate::research::Overlay) -> Keys {
     let class = &world.units.class;
     match find(cat, &world.zoo.entities[at]) {
-        Some(ty) => Keys::of(ty, class).researched(ty, &world.research),
+        Some(ty) => Keys::of(ty, class).researched(ty, over),
         None => Keys::read(&|_, fallback| fallback, class),
     }
 }
@@ -202,7 +207,12 @@ pub(crate) fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
     else {
         return;
     };
-    let (k, subtype) = (keys(world, cat, at), entity.subtype.clone());
+    // The life is cut by the type as the file leaves it: the research of the file comes after the
+    // animals and lengthens them ([`lengthen`], save games 15.5).
+    let (k, subtype) = (
+        keys_over(world, cat, at, &Default::default()),
+        entity.subtype.clone(),
+    );
     let mut animal = Animal::create(&k, &world.units.class, &subtype, rng);
     animal.restore(&saved, &k, &world.units.class);
     // The chase stamp is the entity base's: a stored 0 becomes the current tick (animals 20.8).
@@ -225,9 +235,11 @@ pub(crate) fn load(world: &mut World, cat: &Catalogue, rng: &mut Rng, at: usize)
             };
             unit.goal.record = task;
         }
-        // An egg shows its own picture (animals-needs 13.1).
+        // An egg shows its own picture (animals-needs 13.1), a crate its box (unit placing 9.1).
         if animal.egg {
             unit.animation.base_to("egg_idle");
+        } else if animal.crated {
+            unit.animation.base_to("box_idle");
         }
         unit.part = Part::Animal(animal);
         unit.started = true;

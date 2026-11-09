@@ -2346,12 +2346,12 @@ fn habitats_and_shows_of_an_old_file_are_written_as_106() {
             );
         }
     }
-    // A show is written from 106 only, scripts from 103.
-    for v in [90, 98, 101, 105] {
-        let (zoo, money) = Zoo::parse_money(&rich(v)).unwrap();
-        let why = zoo.write(&money).unwrap_err();
-        assert!(why.contains("show"), "version {v}: {why}");
-    }
+    // A show is written from 97 (open point: the id of an older one), scripts from 103.
+    let (zoo, money) = Zoo::parse_money(&rich(90)).unwrap();
+    assert!(zoo.write(&money).unwrap_err().contains("show"));
+    let (zoo, money) = Zoo::parse_money(&rich(105)).unwrap();
+    let back = parse_to_the_end(&zoo.write(&money).unwrap());
+    assert_eq!(back.shows.infos, zoo.shows.infos);
     for v in [89, 96, 97, 102] {
         let (zoo, money) = Zoo::parse_money(&file_with(v, 3, 3, &[], &[], 1)).unwrap();
         let why = zoo.write(&money).unwrap_err();
@@ -2362,6 +2362,31 @@ fn habitats_and_shows_of_an_old_file_are_written_as_106() {
         let out = zoo.write(&money).unwrap();
         assert_eq!(parse_to_the_end(&out).shows, zoo.shows, "version {v}");
     }
+}
+
+#[test]
+fn a_show_info_of_a_105_file_is_written_as_106_with_the_sums() {
+    let (mut zoo, money) = Zoo::parse_money(&rich(105)).unwrap();
+    let source = rich(105);
+    let info = zoo.shows.infos.iter_mut().flatten().next().unwrap();
+    info.records[0].receipts = [1.5f32.to_bits(), 2.0f32.to_bits(), 0.5f32.to_bits()];
+    info.records[0].attendance = [4, 5, 6];
+    // The sums the reader makes for an info that stores none, now over this record.
+    (info.receipts, info.attendance) = (info.records[0].receipts, [4, 5, 6]);
+    let out = zoo.write(&money).unwrap();
+    // The record gains the six words of 106 (24 bytes), the upkeep stays as read.
+    let size = |f: &[u8]| {
+        let marks = Zoo::sections(f).unwrap();
+        let at = marks.iter().position(|m| m.0 == "habitats").unwrap();
+        marks[at].1 - marks[at - 1].1
+    };
+    assert_eq!(size(&out), size(&source) + 24);
+    let back = parse_to_the_end(&out);
+    assert_eq!(back.version, 106);
+    assert_eq!(back.shows.infos, zoo.shows.infos);
+    let info = back.shows.infos.iter().flatten().next().unwrap();
+    assert_eq!(info.attendance, [4, 5, 6]);
+    assert_eq!(f32::from_bits(info.receipts[0]), 1.5);
 }
 
 #[test]

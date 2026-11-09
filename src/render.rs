@@ -250,6 +250,8 @@ pub(crate) struct Ghost {
     /// The wall height of a pending gate over a tank wall, drawn as a stack; 0 for any other
     /// object.
     pub wall: u32,
+    /// The animation a pending egg or crate shows (unit placing 9.1); the idle one when none.
+    pub anim: Option<&'static str>,
 }
 
 /// The local position of a corner (numbered as in the specifications), in tiles.

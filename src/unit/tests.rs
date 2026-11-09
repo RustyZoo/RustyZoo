@@ -618,8 +618,11 @@ impl Data for Once {
     fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
         &[]
     }
-    fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
-        None
+    fn timing(&self, _: &Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        matches!(name, "idle" | "dustball").then_some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
     }
     fn number(&self, unit: &Entity, number: &crate::behaviour::Number) -> i32 {
         NoData.number(unit, number)
@@ -686,6 +689,80 @@ fn a_guest_or_staff_member_turns_at_once_to_its_own_target_tile() {
     w.units.get_mut(3).unwrap().part = Part::Staff(Staff::default());
     behave(&mut w, &data, 3, "bFace");
     assert_eq!(rotation(&w, 3), 6);
+}
+
+/// Runs the animal 1 of `w` through three steps of a caught-prey set with a dust ball; per step
+/// the animation shown and the units asked to go.
+fn dust_ball_run(w: &mut World) -> Vec<(String, Vec<u32>)> {
+    let data = Once::new(&[("bCaughtPrey", "fDustBall()")]);
+    let at = w.find(1).unwrap();
+    let mut unit = std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
+    unit.runner.queue("bCaughtPrey", true, true);
+    let (mut rng, mut removals) = (Rng::default(), Vec::new());
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        let mut ctx = Ctx {
+            rng: &mut rng,
+            events: &Events::default(),
+            removals: &mut removals,
+            step: 100,
+            cat: &crate::entity::Catalogue::default(),
+        };
+        let mut hooks = Standard { data: &data };
+        hooks.animate(&mut unit, w, &mut ctx, at, 100);
+        hooks.behaviour(&mut unit, w, &mut ctx, at);
+        seen.push((unit.animation.name.clone(), ctx.removals.clone()));
+    }
+    seen
+}
+
+#[test]
+fn a_dust_ball_eats_the_prey_when_its_cloud_starts_and_not_before() {
+    // The animal 1 caught the keeper 3 (the target of its record); the cloud is its own picture.
+    let mut w = world(&[("animals", 1), ("keeper", 3)]);
+    w.units.get_mut(1).unwrap().goal.record.target.id = 3;
+    w.units.get_mut(3).unwrap().predator = 1;
+    let seen = dust_ball_run(&mut w);
+    // The set starts and queues the cloud behind the base loop; the player takes it and the prey
+    // goes in that step, with the cloud still playing.
+    assert_eq!(seen[0], ("idle".to_string(), vec![]));
+    assert_eq!(seen[1], ("dustball".to_string(), vec![3]));
+    assert_eq!(seen[2].1, [3]);
+    assert_eq!(
+        w.units.take_messages().len(),
+        1,
+        "the eaten keeper is announced"
+    );
+}
+
+#[test]
+fn a_carried_or_placed_prey_is_not_eaten_as_the_target_nor_as_the_kept_prey() {
+    // (target id, kept prey id): the record's target, then the remembered prey as the fallback.
+    for (target, kept) in [(3, 0), (0, 3)] {
+        for flag in 0..2 {
+            let mut w = world(&[("animals", 1), ("keeper", 3)]);
+            w.units.get_mut(1).unwrap().goal.record.target.id = target;
+            if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+                a.prey = kept;
+            }
+            let prey = w.units.get_mut(3).unwrap();
+            (prey.carried, prey.repositioning) = (flag == 0, flag == 1);
+            prey.predator = 1;
+            let seen = dust_ball_run(&mut w);
+            assert_eq!(seen[1].0, "dustball", "the cloud plays");
+            assert!(
+                seen.iter().all(|s| s.1.is_empty()),
+                "a suspended prey stays ({target} {kept} {flag}): {seen:?}"
+            );
+            assert!(w.units.take_messages().is_empty());
+        }
+    }
+    // The kept prey, not suspended, is eaten (the fallback itself works).
+    let mut w = world(&[("animals", 1), ("keeper", 3)]);
+    if let Part::Animal(a) = &mut w.units.get_mut(1).unwrap().part {
+        a.prey = 3;
+    }
+    assert_eq!(dust_ball_run(&mut w)[1].1, [3]);
 }
 
 #[test]

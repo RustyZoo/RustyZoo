@@ -52,7 +52,7 @@ impl Zoo {
     /// and 11.2): what the file read lacks of that version takes the values of the original. Fails
     /// for an entity the writer has no body for, for a zoo that was not read from a file, and for
     /// the files this writer cannot upgrade yet (a version below 70, shows below 103 that hold
-    /// scripts, a habitat with a show below 106).
+    /// scripts, a habitat with a show below 97).
     pub(crate) fn write(&self, money: &Money) -> Result<Vec<u8>, String> {
         let v = self.version;
         if !(MIN_VERSION..=MAX_VERSION).contains(&v) {
@@ -158,8 +158,8 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
         }
     }
     // The names and the show infos last, from the end, so that the places of the earlier ones stay
-    // right. A show info is written from the model for a file of version 106; below that the upgrade
-    // refuses the file.
+    // right. A show info is written from the model in the form of 106 (the upgrade reads it so);
+    // below 97 the upgrade refuses the file.
     let mut parts: Vec<(usize, usize, Out)> = Vec::new();
     for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info) {
         let mut name = Out(Vec::new());
@@ -167,7 +167,7 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
         parts.push((from, to, name));
     }
     for (n, at) in zoo.kept.show_at.iter().enumerate() {
-        let (Some(&(from, to)), true) = (at.as_ref(), zoo.version >= 106) else {
+        let (Some(&(from, to)), true) = (at.as_ref(), zoo.version >= 97) else {
             continue;
         };
         let mut show = Out(Vec::new());
