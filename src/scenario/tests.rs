@@ -1404,7 +1404,7 @@ fn triggers_1_3_5_8_and_9_leave_a_deed_and_a_truleb_they_do_not_know_nothing() {
 }
 
 #[test]
-fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popup() {
+fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_and_gives_no_award() {
     let goal = |body: &str| {
         format!("[goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\n{body}\n[9]\nlayout=45200\n")
     };
@@ -1424,14 +1424,8 @@ fn a_deed_run_again_after_a_load_keeps_the_removal_and_the_switch_without_a_popu
                 popup: None,
             }),
         ),
-        (
-            "trulea=6\ntarga=4\ntargb=9",
-            Some(Deed::Award {
-                give: true,
-                id: 4,
-                text: 0,
-            }),
-        ),
+        // The award is not given again: the file's list stands (awards 6.6 point 5).
+        ("trulea=6\ntarga=4\ntargb=9", None),
         ("trulea=1\ntarga=7", None),
         ("trulea=3\ntruleb=1\ntarga=5", None),
         ("trulea=5\ntarga=7\ntargb=9", None),

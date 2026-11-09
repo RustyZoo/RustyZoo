@@ -99,8 +99,8 @@ pub(crate) enum Deed {
 }
 
 impl Deed {
-    /// What a trigger run again after a load keeps (7): the removal, the switch and the award, no
-    /// popup and no message.
+    /// What a trigger run again after a load keeps (7): the removal and the switch, no popup and no
+    /// message. The award is not given again: the file's list stands (`awards.md` 6.6 point 5).
     pub(super) fn quiet(self) -> Option<Deed> {
         match self {
             Deed::Remove { by, id, .. } => Some(Deed::Remove {
@@ -112,7 +112,6 @@ impl Deed {
                 allowed,
                 popup: None,
             }),
-            Deed::Award { give, id, .. } => Some(Deed::Award { give, id, text: 0 }),
             _ => None,
         }
     }
