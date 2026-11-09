@@ -613,7 +613,7 @@ check expansion-trial sounds/mainmenu.wav:U822050Hz2ch,gain0.999,queued940914byt
 # steps of 0.33 dB and the music stops at the next one; headless, then in a window (800 passes of
 # the real clock outlast the fade of 6.3 s), where the music is really stopped. After 30 passes a
 # window still plays it and has queued more of it.
-fade='rz run --seed 1 $map --headless --passes 100 --clock 66 | awk "/ music fade/{n++; g=\$NF} / music stopped/{s=\$2} END{print n\"steps,gain\"g\",stopped@\"s}"'
+fade='rz run $map --seed 1 --headless --passes 100 --clock 66 | awk "/ music fade/{n++; g=\$NF} / music stopped/{s=\$2} END{print n\"steps,gain\"g\",stopped@\"s}"'
 for trial in base-trial expansion-trial; do
   map=maps/default.zoo; [ $trial = expansion-trial ] && map=maps/scn19.zoo
   check $trial 90steps,gain0.104,stopped@95 "$fade"
@@ -1132,12 +1132,12 @@ building_put_back() { # building_put_back <map>
 check expansion-trial 'carry,29780,;putback,29780,31,41;carry,29780,;' "building_put_back maps/scn19.zoo"
 
 # Runs the game headless with a script given as printf text (a file in a scratch folder: the native Windows
-# program cannot open a process substitution) and prints the log. scripted <script> <rz run --seed 1 arguments...>
+# program cannot open a process substitution) and prints the log. scripted <script> <rz run arguments...>
 scripted() {
   d=$(mktemp -d)
   printf "$1" >"$d/script"
   shift
-  rz run --seed 1 "$@" --script "$d/script" 2>/dev/null
+  rz run "$@" --script "$d/script" 2>/dev/null
   rm -rf "${d:?}"
 }
 
