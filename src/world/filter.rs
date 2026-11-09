@@ -240,22 +240,29 @@ impl World {
         }
     }
 
-    /// The timed decay of the water (exhibits and money 3.10): while a tank holds water and has
-    /// purity left, its purity timer runs; at `waterPurityDecayTime` the purity drops by one.
+    /// The timed decay of the water of every tank, for a test.
+    #[cfg(test)]
     pub(crate) fn decay_water(&mut self, step: u32) {
-        let limit = self.tank_config.decay;
         for id in self.tank_ids() {
-            let Some(tank) = self.tank(id).filter(|t| t.level > 0 && t.purity > 0) else {
-                continue;
-            };
-            let Some(x) = self.exhibits.get_mut(id) else {
-                continue;
-            };
-            x.purity_ms = x.purity_ms.saturating_add(step);
-            if x.purity_ms >= limit {
-                x.purity_ms = 0;
-                self.set_purity(id, i64::from(tank.purity) - 1);
-            }
+            self.decay_tank_water(id, step);
+        }
+    }
+
+    /// The timed decay of the water of tank `id` (exhibits and money 3.10): while it holds water
+    /// and has purity left, its purity timer runs; at `waterPurityDecayTime` the purity drops by
+    /// one.
+    pub(crate) fn decay_tank_water(&mut self, id: u32, step: u32) {
+        let limit = self.tank_config.decay;
+        let Some(tank) = self.tank(id).filter(|t| t.level > 0 && t.purity > 0) else {
+            return;
+        };
+        let Some(x) = self.exhibits.get_mut(id) else {
+            return;
+        };
+        x.purity_ms = x.purity_ms.saturating_add(step);
+        if x.purity_ms >= limit {
+            x.purity_ms = 0;
+            self.set_purity(id, i64::from(tank.purity) - 1);
         }
     }
 

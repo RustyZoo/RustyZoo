@@ -2330,6 +2330,32 @@ fn a_tank_is_painted_in_layers_floor_walls_water_contents_front_walls() {
 }
 
 #[test]
+fn a_sparkle_is_painted_once_after_the_water_surface_whatever_its_height() {
+    // One on the floor (a fresh water sparkle) and one at the surface, on the tank tile (1, 1).
+    let sparkle = |z| Object {
+        kind: Kind::Sparkle,
+        z,
+        ..unit_on(1, 1)
+    };
+    for r in 0..4u8 {
+        let scene = tank_scene(r, 3, 2, vec![sparkle(0), sparkle(32)]);
+        let items = paint_order(&scene);
+        let last_surface = items
+            .iter()
+            .rposition(|i| matches!(i, Item::Surface { .. }))
+            .unwrap();
+        for o in [8, 9] {
+            let drawn: Vec<usize> = (items.iter().enumerate())
+                .filter(|(_, i)| **i == Item::Object(o))
+                .map(|(at, _)| at)
+                .collect();
+            assert_eq!(drawn.len(), 1, "rotation {r} object {o}");
+            assert!(last_surface < drawn[0], "after the water surface");
+        }
+    }
+}
+
+#[test]
 fn a_tank_without_water_has_no_surface_and_no_shadows() {
     let scene = tank_scene(0, 3, 0, vec![unit_on(1, 1)]);
     let items = paint_order(&scene);
@@ -2520,6 +2546,7 @@ fn an_animal_outside_the_tank_movement_mode_casts_no_shadow() {
         clock: None,
         mode,
         portal: false,
+        connector: false,
         food: 0,
         tint: None,
         wall: 0,
@@ -3293,4 +3320,36 @@ fn a_rubble_piece_draws_explode_only_while_its_look_says_so() {
     // `idle` has one frame, whatever the clock says; `explode` takes the clock's frame.
     assert_eq!(drawn(false), [0]);
     assert_eq!(drawn(true), [2]);
+}
+
+#[test]
+fn a_connector_wall_takes_the_connector_keys_for_its_top_and_single_pieces() {
+    use super::tank::wall_pieces;
+    let names = |e, h, has: &dyn Fn(&str) -> bool| {
+        wall_pieces(e, h, false, has)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
+    let all = |_: &str| true;
+    let none = |_: &str| false;
+    for (e, top, single) in [
+        ("l", "lcrtopsl", "lcrlowsl"),
+        ("r", "rcrtopsl", "rcrlowsl"),
+        ("m", "midtopsl", "midlowsl"),
+        ("lr", "coltopsl", "idlesl"),
+    ] {
+        let tall = names(e, 3, &all);
+        assert_eq!(tall, [format!("b{e}idle"), format!("m{e}idle"), top.into()]);
+        assert_eq!(names(e, 1, &all), [single]);
+        // Not a connector, or a missing key: the plain keys.
+        let plain = [
+            format!("b{e}idle"),
+            format!("m{e}idle"),
+            format!("t{e}idle"),
+        ];
+        assert_eq!(names(e, 3, &none), plain);
+    }
+    assert_eq!(names("l", 1, &none), ["tblidle"]);
+    assert_eq!(names("lr", 1, &none), ["idle"]);
 }

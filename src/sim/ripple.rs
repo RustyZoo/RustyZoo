@@ -67,6 +67,7 @@ impl Sim {
         self.idles.forget_ripples();
         world.set_all_up();
         world.remove_bubbles();
+        world.drop_all_sparkles();
     }
 
     /// The draws owed run at once, in order (map drawing 9.7.8 points 3 and 4), called where the
