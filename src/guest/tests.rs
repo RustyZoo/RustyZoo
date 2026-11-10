@@ -801,7 +801,6 @@ fn the_date_hook_runs_inside_the_guest_creation_so_its_flight_moves_in_that_step
                     crate::flight::launch(world, &run.cat, ty, 5, &mut sim.rng),
                 ));
             },
-            report: Default::default(),
         });
         run.sim.status.rating = 85;
         // The hook runs once per guest created, with the guest already in the world.

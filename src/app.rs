@@ -634,7 +634,6 @@ impl<'a> App<'a> {
                     trio = world.units.cheat.lions_tigers_bears;
                     crate::cheat::guest_flights(season, &data, cat, sim, world, vehicles)
                 },
-                report: Default::default(),
             });
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;

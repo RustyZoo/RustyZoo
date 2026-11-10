@@ -215,6 +215,8 @@ pub(crate) struct Sim {
     /// (marketing 3.3).
     marketing: Marketing,
     arrived: bool,
+    /// What the step in progress did, filled in by the managers.
+    report: Report,
     /// The ambient sounds of the game being played, if it has them (sound 8.1).
     soundscape: Option<Soundscape>,
     /// The calls of the ambient creatures: the groups outlive a game (ambients 6.4 point 4).
@@ -260,6 +262,7 @@ impl Sim {
             research_done: Vec::new(),
             marketing: Marketing::default(),
             arrived: false,
+            report: Report::default(),
             soundscape: None,
             calls: Calls::default(),
             real_day: crate::timing::utc_day,
@@ -566,7 +569,6 @@ impl Sim {
             ms: step,
             update: &mut update,
             created: &mut |_, _| {},
-            report: Report::default(),
         })
     }
 }

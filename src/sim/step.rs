@@ -6,8 +6,7 @@ use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::world::World;
 
-/// What one step reads and writes: the game, the length of the step, the two hooks and the report
-/// the managers fill in.
+/// What one step reads and writes: the game, the length of the step and the two hooks.
 pub(crate) struct Step<'a> {
     pub data: &'a dyn Data,
     pub cat: &'a Catalogue,
@@ -21,7 +20,6 @@ pub(crate) struct Step<'a> {
     /// booked, so what it adds to the world moves in this very step and its draws come before
     /// those of the entities (ambients 3.1).
     pub created: &'a mut dyn FnMut(&mut Sim, &mut World),
-    pub report: Report,
 }
 
 /// The managers in the original's order.
@@ -37,12 +35,13 @@ const MANAGERS: [fn(&mut Sim, &mut Step); 6] = [
 impl Sim {
     /// One step: each manager in turn, then the guests that arrived.
     pub(crate) fn step_hooked(&mut self, mut ctx: Step) -> Report {
+        self.report = Report::default();
         self.lines.push(format!("step {}", ctx.ms));
         for manager in MANAGERS {
             manager(self, &mut ctx);
         }
-        ctx.report.arrived = std::mem::take(&mut self.arrived);
-        ctx.report
+        self.report.arrived = std::mem::take(&mut self.arrived);
+        self.report
     }
 
     fn game_manager(&mut self, ctx: &mut Step) {
@@ -58,10 +57,10 @@ impl Sim {
         self.total = self.total.wrapping_add(step);
         self.play_time = self.play_time.saturating_add(step);
         let month_end = self.calendar.advance(step);
-        ctx.report.month_end = month_end;
+        self.report.month_end = month_end;
         guest::mega::update(world, cat, step);
         guest::gawk::update(world, cat);
-        ctx.report.bars = self.zoo_status(world, cat, money, step, month_end, &mut *ctx.created);
+        self.report.bars = self.zoo_status(world, cat, money, step, month_end, &mut *ctx.created);
         // The ambient soundscape follows the zoo status and the bars (simulation 3 point 1).
         if let Some(soundscape) = &mut self.soundscape {
             let guests = self.status.sums.guests;
@@ -85,7 +84,7 @@ impl Sim {
         self.ai_rem = total % self.ai.ai_tick;
         self.ai_ticks = self.ai_ticks.wrapping_add(total / self.ai.ai_tick);
         let clear_unreachable = self.ai_ticks >= self.next_clear;
-        ctx.report.clear_unreachable = clear_unreachable;
+        self.report.clear_unreachable = clear_unreachable;
         if clear_unreachable {
             self.next_clear = self
                 .ai_ticks
@@ -195,7 +194,7 @@ impl Sim {
             }
             crate::show::open_portals(world, cat, id);
         }
-        ctx.report.water_moved = self.tank_updates(world, cat, data, step);
+        self.report.water_moved = self.tank_updates(world, cat, data, step);
         self.water_effects(world, cat, step);
         self.tick_world(data, cat, world, step);
         // The shows' events reach the tank and the grandstands (shows 6.2).

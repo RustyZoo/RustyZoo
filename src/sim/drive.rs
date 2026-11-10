@@ -456,7 +456,6 @@ impl Run {
             guest_flights(season, data, cat, sim, world, &mut Vec::new());
         };
         let (world, money) = (&mut self.world, &mut self.money);
-        let report = Default::default();
         let (update, created) = (&mut |_: &mut World, _, _| {}, hook);
         let ctx = crate::sim::Step {
             data,
@@ -466,7 +465,6 @@ impl Run {
             ms,
             update,
             created,
-            report,
         };
         self.sim.step_hooked(ctx);
         let mut lines: Vec<String> = (self.sim.take_lines().into_iter())
