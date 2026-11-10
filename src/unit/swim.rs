@@ -206,17 +206,17 @@ pub(crate) fn idle_reset(unit: &mut Unit, world: &World, data: &dyn Data, at: us
 
 /// The add of the unit at position `at` to the map (behaviours 5.10.1 point 2): out of a tank
 /// exhibit its idle reset, in one the tank check, and the reset only when the check changed the
-/// tank mode.
+/// tank mode. A moving unit keeps its move animation (the engine never adds one that moves).
 pub(crate) fn added(unit: &mut Unit, world: &mut World, data: &dyn Data, at: usize) {
     let tank = (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
         .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
         .is_some_and(|t| world.tank_at(t).is_some());
-    if !tank {
+    if !tank && !unit.moving {
         idle_reset(unit, world, data, at);
     }
     let before = unit.tank;
     check(unit, world, at);
-    if tank && unit.tank != before {
+    if tank && unit.tank != before && !unit.moving {
         idle_reset(unit, world, data, at);
     }
 }

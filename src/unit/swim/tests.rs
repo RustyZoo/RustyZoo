@@ -133,6 +133,13 @@ fn the_add_resets_the_idle_outside_a_tank_and_in_one_only_when_the_mode_changes(
     assert_eq!(shows(&mut w, 1), ("subidle".to_string(), 4));
     // Outside the tank the reset is the idle of mode 0.
     assert_eq!(shows(&mut w, 2), ("idle".to_string(), 0));
+    // A moving unit keeps its move animation.
+    let mut mover = std::mem::replace(w.units.get_mut(3).unwrap(), Unit::new(3, Kind::Animal));
+    (mover.moving, mover.tank) = (true, 0);
+    mover.animation.base_to("box_idle");
+    let at = w.find(3).unwrap();
+    added(&mut mover, &mut w, &ALL, at);
+    assert_eq!(shown(&mut mover, &ALL), "box_idle");
     // A dry tank leaves the mode at 0: the base it had stays, nothing is cleared.
     let mut dry = tank_world(5, 0, &[(1, (3, 3), 40)]);
     fish(&mut dry, 1, 1, |_| ());
