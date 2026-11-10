@@ -409,3 +409,185 @@ fn review_the_selected_animal_row_is_in_view_when_the_list_first_opens() {
         assert!(ui.list_top(3805) >= 3, "top {}", ui.list_top(3805));
     });
 }
+
+/// A second guest "Ann" arrives at the next free spot.
+fn add_guest(s: &mut Session) -> u32 {
+    let id = s.add(14, 30 * 64 + 32, 10 * 64 + 32, 0);
+    let game = s.app.game.as_mut().unwrap();
+    let at = game.world.find(id).unwrap();
+    game.world.zoo.entities[at].common.as_mut().unwrap().name = "Ann".into();
+    id
+}
+
+fn count(s: &mut Session, id: i32) -> String {
+    String::from_utf8_lossy(&s.app.interface().unwrap().text(id).unwrap()).into()
+}
+
+#[test]
+fn a_guest_added_while_paused_gets_its_row_at_once_and_the_count_waits_for_the_game_to_run() {
+    with_lists("lists-add-paused", |s, _| {
+        s.app.interface().unwrap().show(12);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().paused = true;
+        add_guest(s);
+        s.pass(&[]);
+        assert_eq!(row_texts(s, 3705), ["Gus", "Ann"]);
+        assert_eq!(count(s, 3716), "1");
+        s.app.game.as_mut().unwrap().paused = false;
+        for _ in 0..4 {
+            s.pass(&[]);
+        }
+        assert_eq!(count(s, 3716), "2");
+    });
+}
+
+#[test]
+fn a_guest_added_to_a_hidden_window_gets_its_row_and_one_failing_the_filter_is_hidden() {
+    with_lists("lists-add-hidden", |s, ids| {
+        s.app.interface().unwrap().show(12);
+        s.pass(&[]);
+        // Thirsty filter (3719): only Gus passes, then the window is hidden.
+        match &mut s
+            .app
+            .game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .get_mut(ids[2])
+            .unwrap()
+            .part
+        {
+            crate::unit::Part::Guest(g) => g.values[crate::guest::THIRST] = 255,
+            _ => unreachable!(),
+        }
+        assert!(s.app.interface().unwrap().press_button(3719));
+        s.pass(&[]);
+        s.app.interface().unwrap().set_hidden(12, true);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().paused = true;
+        let ann = add_guest(s);
+        match &mut s
+            .app
+            .game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .get_mut(ann)
+            .unwrap()
+            .part
+        {
+            crate::unit::Part::Guest(g) => g.values[crate::guest::THIRST] = 0,
+            _ => unreachable!(),
+        }
+        s.pass(&[]);
+        assert_eq!(row_texts(s, 3705), ["Gus", "Ann"]);
+        assert_eq!(hidden_rows(s, 3705), [false, true]);
+    });
+}
+
+#[test]
+fn a_removed_guest_loses_its_row_at_once_and_the_counts_wait() {
+    with_lists("lists-remove-paused", |s, ids| {
+        add_guest(s);
+        s.app.interface().unwrap().show(12);
+        s.pass(&[]);
+        assert_eq!(row_texts(s, 3705), ["Gus", "Ann"]);
+        s.app.game.as_mut().unwrap().paused = true;
+        assert!(s.app.game.as_mut().unwrap().world.remove(ids[2]));
+        s.pass(&[]);
+        assert_eq!(row_texts(s, 3705), ["Ann"]);
+        assert_eq!(count(s, 3716), "2");
+        s.app.game.as_mut().unwrap().paused = false;
+        for _ in 0..4 {
+            s.pass(&[]);
+        }
+        assert_eq!(count(s, 3716), "1");
+    });
+}
+
+#[test]
+fn an_animal_added_while_paused_refills_the_list_and_the_counts_at_once() {
+    with_lists("lists-add-animal", |s, _| {
+        s.app.interface().unwrap().show(16);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().paused = true;
+        let id = s.add(13, 30 * 64 + 32, 10 * 64 + 32, 0);
+        let game = s.app.game.as_mut().unwrap();
+        let at = game.world.find(id).unwrap();
+        game.world.zoo.entities[at].common.as_mut().unwrap().name = "Ab".into();
+        s.pass(&[]);
+        assert_eq!(row_texts(s, 3805), ["Ab", "Al", "Bo"]);
+        assert_eq!(count(s, 3816), "3");
+    });
+}
+
+/// The guest list with "Gus" and `more` guests "Ann" (ids in list order), the window shown and
+/// the game paused, so only the rows change.
+fn with_guest_rows(name: &str, more: usize, body: impl FnOnce(&mut Session, Vec<u32>)) {
+    with_lists(name, |s, ids| {
+        let mut all = vec![ids[2]];
+        all.extend((0..more).map(|_| add_guest(s)));
+        s.app.interface().unwrap().show(12);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().paused = true;
+        body(s, all);
+    });
+}
+
+fn remove(s: &mut Session, id: u32) {
+    assert!(s.app.game.as_mut().unwrap().world.remove(id));
+    s.pass(&[]);
+}
+
+fn set_top(s: &mut Session, list: i32, top: usize) {
+    let ui = s.app.interface().unwrap();
+    let i = ui.tree.find(list).unwrap();
+    match &mut ui.tree.elements[i].kind {
+        Kind::ListBox(l) => l.rows.top = top,
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn a_removed_selected_row_leaves_the_next_unit_selected() {
+    with_guest_rows("lists-remove-selected", 2, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(1)));
+        remove(s, ids[1]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(1));
+    });
+}
+
+#[test]
+fn a_removed_last_row_leaves_nothing_selected() {
+    with_guest_rows("lists-remove-last", 2, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(2)));
+        remove(s, ids[2]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), None);
+    });
+}
+
+#[test]
+fn a_row_removed_above_the_selection_lowers_it_and_one_below_leaves_it() {
+    with_guest_rows("lists-remove-around", 3, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(2)));
+        remove(s, ids[3]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(2));
+        remove(s, ids[0]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(1));
+    });
+}
+
+#[test]
+fn a_row_removed_above_the_first_shown_row_lowers_it() {
+    with_guest_rows("lists-remove-top", 20, |s, ids| {
+        set_top(s, 3705, 5);
+        remove(s, ids[7]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 5);
+        remove(s, ids[2]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 4);
+        remove(s, ids[0]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 3);
+    });
+}

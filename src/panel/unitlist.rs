@@ -283,6 +283,23 @@ fn list_picture(ty: &crate::entity::EntityType) -> Option<String> {
     })
 }
 
+/// The row of a unit: its name and the picture of its type.
+fn row_of(e: &Entry, (world, cat, vfs): (&World, &Catalogue, &Vfs), ui: &mut Interface) -> Row {
+    Row {
+        text: e.name.clone(),
+        icon: type_at(world, cat, e.at)
+            .and_then(list_picture)
+            .and_then(|n| ui.tree.picture(vfs, &n)),
+        ..Row::default()
+    }
+}
+
+/// Keeps the items whose flag is set.
+fn keep_only<T>(items: &mut Vec<T>, keep: &[bool]) {
+    let mut flags = keep.iter();
+    items.retain(|_| flags.next().copied().unwrap_or(true));
+}
+
 /// One window's state: the filter, what the last refill held, and the refresh clock.
 #[derive(Debug, Default)]
 pub(crate) struct Window {
@@ -300,7 +317,7 @@ pub(crate) struct Window {
     /// Which rows are the helicopter's.
     helis: Vec<bool>,
     /// A refill ran once: before it the list box has no rows to select.
-    filled: bool,
+    pub filled: bool,
     names: Vec<Vec<u8>>,
     rows: Vec<Row>,
     hidden: Vec<bool>,
@@ -372,13 +389,7 @@ impl Window {
         let rebuild = which == ANIMALS || self.changed(&list);
         if rebuild {
             self.rows = (list.iter())
-                .map(|e| Row {
-                    text: e.name.clone(),
-                    icon: type_at(world, cat, e.at)
-                        .and_then(list_picture)
-                        .and_then(|n| ui.tree.picture(vfs, &n)),
-                    ..Row::default()
-                })
+                .map(|e| row_of(e, (world, cat, vfs), ui))
                 .collect();
             self.hidden = vec![false; list.len()];
         }
@@ -439,6 +450,52 @@ impl Window {
         for (f, n) in spec.filters.iter().zip(counts) {
             ui.set_text(f.count, n.to_string().as_bytes());
         }
+    }
+
+    /// Rows that came or went outside a refill (20.11 points 2 and 4): the rows of the units no
+    /// longer in `list` are removed and a new unit's row is appended, visible when it passes the
+    /// filter. The counts and the other rows stay; the selection and the first shown row are row
+    /// numbers that follow the removals (20.11 point 8); the refill is asked for.
+    pub(crate) fn edit(
+        &mut self,
+        which: usize,
+        list: &[Entry],
+        (ui, world, cat, vfs): (&mut Interface, &World, &Catalogue, &Vfs),
+    ) {
+        let spec = &SPECS[which];
+        let keep: Vec<bool> = (self.ids.iter())
+            .map(|id| list.iter().any(|e| e.id == *id))
+            .collect();
+        // The selection and the first shown row are row numbers (20.11 point 8): a row removed
+        // above one lowers it, the selected row's own removal leaves the number on the next row.
+        let (mut row, mut top) = (ui.selected_row(spec.list), ui.list_top(spec.list));
+        for (gone, k) in (0..keep.len()).filter(|&k| !keep[k]).enumerate() {
+            let r = k - gone;
+            row = row.map(|s| s - usize::from(r < s));
+            top -= usize::from(r < top);
+        }
+        keep_only(&mut self.ids, &keep);
+        keep_only(&mut self.names, &keep);
+        keep_only(&mut self.helis, &keep);
+        keep_only(&mut self.rows, &keep);
+        keep_only(&mut self.hidden, &keep);
+        let mut tests = Tests::new(world, cat, list.first());
+        let old = self.ids.clone();
+        for e in list.iter().filter(|e| !old.contains(&e.id)) {
+            self.hidden.push(!tests.pass(which, self.filter, e));
+            self.rows.push(row_of(e, (world, cat, vfs), ui));
+            self.helis
+                .push(world.units.get(e.id).is_some_and(|u| u.kind == Kind::Heli));
+            self.names.push(e.name.clone());
+            self.ids.push(e.id);
+        }
+        ui.fill_rows(
+            spec.list,
+            self.rows.clone(),
+            self.hidden.clone(),
+            (row, top),
+        );
+        self.force = true;
     }
 
     /// The selected entity changed (20.6 point 5): the old unit's list is unselected and the new
