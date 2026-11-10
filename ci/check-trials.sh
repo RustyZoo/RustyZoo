@@ -1489,7 +1489,7 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 1, 3, 5, 6, 7 and 8), and
+# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 1, 3, 4, 5 and 8), and
 # its hatching waits for a keeper to heal the egg (an untended egg is below its hit points when its time
 # is up). One check, a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it.
 # Prints the property, a space, and the step of the first clutch, the number of eggs and the first hatching.
