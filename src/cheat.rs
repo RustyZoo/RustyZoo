@@ -4,9 +4,11 @@
 //! of each, and a typed name is hashed and compared.
 
 use crate::behaviour::Data;
-use crate::entity::Catalogue;
+use crate::build::number;
+use crate::entity::{Catalogue, type_of};
 use crate::flight;
 use crate::sim::Sim;
+use crate::unit::Part;
 use crate::world::World;
 
 /// The kind of thing that was named: a cheat belongs to one class.
@@ -544,6 +546,60 @@ pub(crate) fn guest_flights(
             vehicles.push((flight, file, base));
         }
     }
+}
+
+/// Sets the first two palette bytes of the entity at `at`, if it has that many.
+pub(crate) fn recolour(world: &mut World, at: usize, [first, second]: [u8; 2]) {
+    if let Some(c) = world.zoo.entities[at].common.as_mut()
+        && let [a, b, ..] = &mut c.colors[..]
+    {
+        (*a, *b) = (first, second);
+    }
+}
+
+/// `palette_set_N` (4.2 A): the shirt and trousers or skirt of every guest, then the first two
+/// palettes of every recolourable building. Only what exists now.
+pub(crate) fn palette_set(world: &mut World, cat: &Catalogue, guests: [u8; 3], buildings: [u8; 2]) {
+    for at in 0..world.zoo.entities.len() {
+        let e = &world.zoo.entities[at];
+        let Some(id) = e.common.as_ref().map(|c| c.id) else {
+            continue;
+        };
+        if e.class == "guests" {
+            let female = matches!(world.units.get(id).map(|u| &u.part),
+                Some(Part::Guest(g)) if g.female);
+            recolour(world, at, [guests[0], guests[if female { 2 } else { 1 }]]);
+        } else if e.class == "building"
+            && type_of(cat, e)
+                .is_some_and(|t| number(t, "cIsColorReplaced").is_some_and(|n| n != 0.0))
+        {
+            recolour(world, at, buildings);
+        }
+    }
+}
+
+/// The start hook (cheats 6.3) without the availability of the four items, which the caller owns:
+/// on the computer's 31 October the flag goes up, the permanent witch comes once (its spawn entry
+/// and log line) and every guest and recolourable building takes the Halloween colours. Returns the
+/// availability to set.
+pub(crate) fn start_hook(
+    season: &mut Season,
+    sim: &mut Sim,
+    world: &mut World,
+    cat: &Catalogue,
+) -> Vec<(i32, bool)> {
+    let real = (sim.real_day)() == (10, 31);
+    let (set, fly) = season.game_started(real);
+    if let Some(fly) = fly {
+        sim.note(fly.line());
+        // The permanent witch makes no creature: the witch type spawns every 30 s (ambients 7.4).
+        sim.spawns.add(WITCH);
+        sim.spawns.period(WITCH, 30);
+    }
+    if real {
+        palette_set(world, cat, [10, 2, 11], [7, 5]);
+    }
+    set
 }
 
 #[cfg(test)]

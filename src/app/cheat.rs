@@ -2,8 +2,7 @@
 //! exhibit is offered to the cheats before the name is stored.
 
 use super::App;
-use super::cheat_guest::palette_set;
-use crate::cheat::{BIRDS, Cheat, Named, Subject, WITCH};
+use crate::cheat::{BIRDS, Cheat, Named, Subject, start_hook};
 use crate::flight;
 use crate::text::from_cp1252;
 
@@ -97,19 +96,9 @@ impl App<'_> {
     /// comes once per run, every guest and every recolourable building takes the Halloween colours
     /// and the jack-o'-lantern is available again.
     pub(super) fn game_started(&mut self) {
-        let real = (self.sim.real_day)() == (10, 31);
         let cat = self.renderer.catalogue();
         let Some(game) = &mut self.game else { return };
-        let (set, fly) = self.cheats.season.game_started(real);
-        if let Some(fly) = fly {
-            self.sim.note(fly.line());
-            // The permanent witch makes no creature: the witch type spawns every 30 s (ambients 7.4).
-            self.sim.spawns.add(WITCH);
-            self.sim.spawns.period(WITCH, 30);
-        }
-        if real {
-            palette_set(&mut game.world, cat, [10, 2, 11], [7, 5]);
-        }
+        let set = start_hook(&mut self.cheats.season, &mut self.sim, &mut game.world, cat);
         self.make_available(&set);
     }
 

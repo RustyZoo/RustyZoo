@@ -140,3 +140,22 @@ fn the_step_test_follows_the_signs_of_the_tile_difference_and_passes_on_the_same
         }
     });
 }
+
+#[test]
+fn the_step_test_of_a_diagonal_follows_the_signs_not_the_dominant_axis() {
+    let cat = types();
+    let mut w = world_with((10, 10), |zoo| {
+        zoo.entities
+            .push(entity("guests", "man", 1, centre((5, 5)), 0));
+    });
+    let t = w.tile_index(5, 5).unwrap();
+    // Only the east edge is closed: the diagonal (7, 9) leaves east and south, the straight
+    // south step (5, 9) does not.
+    w.zoo.tiles[t].edges = 2 << 4;
+    with_cx(&cat, &mut w, |cx| {
+        for (to, open) in [((7, 9), false), ((5, 9), true)] {
+            let to = cx.world.tile_index(to.0, to.1).unwrap();
+            assert_eq!(cx.first_step_open(to), open, "to {to}");
+        }
+    });
+}

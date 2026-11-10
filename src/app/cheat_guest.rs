@@ -2,9 +2,7 @@
 //! hook. The named guest is the one the guest panel has selected.
 
 use super::App;
-use crate::build::number;
-use crate::cheat::{Cheat, spread};
-use crate::entity::Catalogue;
+use crate::cheat::{Cheat, palette_set, recolour, spread};
 use crate::entity::type_of;
 use crate::goal::{IN_BUILDING, stop_use};
 use crate::guest::Guest;
@@ -35,36 +33,6 @@ fn each_guest(world: &mut World, mut f: impl FnMut(&mut Guest)) {
     for id in ids {
         if let Some(Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) {
             f(g);
-        }
-    }
-}
-
-/// Sets the first two palette bytes of the entity at `at`, if it has that many.
-fn recolour(world: &mut World, at: usize, [first, second]: [u8; 2]) {
-    if let Some(c) = world.zoo.entities[at].common.as_mut()
-        && let [a, b, ..] = &mut c.colors[..]
-    {
-        (*a, *b) = (first, second);
-    }
-}
-
-/// `palette_set_N` (4.2 A): the shirt and trousers or skirt of every guest, then the first two
-/// palettes of every recolourable building. Only what exists now.
-pub(super) fn palette_set(world: &mut World, cat: &Catalogue, guests: [u8; 3], buildings: [u8; 2]) {
-    for at in 0..world.zoo.entities.len() {
-        let e = &world.zoo.entities[at];
-        let Some(id) = e.common.as_ref().map(|c| c.id) else {
-            continue;
-        };
-        if e.class == "guests" {
-            let female = matches!(world.units.get(id).map(|u| &u.part),
-                Some(Part::Guest(g)) if g.female);
-            recolour(world, at, [guests[0], guests[if female { 2 } else { 1 }]]);
-        } else if e.class == "building"
-            && type_of(cat, e)
-                .is_some_and(|t| number(t, "cIsColorReplaced").is_some_and(|n| n != 0.0))
-        {
-            recolour(world, at, buildings);
         }
     }
 }
