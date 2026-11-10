@@ -358,7 +358,9 @@ jobs:
     needs: scope
     if: needs.scope.outputs.legs != 'none'
     runs-on: *gamedata-runner
-    timeout-minutes: 45
+    # Self-hosted, it also plays the freeform game (about 8 min) and the scenario sweep (about 11 min) of two
+    # installs, side by side: with the build and the trials, 45 left under 30% of margin.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
