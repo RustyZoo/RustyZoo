@@ -21,6 +21,15 @@ pub(crate) struct Shows {
     pub infos: Vec<Option<ShowInfo>>,
 }
 
+impl Shows {
+    /// Dates the records of a file before version 99, which store none, with the file time `date`
+    /// (zoo format 4.3 points 1 and 2).
+    pub(crate) fn date_old_records(&mut self, date: u64) {
+        let records = self.infos.iter_mut().flatten().flat_map(|i| &mut i.records);
+        records.for_each(|r| r.date = date);
+    }
+}
+
 impl Default for Shows {
     fn default() -> Shows {
         Shows {

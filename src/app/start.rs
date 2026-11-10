@@ -51,10 +51,16 @@ impl App<'_> {
     /// (cheats 6.3 point 2, 6.4).
     pub(super) fn open_game_as(
         &mut self,
-        zoo: Zoo,
+        mut zoo: Zoo,
         money: Money,
         saved: bool,
     ) -> Result<(), RenderError> {
+        // A file before version 99 stores no date for its show records: they get the one the game
+        // held before this load replaces it (zoo format 4.3).
+        if zoo.version < 99 {
+            let held = crate::timing::file_time(self.sim.calendar().elapsed_ms());
+            zoo.shows.date_old_records(held);
+        }
         // Every file load stops the loops of the sleigh and the biplane (cheats 6.4, 6.5.1).
         self.cheats.season.loops_stopped();
         let file = zoo.scenario_file().filter(|_| saved);
