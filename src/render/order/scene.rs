@@ -409,4 +409,3 @@ impl Scene {
         self.index((t % self.width) as i32 + dx, (t / self.width) as i32 + dy)
     }
 }
-
