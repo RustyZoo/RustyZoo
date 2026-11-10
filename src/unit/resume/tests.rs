@@ -821,7 +821,7 @@ fn the_trick_id_of_a_unit_is_saved_in_the_first_flag_and_comes_back_at_the_load(
 }
 
 #[test]
-fn rv_a_loaded_keeper_claims_no_tile() {
+fn a_loaded_keeper_claims_no_tile_until_the_setter() {
     let p1 = [7 * 64 + 32, 2 * 64 + 32, 0];
     let w = saved_block_in(
         104,
