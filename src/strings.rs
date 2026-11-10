@@ -76,7 +76,14 @@ impl Error for StringsError {}
 /// language. Japanese is 932, Simplified Chinese 936, Korean 949, Traditional Chinese 950; any
 /// other language is Windows-1252. Bytes that the code page lacks become U+FFFD.
 pub fn decode_text(language: u32, data: &[u8]) -> String {
-    let data = &data[..data.iter().position(|&b| b == 0).unwrap_or(data.len())];
+    decode(
+        language,
+        &data[..data.iter().position(|&b| b == 0).unwrap_or(data.len())],
+    )
+}
+
+/// The text of `data` in the code page of `language`, zero bytes included.
+pub(crate) fn decode(language: u32, data: &[u8]) -> String {
     match encoding(language) {
         Some(encoding) => encoding.decode_without_bom_handling(data).0.into_owned(),
         None => data.iter().map(|&b| from_cp1252(b)).collect(),

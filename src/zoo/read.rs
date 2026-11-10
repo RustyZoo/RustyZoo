@@ -228,7 +228,7 @@ impl<'a> Reader<'a> {
     /// A string in the code page of the language of the file.
     pub(super) fn text(&mut self) -> R<String> {
         let lang = self.lang;
-        Ok(crate::strings::decode_text(lang, self.string()?))
+        Ok(crate::strings::decode(lang, self.string()?))
     }
 
     /// A `u32` count of elements of at least `min_size` bytes each, checked against the bytes

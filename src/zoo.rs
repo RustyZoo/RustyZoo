@@ -523,10 +523,10 @@ impl Zoo {
         let block = self.kept.scenario.get(4..).filter(|b| !b.is_empty())?;
         if self.version < 51 {
             // Before 51 the block is the name alone, with no length word.
-            return Some(crate::strings::decode_text(self.locale, block));
+            return Some(crate::strings::decode(self.locale, block));
         }
         let len = u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
-        Some(crate::strings::decode_text(
+        Some(crate::strings::decode(
             self.locale,
             block.get(4..)?.get(..len)?,
         ))

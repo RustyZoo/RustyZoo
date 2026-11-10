@@ -37,14 +37,10 @@ impl Out {
         self.u8(e.sender_channel);
         self.u8(e.channel);
     }
-    /// A string in the code page of the language (zoo format 1), below 4096 characters; a
+    /// A string in the code page of the language (zoo format 1), below 4096 bytes; a
     /// character the code page lacks fails the write, naming it.
     pub(super) fn string(&mut self, s: &str) -> Result<(), String> {
-        let n = s.chars().count();
-        if n >= 4096 {
-            return Err(format!("a string of {n} characters"));
-        }
-        self.u32(n as u32);
+        let mut bytes = Vec::new();
         for c in s.chars() {
             let Some(b) = crate::strings::encode_char(self.1, c) else {
                 return Err(format!(
@@ -52,8 +48,13 @@ impl Out {
                     self.1
                 ));
             };
-            self.0.extend(b);
+            bytes.extend(b);
         }
+        if bytes.len() >= 4096 {
+            return Err(format!("a string of {} bytes", bytes.len()));
+        }
+        self.u32(bytes.len() as u32);
+        self.0.extend(bytes);
         Ok(())
     }
 }

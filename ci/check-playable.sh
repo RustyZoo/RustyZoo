@@ -25,7 +25,7 @@
 #                         probe lets the hires through) and a change that adds a random draw moves it:
 #                         no re-seed. A broken engine fails under every seed
 #   #saves TEXT           the script saves to @zoo@ and loads it back (the run replaces @zoo@ by a file of
-#                         its own): no save or load may warn, and the file must hold TEXT (printf escapes:
+#                         its own): no save or load may warn or fail, and the file must hold TEXT (printf escapes:
 #                         `Thomson\222s Gazelle`, a name with a Windows-1252 apostrophe)
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #   #unfed ID N           the animal ID is not required to eat: a known fault the original has too (issue N)
@@ -116,6 +116,13 @@ for r in $runs; do
   [ "$(cat "$tmp/$r.status")" = 0 ] || { fail "the run $r ended with status $(cat "$tmp/$r.status"): $(tail -n 3 "$tmp/$r.err")"; exit 1; }
 done
 tr -d '\r' <"$tmp/a.log" >"$tmp/log"
+# The load of the script (a line `game start load`) adds the units again: the checks below count
+# the lines `unit add` of the play alone.
+loadat=$(awk '$4 == "menu" && $5 == "game" && $6 == "start" && $7 == "load" { print NR; exit }' "$tmp/log")
+if [ -n "$loadat" ]; then
+  awk -v n="$loadat" 'NR <= n || !($4 == "unit" && $5 == "add")' "$tmp/log" >"$tmp/play"
+  mv "$tmp/play" "$tmp/log"
+fi
 
 # expects: what the script builds and hires, as its header declares it.
 expects() {
@@ -168,6 +175,10 @@ if [ -n "$saves" ]; then
     fail "saves: $(grep 'warning: step' "$tmp/a.err" | head -n 1)"
   elif [ ! -s "$tmp/a.zoo" ]; then
     fail "saves: the script wrote no file"
+  elif [ -z "$loadat" ]; then
+    fail "saves: the script did not load the file back"
+  elif [ -n "$(awk '$4 == "menu" && $5 == "message"' "$tmp/log")" ]; then
+    fail "saves: $(awk '$4 == "menu" && $5 == "message"' "$tmp/log" | head -n 1)"
   elif ! grep -aqF "$(printf "$saves")" "$tmp/a.zoo"; then
     fail "saves: the file lacks '$saves'"
   else
