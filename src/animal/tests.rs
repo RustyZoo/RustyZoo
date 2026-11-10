@@ -16,6 +16,7 @@ mod escape;
 mod fence;
 mod life;
 mod rampage;
+mod stale;
 mod tank;
 
 fn keys() -> Keys {
