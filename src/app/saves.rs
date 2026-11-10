@@ -89,6 +89,13 @@ impl App<'_> {
 
     /// The file the game saves as it is.
     pub(super) fn saved_bytes(&mut self) -> Result<Vec<u8>, String> {
+        let zoo = self.saved_zoo()?;
+        let game = self.game.as_ref().ok_or("no game to save")?;
+        zoo.write(&game.money)
+    }
+
+    /// The zoo of the file the game saves as it is.
+    pub(super) fn saved_zoo(&mut self) -> Result<crate::zoo::Zoo, String> {
         let game = self.game.as_mut().ok_or("no game to save")?;
         self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
@@ -120,7 +127,7 @@ impl App<'_> {
         if let Some(scenario) = self.sim.scenario() {
             zoo.set_scenario(scenario.file(), &scenario.states());
         }
-        zoo.write(&game.money)
+        Ok(zoo)
     }
 
     /// Makes `path` the last file: `[user] lastfile` of the menu, or without the menu the file of

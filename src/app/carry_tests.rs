@@ -634,7 +634,7 @@ fn a_click_on_a_message_about_an_animal_goes_to_it_and_releases_the_bulldozer() 
 
 /// Where a save made now writes the entity `id`.
 fn saved_at(s: &mut Session, id: u32) -> Option<(i32, i32, i32)> {
-    let zoo = crate::zoo::Zoo::parse(&s.app.saved_bytes().unwrap()).unwrap();
+    let zoo = s.app.saved_zoo().unwrap();
     let c = zoo
         .entities
         .iter()
