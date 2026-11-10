@@ -100,9 +100,10 @@ pub(crate) fn load(world: &mut World, now: u32) {
             // The need being served comes back as it was saved (shows 32.1 point 3).
             if let Part::Animal(a) = &mut unit.part {
                 (a.need, a.slot) = (need, usize::from(slot));
-                // The position is read; the tile is the one under it (shows 32.2 point 6).
-                (unit.own_pos, unit.own_tile) = (own.0, own.1);
             }
+            // The position is read; the tile is the one under it (shows 32.2 point 6, staff 19
+            // point 3): nothing is claimed by it.
+            (unit.own_pos, unit.own_tile) = (own.0, own.1);
             (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
             (unit.frightened, unit.predator, unit.caught) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).

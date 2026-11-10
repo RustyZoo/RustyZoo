@@ -600,10 +600,7 @@ fn across() -> Entity {
 }
 
 fn own(g: &Game) -> Option<usize> {
-    match &g.w.units.get(KEEPER).unwrap().part {
-        Part::Staff(s) => s.target,
-        _ => None,
-    }
+    g.w.units.get(KEEPER).unwrap().own_tile
 }
 
 #[test]

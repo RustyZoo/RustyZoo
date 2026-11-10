@@ -429,9 +429,7 @@ fn a_keeper_on_a_ladder_is_in_the_ladder_mode_and_kept_between_its_foot_and_its_
     let job = move |w: &mut World, job: u8, target: Option<(i32, i32)>| {
         let u = w.units.get_mut(id).unwrap();
         u.goal.record.job = job;
-        if let Part::Staff(s) = &mut u.part {
-            s.target = target.map(tile);
-        }
+        u.own_tile = target.map(tile);
     };
     // The gate of the tank is on the north side of (2, 2): the tile outside is (2, 1). The
     // outside ladder (jobs 20 and 21, the target tile in the tank) holds the height between the

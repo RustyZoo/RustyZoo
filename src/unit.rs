@@ -150,9 +150,6 @@ pub(crate) struct Staff {
     /// The tiles and the animals a keeper failed to reach; its searches skip them (staff 4.3).
     pub lost_tiles: Vec<usize>,
     pub lost_animals: Vec<u32>,
-    /// A keeper's own target tile, apart from the goal record's (staff 7.4): the exhibit counters
-    /// and the claimed tiles follow it.
-    pub target: Option<usize>,
     /// The `cKeeperFoodType` of the animal a keeper feeds (staff 7.6).
     pub food_kind: i32,
     /// A tour guide's group, in the order the guests joined, its countdown of status ticks to the
