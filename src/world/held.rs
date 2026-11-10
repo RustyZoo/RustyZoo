@@ -24,6 +24,17 @@ impl Shift {
     }
 }
 
+impl Shift {
+    /// The place of a slot between two entities (the one a held building leaves) after the move:
+    /// it stays after the entities before it.
+    pub(super) fn slot(self, at: usize) -> usize {
+        match self {
+            Shift::Removed(r) => at - usize::from(r < at),
+            Shift::Inserted(i) => at + usize::from(i < at),
+        }
+    }
+}
+
 impl World {
     /// The ids of the units held off the map or off a list, with how. They keep how they are held
     /// across the rebuild: a carried unit is on no list and not painted (simulation 6.2), a

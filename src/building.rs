@@ -638,20 +638,43 @@ pub(crate) fn moveable(ty: &EntityType) -> bool {
 }
 
 /// A building the player holds (unit placing 8.7): taken off the map with its users pushed out,
-/// it keeps its id, its place in the entity list and its figures until it is set down again.
+/// it keeps its id, its place in the entity list ([`World::held_at`]) and its figures until it is
+/// set down again.
 #[derive(Debug, Clone)]
 pub(crate) struct Held {
-    at: usize,
     entity: Entity,
     shape: Option<Shape>,
     live: Option<Live>,
+    upgrade: u32,
 }
 
 impl Held {
-    /// Writes the building into the list of a zoo about to be saved, where it was.
-    pub(crate) fn put_in(&self, zoo: &mut crate::zoo::Zoo) {
+    /// The id of the building.
+    fn id(&self) -> u32 {
+        self.entity.common.as_ref().map_or(0, |c| c.id)
+    }
+
+    /// Writes the building into the list of a zoo about to be saved, where it stands in the list.
+    pub(crate) fn put_in(&self, zoo: &mut crate::zoo::Zoo, place: usize) {
         zoo.entities
-            .insert(self.at.min(zoo.entities.len()), self.entity.clone());
+            .insert(place.min(zoo.entities.len()), self.entity.clone());
+    }
+
+    /// Puts the figures of the building in the tables of the world, for a save to read them as for
+    /// a building on the map; [`Held::unlend`] takes them out again.
+    pub(crate) fn lend(&self, world: &mut World) {
+        let id = self.id();
+        if let Some(live) = &self.live {
+            world.units.buildings.insert(id, live.clone());
+        }
+        world.units.upgrade_index.insert(id, self.upgrade);
+    }
+
+    /// Takes the figures lent out of the tables again.
+    pub(crate) fn unlend(&self, world: &mut World) {
+        let id = self.id();
+        world.units.buildings.remove(&id);
+        world.units.upgrade_index.remove(&id);
     }
 }
 
@@ -664,12 +687,14 @@ pub(crate) fn lift(world: &mut World, cat: &Catalogue, id: u32, rng: &mut Rng) -
     crate::guest::litter::spill(world, cat, id, rng);
     let (entity, shape) = (world.zoo.entities[at].clone(), world.shape(at));
     let live = world.units.buildings.get(&id).cloned();
+    let upgrade = world.units.upgrade_index.get(&id).copied().unwrap_or(0);
     world.unrecorded(|w| w.remove(id));
+    world.held_at = Some(at);
     Some(Held {
-        at,
         entity,
         shape,
         live,
+        upgrade,
     })
 }
 
@@ -681,11 +706,12 @@ pub(crate) fn set_down(
     point: (i32, i32, i32),
     facing: u32,
 ) {
+    let at = world.held_at.take().unwrap_or(usize::MAX);
     let Held {
-        at,
         mut entity,
         shape,
         live,
+        upgrade,
     } = held;
     let id = entity.common.as_mut().map(|c| {
         (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, facing);
@@ -695,6 +721,9 @@ pub(crate) fn set_down(
     if let Some(id) = id {
         if let Some(live) = live {
             world.units.buildings.insert(id, live);
+        }
+        if upgrade != 0 {
+            world.units.upgrade_index.insert(id, upgrade);
         }
         dead::decide(world, ty, id);
     }

@@ -100,11 +100,17 @@ impl App<'_> {
         self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
-        if let Some(held) = &game.held {
-            held.put_in(&mut zoo);
+        // A building held is written in the list where it stands, with the figures it has.
+        let held = (game.held.as_ref()).zip(game.world.held_at);
+        if let Some((held, at)) = held {
+            held.put_in(&mut zoo, game.world.saved_place(at, crate::zoo::knows(cat)));
+            held.lend(&mut game.world);
         }
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
         game.world.finish_save(&mut zoo, cat);
+        if let Some((held, _)) = held {
+            held.unlend(&mut game.world);
+        }
         // A unit or a building carried is written at the last point under the pointer, a held
         // building being put back in the list before (unit placing 9.1.2 points 3, 7).
         if let Some(carry) = &game.carry {
