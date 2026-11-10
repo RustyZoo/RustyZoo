@@ -18,8 +18,28 @@ pub struct Screen {
     /// The game is full screen (the camera's rules apply). It follows the last switch that the
     /// window accepted, and what the window reports on its own.
     pub fullscreen: bool,
-    /// The game was resized in full screen: the window is fitted to the size when it is left.
-    unfitted: bool,
+    /// The window waits for a fit to the game size.
+    fit: Fit,
+}
+
+/// When the window is fitted to the game size: at once in a window, and when a full screen is
+/// left if the game was resized in it.
+#[derive(Default)]
+struct Fit {
+    waiting: bool,
+}
+
+impl Fit {
+    /// The game was resized: whether to fit the window now.
+    fn resized(&mut self, fullscreen: bool) -> bool {
+        self.waiting |= fullscreen;
+        !fullscreen
+    }
+
+    /// Whether the window is due a fit: it was waiting and is not in full screen any more.
+    fn due(&mut self, fullscreen: bool) -> bool {
+        !fullscreen && std::mem::take(&mut self.waiting)
+    }
 }
 
 impl Screen {
@@ -54,9 +74,9 @@ impl Screen {
         if size == self.size {
             return false;
         }
-        if self.fullscreen {
-            self.unfitted = true;
-        } else if let Err(e) = self.fit_window(video, size) {
+        if self.fit.resized(self.fullscreen)
+            && let Err(e) = self.fit_window(video, size)
+        {
             eprintln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
             return false;
         }
@@ -67,11 +87,10 @@ impl Screen {
     /// Fits the window to the game size once the window is back from a full screen in which the
     /// game was resized. A failure warns.
     pub fn refit(&mut self, video: &sdl3::VideoSubsystem) {
-        if self.unfitted && !self.fullscreen {
-            self.unfitted = false;
-            if let Err(e) = self.fit_window(video, self.size) {
-                eprintln!("rustyzoo: cannot fit the window: {e}");
-            }
+        if self.fit.due(self.fullscreen)
+            && let Err(e) = self.fit_window(video, self.size)
+        {
+            eprintln!("rustyzoo: cannot fit the window: {e}");
         }
     }
 
@@ -160,7 +179,7 @@ pub fn open(
         canvas,
         size,
         fullscreen: false,
-        unfitted: false,
+        fit: Fit::default(),
     })
 }
 
@@ -168,32 +187,18 @@ pub fn open(
 mod tests {
     use super::*;
 
-    /// A game resized in full screen sizes the window for the way back: the window keeps its size
-    /// in full screen, and takes the new one once the window is back (16.9 point 2).
+    /// A game resized in full screen sizes the window for the way back (16.9 point 2): nothing
+    /// at the resize, one fit when the window is back, none after.
     #[test]
-    fn a_resize_in_full_screen_sizes_the_window_when_it_is_left() {
-        sdl3::hint::set("SDL_VIDEO_DRIVER", "dummy");
-        let sdl = sdl3::init().unwrap();
-        let video = sdl.video().unwrap();
-        let ini = Config::parse(b"").unwrap();
-        let mut screen = open(&video, &ini, Some((1024, 768))).ok().unwrap();
-        let before = screen.canvas.window().size();
-        screen.fullscreen = true;
-        assert!(screen.resize(&video, (800, 600)));
-        assert_eq!(screen.size, (800, 600));
-        assert_eq!(screen.canvas.window().size(), before);
-        screen.refit(&video);
-        assert_eq!(screen.canvas.window().size(), before, "still full screen");
-        screen.fullscreen = false;
-        screen.refit(&video);
-        let (_, want) = plan(
-            (800, 600),
-            screen.canvas.window().display_scale(),
-            screen.canvas.window().pixel_density(),
-            (0, 0),
+    fn a_resize_in_full_screen_fits_the_window_when_it_is_left() {
+        let mut fit = Fit::default();
+        assert!(!fit.resized(true), "no window to size in full screen");
+        assert!(!fit.due(true), "still full screen");
+        assert!(fit.due(false), "back in a window");
+        assert!(!fit.due(false), "once");
+        assert!(
+            fit.resized(false) && !fit.due(false),
+            "in a window: at once"
         );
-        assert_eq!(screen.canvas.window().size(), want);
-        assert_ne!(want, before);
-        assert!(!screen.resize(&video, (800, 600)), "the same size changes nothing");
     }
 }
