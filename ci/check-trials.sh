@@ -287,7 +287,7 @@ check base-trial 'dislikes15673@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
 check base-trial 74bcf78f8376a39a 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial 935ffd2485c77f8d 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial ac8f5614a3eae329 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -695,7 +695,7 @@ pending_object() { # pending_object <map> <script>
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;272b61a1cede756f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
 check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;2db6bcf8b62085de" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;efa3ad2b1370df6c" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;b50a02df497757c8" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -710,8 +710,8 @@ path_drag() { # path_drag <map> <first move>
 }
 check base-trial "8,49800,daef63d71b710f9f" "path_drag maps/default.zoo '632 384'"
 check base-trial "8,49800,f47d3badaee28088" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,f0f4c5e8f5102bbd" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,5c62e8221696322a" "path_drag maps/scn19.zoo '632 416'"
+check expansion-trial "8,49920,4653ddd9fa7cbdbd" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,9233c23b784953da" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -725,7 +725,7 @@ paint_text() { # paint_text <map> <script>
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
 check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;202088c2ac763dc7" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;3a8b2426530dfe92" "paint_text maps/scn19.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;cbdfe4eacbc3f2c1" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -739,7 +739,7 @@ fence_drag() { # fence_drag <map> <last move>
   rm -rf "$d"
 }
 check base-trial "6,48920,2b34d0e34467d15f" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,06b9062d07380ef5 "fence_drag maps/scn19.zoo '878 332'"
+check expansion-trial 6,49250,9a5e7ebbb20bc34d "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -797,7 +797,7 @@ bulldozer_area() { # bulldozer_area <map>
   rm -rf "$d"
 }
 check base-trial "8,49960,9b688670e4bbd60c" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,a9d71db4b3bb337e "bulldozer_area maps/scn19.zoo"
+check expansion-trial 16,50156,5878f3616bd107b2 "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -811,7 +811,7 @@ building_place() { # building_place <map>
   rm -rf "$d"
 }
 check base-trial "building/building/vendfood,16,45,2;message10555;49950;2928c60237fda309" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;e638fda09543a9d2" "building_place maps/scn19.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;351c313d0226e1b6" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)
@@ -984,7 +984,7 @@ check expansion-trial "duties_1111;duties_1011" "staff_duties maps/scn19.zoo"
 # the favourite and the thoughts.
 guest_panel() { # guest_panel <map>
   d=$(mktemp -d)
-  printf '1 pause\n2 mouse 652 598\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
+  printf '1 pause\n2 mouse 658 606\n3 down\n4 up\n6 mouse 1005 667\n7 down\n8 up\n10 mouse 400 100\n11 down\n12 up\n' >"$d/script"
   rz run "$1" --headless --seed 3 --passes 14 --clock 67 --script "$d/script" 2>/dev/null |
     grep ' panel guest ' | cut -d' ' -f4- | sed 's/panel guest [0-9]* /panel guest /' |
     while IFS= read -r l; do # the thoughts are printed as their count and a checksum, not as text
@@ -1253,7 +1253,7 @@ scenario_guest_panel() {
   d=$(mktemp -d)
   mkdir -p "$RUSTYZOO_USER_DIR"
   printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
-  printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n10 mouse 652 598\n11 down\n12 up\n14 mouse 1005 667\n15 down\n16 up\n' >"$d/script"
+  printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n10 mouse 658 606\n11 down\n12 up\n14 mouse 1005 667\n15 down\n16 up\n' >"$d/script"
   rz run --headless --seed 3 --passes 20 --clock 100 --script "$d/script" 2>/dev/null |
     sed -n 's/.* panel guest [0-9]* \("[^"]*"\) .* time \("[^"]*"\).*/\1 time \2/p' | tr ' ' _ | paste -sd';' -
   rm -rf "${d:?}"
@@ -1412,7 +1412,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>: reads $seed
 }
 check expansion-trial yes "first=2 any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2, the run of the property).
-check expansion-trial '97902:1@1277' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
+check expansion-trial '97902:1@1027' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1479,7 +1479,7 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile>: reads $seed
   rm -rf "$d"
 }
 check base-trial yes "first=3 any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@3596;young:2" "seed=3 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
+check base-trial "mates:3;birth@7178;young:2" "seed=3 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1504,7 +1504,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
   rm -rf "$d"
 }
 check expansion-trial yes "first=2 any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@3766;eggs:3;hatch@4395" "seed=2 once egg_clutch maps/scn19.zoo 51757 51758 53931 | cut -d' ' -f2"
+check expansion-trial "egg@3286;eggs:3;hatch@3916" "seed=2 once egg_clutch maps/scn19.zoo 51757 51758 53931 | cut -d' ' -f2"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)

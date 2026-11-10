@@ -565,6 +565,17 @@ impl Runner {
         calls.saturating_sub(top.call)
     }
 
+    /// The name of the call the top running set is on (behaviours 5.10.2 point 2).
+    pub(crate) fn call_name(&self, data: &dyn Data, unit: &Entity) -> Option<String> {
+        let top = self.chain.first().filter(|l| l.running && l.loaded)?;
+        match &top.own {
+            Some(own) => own.get(top.call).map(|c| c.name.to_string()),
+            None => (data.set(unit, &top.name))
+                .and_then(|s| s.get(top.call))
+                .map(|c| c.name.to_string()),
+        }
+    }
+
     /// Starts the set `name` as the top set. A running set that is not interruptible refuses
     /// unless `force`. Unless `keep`, the animation drops what it plays and has queued
     /// (behaviours 4.2). Returns whether it started and the type has calls for it.
