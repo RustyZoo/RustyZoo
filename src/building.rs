@@ -21,10 +21,7 @@
 
 use crate::config::{to_float, to_int};
 use crate::entity::{Catalogue, EntityType};
-use crate::guest::litter::CAN_FILLING;
-use crate::place::path_shape;
 use crate::sim::Rng;
-use crate::timing::Date;
 use crate::world::{Shape, World};
 use crate::zoo::{BuildingRecord, Entity};
 use std::cmp::Ordering;
@@ -38,6 +35,11 @@ pub mod random_use;
 pub mod ret;
 pub mod upgrade;
 pub mod users;
+
+mod lifecycle;
+mod slots;
+pub(crate) use lifecycle::{built, load, loaded_events, reset_all};
+pub(crate) use slots::{can_add, entrances, exit_of, has_open_slot};
 
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
 /// which a price is expensive and cheap, and the default price of a type that names none; and the
@@ -520,118 +522,6 @@ impl Live {
     }
 }
 
-/// Building `id` of type `ty` was built at calendar time `now` (ms of game time): a guest
-/// building or a compost starts its live state, with the date its months open are counted from (guest
-/// buildings 4).
-pub(crate) fn built(world: &mut World, ty: &EntityType, id: u32, now: i64) {
-    let kind = Kind::of(ty, world.units.prices.default);
-    if keeps_figures(ty, &kind) {
-        let live = Live::new(&kind);
-        world
-            .units
-            .buildings
-            .insert(id, Live { built: now, ..live });
-    }
-    dead::decide(world, ty, id);
-}
-
-/// Whether a building of this type has figures of its own: a guest building, and the compost,
-/// which earns from the dung it recycles (zoo format 6.9).
-fn keeps_figures(ty: &EntityType, kind: &Kind) -> bool {
-    crate::month::is_guest_building(ty) || kind.satisfies("compost")
-}
-
-/// The building at position `at` of the entity list of a zoo just loaded takes the figures its
-/// record stores (zoo format 6.9, guest buildings 4): the guests and the income of this month,
-/// last month and since construction, the upkeep paid since construction (from version 68), the
-/// trash can's fill, the construction date and the price. The users come after the guests are
-/// made ([`users::restore`]).
-pub(crate) fn load(world: &mut World, cat: &Catalogue, at: usize) {
-    let e = &world.zoo.entities[at];
-    let Some(record) = e.common.as_ref().and_then(|c| c.building.clone()) else {
-        return;
-    };
-    let Some(ty) = crate::entity::type_of(cat, e) else {
-        return;
-    };
-    let kind = Kind::of(ty, world.units.prices.default);
-    if !keeps_figures(ty, &kind) {
-        return;
-    }
-    let id = e.common.as_ref().map_or(0, |c| c.id);
-    let built = Date::from_file_time(record.built).game_ms();
-    let live = Live {
-        guests: record.guests,
-        income: record.income.map(f32::from_bits),
-        upkeep: record.upkeep.map_or(0.0, f32::from_bits),
-        price: f32::from_bits(record.price),
-        built,
-        ..Live::new(&kind)
-    };
-    world.units.buildings.insert(id, live);
-    match record.upgrade {
-        0 => world.units.upgrade_index.remove(&id),
-        index => world.units.upgrade_index.insert(id, index),
-    };
-    if kind.satisfies("trash") {
-        set_fill(world, id, record.fill);
-    }
-    // The "show soon" flag of a grandstand is stored as the fill (shows 3.5).
-    if let (true, Some(live)) = (
-        kind.satisfies("grandstand"),
-        world.units.buildings.get_mut(&id),
-    ) {
-        live.fill = record.fill;
-    }
-}
-
-/// A start with `reset` or `resetdate` resets every building (guest buildings 4.1): the fill, the
-/// users and the figures go to 0 and the construction date becomes the game time `now` (ms since
-/// the calendar's start); the price is kept. It runs after the load events, so a can that called a
-/// worker is empty with its task still in the pool. Every unit a building listed as a user is
-/// removed from the world, not released: the ids are returned for the caller to ask the removal.
-pub(crate) fn reset_all(world: &mut World, now: i64) -> Vec<u32> {
-    let ids: Vec<u32> = world.units.buildings.keys().copied().collect();
-    let mut removed = Vec::new();
-    for id in ids {
-        set_fill(world, id, 0);
-        if let Some(live) = world.units.buildings.get_mut(&id) {
-            removed.extend(live.users.iter().map(|u| u.0));
-            *live = Live {
-                price: live.price,
-                built: now,
-                // A start with reset leaves the show id of a grandstand alone (shows 3.5).
-                show_id: live.show_id,
-                dead: live.dead,
-                ..Live::default()
-            };
-        }
-    }
-    removed
-}
-
-/// The events a zoo just loaded posts for its trash cans (staff 8.2): a can above 12 pieces calls
-/// a worker as it does when it reaches 13, with its tile, in entity list order.
-pub(crate) fn loaded_events(world: &World) -> Vec<crate::sim::Event> {
-    let mut events = Vec::new();
-    for e in &world.zoo.entities {
-        let Some(c) = e.common.as_ref() else {
-            continue;
-        };
-        let full = world
-            .units
-            .buildings
-            .get(&c.id)
-            .is_some_and(|l| l.fill > 12);
-        let tile = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
-        if e.class == "building" && full {
-            let tile = tile.unwrap_or(0) as u32;
-            events.push(crate::world::piece_event(c.id, CAN_FILLING, tile));
-        }
-    }
-    events
-}
-
 /// Whether a building of the type can be picked up: `cMoveable` 1 (default 0; unit placing 8.7).
 pub(crate) fn moveable(ty: &EntityType) -> bool {
     crate::build::number(ty, "cMoveable") == Some(1.0)
@@ -866,130 +756,6 @@ pub(crate) fn seat_at(e: &Entity, slot: &Slot, seat: Option<(i32, i32, i32)>) ->
 /// rotation (guest buildings 3.2).
 pub(crate) fn facing(e: &Entity, facing: u32) -> u32 {
     (e.common.as_ref().map_or(0, |c| c.rotation) + facing) % 8
-}
-
-/// The type whose users are not held to their animal's exhibit (guest buildings 6.3 point 5a).
-const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
-
-/// The place a user of slot `slot` of the building is put at when it leaves by force or by the
-/// exit (guest buildings 6.3, 6.7): the slot's exit for a type whose users use it, else the first
-/// entrance, whose place passes [`fits`]. `who` is the animal that leaves, which its own place
-/// rules apply to too (6.3 point 5), its exhibit being the one of the tile it stands on; `None`
-/// for a guest. `None` when there is none, and the slot cannot be used.
-pub(crate) fn exit_of(
-    world: &World,
-    e: &Entity,
-    kind: &Kind,
-    slot: usize,
-    who: Option<&Species>,
-) -> Option<Point> {
-    let s = kind.slots.get(slot)?;
-    let home = who
-        .and_then(|w| w.tile)
-        .and_then(|(x, y)| world.tile_index(x, y))
-        .and_then(|t| world.exhibits().region(t));
-    let exempt = kind.name_id == SHELTER_OF_ANY_EXHIBIT;
-    let animal = |t: usize| who.is_none_or(|w| animal_place(world, t, w, home, exempt));
-    match kind.uses_exit {
-        true => (s.exit.map(|p| place(e, p))).filter(|&p| fits(world, p, Some(s), &animal)),
-        false => {
-            (s.entrances.iter().map(|&p| place(e, p))).find(|&p| fits(world, p, None, &animal))
-        }
-    }
-}
-
-/// Guest buildings 6.3, the place test for a guest: the tile of `p` is on the map, in the zoo and
-/// has a quarter free or held by a walkable object; an exit place (`exit` given) must also be on
-/// the terrain the slot allows, water or land. `animal` is the animal's part of the test (point 5),
-/// which passes a guest.
-fn fits(world: &World, (x, y): Point, exit: Option<&Slot>, animal: &dyn Fn(usize) -> bool) -> bool {
-    let Some(t) = world.tile_index(x.div_euclid(64), y.div_euclid(64)) else {
-        return false;
-    };
-    let walkable = |e: usize| world.shape(e).is_some_and(|s| s.walkable.0);
-    let open = (0..4).any(|q| world.quadrant(t, q).is_none_or(walkable));
-    let terrain = exit.is_none_or(|s| match world.is_water(t) {
-        true => s.exit_water,
-        false => s.exit_land,
-    });
-    world.in_zoo(t) && open && terrain && animal(t)
-}
-
-/// Guest buildings 6.3 point 5, the place of an animal on tile `t`: in its own exhibit, which is
-/// the exhibit of the tile it stands on (`home`) unless the type is `exempt`; not a large animal on
-/// a tile that is not flat or raised along one side (the path shapes of placing 5.3); and not water
-/// for a non-swimmer.
-fn animal_place(world: &World, t: usize, who: &Species, home: Option<u32>, exempt: bool) -> bool {
-    if !who.animal {
-        return true;
-    }
-    let own = exempt || world.exhibits().region(t) == home;
-    own && !(who.large && !path_shape(world.zoo.tiles[t].shape))
-        && (who.swims || !world.is_water(t))
-}
-
-/// Whether the unit (`who`) may use slot `slot` of a building (guest buildings 6.1):
-/// the building and the slot have room, the slot's species and filter let it in, and an exit exists
-/// (6.3: an entrance, or the slot's exit for a type that uses it, that passes the place test).
-pub(crate) fn can_add(
-    world: &World,
-    e: &Entity,
-    kind: &Kind,
-    live: Option<&Live>,
-    slot: usize,
-    who: Option<&Species>,
-) -> bool {
-    if live.is_some_and(|l| l.dead) {
-        return false;
-    }
-    let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
-    let Some(s) = kind.slots.get(slot) else {
-        return false;
-    };
-    let in_slot = live.map_or(0, |l| l.users.iter().filter(|u| u.1 == slot).count());
-    let no_show = who.is_some_and(|w| w.grandstand) && live.is_none_or(|l| l.fill == 0);
-    users < kind.capacity.max(0) as usize
-        && in_slot < s.capacity.max(0) as usize
-        && !no_show
-        && s.allows(who)
-        && ret::may_enter(world, e, kind, live, who)
-        && exit_of(world, e, kind, slot, who).is_some()
-}
-
-/// Whether some slot of the building is open (guest buildings 6.1).
-pub(crate) fn has_open_slot(
-    world: &World,
-    e: &Entity,
-    kind: &Kind,
-    live: Option<&Live>,
-    who: Option<&Species>,
-) -> bool {
-    (0..kind.slots.len()).any(|s| can_add(world, e, kind, live, s, who))
-}
-
-/// The entrances of the open slots with their squared distance from `from`, the nearest first and
-/// in slot order among equals (guest buildings 6.2).
-pub(crate) fn entrances(
-    world: &World,
-    e: &Entity,
-    kind: &Kind,
-    live: Option<&Live>,
-    from: Point,
-    who: Option<&Species>,
-) -> Vec<(i64, usize, Point)> {
-    let mut found = Vec::new();
-    for (i, s) in kind.slots.iter().enumerate() {
-        if !can_add(world, e, kind, live, i, who) {
-            continue;
-        }
-        for &rel in &s.entrances {
-            let p = place(e, rel);
-            let (dx, dy) = (i64::from(from.0 - p.0), i64::from(from.1 - p.1));
-            found.push((dx * dx + dy * dy, i, p));
-        }
-    }
-    found.sort_by_key(|f| f.0);
-    found
 }
 
 #[cfg(test)]
