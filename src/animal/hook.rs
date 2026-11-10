@@ -342,7 +342,7 @@ pub(crate) fn checks(
     at: usize,
     data: &dyn Data,
 ) {
-    boxed::check(unit, world, ctx, at);
+    boxed::check(unit, world, ctx, at, data);
     let task = unit.goal.record.task;
     let sight = sight(unit, world, ctx, at, data);
     let meal = food::meal(unit, world, ctx.cat, data, at);

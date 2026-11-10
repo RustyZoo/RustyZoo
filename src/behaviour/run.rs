@@ -309,6 +309,17 @@ pub(crate) struct Rest {
     pub named: &'static str,
 }
 
+impl Rest {
+    /// The animation chosen: the forced one when `has` finds it, else the named one, else the
+    /// plain `idle`; none when the type has none of them (behaviours 5.10, 5.10.1 point 5).
+    pub(crate) fn pick(self, has: impl Fn(&str) -> bool) -> Option<&'static str> {
+        match self.forced {
+            Some(name) => has(name).then_some(name),
+            None => [self.named, "idle"].into_iter().find(|n| has(n)),
+        }
+    }
+}
+
 impl Default for Rest {
     fn default() -> Self {
         Rest {
@@ -916,12 +927,8 @@ impl Runner {
     /// The idle animation of the unit (behaviours 5.10): the forced one when the type has it, else
     /// the named one, else the plain `idle`; none when the type has none of them.
     fn idle(&self, env: &Env) -> Option<&'static str> {
-        let has = |name: &str| env.data.timing(env.unit, name).is_some();
-        let Rest { forced, named } = self.rest;
-        match forced {
-            Some(name) => has(name).then_some(name),
-            None => [named, "idle"].into_iter().find(|n| has(n)),
-        }
+        self.rest
+            .pick(|name| env.data.timing(env.unit, name).is_some())
     }
 
     /// A set picked at random among the rows (behaviours 5.3): one draw, and another after every

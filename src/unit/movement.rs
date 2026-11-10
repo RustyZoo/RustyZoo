@@ -309,9 +309,7 @@ pub(crate) fn reanimate(unit: &mut Unit, world: &World, data: &dyn Data, at: usi
 /// The unit shows its idle animation again (8.2 step 1; the normal end of a walk keeps the move
 /// animation, step 3).
 pub(crate) fn idle(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
-    let entity = &world.zoo.entities[at];
-    let name = swim::restart_name(unit);
-    if data.timing(entity, name).is_some() {
+    if let Some(name) = swim::idle_pick(unit, world, data, at) {
         unit.animation.base_to(name);
     }
     unit.animation.cut();

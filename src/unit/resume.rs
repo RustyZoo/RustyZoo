@@ -159,6 +159,29 @@ pub(crate) fn load(world: &mut World, now: u32) {
     }
 }
 
+/// The idle animation of every loaded unit before any step (behaviours 5.10.1 point 3): the add of
+/// each, then the tank check of the load, which resets a unit in a tank only when its mode changes.
+/// The tank mode is not saved, so every unit starts in mode 0.
+pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
+    for at in 0..world.zoo.entities.len() {
+        let Some(id) = (world.zoo.entities[at].common.as_ref())
+            .filter(|c| c.unit.is_some())
+            .map(|c| c.id)
+        else {
+            continue;
+        };
+        let Some(slot) = world.units.get_mut(id) else {
+            continue;
+        };
+        let mut unit = std::mem::replace(slot, crate::unit::Unit::new(id, slot.kind));
+        crate::unit::movement::read_type(&mut unit, data, &world.zoo.entities[at]);
+        crate::unit::swim::added(&mut unit, world, data, at);
+        if let Some(slot) = world.units.get_mut(id) {
+            *slot = unit;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

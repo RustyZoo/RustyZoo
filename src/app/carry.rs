@@ -216,15 +216,15 @@ impl App<'_> {
         let rand = &mut || self.sim.rng.rand();
         let animal = place::unit::is_animal(ty);
         let before = rating::entity(&mut game.world, cat, tile, animal, rand);
-        let done = place::unit::put_down(&mut game.world, carry.id, (p.x, p.y, p.z), p.facing);
+        let data = Library {
+            catalogue: cat,
+            vfs: self.renderer.vfs(),
+            timings: &self.timings,
+        };
+        let at = (p.x, p.y, p.z);
+        let done = place::unit::put_down(&mut game.world, carry.id, at, p.facing, &data);
         game.carry = None;
         if done {
-            let data = Library {
-                catalogue: cat,
-                vfs: self.renderer.vfs(),
-                timings: &self.timings,
-            };
-            place::unit::show_idle(&mut game.world, carry.id, &data);
             let change = animal.then(|| rating::Change::Animal {
                 ids: rating::Likes::of(ty).ids,
                 sign: 1,
@@ -256,14 +256,14 @@ impl App<'_> {
             self.lines.world.push(line);
             return self.aim(false);
         }
-        if place::unit::put_down(&mut game.world, carry.id, carry.from, carry.facing) {
+        let data = Library {
+            catalogue: self.renderer.catalogue(),
+            vfs: self.renderer.vfs(),
+            timings: &self.timings,
+        };
+        let (world, from) = (&mut game.world, carry.from);
+        if place::unit::put_down(world, carry.id, from, carry.facing, &data) {
             game.selected = Some(carry.id);
-            let data = Library {
-                catalogue: self.renderer.catalogue(),
-                vfs: self.renderer.vfs(),
-                timings: &self.timings,
-            };
-            place::unit::show_idle(&mut game.world, carry.id, &data);
             let tile = (carry.from.0.div_euclid(64), carry.from.1.div_euclid(64));
             let line = Self::landing("putback", &game.world, ty, carry.id, tile);
             self.lines.world.push(line);

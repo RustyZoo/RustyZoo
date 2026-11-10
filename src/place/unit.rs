@@ -685,11 +685,8 @@ fn arrive(world: &mut World, id: u32, part: Option<Part>, data: &dyn Data) {
     }
     movement::read_type(&mut unit, data, &world.zoo.entities[at]);
     unit.typed = true;
-    swim::check(&mut unit, world, at);
+    swim::added(&mut unit, world, data, at);
     swim::add_to_map(&mut unit, world, at);
-    if matches!(&unit.part, Part::Animal(a) if a.egg || a.crated) {
-        movement::idle(&mut unit, world, data, at);
-    }
     if let Some(slot) = world.units.get_mut(id) {
         *slot = unit;
     }
@@ -751,8 +748,7 @@ pub(crate) fn refuse(
             unit.animation = Animation::default();
             unit.predator = 0;
         }
-        swim::put(world, id);
-        show_idle(world, id, data);
+        swim::put(world, id, data);
     }
     let Some(spot) = crate_spot(world, start) else {
         return false;
@@ -773,7 +769,7 @@ pub(crate) fn refuse(
         .map_or(0, |c| c.rotation);
     world.place_unit(at, (x, y, z), rotation);
     world.show_moved(at, true);
-    swim::put(world, id);
+    swim::put(world, id, data);
     from.into_iter()
         .chain([spot])
         .for_each(|t| world.mark_rating(t));
@@ -919,7 +915,13 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
 /// mode of its tile (tank fauna 4, 5), is no longer carried, and the exhibit of the tile is marked for a new rating. Its home is the
 /// exhibit it stands in; the goals then start anew at its next update. `false` when the unit is
 /// gone or not carried.
-pub(crate) fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facing: u32) -> bool {
+pub(crate) fn put_down(
+    world: &mut World,
+    id: u32,
+    point: (i32, i32, i32),
+    facing: u32,
+    data: &dyn Data,
+) -> bool {
     let (Some(at), true) = (
         world.find(id),
         world.units.get(id).is_some_and(|u| u.carried),
@@ -943,7 +945,7 @@ pub(crate) fn put_down(world: &mut World, id: u32, point: (i32, i32, i32), facin
     }
     // The member lists of the return buildings let it go (guest buildings 12.2 point 3).
     crate::building::ret::forget(world, id);
-    crate::unit::swim::put(world, id);
+    crate::unit::swim::put(world, id, data);
     world.mark_rating(tile);
     true
 }
