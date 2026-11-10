@@ -239,7 +239,7 @@ const RECORD: crate::zoo::GuestRecord = crate::zoo::GuestRecord {
     leave: true,
     afraid: true,
     ret: 0,
-    gift: true,
+    gift: false,
     wandered: true,
     stand: true,
     in_group: true,
@@ -302,8 +302,19 @@ fn a_loaded_guest_takes_its_items_flags_and_guide() {
     load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
     let g = guest_of(&world, id);
     assert_eq!(g.items, [None, Some(6491), None, Some(6319), Some(6310)]);
-    assert_eq!((g.leave, g.gift, g.stand), (true, true, true));
+    assert_eq!((g.leave, g.gift, g.stand), (true, false, true));
     assert_eq!((g.guide, g.listening), (77, true));
+    // A saved wish for a gift stays, unless the guest holds a gift (slot 3): the load clears it.
+    for (slot3, wish) in [(0, true), (6319, false)] {
+        let wants = crate::zoo::GuestRecord {
+            items: [0, 6491, 0, slot3, 6310],
+            gift: true,
+            ..RECORD
+        };
+        let (mut world, cat, id) = stored(wants);
+        load(&mut world, &cat, &mut seeded(1), 0, date(5, 6), 0);
+        assert_eq!(guest_of(&world, id).gift, wish);
+    }
     assert!(world.units.get(id).unwrap().goal.wandered);
     // Nothing set, and the extremes: an item id above `i32::MAX` and a guide that is no unit.
     let none = crate::zoo::GuestRecord {

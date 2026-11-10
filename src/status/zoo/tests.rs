@@ -337,8 +337,7 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
         (sums.guests, sums.guest_happiness, sums.guest_average()),
         (1, -40, -40)
     );
-    // A need counts when strictly above the limit, 50 without a guest type; the gift and litter
-    // counts wait for the items.
+    // A need counts when strictly above the limit, 50 without a guest type.
     let needs = |s: &Sums| (s.hungry, s.thirsty, s.restroom, s.tired, s.gift, s.litter);
     assert_eq!(needs(&sums), (1, 0, 1, 0, 0, 0));
     // The guest file's own limit replaces it.
@@ -363,6 +362,70 @@ fn the_sums_count_the_animals_the_value_and_the_esthetics_of_pieces() {
     assert_eq!(esthetics(&mut world, 2), 9.0 - 44.0);
     assert_eq!(esthetics(&mut world, 0), 9.0 - 4.0 * 56.0);
     assert_eq!(esthetics(&mut world, 3), 9.0);
+}
+
+#[test]
+fn the_sums_count_a_wanted_gift_and_held_litter_without_a_threshold() {
+    let cat = Catalogue::default();
+    let mut world = world_with((4, 4), |zoo| {
+        for id in 1..=4 {
+            zoo.entities.push(entity("guests", "g", id, (32, 32), 0));
+        }
+        zoo.entities.push(entity("animals", "a", 5, (32, 32), 0));
+    });
+    // Guest 1 wants a gift, 2 holds litter, 3 both, 4 neither but holds a gift and food. The
+    // happiness and needs are at the worst: nothing but the flag and the slot counts.
+    for (id, gift, items) in [
+        (1, true, [None; 5]),
+        (2, false, [None, None, None, None, Some(6310)]),
+        (3, true, [None, None, None, None, Some(1)]),
+        (4, false, [Some(1), None, None, Some(2), None]),
+    ] {
+        let Some(Part::Guest(g)) = world.units.get_mut(id).map(|u| &mut u.part) else {
+            panic!("no guest {id}");
+        };
+        (g.gift, g.items, g.values) = (gift, items, [0; 5]);
+    }
+    let sums = Sums::of(&world, &cat, 0.0, 0);
+    assert_eq!((sums.guests, sums.gift, sums.litter), (4, 2, 2));
+    // Only guests count.
+    for id in 1..=4 {
+        world.zoo.entities[id as usize - 1].class = "staff".into();
+    }
+    let sums = Sums::of(&world, &cat, 0.0, 0);
+    assert_eq!((sums.guests, sums.gift, sums.litter), (0, 0, 0));
+}
+
+#[test]
+fn the_gift_and_litter_lines_need_over_ten_guests_and_a_count_strictly_over_the_fraction() {
+    // Shipped keys: 20 * 0.7 = 14 and 20 * 0.4 = 8.
+    let mut s = status("[characteristics]\ncPctSouvenir=0.7\ncPctTrash=0.4");
+    s.settings.low_guest_happiness = i32::MIN;
+    let ids = |s: &mut Status, guests, gift, litter| {
+        s.sums = Sums {
+            guests,
+            gift,
+            litter,
+            ..Sums::default()
+        };
+        let mut say = Vec::new();
+        s.message_check(5000.0, &mut say, &mut Vec::new());
+        say.iter().map(|m| m.0).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&mut s, 20, 14, 8), []);
+    assert_eq!(ids(&mut s, 20, 15, 8), [10014]);
+    assert_eq!(ids(&mut s, 20, 14, 9), [10016]);
+    assert_eq!(ids(&mut s, 20, 15, 9), [10014, 10016]);
+    // Ten guests are not many; a zero fraction posts for a single one; a negative one always.
+    assert_eq!(ids(&mut s, 10, 10, 10), []);
+    assert_eq!(ids(&mut s, 11, 7, 4), []);
+    s.settings.percent[5] = 0.0;
+    s.settings.percent[7] = -1.0;
+    assert_eq!(ids(&mut s, 11, 1, 0), [10014, 10016]);
+    assert_eq!(ids(&mut s, 11, 0, 0), [10016]);
+    s.settings.percent[7] = 1.0e9;
+    assert_eq!(ids(&mut s, 11, 0, i32::MAX), []);
+    assert_eq!(ids(&mut s, 0, 5, 5), []);
 }
 
 #[test]

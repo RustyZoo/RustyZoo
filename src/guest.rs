@@ -542,6 +542,8 @@ pub(crate) fn load(
     (guest.female, guest.child) = (record.female, record.child);
     guest.items = record.items.map(|n| (n != 0).then_some(n as i32));
     (guest.leave, guest.gift, guest.stand) = (record.leave, record.gift, record.stand);
+    // A guest that holds a gift no longer wants one (zoo status 5.7 point 5).
+    guest.gift &= guest.items[3].is_none();
     (guest.guide, guest.listening) = (record.guide, record.listening);
     guest.returning = Some(record.ret & RETURN_MASK)
         .filter(|&n| n != 0)
