@@ -1563,8 +1563,10 @@ fn a_saved_game_opens_as_it_was_saved() {
                 .map(|(k, &n)| (k.clone(), n))
                 .collect::<Vec<_>>()
         };
+        // The second load adds one per record again (zoo format 6.16 point 8).
+        let found = u32::try_from(b.entities.len()).unwrap();
         assert_eq!(
-            (a.id_counter, named(a)),
+            (a.id_counter + found, named(a)),
             (b.id_counter, named(b)),
             "{member}"
         );
