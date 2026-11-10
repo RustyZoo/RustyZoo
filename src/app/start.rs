@@ -104,7 +104,6 @@ impl App<'_> {
         self.sim.load(&mut world, self.renderer.catalogue());
         self.sim
             .fences_loaded(&mut world, self.renderer.catalogue());
-        world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         self.settle_units(&mut world);
         world.units.show = crate::show::Params::load(self.renderer.vfs());
         let exhibits = world.exhibits().list().len();
@@ -414,8 +413,10 @@ impl App<'_> {
         }
     }
 
-    /// The idle animation of the units just loaded (behaviours 5.10.1 point 3).
+    /// The tank settings, then the idle animation of the units just loaded (behaviours 5.10.1
+    /// point 3: the tank check needs the settings).
     fn settle_units(&self, world: &mut World) {
+        world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
         let data = crate::behaviour::Library {
             catalogue: self.renderer.catalogue(),
             vfs: self.renderer.vfs(),

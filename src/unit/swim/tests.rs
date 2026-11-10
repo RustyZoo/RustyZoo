@@ -123,7 +123,7 @@ fn the_add_resets_the_idle_outside_a_tank_and_in_one_only_when_the_mode_changes(
     // Behaviours 5.10.1 point 2.
     let mut w = tank_world(5, 4, &[(1, (3, 3), 32), (2, (8, 6), 0), (3, (3, 3), 32)]);
     (1..=3).for_each(|id| fish(&mut w, id, 1, |_| ()));
-    let mut shows = |w: &mut World, id: u32| {
+    let shows = |w: &mut World, id: u32| {
         let at = w.find(id).unwrap();
         let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
         added(&mut unit, w, &ALL, at);
