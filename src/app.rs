@@ -166,8 +166,8 @@ struct Game {
     global: i32,
     /// What the hide/show buttons hide, and Shift (map drawing 15).
     view: view_buttons::View,
-    /// The minimap of the main bar (map drawing 10).
-    minimap: crate::minimap::Minimap,
+    /// The minimap of the main bar (map drawing 10), made at the first pass with an interface.
+    minimap: Option<crate::minimap::Minimap>,
 }
 
 impl Game {

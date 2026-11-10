@@ -6,9 +6,9 @@ use super::*;
 use crate::minimap::{self, Minimap};
 
 impl App<'_> {
-    /// The minimap of a game that opens: the colour file the layout names and the ini file's
-    /// refresh interval.
-    pub(super) fn new_minimap(&self) -> Minimap {
+    /// The minimap of a game: the colour file the layout names and the ini file's refresh
+    /// interval.
+    fn new_minimap(&self) -> Minimap {
         let vfs = self.renderer.vfs();
         let colors = (self.ui.as_ref().and_then(Interface::minimap_file))
             .and_then(|file| vfs.read(&String::from_utf8_lossy(file)).ok())
@@ -19,16 +19,21 @@ impl App<'_> {
     /// The interface pass of the map view (10.7 point 4): the picture is made again when it is
     /// due, and shown when it differs.
     pub(super) fn minimap_pass(&mut self, now: u64) {
-        playing!(self, game, ui);
-        let Some((size, back)) = ui.minimap_slot().filter(|_| ui.map_view_shown()) else {
+        let slot = (self.ui.as_ref()).and_then(|ui| ui.minimap_slot().filter(|_| ui.map_view_shown()));
+        let (Some((size, back)), true) = (slot, self.game.is_some()) else {
             return;
         };
-        if game.minimap.due(now, &game.camera) {
+        if self.game.as_ref().is_some_and(|g| g.minimap.is_none()) {
+            let minimap = self.new_minimap();
+            self.game.as_mut().map(|g| g.minimap = Some(minimap));
+        }
+        playing!(self, game, ui);
+        let Some(minimap) = &mut game.minimap else {
+            return;
+        };
+        if minimap.due(now, &game.camera) {
             let entrance = minimap::entrance_of(&game.world, self.renderer.catalogue());
-            let picture = game
-                .minimap
-                .draw(&game.world, &game.camera, entrance, size, back);
-            ui.set_minimap(picture);
+            ui.set_minimap(minimap.draw(&game.world, &game.camera, entrance, size, back));
         }
     }
 
@@ -36,7 +41,7 @@ impl App<'_> {
     /// check (10.8 point 1), and stops following a unit (camera 10.1).
     pub(super) fn minimap_clicked(&mut self, at: (i32, i32)) {
         playing!(self, game, ui);
-        let Some((x, y)) = game.minimap.tile_at(at) else {
+        let Some((x, y)) = game.minimap.as_ref().and_then(|m| m.tile_at(at)) else {
             return;
         };
         match (u32::try_from(x), u32::try_from(y)) {

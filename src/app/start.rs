@@ -174,7 +174,7 @@ impl App<'_> {
             vehicles: Vec::new(),
             global: self.global_term(),
             view: Default::default(),
-            minimap: self.new_minimap(),
+            minimap: None,
         });
         // The game screen's set-up: running, the pause button shown; the zoom buttons follow the
         // zoom of the file (camera 8.4 point 5, ui layout 7.11 point 4).
