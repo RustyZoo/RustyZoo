@@ -287,7 +287,7 @@ fn ambient_key(unit: &Unit) -> i32 {
 /// for a tile that is none; an animal is left as it is.
 fn face_target(unit: &Unit, world: &mut World, at: usize) {
     let tile = match &unit.part {
-        Part::Staff(s) => s.target,
+        Part::Staff(_) => unit.own_tile,
         Part::Guest(_) => {
             let record = &unit.goal.record;
             let scenery = matches!(record.task, crate::goal::SCENERY | crate::goal::DO_SCENERY);

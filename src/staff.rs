@@ -356,10 +356,8 @@ pub(crate) fn leaves(world: &mut World, id: u32) {
         world.units.release_gate_of(id);
         return;
     };
-    let tile = match &mut keeper.part {
-        Part::Staff(s) => s.target.take(),
-        _ => None,
-    };
+    let tile = keeper.own_tile;
+    keeper.clear_own();
     // The animal he was to heal stays held: only a later heal or its own pick-up lowers the hold
     // (staff 7.7).
     let exhibit = tile.and_then(|t| crate::animal::food::exhibit_of(world, t));

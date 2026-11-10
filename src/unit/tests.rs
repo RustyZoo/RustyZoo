@@ -670,10 +670,7 @@ fn a_guest_or_staff_member_turns_at_once_to_its_own_target_tile() {
     // East (2), south (4) and west (6) of the keeper's own target tile.
     for (tile, facing) in [((2, 1), 2), ((1, 2), 4), ((0, 1), 6)] {
         let target = w.tile_index(tile.0, tile.1).unwrap();
-        w.units.get_mut(3).unwrap().part = Part::Staff(Staff {
-            target: Some(target),
-            ..Staff::default()
-        });
+        w.units.get_mut(3).unwrap().own_tile = Some(target);
         behave(&mut w, &data, 3, "bFace");
         assert_eq!(rotation(&w, 3), facing, "keeper towards {tile:?}");
     }

@@ -1,7 +1,7 @@
 //! The habitat record of a zoo file: the gate and side, the statistics, and the
 //! tank and show a habitat may carry.
 
-use super::{HabitatInfo, R, Reader, ShowInfo, Tank, latin1};
+use super::{HabitatInfo, R, Reader, ShowInfo, Tank};
 
 /// The smallest habitat record: two tiles, a string, 4 + 36 bytes and two dates.
 pub(super) const HABITAT_MIN: usize = 76;
@@ -22,7 +22,7 @@ pub(super) fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
     let name_at = size - r.data.len();
-    let name = latin1(r.string()?);
+    let name = r.text()?;
     let name_to = size - r.data.len();
     let gate = (r.i32()?, r.i32()?);
     let side = r.i32()?;

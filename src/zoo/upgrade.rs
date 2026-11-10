@@ -62,13 +62,13 @@ fn habitat_records(r: &mut Reader) -> R<()> {
 
 /// The shows that precede the id counter: the scripts and the two counters, which a fresh map holds
 /// when the file has none. Scripts are refused below 103, where their items differ.
-pub(super) fn shows(v: u32, shows: &Shows) -> Result<Vec<u8>, String> {
+pub(super) fn shows(v: u32, lang: u32, shows: &Shows) -> Result<Vec<u8>, String> {
     if !shows.scripts.is_empty() && v < 103 {
         return Err(format!(
             "shows with scripts of version {v} cannot be written yet"
         ));
     }
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), lang);
     shows.write_section(&mut o)?;
     Ok(o.0)
 }
