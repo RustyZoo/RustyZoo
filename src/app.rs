@@ -575,13 +575,7 @@ impl<'a> App<'a> {
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {
-            self.follow();
-            if self.map_keys()
-                && !self.following()
-                && let Some(game) = &mut self.game
-            {
-                game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
-            }
+            self.scroll_view(now);
             self.pause_message();
             self.minimap_pass(now);
             if let Some(ui) = &mut self.ui {

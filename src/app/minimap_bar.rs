@@ -25,8 +25,10 @@ impl App<'_> {
             return;
         };
         if self.game.as_ref().is_some_and(|g| g.minimap.is_none()) {
-            let minimap = self.new_minimap();
-            self.game.as_mut().map(|g| g.minimap = Some(minimap));
+            let minimap = Some(self.new_minimap());
+            if let Some(game) = &mut self.game {
+                game.minimap = minimap;
+            }
         }
         playing!(self, game, ui);
         let Some(minimap) = &mut game.minimap else {
