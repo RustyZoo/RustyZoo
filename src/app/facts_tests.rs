@@ -614,7 +614,7 @@ fn open_recommendations(s: &mut Session) -> u32 {
 }
 
 #[test]
-fn escape_closes_the_plaques_before_it_drops_the_held_animal() {
+fn escape_and_the_right_button_close_both_plaques_before_anything_else() {
     with_facts("facts-escape", |s| {
         open_species(s, FOX);
         escape(s);
