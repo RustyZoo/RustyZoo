@@ -1572,3 +1572,63 @@ fn an_animal_refused_by_a_tank_is_crated_and_moved_and_an_egg_never_crated() {
     let crated = matches!(full.units.get(last).map(|u| &u.part), Some(Part::Animal(a)) if a.crated);
     assert!(crated, "crated where it stood");
 }
+
+struct TimedData;
+
+impl crate::behaviour::Data for TimedData {
+    fn set(&self, _: &Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+        None
+    }
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
+        Some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
+    }
+    fn number(&self, _: &Entity, _: &crate::behaviour::Number) -> i32 {
+        0
+    }
+    fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+#[test]
+fn an_egg_put_down_in_a_dry_tank_keeps_its_egg_picture() {
+    // Behaviours 5.10.1 points 2.3 and 4: a pick-up keeps the base of an egg, and a drop where the
+    // tank mode stays 0 changes nothing.
+    let cat = catalogue();
+    let mut w = tank_world(0);
+    let egg = animal("m", (6, 6));
+    let id = w.add(egg.clone(), shape(&egg)).unwrap();
+    let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+        panic!("not an animal");
+    };
+    a.egg = true;
+    let at = w.find(id).unwrap();
+    let mut unit = std::mem::replace(
+        w.units.get_mut(id).unwrap(),
+        crate::unit::Unit::new(id, crate::unit::Kind::Animal),
+    );
+    crate::unit::swim::idle_reset(&mut unit, &w, &TimedData, at);
+    *w.units.get_mut(id).unwrap() = unit;
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    assert!(put_down(
+        &mut w,
+        id,
+        (3 * 64 + 32, 2 * 64 + 32, 0),
+        carry.facing,
+        &TimedData
+    ));
+    let unit = w.units.get_mut(id).unwrap();
+    unit.animation.advance(100, &|_| {
+        Some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
+    });
+    assert_eq!(unit.animation.name, "egg_idle");
+}

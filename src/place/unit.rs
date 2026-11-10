@@ -749,6 +749,7 @@ pub(crate) fn refuse(
             unit.predator = 0;
         }
         swim::put(world, id, data);
+        show_idle(world, id, data);
     }
     let Some(spot) = crate_spot(world, start) else {
         return false;
@@ -905,7 +906,18 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
     unit.travel = -1;
     (unit.through_building, unit.aborted) = (false, false);
     unit.runner = Runner::default();
-    unit.animation = Animation::default();
+    // An egg and a crate keep their base, the others get the plain idle (behaviours 5.10.1 point 4;
+    // a crated escapee shows the crate its crating stop installs).
+    let base = match &unit.part {
+        Part::Animal(a) if a.egg => None,
+        Part::Animal(a) if a.crated => Some("box_idle"),
+        _ => Some("idle"),
+    };
+    if let Some(base) = base {
+        unit.animation = Animation::default();
+        unit.animation.base_to(base);
+        unit.animation.cut();
+    }
     unit.events.clear();
     Some(carry)
 }

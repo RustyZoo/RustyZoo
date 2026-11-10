@@ -599,3 +599,45 @@ fn the_unit_hands_its_idle_animation_to_the_runner_before_each_run() {
     a.egg = true;
     assert_eq!(rested(&mut w, 2).0, Some("egg_idle"));
 }
+
+struct DeepData;
+
+impl crate::behaviour::Data for DeepData {
+    fn set(&self, e: &crate::zoo::Entity, n: &str) -> Option<&[crate::behaviour::Call]> {
+        crate::behaviour::Data::set(&ALL, e, n)
+    }
+    fn ambient(&self, e: &crate::zoo::Entity, t: usize) -> &[crate::behaviour::Row] {
+        crate::behaviour::Data::ambient(&ALL, e, t)
+    }
+    fn timing(&self, e: &crate::zoo::Entity, n: &str) -> Option<crate::behaviour::Timing> {
+        crate::behaviour::Data::timing(&ALL, e, n)
+    }
+    fn number(&self, _: &crate::zoo::Entity, number: &crate::behaviour::Number) -> i32 {
+        i32::from(
+            matches!(number, crate::behaviour::Number::Characteristic(k) if k == "cUnderwater" || k == "cOnlyUnderwater"),
+        )
+    }
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+#[test]
+fn a_loaded_only_underwater_unit_outside_a_tank_resets_again_after_the_check() {
+    // Behaviours 5.10.1 point 3.1: the check of the load puts it in mode 4 and resets it again.
+    let mut w = tank_world(5, 4, &[(2, (8, 6), 0)]);
+    crate::unit::resume::settle(&mut w, &DeepData);
+    let mut unit = std::mem::replace(w.units.get_mut(2).unwrap(), Unit::new(2, Kind::Animal));
+    assert_eq!(unit.tank, 4);
+    assert_eq!(shown(&mut unit, &ALL), "subidle");
+}
+
+#[test]
+fn a_crated_animal_in_a_dry_tank_shows_its_crate_after_the_stop() {
+    // Unit placing 9.1 step 5: the stop of the crating installs the crate's idle whatever the add did.
+    let mut w = tank_world(5, 0, &[(1, (3, 3), 40)]);
+    fish(&mut w, 1, 1, |_| ());
+    crate::animal::boxed::crate_in_place(&mut w, 1, &ALL);
+    let mut unit = std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
+    assert_eq!(shown(&mut unit, &ALL), "box_idle");
+}

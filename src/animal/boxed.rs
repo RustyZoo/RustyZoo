@@ -51,6 +51,8 @@ pub(crate) fn crate_in_place(world: &mut World, id: u32, data: &dyn Data) {
     crate::goal::stop_all(unit);
     unit.animation = Animation::default();
     swim::put(world, id, data);
+    // The stop of the crating installs the crate's picture, whatever the add did (unit placing 9.1 step 5).
+    crate::place::unit::show_idle(world, id, data);
 }
 
 /// A keeper's dart (staff 7.11, animals 21.3): the animal is tranquilised, its goal stopped unless
