@@ -1,12 +1,9 @@
 //! The place and the room of a building's slots: where a user leaves, and whether one more fits.
 
-use super::{Kind, Live, Point, Slot, Species, place, ret};
+use super::{Kind, Live, Point, SHELTER_OF_ANY_EXHIBIT, Slot, Species, place, ret};
 use crate::place::path_shape;
 use crate::world::World;
 use crate::zoo::Entity;
-
-/// The type whose users are not held to their animal's exhibit (guest buildings 6.3 point 5a).
-const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
 
 /// The place a user of slot `slot` of the building is put at when it leaves by force or by the
 /// exit (guest buildings 6.3, 6.7): the slot's exit for a type whose users use it, else the first

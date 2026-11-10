@@ -41,6 +41,9 @@ mod slots;
 pub(crate) use lifecycle::{built, load, loaded_events, reset_all};
 pub(crate) use slots::{can_add, entrances, exit_of, has_open_slot};
 
+/// The type whose users are not held to their animal's exhibit (guest buildings 6.3 point 5a).
+const SHELTER_OF_ANY_EXHIBIT: i32 = 7059;
+
 /// The economy keys buildings use (guest buildings 13): the multiples of the default price from
 /// which a price is expensive and cheap, and the default price of a type that names none; and the
 /// compost's pay for dung.
