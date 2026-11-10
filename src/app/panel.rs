@@ -256,9 +256,6 @@ impl App<'_> {
         }
     }
 
-    /// The exhibit button of the animal panel (4.5): an animal on the grounds does nothing, shown
-    /// panel or not (the grounds test comes first); else the exhibit panel closes when shown and
-    /// opens on the animal's exhibit when hidden.
     /// The sell button of the animal panel (unit placing 10.1): the selected animal is removed as
     /// the bulldozer removes it, after the question with its price from its live happiness and
     /// health when `[UI] confirmSell` asks for one.
@@ -268,6 +265,9 @@ impl App<'_> {
         }
     }
 
+    /// The exhibit button of the animal panel (4.5): an animal on the grounds does nothing, shown
+    /// panel or not (the grounds test comes first); else the exhibit panel closes when shown and
+    /// opens on the animal's exhibit when hidden.
     pub(super) fn animal_exhibit(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &mut self.ui) else {
             return;
