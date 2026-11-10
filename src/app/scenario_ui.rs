@@ -42,7 +42,6 @@ impl App<'_> {
     /// award, its popup and its cash of one pass come in the order of the file (`awards.md` 6.2).
     /// A modal popup holds everything that comes after it until it is answered (`scenarios.md` 8.5).
     pub(super) fn scenario_effects(&mut self) {
-        self.scenario_forced();
         loop {
             if self.question_open() {
                 break;
@@ -60,6 +59,7 @@ impl App<'_> {
                         s.gui().popups_next(popups);
                     }
                 }
+                Act::Forced(progress) => self.force_research(progress),
                 Act::Deed(deeds) => self.scenario_deeds(deeds),
                 Act::Effects(effects) => {
                     if let Some(ui) = &mut self.ui {
@@ -84,14 +84,6 @@ impl App<'_> {
     /// simulation stands still and the scenario does not end until it is done (`scenarios.md` 8.5).
     pub(super) fn scenario_held(&self) -> bool {
         self.sim.scenario().is_some_and(|s| s.gui().pending()) || self.marks.waiting()
-    }
-
-    /// Carries out trigger 10: every research program is completed (research 6.8).
-    pub(super) fn scenario_forced(&mut self) {
-        let forced = self.sim.scenario().map(|s| s.gui().take_forced());
-        for progress in forced.into_iter().flatten() {
-            self.force_research(progress);
-        }
     }
 
     /// Carries out triggers 1, 3, 5, 6, 8 and 9 (scenarios 7.2, 7.4, 7.5): a message, the cash, a
@@ -199,13 +191,22 @@ impl App<'_> {
         self.sim.absorb(&mut game.world);
     }
 
-    /// Carries out the availability triggers. A trigger that changed a flag tells its message or
-    /// popup, and an unlock (`truleb` 10) is stored with the rewards.
+    /// Carries out the availability triggers and trigger 10's forced research, in the order they
+    /// ran (`scenarios.md` 8.6 point 2). A trigger that changed a flag tells its message or popup,
+    /// and an unlock (`truleb` 10) is stored with the rewards.
     pub(super) fn scenario_avail(&mut self) {
-        let made = self.sim.scenario().map(|s| s.gui().take_avail());
-        let popups = self.avail_run(made.unwrap_or_default(), false);
-        if let Some(s) = self.sim.scenario() {
-            popups.into_iter().for_each(|p| s.gui().popup(p));
+        let acts = self.sim.scenario().map(|s| s.gui().take_tree());
+        for act in acts.unwrap_or_default() {
+            match act {
+                Act::Avail(made) => {
+                    let popups = self.avail_run(made, false);
+                    if let Some(s) = self.sim.scenario() {
+                        popups.into_iter().for_each(|p| s.gui().popup(p));
+                    }
+                }
+                Act::Forced(progress) => self.force_research(progress),
+                _ => {}
+            }
         }
     }
 
