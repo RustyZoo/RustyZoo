@@ -24,6 +24,9 @@
 #                         must fail within the CI time). The games need luck (an animal eats; the
 #                         probe lets the hires through) and a change that adds a random draw moves it:
 #                         no re-seed. A broken engine fails under every seed
+#   #saves TEXT           the script saves to @zoo@ and loads it back (the run replaces @zoo@ by a file of
+#                         its own): no save or load may warn or fail, and the file must hold TEXT (printf escapes:
+#                         `Thomson\222s Gazelle`, a name with a Windows-1252 apostrophe)
 #   #pending <check> N    leaves the check out until the issue N is fixed
 #   #unfed ID N           the animal ID is not required to eat: a known fault the original has too (issue N)
 #
@@ -103,14 +106,23 @@ fi
 runs="a b"
 [ -z "${PLAYABLE_PROBE:-}" ] || runs=a # a probe plays the start once and checks only what was built
 for r in $runs; do
+  sed "s|@zoo@|$tmp/$r.zoo|g" "$script" >"$tmp/script-$r.txt"
   # shellcheck disable=SC2086 # the words are a list of flags
-  (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$script" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
+  (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$tmp/script-$r.txt" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
 done
 wait
 for r in $runs; do
+  sed -i "s|$tmp/$r.zoo|@zoo@|g" "$tmp/$r.log" # the log names the file of its run
   [ "$(cat "$tmp/$r.status")" = 0 ] || { fail "the run $r ended with status $(cat "$tmp/$r.status"): $(tail -n 3 "$tmp/$r.err")"; exit 1; }
 done
 tr -d '\r' <"$tmp/a.log" >"$tmp/log"
+# The load of the script (a line `game start load`) adds the units again: the checks below count
+# the lines `unit add` of the play alone.
+loadat=$(awk '$4 == "menu" && $5 == "game" && $6 == "start" && $7 == "load" { print NR; exit }' "$tmp/log")
+if [ -n "$loadat" ]; then
+  awk -v n="$loadat" 'NR <= n || !($4 == "unit" && $5 == "add")' "$tmp/log" >"$tmp/play"
+  mv "$tmp/play" "$tmp/log"
+fi
 
 # expects: what the script builds and hires, as its header declares it.
 expects() {
@@ -155,6 +167,24 @@ fi
 count() { awk "$1 { n++ } END { print n + 0 }" "$tmp/log"; }
 
 expects
+
+# The save and the load back of the script: no warning, and the file holds the text.
+saves=$(header saves)
+if [ -n "$saves" ]; then
+  if grep -q 'warning: step' "$tmp/a.err"; then
+    fail "saves: $(grep 'warning: step' "$tmp/a.err" | head -n 1)"
+  elif [ ! -s "$tmp/a.zoo" ]; then
+    fail "saves: the script wrote no file"
+  elif [ -z "$loadat" ]; then
+    fail "saves: the script did not load the file back"
+  elif [ -n "$(awk '$4 == "menu" && $5 == "message"' "$tmp/log")" ]; then
+    fail "saves: $(awk '$4 == "menu" && $5 == "message"' "$tmp/log" | head -n 1)"
+  elif ! grep -aqF "$(printf "$saves")" "$tmp/a.zoo"; then
+    fail "saves: the file lacks '$saves'"
+  else
+    ok "saves: $(wc -c <"$tmp/a.zoo" | tr -d ' ') bytes saved and loaded back, with '$saves'"
+  fi
+fi
 # want <words>: the number the script expects for these words (0 when it names none).
 want() { tr -d '\r' <"$script" | awk -v w="$1" '/^#expect [0-9]+ / { n = $2; sub(/^#expect [0-9]+ /, ""); if ($0 == w) { print n; exit } }'; }
 

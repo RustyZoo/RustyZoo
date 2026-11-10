@@ -78,7 +78,7 @@ impl Shows {
     /// The section and each show info written as version 106 and read back, as a save and a load
     /// do (the unit lists are not stored).
     pub(crate) fn saved_and_read(&self) -> Shows {
-        let mut o = Out(Vec::new());
+        let mut o = Out(Vec::new(), 1033);
         self.write_section(&mut o).unwrap();
         let infos: Vec<_> = self.infos.iter().flatten().collect();
         infos.iter().for_each(|i| i.write(&mut o));

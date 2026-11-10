@@ -7,7 +7,8 @@ use super::{fresh, unit, upgrade};
 use crate::money::{CATEGORIES, Money, YEARS};
 use crate::timing::Calendar;
 
-pub(super) struct Out(pub(super) Vec<u8>);
+/// The bytes written, and the language of the file, which gives the code page of its strings.
+pub(super) struct Out(pub(super) Vec<u8>, pub(super) u32);
 
 impl Out {
     pub(super) fn u8(&mut self, n: u8) {
@@ -36,13 +37,24 @@ impl Out {
         self.u8(e.sender_channel);
         self.u8(e.channel);
     }
-    /// A string of one byte per character, below 4096 bytes.
+    /// A string in the code page of the language (zoo format 1), below 4096 bytes; a
+    /// character the code page lacks fails the write, naming it.
     pub(super) fn string(&mut self, s: &str) -> Result<(), String> {
-        if s.chars().count() >= 4096 || s.chars().any(|c| c as u32 > 255) {
-            return Err(format!("a string of {} characters", s.chars().count()));
+        let mut bytes = Vec::new();
+        for c in s.chars() {
+            let Some(b) = crate::strings::encode_char(self.1, c) else {
+                return Err(format!(
+                    "{s:?}: {c:?} is not in the code page of language {}",
+                    self.1
+                ));
+            };
+            bytes.extend(b);
         }
-        self.u32(s.chars().count() as u32);
-        self.0.extend(s.chars().map(|c| c as u8));
+        if bytes.len() >= 4096 {
+            return Err(format!("a string of {} bytes", bytes.len()));
+        }
+        self.u32(bytes.len() as u32);
+        self.0.extend(bytes);
         Ok(())
     }
 }
@@ -65,7 +77,7 @@ impl Zoo {
         if kept.habitats.is_empty() || kept.finances.is_empty() {
             return Err("the zoo was not read from a file".into());
         }
-        let mut o = Out(b"TZFB".to_vec());
+        let mut o = Out(b"TZFB".to_vec(), self.locale);
         o.u32(MAX_VERSION);
         o.u32(self.locale);
         o.u32(self.expansion);
@@ -74,7 +86,7 @@ impl Zoo {
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
         o.bytes(&upgrade::habitats(v, &habitats(self)?)?);
-        o.bytes(&upgrade::shows(v, &self.shows)?);
+        o.bytes(&upgrade::shows(v, self.locale, &self.shows)?);
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
             return Err("the tiles do not fill the map".into());
@@ -162,7 +174,7 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
     // below 97 the upgrade refuses the file.
     let mut parts: Vec<(usize, usize, Out)> = Vec::new();
     for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info) {
-        let mut name = Out(Vec::new());
+        let mut name = Out(Vec::new(), zoo.locale);
         name.string(&info.name)?;
         parts.push((from, to, name));
     }
@@ -170,7 +182,7 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
         let (Some(&(from, to)), true) = (at.as_ref(), zoo.version >= 97) else {
             continue;
         };
-        let mut show = Out(Vec::new());
+        let mut show = Out(Vec::new(), zoo.locale);
         match zoo.shows.info(n) {
             Some(info) => {
                 show.u8(1);
@@ -194,7 +206,7 @@ fn finances(zoo: &Zoo, money: &Money) -> Result<Vec<u8>, String> {
     let (kept, status) = (&zoo.kept, &zoo.clocks.status);
     let b = &kept.finances;
     let short = || "the game block is short".to_string();
-    let mut o = Out(b.get(..45).ok_or_else(short)?.to_vec());
+    let mut o = Out(b.get(..45).ok_or_else(short)?.to_vec(), zoo.locale);
     for (i, t) in status.timers.iter().enumerate() {
         o.0[4 + 4 * i..8 + 4 * i].copy_from_slice(&t.to_le_bytes());
     }
@@ -255,7 +267,7 @@ fn entity(o: &mut Out, v: u32, now: u64, e: &Entity) -> Result<(), String> {
         o.u32(0);
         return Ok(());
     };
-    let body = body(v, now, e, c)?;
+    let body = body(v, o.1, now, e, c)?;
     o.u32(body.len() as u32);
     o.bytes(&body);
     Ok(())
@@ -271,7 +283,7 @@ fn is_unit(class: &str) -> bool {
 
 /// The body in the form of version 106. An entity read from a file of version `v` has its class
 /// fields converted; one made in play has them built from the model (`fresh`), as is an animal's.
-fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
+fn body(v: u32, lang: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let (b, s) = (&c.raw.body, &c.raw.spans);
     let read = !b.is_empty() && s.end <= b.len();
     // An animal and a staff member are written from their records, whether they were read or made
@@ -279,7 +291,7 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     let staff = matches!(&e.class[..], "keeper" | "maint" | "tour" | "helicopter");
     let (mut pre, mut post) = match read && e.class != "animals" && !staff {
         true => super::body::transcode(v, e.class.as_bytes(), b)?,
-        false => fresh::parts(e, c, now)?,
+        false => fresh::parts(lang, e, c, now)?,
     };
     // A loaded building is written from its figures, which the world keeps live (zoo format 6.9).
     if let (true, "building", Some(b)) = (read, e.class.as_str(), &c.building) {
@@ -293,7 +305,7 @@ fn body(v: u32, now: u64, e: &Entity, c: &Common) -> Result<Vec<u8>, String> {
     if let (true, "ambient", Some(f)) = (read, e.class.as_str(), c.flight) {
         pre = f.bytes().to_vec();
     }
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), lang);
     if has_food(&e.class) {
         let keeps = e.class == "food"
             || ["poo", "dinopoo"]

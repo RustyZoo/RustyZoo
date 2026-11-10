@@ -229,13 +229,18 @@ pub(crate) fn visible(language: u32, bytes: &[u8]) -> bool {
 
 /// Whether Windows-1252 has the character `c`.
 pub(crate) fn in_cp1252(c: char) -> bool {
-    (0..=255u8).any(|b| from_cp1252(b) == c)
+    to_cp1252_exact(c).is_some()
+}
+
+/// The Windows-1252 byte of `c`, if the code page has it.
+pub(crate) fn to_cp1252_exact(c: char) -> Option<u8> {
+    (0..=255u8).find(|&b| from_cp1252(b) == c)
 }
 
 /// The Windows-1252 bytes of `text`; a character the code page lacks becomes `?`.
 pub fn to_cp1252(text: &str) -> Vec<u8> {
     text.chars()
-        .map(|c| (0..=255u8).find(|&b| from_cp1252(b) == c).unwrap_or(b'?'))
+        .map(|c| to_cp1252_exact(c).unwrap_or(b'?'))
         .collect()
 }
 
