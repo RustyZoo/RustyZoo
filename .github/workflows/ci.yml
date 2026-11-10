@@ -165,7 +165,7 @@ jobs:
       - if: runner.os == 'Linux'
         run: ci/check-hash-iteration.sh
 
-      # No source file over 1000 lines grows (ci/file-size-allow.txt lists today's).
+      # No source file over 900 lines grows (ci/file-size-allow.txt lists today's).
       - if: runner.os == 'Linux'
         run: ci/check-file-size.sh
       - run: cargo fmt --check

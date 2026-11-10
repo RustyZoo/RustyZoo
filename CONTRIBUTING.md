@@ -43,7 +43,7 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 ## Documentation
 
 - `docs/architecture.md` is a short module map. Update it only when a module is added, removed or changes its role; never for a change inside a module (its own doc comment says what it does).
-- A function over 150 lines fails clippy (`too_many_lines`); a non-test file over 1000 lines fails `ci/check-file-size.sh` unless `ci/file-size-allow.txt` lists it, and a listed file may only shrink.
+- A function over 150 lines fails clippy (`too_many_lines`); a non-test file over 900 lines fails `ci/check-file-size.sh` unless `ci/file-size-allow.txt` lists it, and a listed file may only shrink.
 
 ## Windows CI
 
