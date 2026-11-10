@@ -39,6 +39,8 @@ mod rules;
 #[cfg(test)]
 mod chain_tests;
 #[cfg(test)]
+mod order_tests;
+#[cfg(test)]
 mod shipped_tests;
 #[cfg(test)]
 mod tests;

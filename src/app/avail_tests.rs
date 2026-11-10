@@ -131,7 +131,12 @@ fn a_saved_game_runs_the_resume_triggers_and_the_triggers_of_its_goal_states_the
 /// Starts a scenario of two programs (free of progress, making the lion and the zebra available)
 /// with `trigger` as its start trigger; the types' flags and the programs' progress.
 fn forced(name: &str, trigger: &str) -> ([bool; 2], Vec<f32>) {
-    let scn = format!("[start]\nresearch=r.cfg\ntriggers=t\n[t]\n{trigger}\n");
+    forced_list(name, &format!("triggers=t\n[t]\n{trigger}\n"))
+}
+
+/// [`forced`] for a start list: the `[start]` keys after `research`, then the sections.
+fn forced_list(name: &str, start: &str) -> ([bool; 2], Vec<f32>) {
+    let scn = format!("[start]\nresearch=r.cfg\n{start}");
     let files = [
         ("s/a.scn", scn.into_bytes()),
         ("r.cfg", b"[branches]\nbranch=b.cfg\n".to_vec()),
@@ -178,6 +183,16 @@ fn forced(name: &str, trigger: &str) -> ([bool; 2], Vec<f32>) {
     let tree = app.sim.research().unwrap();
     let programs = tree.branches[0].categories[0].programs.iter();
     (flags, programs.map(|p| p.progress).collect())
+}
+
+#[test]
+fn trigger_10_runs_in_the_order_of_the_start_list_between_the_availability_triggers() {
+    // The earlier trigger 4 makes the lion unavailable, the program the later trigger 10 completes
+    // makes it available again; in the other order the lion stays unavailable (scenarios 8.6 point 2).
+    let hide = "[h]\ntrulea=4\ntruleb=1\ntarga=5\n[f]\ntrulea=10\n";
+    let order = |name, list| forced_list(name, &format!("{list}{hide}")).0;
+    assert_eq!(order("order-hf", "triggers=h\ntriggers=f\n"), [true, true]);
+    assert_eq!(order("order-fh", "triggers=f\ntriggers=h\n"), [false, true]);
 }
 
 #[test]
