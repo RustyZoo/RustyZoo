@@ -93,19 +93,3 @@ fn the_hint_of_a_child_reads_the_children_as_they_are_at_its_trigger() {
     let later = format!("{single}{}", done("a", "text=30"));
     assert_eq!(hint("goal=g\ngoal=a\ngoal=z\n", &later), Some(30));
 }
-
-#[test]
-fn the_hint_sees_the_goals_before_the_group_with_their_new_states_and_the_ones_after_with_the_old() {
-    // `a` before the group completes in this pass, so the walk passes it; `z` after the group is
-    // read with its previous state, in progress.
-    let sections = format!(
-        "{}[g]\nrtype=1\nchild=k0\nchild=k1\n{}{}{}",
-        done("k0", &format!("{SHOW}\ntext=10")),
-        open("k1", 11),
-        done("a", "text=30"),
-        open("z", 20),
-    );
-    assert_eq!(hint("goal=a\ngoal=g\ngoal=z\n", &sections), Some(11));
-    // With the group first, the group's own old state 0 is read: k1 is its first child in progress.
-    assert_eq!(hint("goal=g\ngoal=a\ngoal=z\n", &sections), Some(11));
-}

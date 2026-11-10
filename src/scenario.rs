@@ -457,8 +457,7 @@ impl Goal {
         let fire = matches!(new, 1..=3) && new != self.state;
         self.state = new;
         if fire {
-            s.trigger
-                .fire(&self.name, &new.to_string(), true, log, gui);
+            s.trigger.fire(&self.name, &new.to_string(), true, log, gui);
         }
         fire
     }
