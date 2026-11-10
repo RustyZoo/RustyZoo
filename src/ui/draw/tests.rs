@@ -1021,6 +1021,91 @@ fn the_labels_below_zero_take_the_negative_colour_and_the_others_the_positive_on
 }
 
 #[test]
+fn a_point_label_is_red_at_zero_or_below_and_green_above() {
+    let green = [10, 200, 10];
+    let neg = rgb(text_color([0, 255, 255]));
+    for (value, expect_green) in [(5, true), (0, false), (-3, false)] {
+        let mut tree = graph_tree("graph-point-label", "l", &[(0, value)]);
+        let Kind::Graph(g) = &mut tree.elements[1].kind else {
+            unreachable!();
+        };
+        g.point_label = true;
+        g.point_label_color = green;
+        g.forced_min = -10;
+        let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
+        let (greens, reds) = (count(&frame, rgb(text_color(green))), count(&frame, neg));
+        assert_eq!(greens > 0, expect_green, "{value}: {greens}");
+        assert!(expect_green || reds > 0, "{value}: no negative label");
+    }
+}
+
+#[test]
+fn a_point_label_is_pulled_in_from_the_edges() {
+    let mut prev = (0, 0);
+    // Right: x + w > r + 10 puts it at r + 10 - w.
+    assert_eq!(
+        graph::label_spot((200, 50), 20, 10, (0, 0, 100), &mut prev),
+        (90, 50)
+    );
+    // Left: x - w < l - 10 puts it at l - 10 + w.
+    prev = (0, 0);
+    assert_eq!(
+        graph::label_spot((0, 50), 20, 10, (30, 0, 100), &mut prev),
+        (40, 50)
+    );
+}
+
+#[test]
+fn a_label_that_meets_the_previous_one_moves_one_line_up() {
+    let mut prev = (0, 0);
+    assert_eq!(
+        graph::label_spot((50, 60), 10, 10, (0, 0, 200), &mut prev),
+        (50, 60)
+    );
+    assert_eq!(prev, (60, 60));
+    // Close in x (55 - 10 < 60) and in y: one line above the previous, then the next climbs again.
+    assert_eq!(
+        graph::label_spot((55, 62), 10, 10, (0, 0, 200), &mut prev),
+        (55, 49)
+    );
+    assert_eq!(
+        graph::label_spot((58, 52), 10, 10, (0, 0, 200), &mut prev),
+        (58, 38)
+    );
+    // Far in x, or more than a line away in y: not moved.
+    assert_eq!(
+        graph::label_spot((150, 40), 10, 10, (0, 0, 200), &mut prev),
+        (150, 40)
+    );
+    assert_eq!(
+        graph::label_spot((150, 100), 10, 10, (0, 0, 200), &mut prev),
+        (150, 100)
+    );
+}
+
+#[test]
+fn a_label_is_kept_below_the_top_even_after_a_move_up() {
+    let mut prev = (0, 0);
+    assert_eq!(
+        graph::label_spot((50, 3), 10, 10, (0, 0, 200), &mut prev),
+        (50, 10)
+    );
+    // The overlap would put it at -1; the top clamp wins.
+    assert_eq!(
+        graph::label_spot((52, 12), 10, 10, (0, 0, 200), &mut prev),
+        (52, 10)
+    );
+}
+
+#[test]
+fn placing_labels_never_overflows() {
+    for v in [i32::MIN, -1, 0, 1, i32::MAX] {
+        let mut prev = (v, v);
+        let _ = graph::label_spot((v, v), v, v, (v, v, v), &mut prev);
+    }
+}
+
+#[test]
 fn a_graph_of_any_size_or_with_far_points_draws_without_panicking() {
     for points in [
         vec![(0, i32::MAX), (1, i32::MIN)],

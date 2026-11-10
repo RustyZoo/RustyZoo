@@ -1,4 +1,4 @@
-//! Drawing a graph (zoo status 21.3 steps 6 and 7): the axes, the labels, the line or the bars.
+//! Drawing a graph (zoo status 21.3 steps 6, 7 and 9): the axes, the labels, the line or the bars.
 
 use super::*;
 use crate::text::format::{self, integer, money};
@@ -77,6 +77,32 @@ fn dot(canvas: &mut Framebuffer, (x, y): (i32, i32), color: [u8; 4]) {
             }
         }
     }
+}
+
+/// Where a point label of width `w` goes (21.3 step 9): pulled in from the edges, one line up when
+/// it meets the previous one (`previous` is that one's bottom and right), and kept below the top.
+pub(super) fn label_spot(
+    (mut x, mut y): (i32, i32),
+    w: i32,
+    fh: i32,
+    (l, t, r): (i32, i32, i32),
+    previous: &mut (i32, i32),
+) -> (i32, i32) {
+    if x.saturating_add(w) > r.saturating_add(10) {
+        x = r.saturating_add(10).saturating_sub(w);
+    }
+    if x.saturating_sub(w) < l.saturating_sub(10) {
+        x = l.saturating_sub(10).saturating_add(w);
+    }
+    let (py, pr) = *previous;
+    if x.saturating_sub(w) < pr && (i64::from(py) - i64::from(y)).abs() <= i64::from(fh) {
+        y = py.saturating_sub(fh).saturating_sub(1);
+    }
+    if y.saturating_sub(fh) < t {
+        y = t.saturating_add(fh);
+    }
+    *previous = (y, x.saturating_add(w));
+    (x, y)
 }
 
 impl Painter {
@@ -175,21 +201,19 @@ impl Painter {
                 }
             }
         }
-        for (i, p) in g.points.iter().enumerate() {
-            if g.point_label {
-                let text = label(g, i64::from(p.y));
-                let half = font.width(&text) / 2;
-                let x = at(i).clamp(l + half, (r - half).max(l + half));
-                let y = (ys[i] - 2 - text_height).max(t);
-                say(
-                    canvas,
-                    font,
-                    &text,
-                    (x, y),
-                    g.point_label_color,
-                    text::Justify::Center,
-                );
-            }
+        // The point labels (21.3 step 9), after all the segments and bars.
+        let mut previous = (0, 0);
+        for (i, p) in g.points.iter().enumerate().filter(|_| g.point_label) {
+            let text = label(g, i64::from(p.y));
+            let w = (text.len() as i32).saturating_mul(font.advance(b'0'));
+            let (x, y) = label_spot((at(i), ys[i]), w, text_height, (l, t, r), &mut previous);
+            let color = if p.y <= 0 {
+                g.y_neg
+            } else {
+                g.point_label_color
+            };
+            let top = y.saturating_sub(text_height + 5);
+            say(canvas, font, &text, (x, top), color, text::Justify::Center);
         }
         // The X labels stop at the first point whose x does not follow the one before; they sit at
         // equal steps from the first to the last point, bars or not.
