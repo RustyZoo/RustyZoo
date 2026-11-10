@@ -787,21 +787,22 @@ fn the_date_hook_runs_inside_the_guest_creation_so_its_flight_moves_in_that_step
         };
         let before = guests(&run.world);
         let mut told = Vec::new();
-        let report = run.sim.step_hooked(
-            &crate::behaviour::NoData,
-            &run.cat,
-            &mut run.world,
-            &mut run.money,
-            67,
-            |_, _, _| {},
-            &mut |sim, world| {
+        let report = run.sim.step_hooked(crate::sim::Step {
+            data: &crate::behaviour::NoData,
+            cat: &run.cat,
+            world: &mut run.world,
+            money: &mut run.money,
+            ms: 67,
+            update: &mut |_, _, _| {},
+            created: &mut |sim, world| {
                 let ty = crate::flight::ambient(&run.cat, 5083).unwrap();
                 told.push((
                     guests(world),
                     crate::flight::launch(world, &run.cat, ty, 5, &mut sim.rng),
                 ));
             },
-        );
+            report: Default::default(),
+        });
         run.sim.status.rating = 85;
         // The hook runs once per guest created, with the guest already in the world.
         assert_eq!(told.len(), usize::from(report.arrived));
