@@ -631,3 +631,60 @@ fn a_click_on_a_message_about_an_animal_goes_to_it_and_releases_the_bulldozer() 
         );
     });
 }
+
+/// Where a save made now writes the entity `id`.
+fn saved_at(s: &mut Session, id: u32) -> Option<(i32, i32, i32)> {
+    let zoo = crate::zoo::Zoo::parse(&s.app.saved_bytes().unwrap()).unwrap();
+    let c = zoo
+        .entities
+        .iter()
+        .find_map(|e| e.common.as_ref().filter(|c| c.id == id));
+    c.map(|c| (c.x, c.y, c.z))
+}
+
+/// The point of the pending thing now.
+fn pending_at(s: &Session) -> Option<(i32, i32, i32)> {
+    let p = s.app.game.as_ref().unwrap().placing.pending.as_ref();
+    p.map(|p| (p.x, p.y, p.z))
+}
+
+#[test]
+fn a_save_while_carried_writes_the_last_point_the_pointer_gave_on_the_map() {
+    with_game("carry-save", "", |s| {
+        let unit = s.add(12, 21 * 64 + 32, 20 * 64 + 32, 0);
+        let cart = s.add(15, 25 * 64 + 32, 25 * 64 + 32, 4);
+        s.pass(&[]);
+        let (unit_from, cart_from) = (
+            (21 * 64 + 32, 20 * 64 + 32, 0),
+            (25 * 64 + 32, 25 * 64 + 32, 0),
+        );
+        let off_map = s.at(-30, 20, 32, 32);
+        for (id, from, first, second) in [
+            (unit, unit_from, s.at(18, 20, 40, 8), s.at(17, 22, 8, 40)),
+            (cart, cart_from, s.at(18, 20, 40, 8), s.at(17, 22, 8, 40)),
+        ] {
+            let here = s.at(from.0 / 64, from.1 / 64, 32, 32);
+            s.click(here);
+            if id == unit {
+                s.click(here);
+            } else {
+                assert!(s.app.lift_building(id));
+            }
+            // The pointer on the map: the save writes the point of the pending thing.
+            s.pass(&[first]);
+            let point = pending_at(s).expect("on the map");
+            assert_ne!(point, from);
+            assert_eq!(saved_at(s, id), Some(point));
+            s.pass(&[second]);
+            let point = pending_at(s).expect("on the map");
+            assert_eq!(saved_at(s, id), Some(point));
+            // The pointer off the map: nothing is pending and the save keeps the last point.
+            s.pass(&[off_map]);
+            assert_eq!(pending_at(s), None);
+            assert_eq!(saved_at(s, id), Some(point), "{id}");
+            // Put back, the entity is where it stood.
+            s.app.put_back();
+            assert_eq!(saved_at(s, id), Some(from));
+        }
+    });
+}

@@ -647,6 +647,14 @@ pub(crate) struct Held {
     live: Option<Live>,
 }
 
+impl Held {
+    /// Writes the building into the list of a zoo about to be saved, where it was.
+    pub(crate) fn put_in(&self, zoo: &mut crate::zoo::Zoo) {
+        zoo.entities
+            .insert(self.at.min(zoo.entities.len()), self.entity.clone());
+    }
+}
+
 /// Picks building `id` up (guest buildings 11.1): its users are pushed out as a forced leave, a
 /// trash can spills its fill, and the building leaves the world, nothing recorded for the undo.
 /// `None` when there is no such building.

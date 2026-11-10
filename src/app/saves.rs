@@ -93,8 +93,25 @@ impl App<'_> {
         self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
+        if let Some(held) = &game.held {
+            held.put_in(&mut zoo);
+        }
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
         game.world.finish_save(&mut zoo, cat);
+        // A unit or a building carried is written at the last point under the pointer, a held
+        // building being put back in the list before (unit placing 9.1.2 points 3, 7).
+        if let Some(carry) = &game.carry {
+            let found =
+                |e: &&mut crate::zoo::Entity| e.common.as_ref().is_some_and(|c| c.id == carry.id);
+            if let Some(c) = zoo
+                .entities
+                .iter_mut()
+                .find(found)
+                .and_then(|e| e.common.as_mut())
+            {
+                (c.x, c.y, c.z) = carry.at;
+            }
+        }
         zoo.expansion = game.build.value() as u32;
         if let Some(section) = self.sim.research_section() {
             zoo.set_research(section);

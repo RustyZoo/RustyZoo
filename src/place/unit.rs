@@ -832,6 +832,9 @@ pub(crate) struct Carry {
     /// The type, a position in the catalogue.
     pub ty: usize,
     pub from: (i32, i32, i32),
+    /// The last point the pending thing had (unit placing 9.1.2 point 7): the pick-up point until
+    /// the pointer gives one on the map. A save writes it.
+    pub at: (i32, i32, i32),
     pub facing: u32,
     pub view: u8,
 }
@@ -857,6 +860,7 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
         id,
         ty,
         from: (c.x, c.y, c.z),
+        at: (c.x, c.y, c.z),
         facing: c.rotation,
         view,
     };

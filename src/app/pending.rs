@@ -106,6 +106,10 @@ impl App<'_> {
                 ),
                 None => place::unit::carried(&game.world, cat, water, carry, view, aim),
             };
+            // The last point on the map is the one a save writes (unit placing 9.1.2 point 7).
+            if let (Some(p), Some(carry)) = (&game.placing.pending, game.carry.as_mut()) {
+                carry.at = (p.x, p.y, p.z);
+            }
         }
         // The gate tool's pending gate sits on the fence piece under the pointer.
         // It is judged when the piece changes, so a gate just placed shows nothing until the
