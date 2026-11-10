@@ -292,6 +292,8 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// The menu is not shown yet ([`App::held_menu`]).
+    menu_held: bool,
     /// The warning about user-made types is open (main menu 3.5 point 6.4).
     warned: bool,
     /// Whether the end dialog of a scenario is open.
@@ -361,14 +363,30 @@ impl<'a> App<'a> {
         settings: Settings,
         timers: Timers,
         size: (u32, u32),
-        mut ui: Interface,
-        mut menu: Menu,
+        ui: Interface,
+        menu: Menu,
+        music: Option<Music>,
+    ) -> Result<App<'a>, RenderError> {
+        let mut app = App::held_menu(renderer, settings, timers, size, ui, menu, music)?;
+        app.show_menu();
+        Ok(app)
+    }
+
+    /// [`App::menu`], but the menu is not shown yet: [`App::start_up`] shows it unless the game
+    /// of the command line opens first (main menu 3.5 point 4).
+    pub fn held_menu(
+        renderer: MapRenderer<'a>,
+        settings: Settings,
+        timers: Timers,
+        size: (u32, u32),
+        ui: Interface,
+        menu: Menu,
         music: Option<Music>,
     ) -> Result<App<'a>, RenderError> {
         let mut app = App::empty(renderer, timers, size, settings)?;
-        app.menu_events = menu.show(&mut ui);
         app.set_interface(ui);
         app.menu = Some(menu);
+        app.menu_held = true;
         app.music = music;
         app.options_start();
         Ok(app)
@@ -434,6 +452,7 @@ impl<'a> App<'a> {
             fullscreen: false,
             asked: None,
             warned: false,
+            menu_held: false,
             ending: false,
             saving: None,
             listing: None,

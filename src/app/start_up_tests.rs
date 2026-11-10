@@ -1,7 +1,7 @@
 //! The saved game of the command line and the warning about user-made types, at the end of the
 //! start-up (main menu 3.5 points 4 to 6).
 
-use super::start_tests::{click, key, shown, with_game_in};
+use super::start_tests::{click, key, shown, with_game_held};
 use super::*;
 use crate::fixtures::Install;
 use crate::ui::layout::{HIDDEN, NEVER_SHOWN};
@@ -25,7 +25,8 @@ fn started_up(
     path: Option<&str>,
     body: impl FnOnce(&mut App, &Install),
 ) {
-    with_game_in(name, ini, 0, files, None, |app, install| {
+    let held = path.is_some_and(|p| !p.is_empty());
+    with_game_held(name, ini, 0, files, None, held, |app, install| {
         app.menu.as_mut().unwrap().set_user_types(types);
         app.start_up(path);
         body(app, install);
@@ -78,6 +79,25 @@ fn the_command_line_opens_the_game_and_the_menu_never_shows() {
             assert!(!settings(install).contains("lastfile"));
         },
     );
+}
+
+#[test]
+fn the_menu_steps_do_not_run_when_the_command_line_game_starts() {
+    // `lastfile` names a missing file: the Continue check would empty it.
+    let ini = format!("{DONE}[user]\nlastfile=gone.zoo\n");
+    started_up("cl-gone", &ini, false, &[], Some("saved.zoo"), |app, install| {
+        assert!(app.camera().is_some());
+        assert!(!app.menu_events.iter().any(|l| l.starts_with("continue")));
+        assert!(!settings(install).contains("lastfile"));
+    });
+    // A path that does not open leaves the menu: its steps run, as without a path.
+    for path in [Some("ghost.zoo"), Some("bad.zoo")] {
+        started_up("cl-gone2", &ini, false, &[], path, |app, install| {
+            assert!(shown(app, 26) && app.camera().is_none(), "{path:?}");
+            assert!(app.menu_events.contains(&"continue disabled".into()));
+            assert!(settings(install).contains("lastfile="), "{path:?}");
+        });
+    }
 }
 
 #[test]

@@ -184,7 +184,12 @@ fn make_app<'c>(
         }
         (None, Some(booted)) => {
             let catalogue = catalogue.insert(booted.catalogue);
-            let mut app = App::menu(
+            // A saved game on the command line opens before the menu is shown.
+            let menu_app = match flags.open.is_some_and(|p| !p.is_empty()) {
+                true => App::held_menu,
+                false => App::menu,
+            };
+            let mut app = menu_app(
                 MapRenderer::new(vfs, catalogue),
                 Settings::from_config(ini),
                 timers,

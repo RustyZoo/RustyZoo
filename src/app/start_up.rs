@@ -29,11 +29,27 @@ impl App<'_> {
     /// types.
     pub fn start_up(&mut self, path: Option<&str>) {
         if self.first_run() {
+            self.menu_held = false;
             return;
         }
-        if self.command_line(path) == Line::Idle {
+        let line = self.command_line(path);
+        if line == Line::Started {
+            self.menu_held = false;
+            return;
+        }
+        self.show_menu();
+        if line == Line::Idle {
             self.warn_user_types();
         }
+    }
+
+    /// Shows the main menu if [`App::held_menu`] kept it back: its steps (the Continue check)
+    /// run only now.
+    pub(super) fn show_menu(&mut self) {
+        if let (true, Some(ui), Some(menu)) = (self.menu_held, &mut self.ui, &mut self.menu) {
+            self.menu_events.extend(menu.show(ui));
+        }
+        self.menu_held = false;
     }
 
     /// Opens the saved game `path` as Continue does, but `lastfile` stays: a path that is empty

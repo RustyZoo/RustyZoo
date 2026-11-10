@@ -255,6 +255,19 @@ pub(super) fn with_game_in(
     catalogue: Option<Catalogue>,
     body: impl FnOnce(&mut App, &Install),
 ) {
+    with_game_held(name, ini, expansions, more, catalogue, false, body)
+}
+
+/// [`with_game_in`], where `held` keeps the menu from being shown.
+pub(super) fn with_game_held(
+    name: &str,
+    ini: &str,
+    expansions: i32,
+    more: &[(&str, Vec<u8>)],
+    catalogue: Option<Catalogue>,
+    held: bool,
+    body: impl FnOnce(&mut App, &Install),
+) {
     let files = Install::new(&format!("start-{name}"), &[]);
     std::fs::write(files.0.join("saved.zoo"), map()).unwrap();
     std::fs::write(files.0.join("bad.zoo"), b"not a map").unwrap();
@@ -326,7 +339,8 @@ pub(super) fn with_game_in(
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = catalogue.unwrap_or_else(|| Catalogue::load(&vfs).unwrap());
-    let mut app = App::menu(
+    let menu_app = if held { App::held_menu } else { App::menu };
+    let mut app = menu_app(
         MapRenderer::new(&vfs, &catalogue),
         Settings::default(),
         Timers::new(66, 16, 200),
