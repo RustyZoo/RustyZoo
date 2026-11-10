@@ -454,7 +454,8 @@ impl Window {
 
     /// Rows that came or went outside a refill (20.11 points 2 and 4): the rows of the units no
     /// longer in `list` are removed and a new unit's row is appended, visible when it passes the
-    /// filter. The counts, the other rows and the selection stay; the refill is asked for.
+    /// filter. The counts and the other rows stay; the selection and the first shown row are row
+    /// numbers that follow the removals (20.11 point 8); the refill is asked for.
     pub(crate) fn edit(
         &mut self,
         which: usize,
@@ -462,10 +463,19 @@ impl Window {
         (ui, world, cat, vfs): (&mut Interface, &World, &Catalogue, &Vfs),
     ) {
         let spec = &SPECS[which];
-        let kept = (ui.selected_row(spec.list)).and_then(|r| self.ids.get(r).copied());
         let keep: Vec<bool> = (self.ids.iter())
             .map(|id| list.iter().any(|e| e.id == *id))
             .collect();
+        // The selection and the first shown row are row numbers (20.11 point 8): a row removed
+        // above one lowers it, the selected row's own removal leaves the number on the next row.
+        let (mut row, mut top) = (ui.selected_row(spec.list), ui.list_top(spec.list));
+        let mut gone = 0;
+        for k in (0..keep.len()).filter(|&k| !keep[k]) {
+            let r = k - gone;
+            gone += 1;
+            row = row.map(|s| s - usize::from(r < s));
+            top -= usize::from(r < top);
+        }
         keep_only(&mut self.ids, &keep);
         keep_only(&mut self.names, &keep);
         keep_only(&mut self.helis, &keep);
@@ -481,8 +491,6 @@ impl Window {
             self.names.push(e.name.clone());
             self.ids.push(e.id);
         }
-        let row = kept.and_then(|id| self.ids.iter().position(|&i| i == id));
-        let top = ui.list_top(spec.list);
         ui.fill_rows(
             spec.list,
             self.rows.clone(),

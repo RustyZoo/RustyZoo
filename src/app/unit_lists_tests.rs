@@ -522,3 +522,72 @@ fn an_animal_added_while_paused_refills_the_list_and_the_counts_at_once() {
         assert_eq!(count(s, 3816), "3");
     });
 }
+
+/// The guest list with "Gus" and `more` guests "Ann" (ids in list order), the window shown and
+/// the game paused, so only the rows change.
+fn with_guest_rows(name: &str, more: usize, body: impl FnOnce(&mut Session, Vec<u32>)) {
+    with_lists(name, |s, ids| {
+        let mut all = vec![ids[2]];
+        all.extend((0..more).map(|_| add_guest(s)));
+        s.app.interface().unwrap().show(12);
+        s.pass(&[]);
+        s.app.game.as_mut().unwrap().paused = true;
+        body(s, all);
+    });
+}
+
+fn remove(s: &mut Session, id: u32) {
+    assert!(s.app.game.as_mut().unwrap().world.remove(id));
+    s.pass(&[]);
+}
+
+fn set_top(s: &mut Session, list: i32, top: usize) {
+    let ui = s.app.interface().unwrap();
+    let i = ui.tree.find(list).unwrap();
+    match &mut ui.tree.elements[i].kind {
+        Kind::ListBox(l) => l.rows.top = top,
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn a_removed_selected_row_leaves_the_next_unit_selected() {
+    with_guest_rows("lists-remove-selected", 2, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(1)));
+        remove(s, ids[1]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(1));
+    });
+}
+
+#[test]
+fn a_removed_last_row_leaves_nothing_selected() {
+    with_guest_rows("lists-remove-last", 2, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(2)));
+        remove(s, ids[2]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), None);
+    });
+}
+
+#[test]
+fn a_row_removed_above_the_selection_lowers_it_and_one_below_leaves_it() {
+    with_guest_rows("lists-remove-around", 3, |s, ids| {
+        assert!(s.app.interface().unwrap().select_row(3705, Some(2)));
+        remove(s, ids[3]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(2));
+        remove(s, ids[0]);
+        assert_eq!(s.app.interface().unwrap().selected_row(3705), Some(1));
+    });
+}
+
+#[test]
+fn a_row_removed_above_the_first_shown_row_lowers_it() {
+    with_guest_rows("lists-remove-top", 20, |s, ids| {
+        set_top(s, 3705, 5);
+        remove(s, ids[7]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 5);
+        remove(s, ids[2]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 4);
+        remove(s, ids[0]);
+        assert_eq!(s.app.interface().unwrap().list_top(3705), 3);
+    });
+}
