@@ -19,6 +19,7 @@
 #probe 239
 #exhibit 16,36,21,41
 #months 12
+#saves Thomson\222s Gazelle
 #expect 1 exhibit gate [0-9]+
 #expect 2 unit add [0-9]+ animal
 #expect 1 unit add [0-9]+ keeper
@@ -225,3 +226,6 @@
 239 pause
 # the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
 22200 char Z
+# save the game and load it back: a gazelle's name holds the apostrophe of its code page (issue 1564)
+22250 save @zoo@
+22260 load @zoo@

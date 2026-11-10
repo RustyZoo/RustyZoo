@@ -9,7 +9,7 @@ use crate::entity::type_of;
 use crate::exhibit::members::animals_in;
 use crate::exhibit::rating::Rand;
 use crate::exhibit::{EXTERIOR, GROUNDS};
-use crate::unit::{Kind, Part};
+use crate::unit::Kind;
 use crate::world::{World, piece_event};
 use crate::zoo::{Entity, Event};
 
@@ -64,10 +64,7 @@ pub(crate) fn rated_around(world: &mut World, cat: &Catalogue, x: u32, rand: Ran
 pub(crate) fn poo_left(world: &mut World, cat: &Catalogue, me: u32, rand: Rand) -> bool {
     let others: Vec<usize> = (world.units.iter())
         .filter(|u| u.id != me && u.kind == Kind::Worker)
-        .filter_map(|u| match &u.part {
-            Part::Staff(s) => s.target,
-            _ => None,
-        })
+        .filter_map(|u| u.own_tile)
         .collect();
     let mut left = false;
     for at in 0..world.zoo.entities.len() {

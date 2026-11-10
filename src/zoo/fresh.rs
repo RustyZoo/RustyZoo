@@ -12,7 +12,7 @@ use super::{
 /// The fields of a filter after its scenery part (zoo format 6.8): the health, the three upkeep
 /// figures, the build and service dates and the months count.
 pub(super) fn filter(f: &Filter) -> Vec<u8> {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     o.u32(f.health);
     f.upkeep.iter().for_each(|&n| o.u32(n));
     [f.built, f.serviced]
@@ -23,8 +23,13 @@ pub(super) fn filter(f: &Filter) -> Vec<u8> {
 }
 
 /// The fields before the unit block or the entity base, and the fields after them.
-pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let (mut pre, mut post) = (Out(Vec::new()), Out(Vec::new()));
+pub(super) fn parts(
+    lang: u32,
+    e: &Entity,
+    c: &Common,
+    now: u64,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let (mut pre, mut post) = (Out(Vec::new(), lang), Out(Vec::new(), lang));
     match e.class.as_str() {
         // The fence figures are written from the model for every fence.
         "objects" | "food" | "paths" | "fences" | "tankwall" => {}
@@ -75,7 +80,7 @@ pub(super) fn parts(e: &Entity, c: &Common, now: u64) -> Result<(Vec<u8>, Vec<u8
 
 /// The four values of a fence or tank wall record, and the portal and open flags of a tank wall.
 pub(super) fn fence(class: &str, f: &Fence) -> Vec<u8> {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     [f.strength, f.life as u32, f.timers[0], f.timers[1]]
         .iter()
         .for_each(|&n| o.u32(n));
@@ -153,7 +158,7 @@ fn building(o: &mut Out, b: &BuildingRecord) {
 
 /// The figures of a guest building as the fields after its colours.
 pub(super) fn building_post(b: &BuildingRecord) -> Vec<u8> {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     building(&mut o, b);
     o.0
 }
@@ -193,7 +198,7 @@ const TAIL: usize = 42;
 /// them (the five increment factors 1, the lists empty).
 pub(super) fn guest(kept: Option<Vec<u8>>, g: &GuestRecord) -> Result<Vec<u8>, String> {
     let mut b = kept.unwrap_or_else(|| {
-        let mut o = Out(vec![0; 21]);
+        let mut o = Out(vec![0; 21], 1033);
         (0..5).for_each(|_| o.u32(1));
         // Female, child, the ten countdowns, the count of items (the slots are put in below), the
         // list of seen things, a word and an empty string, and the list of pairs.

@@ -60,8 +60,8 @@ impl Cx<'_, '_> {
     fn work_finish(&mut self) {
         if let Some(s) = self.staff() {
             let task = std::mem::take(&mut s.task);
-            s.target = None;
             self.world.units.pool.finish(task);
+            self.unit.clear_own();
         }
         self.set_job(0, 0, None);
     }
@@ -71,7 +71,8 @@ impl Cx<'_, '_> {
         let id = self.unit.id;
         self.world.units.pool.unlink(id);
         if let Some(s) = self.staff() {
-            (s.task, s.target) = (0, None);
+            s.task = 0;
+            self.unit.clear_own();
         }
         self.set_job(0, 0, None);
     }
@@ -95,7 +96,8 @@ impl Cx<'_, '_> {
         let id = self.unit.id;
         self.world.units.pool.unlink(id);
         if let Some(s) = self.staff() {
-            (s.task, s.target) = (0, None);
+            s.task = 0;
+            self.unit.clear_own();
         }
     }
 
@@ -125,7 +127,8 @@ impl Cx<'_, '_> {
             t.worker = id;
         }
         if let Some(s) = self.staff() {
-            (s.task, s.target) = (best.id, Some(best.tile));
+            s.task = best.id;
+            self.unit.aim(self.world, Some(best.tile));
         }
         self.set_job(best.job, 0, None);
     }

@@ -8,7 +8,8 @@ use crate::unit::{Part, Unit};
 /// worker stands, and the ladder gives it the duties again at its next update.
 pub(crate) fn lose_task(unit: &mut Unit) {
     if let Part::Staff(s) = &mut unit.part {
-        (s.task, s.target) = (0, None);
+        s.task = 0;
+        unit.clear_own();
     }
     unit.goal.record = Record::default();
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);

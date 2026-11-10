@@ -21,6 +21,7 @@ impl Unit {
     /// (the ground's height there), or the none point for none.
     pub(crate) fn aim(&mut self, world: &World, t: Option<usize>) {
         self.own_tile = t;
+        self.own_loaded = false;
         self.own_pos = t.map_or(NONE_POINT, |t| {
             let width = world.zoo.width as usize;
             let tile = &world.zoo.tiles[t];
@@ -37,6 +38,7 @@ impl Unit {
     /// The tile and the position as a goal reset or a pick-up leaves them: none.
     pub(crate) fn clear_own(&mut self) {
         (self.own_tile, self.own_pos) = (None, NONE_POINT);
+        self.own_loaded = false;
     }
 }
 
