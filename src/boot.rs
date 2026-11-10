@@ -8,7 +8,6 @@ use rustyzoo::entity::Catalogue;
 use rustyzoo::lists::{freeform_list, scenario_list};
 use rustyzoo::menu::{self, Menu};
 use rustyzoo::startup::{self, Startup};
-use rustyzoo::timing::ini_whole;
 use rustyzoo::ui::interface::Interface;
 use rustyzoo::ui::layout::{Kind, installed_expansions};
 use rustyzoo::userdir;
@@ -80,13 +79,6 @@ pub fn boot(
             }
         }
         None => eprintln!("rustyzoo: warning: no user folder, the progress count is not kept"),
-    }
-    let flag = |key: &str| ini_whole(ini, "UI", key).unwrap_or(0);
-    if flag("startedFirstTutorial") == 0
-        || (flag("startedDinoTutorial") == 0 && expansions & 1 != 0)
-        || (flag("startedAquaTutorial") == 0 && expansions & 2 != 0)
-    {
-        lines.push("first-run tutorial not started".to_string());
     }
     let mut menu = Menu::new(
         ini.clone(),

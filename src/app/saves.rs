@@ -167,6 +167,7 @@ impl App<'_> {
         self.close_building();
         self.close_guest();
         self.close_staff();
+        self.close_recovery();
         self.close_animal();
         if let Some(ui) = &mut self.ui {
             Build::hide_panels(ui);

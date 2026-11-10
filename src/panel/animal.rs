@@ -119,6 +119,8 @@ pub(crate) struct Panel {
     /// Just selected: the next refresh also sets the name, the icon and the follow button.
     fresh: bool,
     told: String,
+    /// The species and staff plaques, which follow the animal panel.
+    pub facts: crate::panel::facts::Panel,
 }
 
 impl Panel {

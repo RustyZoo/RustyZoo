@@ -52,6 +52,7 @@ impl App<'_> {
                 Action::Row(staff::LIST, row) if self.game.is_some() => self.staff_row(row),
                 Action::Row(staff::DUTIES, row) if self.game.is_some() => self.staff_duty(row),
                 Action::Edited(staff::NAME) if self.game.is_some() => self.staff_rename(),
+                Action::Edited(recovery::NAME) if self.game.is_some() => self.recovery_rename(),
                 Action::Edited(guest::NAME) if self.game.is_some() => self.guest_rename(),
                 Action::Edited(research::DEV_CASH) if self.game.is_some() => {
                     // Escape takes the edit back: its key follows the edit at once.
@@ -108,25 +109,10 @@ impl App<'_> {
                 }
                 research::DEV_RESEARCH if self.game.is_some() => self.developer_research(),
                 staff::FIRE if self.game.is_some() => self.staff_fire(),
+                recovery::FIRE if self.game.is_some() => self.recovery_fire(),
                 staff::PICK_UP if self.game.is_some() => self.staff_pick_up(),
                 guest::PICK_UP if self.game.is_some() => self.guest_pick_up(),
-                panel_building::UP | panel_building::DOWN if self.game.is_some() => {
-                    self.building_price(id == panel_building::UP);
-                }
-                panel_building::SELL | panel_building::PLAIN_SELL | panel_building::FILTER_SELL
-                    if self.game.is_some() =>
-                {
-                    self.building_sell();
-                }
-                panel_building::PICK_UP if self.game.is_some() => self.building_pick_up(),
-                t if panel_building::UPGRADES.contains(&t) && self.game.is_some() => {
-                    self.building_upgrade(t);
-                }
-                t if panel_building::TABS.contains(&t) && self.game.is_some() => {
-                    if let Some(game) = &mut self.game {
-                        game.building.clock.force = true;
-                    }
-                }
+                _ if self.game.is_some() && self.building_pressed(id) => {}
                 staff::REMOVE | staff::REMOVE_ALL if self.game.is_some() => {
                     self.staff_remove(id == staff::REMOVE_ALL);
                 }

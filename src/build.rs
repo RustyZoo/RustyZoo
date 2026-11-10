@@ -31,7 +31,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use items::*;
-pub(crate) use items::{cost, drt_base, number, plain};
+pub(crate) use items::{cost, drt_base, infoimg, number, plain, preferred_object, unit_text};
 use panel::*;
 
 /// The expansions a type can be a member of, by selector value minus 1 (the entry ids of
@@ -54,6 +54,8 @@ const HIRE_DUTIES: i32 = 3613;
 const PANEL_COUNT: usize = 4;
 /// The position of the Hire panel in [`PANELS`].
 const HIRE_PANEL: usize = 3;
+/// The position of the Adopt panel in [`PANELS`].
+const ADOPT_PANEL: usize = 2;
 /// The string of the Animals tab's sub-title while the expansion selector is on All.
 const CREATURES: i32 = 2025;
 /// The Animals tab's sub-title on Dinosaur Digs (unit placing 3.2).
@@ -153,6 +155,11 @@ pub(crate) struct Build {
     /// staff member made (staff 4.2) or a pending building (its random use time, guest buildings
     /// 10.1).
     made: Vec<usize>,
+    /// The Hire panel was closed, and the Adopt list was emptied in full (closed, a tab or the
+    /// expansion changed), since the last [`Build::take_ended`]: the facts plaques follow (unit
+    /// placing 17.2 points 11 and 12).
+    hire_closed: bool,
+    adopt_emptied: bool,
 }
 
 impl Build {
@@ -184,7 +191,29 @@ impl Build {
             october: false,
             hire_male: false,
             made: Vec::new(),
+            hire_closed: false,
+            adopt_emptied: false,
         }
+    }
+
+    /// Whether the Hire panel was closed and whether the Adopt list was emptied in full since the
+    /// last call.
+    pub(crate) fn take_ended(&mut self) -> (bool, bool) {
+        let ended = (self.hire_closed, self.adopt_emptied);
+        (self.hire_closed, self.adopt_emptied) = (false, false);
+        ended
+    }
+
+    /// The Adopt list is emptied in full when its panel closes, a tab is released or the
+    /// expansion or an availability changes; the sex and rotate buttons keep the pending unit.
+    pub(super) fn emptied(&mut self, p: usize) {
+        self.adopt_emptied |= p == ADOPT_PANEL;
+    }
+
+    /// Makes the panel `p` the open one without showing it: the next [`Build::sync`] closes it.
+    #[cfg(test)]
+    pub(crate) fn open_hidden(&mut self, p: usize) {
+        self.open = Some(p);
     }
 
     /// The staff and building types chosen since the last call, in order: the app creates a
@@ -532,6 +561,8 @@ impl Build {
     fn close(&mut self, ui: &mut Interface, p: usize, log: &mut Vec<String>) {
         self.remember_top(ui, p);
         self.listed = None;
+        self.hire_closed |= p == HIRE_PANEL;
+        self.emptied(p);
         if let Some(i) = ui.tree.find(PANELS[p].layout) {
             ui.tree.hide(i);
         }
@@ -591,6 +622,9 @@ impl Build {
         let Some(p) = self.open else { return };
         let panel = &PANELS[p];
         if panel.tabs.contains(&id) || panel.other_tabs.contains(&id) || panel.sexes.contains(&id) {
+            if !panel.sexes.contains(&id) {
+                self.emptied(p);
+            }
             self.fill(ui, vfs, cat, p, log);
         } else if let Some(turn) = panel.rotate.iter().position(|&r| r == id) {
             self.step[p] = (self.step[p] + if turn == 0 { 3 } else { 1 }) % 4;
@@ -774,7 +808,14 @@ impl Build {
 
     /// The location and habitat pictures of the chosen type, with their values as tooltips; all
     /// three are hidden for a type with no good habitat (placing 3.5).
-    fn show_pictures(&mut self, ui: &mut Interface, vfs: &Vfs, panel: &Panel, ty: &EntityType) {
+    fn show_pictures(
+        &mut self,
+        ui: &mut Interface,
+        vfs: &Vfs,
+        cat: &Catalogue,
+        panel: &Panel,
+        ty: &EntityType,
+    ) {
         let [location, habitat, border] = panel.pictures;
         if location == 0 {
             return;
@@ -803,8 +844,7 @@ impl Build {
             }
             ui.set_picture(picture, icon);
             if let Some(i) = ui.tree.find(picture) {
-                let id = number(ty, "cPrefIconID").unwrap_or(0.0) as i32;
-                ui.tree.elements[i].help_id = vec![id];
+                ui.tree.elements[i].help_id = vec![preferred_object(cat, ty)];
             }
         }
     }
@@ -884,7 +924,7 @@ impl Build {
             ui.set_hidden(label, false);
             ui.set_hidden(value, false);
         }
-        self.show_pictures(ui, vfs, panel, ty);
+        self.show_pictures(ui, vfs, cat, panel, ty);
         let tag = match panel.tabs.get(tab).and_then(|&t| ui.tree.find(t)) {
             Some(i) => String::from_utf8_lossy(&ui.tree.elements[i].string_data).into_owned(),
             None if hire => "staff".into(),

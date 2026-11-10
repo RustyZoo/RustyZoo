@@ -194,6 +194,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
+            app.first_run();
             app
         }
         (None, None) => unreachable!("a run without a map boots"),

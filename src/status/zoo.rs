@@ -5,10 +5,8 @@
 //!
 //! [`Status`] keeps the three timers, the last sums and the rating; the [`crate::sim::Sim`] step
 //! calls its checks in the original's order. The new guest check decides whether a guest arrives
-//! (the chance table of the rating and the admission price); the guest module makes it. Missing
-//! so far: the guests' gift and litter flags (their counts stay 0), and the admission price window
-//! (the price is the map's, limited). The wages and the building upkeep of the month-end check are
-//! [`crate::month`]'s.
+//! (the chance table of the rating and the admission price); the guest module makes it. The wages
+//! and the building upkeep of the month-end check are [`crate::month`]'s.
 //!
 //! The log lines: `rating N` at each rating check, `message ID` for each advice message,
 //! `donation AMOUNT` for each donation, `member DRAW stays` or `leaves` for each endowment member at
@@ -43,6 +41,8 @@ const BROKEN: f32 = 45.0;
 const DECAYED: f32 = 11.0;
 /// An advice message is posted only above this many guests.
 const MANY_GUESTS: i32 = 10;
+/// The litter slot of a guest's items.
+const LITTER_SLOT: usize = 4;
 /// The cash below which the money messages and the donation start (the original compares whole
 /// units for the messages, a decimal for the donation).
 const LOW_CASH: i32 = 1000;
@@ -301,6 +301,9 @@ impl Sums {
                 ] {
                     *count += i32::from(g.values[need] > limit);
                 }
+                // Wants a gift, holds litter: no threshold (zoo status 5.7).
+                sums.gift += i32::from(g.gift);
+                sums.litter += i32::from(g.items[LITTER_SLOT].is_some());
                 continue;
             }
             let animal = e.class == "animals";

@@ -364,6 +364,14 @@ impl World {
         }
     }
 
+    /// Gives the entity at `at` these colour choices (guest buildings 20 point 5); the picture is due.
+    pub(crate) fn set_colors(&mut self, at: usize, colors: Vec<u8>) {
+        if let Some(c) = self.zoo.entities[at].common.as_mut() {
+            c.colors = colors;
+            self.dirty = true;
+        }
+    }
+
     /// The install language number.
     pub(crate) fn language_number(&self) -> u32 {
         self.language.number

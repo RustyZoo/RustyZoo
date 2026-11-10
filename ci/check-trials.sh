@@ -222,7 +222,7 @@ check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip512395376
 startup() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini" # the movies are checked below
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini" # the movies are checked below
   printf '1 mouse 512 %s\n2 down\n3 up\n' "$1" >"$tmp/exit"
   rz run --seed 1 --headless --passes 6 --clock 20 --script "$tmp/exit" 2>/dev/null |
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
@@ -235,7 +235,7 @@ check expansion-trial '505@112,84,253,disabled,12.05.00.0004,1548dd4c32e1e7a4,ex
 last() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "$1" >"$tmp/user/zoo.ini"
   rz run --seed 1 --headless --passes 1 --clock 20 2>/dev/null | sed -n 's/^pass 0 t=0 menu continue //p'
   sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
 }
@@ -286,7 +286,7 @@ check base-trial 'dislikes15673@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
 check base-trial 74bcf78f8376a39a 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial 26fc07b478f88691 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial 935ffd2485c77f8d 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -308,7 +308,7 @@ check base-trial yes 'any_seed lion_sound'
 scenario_screen() { # scenario_screen <script after the click on the button>
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n%b\n' "$1" >"$tmp/scn"
   rz run --seed 1 --headless --passes 12 --clock 100 --script "$tmp/scn" 2>/dev/null |
     awk '/ menu scenarios /{n=$6} / menu scenario [a-z][a-z] /{s=s","$7} / menu scenario select /{if(!p)p=$8":"$NF} / menu play scenario /{y=$NF} END{print n s","p","y}'
@@ -325,7 +325,7 @@ check expansion-trial '4,playable,playable,playable,playable,playable:enabled,' 
 tutorial_start() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n4 mouse 146 438\n5 down\n6 up\n7 double\n8 up\n25 key enter\n40 key enter\n' >"$tmp/tut"
   rz run --seed 1 --headless --passes 46 --clock 100 --script "$tmp/tut" 2>/dev/null |
     awk '/ sim scenario popup 45100 modal/{if(!first)first=$2}
@@ -340,13 +340,26 @@ tutorial_start() {
 }
 check base-trial 2,0,0,after 'tutorial_start'
 
+# The first run (main menu 3.5): with the three started flags at 0 the first tutorial starts in place of
+# the menu and sets them to 1. The expansion trial ships no such scenario: its menu shows, nothing is
+# written. Prints the game that started, and the flags that are 1 afterwards.
+first_run() {
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  rz run --seed 1 --headless --passes 3 --clock 100 2>/dev/null | sed -n 's/^pass [0-9]* t=[0-9]* menu game start //p' | tr -d ' \n'
+  echo ",$(grep -c '^started.*=1$' "$tmp/user/zoo.ini")"
+}
+check base-trial 'scenarioaamaps/scn01a.zoo,3' 'first_run'
+check expansion-trial ',0' 'first_run'
+
 # The freeform screen from its menu button: the number of maps, then the starting cash and its
 # difficulty. (The spinners of the full game are not in the trials' layout; the unit tests cover
 # them.)
 freeform_screen() {
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n' >"$tmp/free"
   rz run --seed 1 --headless --passes 5 --clock 100 --script "$tmp/free" 2>/dev/null |
     awk '/ menu freeform /{n=$NF} / menu cash /{c=$6":"$7} END{print n","c}'
@@ -360,7 +373,7 @@ check expansion-trial '1,75000:middle' 'freeform_screen'
 freeform_play() { # freeform_play <seed>: the log
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n' >"$tmp/play"
   rz run --headless --passes 8 --clock 100 --script "$tmp/play" --seed "$1" 2>/dev/null
 }
@@ -375,7 +388,7 @@ check base-trial '5,6' "freeform_play 5 | sed -n 's/^pass [0-9]* t=[0-9]* sim se
 game_round() { # game_round <y of Continue> <last file>
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n10 key escape\n12 key n\n20 mouse 512 %s\n21 down\n22 up\n30 close\n32 key n\n' "$1" "$1" >"$tmp/round"
   rz run --seed 1 --headless --passes 40 --clock 100 --script "$tmp/round" 2>/dev/null |
     awk '/ menu game /{g=g (g?";":"") $6" "$7} / step 200 /{c++} / menu music restart/{m++} END{print g","c","m}'
@@ -396,7 +409,7 @@ saved_round() { # saved_round <y of Continue>
   saved=$(cygpath -m "$tmp/saved.zoo" 2>/dev/null || echo "$tmp/saved.zoo")
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 405\n2 down\n3 up\n4 mouse 831 657\n5 down\n6 up\n10 save %s\n' "$saved" >"$tmp/make"
   rz run --seed 1 --headless --passes 12 --clock 100 --script "$tmp/make" >/dev/null
   game_round "$1" "$saved"
@@ -407,7 +420,7 @@ check expansion-trial 'startcontinue;askleave;stop;startcontinue;askexit;exit,2,
 play_map() { # play_map <y of the menu button>
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' 'maps\\default.zoo' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' 'maps\\default.zoo' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n' "$1" >"$tmp/play"
   rz run --seed 1 --headless --passes 10 --clock 100 --script "$tmp/play" 2>/dev/null | awk '/ menu game start /{print $7" "$8" "$NF}'
   sed -n 's/^lastfile=//p' "$tmp/user/zoo.ini"
@@ -421,7 +434,7 @@ check base-trial 'askleave;exit' 'printf "3 key escape\n5 key n\n" > "$tmp/esc";
 # The same in a window of the dummy video driver: the log replays headless to the same lines.
 windowed_game() { # windowed_game <y of Continue> <last file>
   d=$(mktemp -d)
-  printf '[UI]\nplayMovie=0\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "$2" >"$tmp/user/zoo.ini"
   printf '3 mouse 512 %s\n5 down\n6 up\n12 key escape\n14 key n\n24 mouse 512 %s\n25 down\n26 up\n32 close\n34 key n\n' "$1" "$1" >"$d/script"
   SDL_VIDEO_DRIVER=dummy rz run --seed 1 --size 1024x768 --passes 60 --script "$d/script" --log "$d/log" >/dev/null 2>&1
   grep -c 'menu game start' "$d/log"
@@ -482,7 +495,7 @@ check expansion-trial 1,same 'windowed_intro | paste -sd, -'
 credits() { # credits <y of the button> <passes> <pass of the click on Exit>
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
-  printf '[UI]\nplayMovie=0\n' >"$tmp/user/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   printf '1 mouse 512 %s\n2 down\n3 up\n%s mouse 512 664\n%s down\n%s up\n' "$1" "$3" "$3" "$3" >"$tmp/credits"
   rz run --seed 1 --headless --passes "$2" --clock 66 --script "$tmp/credits" 2>/dev/null |
     awk '/menu credits page/{n++; if(n==1)f=$2; if(n==2)p=$2; if(n==3)q=$2} /menu credits (end|closed)/{e=$2"@"$NF} END{print n","f","p","q","e}'
@@ -1204,7 +1217,7 @@ check expansion-trial "6:24919:leavebuilding" "restored_users maps/scn27.zoo 249
 scenario_guest_panel() {
   d=$(mktemp -d)
   mkdir -p "$RUSTYZOO_USER_DIR"
-  printf '[UI]\nplayMovie=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n10 mouse 652 598\n11 down\n12 up\n14 mouse 1005 667\n15 down\n16 up\n' >"$d/script"
   rz run --headless --seed 3 --passes 20 --clock 100 --script "$d/script" 2>/dev/null |
     sed -n 's/.* panel guest [0-9]* \("[^"]*"\) .* time \("[^"]*"\).*/\1 time \2/p' | tr ' ' _ | paste -sd';' -
@@ -1218,7 +1231,7 @@ check expansion-trial '"Guest_58"_time_"Just_arrived"' "scenario_guest_panel"
 scenario_building() {
   d=$(mktemp -d)
   mkdir -p "$RUSTYZOO_USER_DIR"
-  printf '[UI]\nplayMovie=0\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$RUSTYZOO_USER_DIR/zoo.ini"
   printf '1 mouse 512 365\n2 down\n3 up\n5 mouse 790 654\n6 down\n7 up\n9 pause\n12 mouse 905 185\n13 down\n14 up\n' >"$d/script"
   rz run --headless --seed 3 --passes 25 --clock 100 --size 1024x768 --script "$d/script" 2>/dev/null |
     sed -n 's/.* panel building [0-9]* .* \(income .*\) sells.*/\1/p' | head -1 | tr ' ' _

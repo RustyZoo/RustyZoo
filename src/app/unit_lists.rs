@@ -111,7 +111,12 @@ impl App<'_> {
             && let (Ok(x), Ok(y)) = (u32::try_from(x), u32::try_from(y))
         {
             game.camera.centre_on(&game.world.zoo, x, y);
-            for follow in [animal::FOLLOW, staff::FOLLOW, guest::FOLLOW] {
+            for follow in [
+                animal::FOLLOW,
+                staff::FOLLOW,
+                recovery::FOLLOW,
+                guest::FOLLOW,
+            ] {
                 if ui.is_down(follow) {
                     ui.set_button(follow, false, true);
                 }

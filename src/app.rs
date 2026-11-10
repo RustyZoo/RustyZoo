@@ -31,7 +31,7 @@ use crate::music::{Music, positional};
 use crate::panel::building as panel_building;
 use crate::panel::marketing as marketing_panel;
 use crate::panel::research as research_panel;
-use crate::panel::{animal, exhibit, guest, show, staff};
+use crate::panel::{animal, exhibit, guest, recovery, show, staff};
 use crate::place::{self, Class, Outcome, Pending, Tints};
 use crate::render::order::project;
 use crate::render::{
@@ -144,6 +144,8 @@ struct Game {
     animal: crate::panel::animal::Panel,
     /// The staff panel and the staff member selected.
     staff: crate::panel::staff::Panel,
+    /// The recovery team panel and the helicopter selected.
+    recovery: crate::panel::recovery::Panel,
     /// The guest panel and the guest selected.
     guest: crate::panel::guest::Panel,
     /// The research panel.
@@ -852,6 +854,7 @@ mod cheat_guest;
 mod cheat_staff;
 mod command;
 mod exhibits;
+mod facts;
 mod gates;
 mod guest_panel;
 mod help;
@@ -869,6 +872,7 @@ mod cheat_staff_tests;
 mod panel;
 mod pending;
 mod questions;
+mod recovery_panel;
 mod research;
 mod saves;
 mod scenario;
@@ -898,7 +902,11 @@ mod cheat_season_tests;
 #[cfg(test)]
 mod cheat_tests;
 #[cfg(test)]
+mod colour_tab_tests;
+#[cfg(test)]
 mod random_use_tests;
+#[cfg(test)]
+mod recovery_panel_tests;
 #[cfg(test)]
 mod tank_panel_tests;
 #[cfg(test)]
@@ -907,6 +915,8 @@ mod tests;
 #[cfg(test)]
 mod replay_tests;
 
+#[cfg(test)]
+mod first_run_tests;
 #[cfg(test)]
 mod main_buttons_tests;
 #[cfg(test)]
@@ -932,6 +942,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod facts_tests;
 #[cfg(test)]
 mod options_tests;
 #[cfg(test)]

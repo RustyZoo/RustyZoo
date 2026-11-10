@@ -4,9 +4,11 @@
 pub mod animal;
 pub mod building;
 pub mod exhibit;
+pub mod facts;
 pub mod follow;
 pub mod guest;
 pub mod marketing;
+pub mod recovery;
 pub mod research;
 pub mod show;
 pub mod staff;

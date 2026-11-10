@@ -114,9 +114,7 @@ impl App<'_> {
             crate::terrain::elevation_cost(self.renderer.vfs().ini()),
         );
         terrain.set_size(brush);
-        if let Some(ui) = &mut self.ui {
-            ui.clear_messages();
-        }
+        self.ui.iter_mut().for_each(Interface::clear_messages);
         self.game = Some(Game {
             world,
             staged,
@@ -159,6 +157,7 @@ impl App<'_> {
             panel: Default::default(),
             animal: Default::default(),
             staff: Default::default(),
+            recovery: Default::default(),
             guest: Default::default(),
             research: Default::default(),
             building: Default::default(),
@@ -262,6 +261,34 @@ impl App<'_> {
             Err(why) => {
                 self.say(&why);
                 false
+            }
+        }
+    }
+
+    /// The end of the start-up (main menu 3.5 points 1 to 3, 7, 8): the tutorial that is due is
+    /// started as its scenario is, and the keys that tell it started are written at once. A start
+    /// that fails writes nothing and tries no other tutorial: only a map that opens but does not
+    /// load says why; the main menu stays.
+    pub fn first_run(&mut self) {
+        let Some(menu) = &mut self.menu else { return };
+        let Some((file, keys)) = menu.first_tutorial() else {
+            return;
+        };
+        menu.start_file(self.renderer.vfs(), file);
+        let Some(Request::Open(start)) = menu.take_request() else {
+            return;
+        };
+        if !menu.has_file(&start.path) {
+            return;
+        }
+        self.start_busy();
+        let Some(menu) = &self.menu else { return };
+        let read = menu.load(&start.path, self.renderer.catalogue());
+        if self.open(&start, read)
+            && let Some(menu) = &mut self.menu
+        {
+            for key in keys {
+                menu.write_back("UI", key, "1");
             }
         }
     }
