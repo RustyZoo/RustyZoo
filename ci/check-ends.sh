@@ -13,7 +13,8 @@
 # should, after the donation or the month change that causes it and within a few passes of it, the
 # end dialog comes in the same pass with the text of that result and a question is asked, the result
 # is stored for the list entry and in the user's settings, and No on the dialog ends the game and
-# shows the scenario screen. A line says `ok` or FAILED; the exit status is 1 if one failed.
+# shows the scenario screen with the win or lose picture of the scenario file and its story.
+# A line says `ok` or FAILED; the exit status is 1 if one failed.
 set -u
 bin=$1
 data=$2
