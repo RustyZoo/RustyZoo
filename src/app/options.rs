@@ -77,6 +77,8 @@ pub(crate) struct Options {
     checked: Option<(bool, Option<Display>)>,
     /// The mode the player asked the window for with a button, until the shell takes it.
     request: Option<bool>,
+    /// The size a resolution button asked for, until the shell takes it (16.9 point 1).
+    size: Option<(u32, u32)>,
 }
 
 impl Options {
@@ -92,6 +94,7 @@ impl Options {
             display: None,
             checked: None,
             request: None,
+            size: None,
             ini,
         }
     }
@@ -444,15 +447,53 @@ impl App<'_> {
             HELP_BUTTON if self.game.is_some() => self.help_open(true),
             t if (TERRAIN..TERRAIN + 4).contains(&t) => self.terrain_level(t - TERRAIN, false),
             _ => {
-                // The sizes are kept for the next start: the game keeps its size while it runs.
+                // The size asked equals the current one: nothing is written or changed (16.9
+                // point 5).
                 let Some((_, (w, h))) = RESOLUTIONS.into_iter().find(|r| r.0 == id) else {
                     return;
                 };
-                self.put("user", "screenwidth", w, None);
-                self.put("user", "screenheight", h, None);
-                self.options.checked = None;
+                let now = (self.frame.width, self.frame.height);
+                let want = (w.unsigned_abs(), h.unsigned_abs());
+                self.options.size = (want != now).then_some(want);
             }
         }
+    }
+
+    /// The size a resolution button asked for, once: the shell resizes and tells the game with
+    /// [`App::resized`].
+    pub fn take_size_request(&mut self) -> Option<(u32, u32)> {
+        self.options.size.take()
+    }
+
+    /// The shell resized to `size`, or `ok` is false because it could not (16.9 points 3 and 4).
+    /// On success the keys are written; then, either way, the interface is resolved again and
+    /// the video and zoom checks run. The scroll, zoom and rotation are not touched.
+    pub fn resized(&mut self, size: (u32, u32), ok: bool) {
+        let id = RESOLUTIONS.iter().find(|r| r.1.0 as u32 == size.0 && r.1.1 as u32 == size.1);
+        if !ok || size.0 == 0 || size.1 == 0 {
+            if let (Some(ui), Some(id)) = (&mut self.ui, id) {
+                ui.set_enabled(id.0, false);
+            }
+            return self.video_check();
+        }
+        self.put("user", "screenwidth", size.0 as i32, None);
+        self.put("user", "screenheight", size.1 as i32, None);
+        // The surface is made again at the new size, cleared (inferred), and the whole screen is
+        // drawn again at the next pass (inferred).
+        (self.frame, self.painted, self.stale) = (Framebuffer::new(size.0, size.1), None, None);
+        if self.ui.is_some() {
+            self.map = Framebuffer::new(size.0, size.1);
+        }
+        // The map view is the whole window: its size follows, the scroll stays (inferred).
+        let view = (size.0 as i32, size.1 as i32);
+        if let Some(game) = &mut self.game {
+            game.camera.size = view;
+        }
+        if let Some(ui) = &mut self.ui {
+            ui.resize(view.0, view.1);
+        }
+        self.video_check();
+        self.zoom_check();
     }
 
     /// Window Mode or Full Screen: the switch is asked of the shell, only if the display is in

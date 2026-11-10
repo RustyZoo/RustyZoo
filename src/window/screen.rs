@@ -4,7 +4,7 @@
 use rustyzoo::config::Config;
 use sdl3::pixels::Color;
 use sdl3::render::{Canvas, FRect, Texture};
-use sdl3::video::Window;
+use sdl3::video::{Window, WindowPos};
 
 use super::fullscreen;
 use super::size::{clamp, ini_size, plan};
@@ -42,6 +42,43 @@ impl Screen {
             );
         }
         done.is_ok()
+    }
+
+    /// Gives the game another size (16.9 point 2): in a window, the window takes the new size
+    /// times the factor of the display and is centred on the primary screen; in full screen the
+    /// picture is scaled to the display, so only the size changes. Whether it was done; a
+    /// failure warns and changes nothing.
+    pub fn resize(&mut self, video: &sdl3::VideoSubsystem, size: (u32, u32)) -> bool {
+        if size == self.size {
+            return false;
+        }
+        if !self.fullscreen
+            && let Err(e) = self.fit_window(video, size)
+        {
+            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
+            return false;
+        }
+        self.size = size;
+        true
+    }
+
+    fn fit_window(
+        &mut self,
+        video: &sdl3::VideoSubsystem,
+        size: (u32, u32),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let usable = video.get_primary_display()?.get_usable_bounds()?;
+        let window = self.canvas.window_mut();
+        let (_, want) = plan(
+            size,
+            window.display_scale(),
+            window.pixel_density(),
+            (usable.width(), usable.height()),
+        );
+        window.set_size(want.0, want.1)?;
+        window.set_position(WindowPos::Centered, WindowPos::Centered);
+        window.sync();
+        Ok(())
     }
 
     /// The pixel of the game under the cursor at `at`, in points of the window.

@@ -563,6 +563,10 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             png(pass, frame)?;
         }
         asked = app.take_mode_request().map(Command::Fullscreen);
+        // No window to resize: the new size is always taken.
+        if let Some(size) = app.take_size_request() {
+            app.resized(size, true);
+        }
         lines.pass(&app, pass, now)?;
         if app.quit() {
             break;

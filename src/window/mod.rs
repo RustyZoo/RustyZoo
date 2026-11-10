@@ -93,6 +93,24 @@ fn switch(
     }
 }
 
+/// A resolution button asked for the size `want`: the texture of that size when the window took it.
+fn resize<'t>(
+    screen: &mut Screen,
+    video: &sdl3::VideoSubsystem,
+    textures: &'t sdl3::render::TextureCreator<sdl3::video::WindowContext>,
+    want: (u32, u32),
+) -> Option<Texture<'t>> {
+    let mut texture = match textures.create_texture_streaming(PixelFormat::RGBA32, want.0, want.1) {
+        Ok(texture) => texture,
+        Err(e) => {
+            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", want.0, want.1);
+            return None;
+        }
+    };
+    texture.set_scale_mode(ScaleMode::Nearest);
+    screen.resize(video, want).then_some(texture)
+}
+
 /// Writes the mode into the settings of the user folder (`[user] fullscreen`), which the next
 /// start reads over the game's ini file. A failure only warns.
 fn remember(on: bool) {
@@ -360,7 +378,7 @@ pub fn run(
     let sdl = sdl3::init()?;
     let video = sdl.video()?;
     let mut screen = screen::open(&video, ini, flags.size)?;
-    let size = screen.size;
+    let mut size = screen.size;
     let textures = screen.canvas.texture_creator();
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
@@ -471,6 +489,15 @@ pub fn run(
         // A button of the options window asked for the other mode.
         if let Some(on) = app.take_mode_request() {
             switch(&mut screen, &mut state, &mut commands, on, true);
+        }
+        if let Some(want) = app.take_size_request() {
+            let made = resize(&mut screen, &video, &textures, want);
+            let ok = made.is_some();
+            if let Some(new) = made {
+                (texture, size) = (new, want);
+                state.exposed = true;
+            }
+            app.resized(want, ok);
         }
         app.set_display(screen::desktop(&video));
         run_script(&mut script, pass, &mut screen, &mut state, &mut commands);
