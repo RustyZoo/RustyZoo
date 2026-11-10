@@ -1048,6 +1048,7 @@ fn a_point_label_is_pulled_in_from_the_edges() {
         (90, 50)
     );
     // Left: x - w < l - 10 puts it at l - 10 + w.
+    prev = (0, 0);
     assert_eq!(
         graph::label_spot((0, 50), 20, 10, (30, 0, 100), &mut prev),
         (40, 50)
