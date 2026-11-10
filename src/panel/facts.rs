@@ -18,6 +18,8 @@ use crate::vfs::Vfs;
 pub(crate) const SPECIES: i32 = 27;
 pub(crate) const ADOPT_BUTTON: i32 = 2050;
 pub(crate) const KEEPER: i32 = 25011;
+/// The research and developer windows, which hide both plaques when shown (17.3 point 13 b).
+const WINDOWS: [i32; 2] = [15, 34];
 /// The staff plaque and the Hire panel's facts button.
 pub(crate) const STAFF: i32 = 33;
 pub(crate) const HIRE_BUTTON: i32 = 3699;
@@ -74,9 +76,19 @@ pub(crate) struct Panel {
     /// The staff plaque was shown, and the type it was written for.
     staff: bool,
     written: Option<usize>,
+    /// The research and developer windows were shown at the last look.
+    windows: [bool; 2],
+    /// The Adopt button chose the species of the plaque about to show.
+    chosen: bool,
 }
 
 impl Panel {
+    /// The species the plaque holds.
+    #[cfg(test)]
+    pub(crate) fn species(&self) -> Option<usize> {
+        self.species
+    }
+
     /// Looks at both plaques. The result is the animal whose recommendations plaque the keeper
     /// button of the species plaque switched to.
     pub(crate) fn sync(
@@ -90,6 +102,12 @@ impl Panel {
         if look.hire_closed && ui.is_down(HIRE_BUTTON) {
             ui.set_hidden(STAFF, true);
         }
+        let up = WINDOWS.map(|id| ui.shown(id));
+        if up.iter().zip(self.windows).any(|(&now, was)| now && !was) {
+            ui.set_hidden(SPECIES, true);
+            ui.set_hidden(PLAQUE, true);
+        }
+        self.windows = up;
         let back = self.species_sync(ui, vfs, cat, look);
         let staff = ui.shown(STAFF);
         if staff != self.staff {
@@ -129,7 +147,7 @@ impl Panel {
         if down != std::mem::replace(&mut self.down, down) {
             match (down, look.held) {
                 (true, Some((ty, _))) if !ui.shown(SPECIES) => {
-                    self.species = Some(ty);
+                    (self.species, self.chosen) = (Some(ty), true);
                     ui.show(SPECIES);
                 }
                 (true, Some((ty, _))) => self.set(ui, vfs, cat, Some(ty), None),
@@ -146,7 +164,7 @@ impl Panel {
             // Opened by the Adopt button, which chose the species, or by the recommendations
             // plaque, which means the selected animal's.
             ui.set_hidden(PLAQUE, true);
-            if self.species.is_none() {
+            if !std::mem::take(&mut self.chosen) {
                 (self.species, self.from) = match look.selected {
                     Some((id, ty)) => (Some(ty), Some(id)),
                     None => (None, None),
@@ -159,7 +177,8 @@ impl Panel {
             ui.set_button(ADOPT_BUTTON, false, true);
             self.down = false;
             back = self.from.filter(|_| ui.shown(PLAQUE));
-            (self.species, self.from) = (None, None);
+            // The hide forgets the animal, not the species (17.3 point 15).
+            (self.from, self.chosen) = (None, false);
         } else if shown && selected != self.seen {
             // Another animal's panel: its species; no animal: the plaque goes unless the Adopt
             // panel holds one (information panels 4.1, 4.3).

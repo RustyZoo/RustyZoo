@@ -2,6 +2,8 @@
 //! Escape, and the stop of a game for the main menu.
 
 use super::*;
+use crate::panel::exhibit::PLAQUE;
+use crate::panel::facts::SPECIES;
 
 impl App<'_> {
     /// Tells the player something in a question box with an OK button.
@@ -125,7 +127,10 @@ impl App<'_> {
             return;
         }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-            if game.build.cancel(ui, &mut self.lines.tool) {
+            if game
+                .build
+                .cancel_after_modes(ui, &mut self.lines.tool, close_plaques)
+            {
                 self.terrain_sync();
                 return self.aim(false);
             }
@@ -172,4 +177,16 @@ impl App<'_> {
             }
         }
     }
+}
+
+/// Step 6 of Escape and the right button (input 4.6): when the species or the recommendations
+/// plaque is shown, closes both, the species one first (unit placing 17.3 point 13 b). The staff
+/// plaque is left. Whether it did.
+fn close_plaques(ui: &mut Interface) -> bool {
+    let open = ui.shown(SPECIES) || ui.shown(PLAQUE);
+    if open {
+        ui.set_hidden(SPECIES, true);
+        ui.set_hidden(PLAQUE, true);
+    }
+    open
 }

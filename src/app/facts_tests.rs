@@ -4,6 +4,7 @@
 
 use super::adopt_tests::hold;
 use super::bulldozer_tests::{Session, catalogue, ty, with_game_of};
+use super::{Command, Key, Mouse};
 use crate::entity::{Catalogue, EntityType};
 use crate::ui::layout::DISABLED;
 
@@ -114,6 +115,8 @@ fn files() -> Vec<(String, Vec<u8>)> {
             &(species + &button(25011, 20, keeper) + &button(25010, 30, "action=2\ntarget=-1\n")),
         ),
         layout(28, &button(26021, 0, "action=4\ntarget=27\n")),
+        layout(15, ""),
+        layout(34, ""),
         layout(
             33,
             &(staff_items + &button(40010, 30, "action=2\ntarget=33\n")),
@@ -134,7 +137,7 @@ fn files() -> Vec<(String, Vec<u8>)> {
 
 fn root() -> String {
     let mut root = super::bulldozer_tests::ROOT.replace("ui/animal.lyt", "ui/animal2.lyt");
-    for id in [27, 28, 33] {
+    for id in [27, 28, 33, 15, 34] {
         root += &format!("[w{id}]\ntype=UILayout\nlayout=ui/w{id}.lyt\nstate=1\n");
     }
     root += "[p]\ntype=UIButton\nid=2050\nx=100\ny=200\ndx=8\ndy=8\nstate=2048\ntransparent=0\n";
@@ -593,5 +596,133 @@ fn a_user_animal_plaque_gives_its_preferred_object_as_a_number_or_a_user_type_na
             s.pass(&[]);
             assert_eq!(tip(s, 25053), want, "{value}");
         }
+    });
+}
+
+fn escape(s: &mut Session) {
+    s.pass(&[Command::Key(Key::Escape, false, false)]);
+}
+
+/// The animal panel of a fox is open with its recommendations plaque shown.
+fn open_recommendations(s: &mut Session) -> u32 {
+    let id = s.add(FOX, 20 * 64 + 32, 20 * 64 + 32, 0);
+    s.app.open_animal(id);
+    s.pass(&[]);
+    press(s, 3122);
+    assert!(shown(s, 28));
+    id
+}
+
+#[test]
+fn escape_closes_the_plaques_before_it_drops_the_held_animal() {
+    with_facts("facts-escape", |s| {
+        open_species(s, FOX);
+        escape(s);
+        assert!(!shown(s, 27) && !down(s, 2050), "species plaque closed");
+        assert!(!s.app.question_open(), "it is not the leave question");
+        // The recommendations plaque closes the same way, its button released.
+        open_recommendations(s);
+        escape(s);
+        s.pass(&[]);
+        assert!(!shown(s, 28) && !down(s, 3122));
+        // Both close together, and the right button runs the same step.
+        press(s, 3122);
+        press(s, 26021);
+        assert!(shown(s, 27));
+        s.app.interface().unwrap().show(28);
+        s.pass(&[
+            Command::Mouse(Mouse::Move(150, 100)),
+            Command::Mouse(Mouse::Right),
+        ]);
+        assert!(!shown(s, 27) && !shown(s, 28));
+    });
+}
+
+#[test]
+fn escape_leaves_the_staff_plaque() {
+    with_facts("facts-escape-staff", |s| {
+        hold(&mut s.app, RANGER);
+        press(s, 3699);
+        assert!(shown(s, 33));
+        escape(s);
+        assert!(
+            shown(s, 33),
+            "the staff plaque is not a facts plaque for Escape"
+        );
+        assert!(s.app.question_open(), "nothing else applies");
+    });
+}
+
+#[test]
+fn the_research_and_developer_windows_hide_both_plaques_but_not_the_staff_one() {
+    with_facts("facts-windows", |s| {
+        hold(&mut s.app, RANGER);
+        press(s, 3699);
+        assert!(shown(s, 33));
+        open_recommendations(s);
+        for window in [15, 34] {
+            for plaque in [28, 27] {
+                if !down(s, 3122) {
+                    press(s, 3122);
+                }
+                if plaque == 27 {
+                    press(s, 26021);
+                }
+                s.pass(&[]);
+                assert!(shown(s, plaque), "{window} {plaque}");
+                s.app.interface().unwrap().show(window);
+                s.pass(&[]);
+                assert!(!shown(s, 27) && !shown(s, 28), "window {window}, {plaque}");
+                assert!(shown(s, 33));
+                s.app.interface().unwrap().set_hidden(window, true);
+                s.pass(&[]);
+            }
+        }
+    });
+}
+
+#[test]
+fn a_hide_forgets_the_animal_and_keeps_the_species() {
+    with_facts("facts-keep", |s| {
+        open_species(s, FOX);
+        press(s, 25010);
+        let panel = &s.app.game.as_ref().unwrap().animal.facts;
+        assert_eq!(panel.species(), Some(FOX));
+        // The plaque opened from a zebra's recommendations shows the zebra, not the kept fox.
+        let zebra = s.add(ZEBRA, 22 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.open_animal(zebra);
+        s.pass(&[]);
+        press(s, 3122);
+        press(s, 26021);
+        assert!(shown(s, 27));
+        assert_eq!(text(s, 25003), "");
+        let panel = &s.app.game.as_ref().unwrap().animal.facts;
+        assert_eq!(panel.species(), Some(ZEBRA));
+    });
+}
+
+#[test]
+fn a_deselect_hides_the_plaques_unless_an_animal_is_pending() {
+    with_facts("facts-deselect", |s| {
+        let id = open_recommendations(s);
+        press(s, 26021);
+        hold(&mut s.app, ZEBRA);
+        s.pass(&[]);
+        s.app.close_animal();
+        for _ in 0..3 {
+            s.pass(&[]);
+        }
+        assert!(shown(s, 27) && !shown(s, 28), "an animal is pending");
+        assert!(s.app.game.as_ref().unwrap().world.find(id).is_some());
+        // Nothing pending: the plaque goes with the deselect of the live animal.
+        s.app.open_animal(id);
+        s.pass(&[]);
+        hold(&mut s.app, 0);
+        s.pass(&[]);
+        s.app.close_animal();
+        for _ in 0..3 {
+            s.pass(&[]);
+        }
+        assert!(!shown(s, 27));
     });
 }

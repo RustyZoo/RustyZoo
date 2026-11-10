@@ -576,7 +576,19 @@ impl Build {
 
     /// Escape or the right button drops the tool and clears the list selection; the next one
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
+    #[cfg(test)]
     pub(crate) fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
+        self.cancel_after_modes(ui, log, |_| false)
+    }
+
+    /// [`Build::cancel`], with step 6 of input 4.6 (`plaques`: close the facts plaques, whether it
+    /// did) between the tool modes (steps 2 to 5) and the held item (step 7).
+    pub(crate) fn cancel_after_modes(
+        &mut self,
+        ui: &mut Interface,
+        log: &mut Vec<String>,
+        plaques: impl FnOnce(&mut Interface) -> bool,
+    ) -> bool {
         if self.bulldozer {
             self.stop_bulldozer(ui, log);
             log.push("tool drop".into());
@@ -587,13 +599,18 @@ impl Build {
             log.push("tool drop".into());
             return true;
         }
-        let Some(p) = self.open else { return false };
-        self.drag = None;
-        if self.terrain.take().is_some() {
-            terrain::hide(ui);
-            log.push("tool drop".into());
+        if self.open.is_some() {
+            self.drag = None;
+            if self.terrain.take().is_some() {
+                terrain::hide(ui);
+                log.push("tool drop".into());
+                return true;
+            }
+        }
+        if plaques(ui) {
             return true;
         }
+        let Some(p) = self.open else { return false };
         match self.held.take() {
             Some(_) => {
                 ui.select_item(PANELS[p].list, None);
