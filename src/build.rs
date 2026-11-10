@@ -576,7 +576,14 @@ impl Build {
 
     /// Escape or the right button drops the tool and clears the list selection; the next one
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
+    #[cfg(test)]
     pub(crate) fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
+        self.cancel_modes(ui, log) || self.cancel_held(ui, log)
+    }
+
+    /// The tool modes of the cancel cascade (input 4.6 steps 2 to 5): the bulldozer, the gate
+    /// placement, then the terrain editing. Whether one was left.
+    pub(crate) fn cancel_modes(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         if self.bulldozer {
             self.stop_bulldozer(ui, log);
             log.push("tool drop".into());
@@ -587,13 +594,21 @@ impl Build {
             log.push("tool drop".into());
             return true;
         }
-        let Some(p) = self.open else { return false };
-        self.drag = None;
-        if self.terrain.take().is_some() {
-            terrain::hide(ui);
-            log.push("tool drop".into());
-            return true;
+        if self.open.is_some() {
+            self.drag = None;
+            if self.terrain.take().is_some() {
+                terrain::hide(ui);
+                log.push("tool drop".into());
+                return true;
+            }
         }
+        false
+    }
+
+    /// The held item of the cancel cascade (input 4.6 step 7): dropped, or the open panel closed
+    /// when none is held. Whether a panel was open.
+    pub(crate) fn cancel_held(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
+        let Some(p) = self.open else { return false };
         match self.held.take() {
             Some(_) => {
                 ui.select_item(PANELS[p].list, None);

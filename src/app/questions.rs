@@ -2,6 +2,8 @@
 //! Escape, and the stop of a game for the main menu.
 
 use super::*;
+use crate::panel::exhibit::PLAQUE;
+use crate::panel::facts::SPECIES;
 
 impl App<'_> {
     /// Tells the player something in a question box with an OK button.
@@ -118,14 +120,21 @@ impl App<'_> {
     /// building panels is dropped, then the open panels close, and only Escape then asks the
     /// question that leads to the menu.
     pub(super) fn cancel(&mut self, ask: bool) {
-        if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
-            return self.put_back();
-        }
         if self.end_assign() {
             return;
         }
+        if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui)
+            && (game.build.cancel_modes(ui, &mut self.lines.tool) || close_plaques(ui))
+        {
+            self.terrain_sync();
+            return self.aim(false);
+        }
+        // A unit carried by hand is the pending entity, after the plaques (step 7).
+        if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
+            return self.put_back();
+        }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-            if game.build.cancel(ui, &mut self.lines.tool) {
+            if game.build.cancel_held(ui, &mut self.lines.tool) {
                 self.terrain_sync();
                 return self.aim(false);
             }
@@ -172,4 +181,16 @@ impl App<'_> {
             }
         }
     }
+}
+
+/// Step 6 of Escape and the right button (input 4.6): when the species or the recommendations
+/// plaque is shown, closes both, the species one first (unit placing 17.3 point 13 b). The staff
+/// plaque is left. Whether it did.
+fn close_plaques(ui: &mut Interface) -> bool {
+    let open = ui.shown(SPECIES) || ui.shown(PLAQUE);
+    if open {
+        ui.set_hidden(SPECIES, true);
+        ui.set_hidden(PLAQUE, true);
+    }
+    open
 }
