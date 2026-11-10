@@ -207,6 +207,41 @@ fn captured(unit: &Unit) -> u32 {
     }
 }
 
+/// The text of the current job of a staff member, empty when it has none (staff 9).
+pub(crate) fn job_text(
+    ui: &Interface,
+    world: &World,
+    cat: &Catalogue,
+    unit: &Unit,
+    type_id: i32,
+) -> String {
+    let place = |tile: Option<usize>| {
+        let region = tile.and_then(|t| world.exhibits().region(t));
+        match region.and_then(|r| world.exhibits().get(r)) {
+            Some(x) => Place::Exhibit(x.name.clone()),
+            None if region == Some(crate::exhibit::GROUNDS) => Place::Grounds,
+            None => Place::None,
+        }
+    };
+    let animal = |id: u32| {
+        let u = world.units.get(id)?;
+        let Part::Animal(a) = &u.part else {
+            return None;
+        };
+        let name = (world.find(id)).and_then(|e| world.zoo.entities[e].common.as_ref());
+        Some(Seen {
+            egg: a.egg,
+            name: name.map_or(String::new(), |c| c.name.clone()),
+        })
+    };
+    let show = |id: u16| scheduled(world, cat, id).map(|name_id| ui.string(name_id));
+    duty(unit, type_id, place, animal, show).map_or(String::new(), |(s, name)| {
+        let none = Words::new(|_| String::new());
+        let args = name.iter().map(|n| Arg::Text(n)).collect::<Vec<_>>();
+        format::expand(&none, &ui.string(s), &args)
+    })
+}
+
 /// The selected staff member and the refresh clock.
 #[derive(Debug, Default)]
 pub(crate) struct Panel {
@@ -223,7 +258,7 @@ pub(crate) struct Panel {
 }
 
 /// The values of a repeated key of a unit type's section, taken from its subtype or else from its
-/// default subtype (entity types 6.2).
+/// default subtype (entity types 6.2), or from the plain section for a type with none.
 fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
     let Some(config) = ty.config.as_deref() else {
         return Vec::new();
@@ -232,7 +267,11 @@ fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
         .section("Global")
         .and_then(|g| g.get("DefaultSubtype"));
     let lists = [&ty.subtype[..], default.unwrap_or_default()].map(|prefix| {
-        let name = [prefix, b"/", section.as_bytes()].concat();
+        // A type with no subtype (the helicopter) has its sections without a prefix.
+        let name = match prefix.is_empty() {
+            true => section.as_bytes().to_vec(),
+            false => [prefix, b"/", section.as_bytes()].concat(),
+        };
         config
             .section(name)
             .map_or(Vec::new(), |s| s.get_all(key).to_vec())
@@ -243,43 +282,43 @@ fn list(ty: &EntityType, section: &str, key: &str) -> Vec<Vec<u8>> {
         .unwrap_or_default()
 }
 
-impl Panel {
-    /// Shows icon `i` of the type's `cTrainingIconName` with the tooltip `i` of `cTrainingTooltip`
-    /// when bit `i` of the training mask is set, else nothing (information panels 9.1). The text
-    /// for the log line: the icons shown.
-    fn training(
-        &self,
-        ui: &mut Interface,
-        vfs: &Vfs,
-        ty: Option<&EntityType>,
-        mask: u16,
-    ) -> String {
-        let icons = ty.map_or(Vec::new(), |t| {
-            list(t, "Characteristics/Strings", "cTrainingIconName")
-        });
-        let tips = ty.map_or(Vec::new(), |t| {
-            list(t, "Characteristics/Integers", "cTrainingTooltip")
-        });
-        let mut shown = String::new();
-        for (i, &element) in ICONS.iter().enumerate() {
-            let name = icons.get(i).filter(|_| mask >> i & 1 == 1);
-            let name = name.map(|n| String::from_utf8_lossy(n.trim_ascii()).into_owned());
-            let picture = name.as_deref().and_then(|n| ui.tree.picture(vfs, n));
-            if picture.is_some() {
-                shown += &format!(" icon{i}");
-            }
-            ui.set_picture(element, picture);
-            let tip = tips
-                .get(i)
-                .and_then(|t| to_int(t))
-                .filter(|_| picture.is_some());
-            if let Some(e) = ui.tree.find(element) {
-                ui.tree.elements[e].help_id = tip.into_iter().collect();
-            }
+/// Shows icon `i` of the type's `cTrainingIconName` in `icons[i]` with the tooltip `i` of
+/// `cTrainingTooltip` when bit `i` of the training mask is set, else nothing (information panels
+/// 9.1). The text for the log line: the icons shown.
+pub(crate) fn training(
+    ui: &mut Interface,
+    vfs: &Vfs,
+    ty: Option<&EntityType>,
+    mask: u16,
+    elements: &[i32; 5],
+) -> String {
+    let icons = ty.map_or(Vec::new(), |t| {
+        list(t, "Characteristics/Strings", "cTrainingIconName")
+    });
+    let tips = ty.map_or(Vec::new(), |t| {
+        list(t, "Characteristics/Integers", "cTrainingTooltip")
+    });
+    let mut shown = String::new();
+    for (i, &element) in elements.iter().enumerate() {
+        let name = icons.get(i).filter(|_| mask >> i & 1 == 1);
+        let name = name.map(|n| String::from_utf8_lossy(n.trim_ascii()).into_owned());
+        let picture = name.as_deref().and_then(|n| ui.tree.picture(vfs, n));
+        if picture.is_some() {
+            shown += &format!(" icon{i}");
         }
-        shown
+        ui.set_picture(element, picture);
+        let tip = tips
+            .get(i)
+            .and_then(|t| to_int(t))
+            .filter(|_| picture.is_some());
+        if let Some(e) = ui.tree.find(element) {
+            ui.tree.elements[e].help_id = tip.into_iter().collect();
+        }
     }
+    shown
+}
 
+impl Panel {
     /// Selects the staff member with entity id `id`: the panel is filled at once (4.3).
     pub(crate) fn select(&mut self, id: u32) {
         self.selected = Some(id);
@@ -320,36 +359,7 @@ impl Panel {
         let money = Symbol::new(ui.string(SYMBOL));
         let salary = money.text(ty.map_or(0.0, staff::monthly).round() as i64);
         ui.set_text(SALARY, &to_cp1252(&salary));
-        let place = |tile: Option<usize>| {
-            let region = tile.and_then(|t| world.exhibits().region(t));
-            match region.and_then(|r| world.exhibits().get(r)) {
-                Some(x) => Place::Exhibit(x.name.clone()),
-                None if region == Some(crate::exhibit::GROUNDS) => Place::Grounds,
-                None => Place::None,
-            }
-        };
-        let animal = |id: u32| {
-            let u = world.units.get(id)?;
-            let Part::Animal(a) = &u.part else {
-                return None;
-            };
-            let name = world
-                .find(id)
-                .and_then(|e| world.zoo.entities[e].common.as_ref());
-            Some(Seen {
-                egg: a.egg,
-                name: name.map_or(String::new(), |c| c.name.clone()),
-            })
-        };
-        let show = |id: u16| scheduled(world, cat, id).map(|name_id| ui.string(name_id));
-        let text = duty(unit, ty.map_or(0, |t| t.name_id), place, animal, show).map_or(
-            String::new(),
-            |(s, name)| {
-                let none = Words::new(|_| String::new());
-                let args = name.iter().map(|n| Arg::Text(n)).collect::<Vec<_>>();
-                format::expand(&none, &ui.string(s), &args)
-            },
-        );
+        let text = job_text(ui, world, cat, unit, ty.map_or(0, |t| t.name_id));
         ui.set_text(DUTY, &to_cp1252(&text));
         let name = world.zoo.entities[at]
             .common
@@ -367,7 +377,7 @@ impl Panel {
             ui.set_enabled(button, !unit.carried);
         }
         ui.set_enabled(ASSIGN, !unit.carried && !placing);
-        let trained = self.training(ui, vfs, ty, world.research.training_of(ty));
+        let trained = training(ui, vfs, ty, world.research.training_of(ty), &ICONS);
         let told = match unit.kind {
             Kind::Worker => {
                 let kinds = staff::duty_kinds(cat);

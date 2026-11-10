@@ -114,9 +114,7 @@ impl App<'_> {
             crate::terrain::elevation_cost(self.renderer.vfs().ini()),
         );
         terrain.set_size(brush);
-        if let Some(ui) = &mut self.ui {
-            ui.clear_messages();
-        }
+        self.ui.iter_mut().for_each(Interface::clear_messages);
         self.game = Some(Game {
             world,
             staged,
@@ -159,6 +157,7 @@ impl App<'_> {
             panel: Default::default(),
             animal: Default::default(),
             staff: Default::default(),
+            recovery: Default::default(),
             guest: Default::default(),
             research: Default::default(),
             building: Default::default(),

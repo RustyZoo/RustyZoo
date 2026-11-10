@@ -7,14 +7,14 @@ use super::*;
 use crate::panel::building;
 use crate::panel::exhibit::{BUTTON, LAYOUT, NAME, PLAQUE};
 use crate::panel::unitlist as lists;
-use crate::panel::{animal, guest, research, staff};
+use crate::panel::{animal, guest, recovery, research, staff};
 use crate::text::from_cp1252;
 use crate::unit::Part;
 
 impl App<'_> {
     /// A release on the map with no tool and no unit under the pointer (those are
     /// [`App::pick_or_select`]'s, and [`App::units_sync`] shows their panels): the gate of an
-    /// exhibit opens the exhibit panel on that exhibit, and a guest building or a tank filter becomes the
+    /// exhibit opens the exhibit panel on that exhibit, and a guest building, a tank filter or the helicopter base becomes the
     /// selected entity, which shows its panel (`tool select ID`).
     pub(super) fn select(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &self.ui) else {
@@ -41,7 +41,7 @@ impl App<'_> {
             }
             return self.open_exhibit(gate);
         }
-        if let Some(id) = id.filter(|&id| self.building_layout(id).is_some())
+        if let Some(id) = id.filter(|&id| self.building_layout(id).is_some() || self.is_base(id))
             && let Some(game) = &mut self.game
         {
             game.selected = Some(id);
@@ -68,7 +68,10 @@ impl App<'_> {
         };
         let gate = world.find(id).is_some_and(|at| world.is_door(at))
             && world.exhibits().list().iter().any(|e| e.gate == Some(id));
-        world.units.get(id).is_some() || self.building_layout(id).is_some() || gate
+        world.units.get(id).is_some()
+            || self.building_layout(id).is_some()
+            || self.is_base(id)
+            || gate
     }
 
     /// Shows the exhibit panel, with the exhibit list button down, on exhibit `id`.
@@ -228,8 +231,12 @@ impl App<'_> {
         let (game, ui) = (self.game.as_ref()?, self.ui.as_ref()?);
         let animal = game.animal.selected.filter(|_| ui.is_down(animal::FOLLOW));
         let staff = game.staff.selected.filter(|_| ui.is_down(staff::FOLLOW));
+        let team = game
+            .recovery
+            .selected
+            .filter(|_| ui.is_down(recovery::FOLLOW));
         let guest = game.guest.selected.filter(|_| ui.is_down(guest::FOLLOW));
-        animal.or(staff).or(guest)
+        animal.or(staff).or(team).or(guest)
     }
 
     /// Whether the view follows a unit.
@@ -319,6 +326,7 @@ impl App<'_> {
         self.facts_sync();
         self.animal_sync();
         self.staff_sync();
+        self.recovery_sync();
         self.guest_sync();
         self.building_sync();
         let ticking = self.fired.interface.is_some() && !self.paused() && !self.modal();
@@ -346,6 +354,10 @@ impl App<'_> {
             self.lines
                 .panel
                 .extend(game.staff.refresh(ui, &game.world, cat, vfs, placing));
+        }
+        if ui.shown(recovery::LAYOUT) && game.recovery.clock.due(now, ticking, recovery::PERIOD) {
+            let line = game.recovery.refresh(ui, &game.world, cat, vfs);
+            self.lines.panel.extend(line);
         }
         if ui.shown(guest::LAYOUT) && game.guest.clock.due(now, ticking, guest::PERIOD) {
             let date = self.sim.calendar().date();
