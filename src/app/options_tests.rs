@@ -809,8 +809,9 @@ fn a_click_on_the_current_size_does_nothing_and_a_failed_resize_writes_nothing()
         t.pass(&[]);
         t.app.resized((1024, 768), false);
         assert!(!t.ui().is_enabled(1518));
-        // A size of 0 is taken for a failure.
+        // A size that no button asks for is ignored.
         t.app.resized((0, 0), true);
+        t.app.resized((u32::MAX, u32::MAX), true);
         assert_eq!((t.app.frame.width, t.app.frame.height), SIZE);
     });
 }
