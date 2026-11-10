@@ -852,6 +852,7 @@ mod cheat_guest;
 mod cheat_staff;
 mod command;
 mod exhibits;
+mod facts;
 mod gates;
 mod guest_panel;
 mod help;
@@ -932,6 +933,8 @@ mod terrain_tests;
 
 #[cfg(test)]
 mod bulldozer_tests;
+#[cfg(test)]
+mod facts_tests;
 #[cfg(test)]
 mod options_tests;
 #[cfg(test)]

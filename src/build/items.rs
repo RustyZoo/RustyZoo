@@ -121,7 +121,7 @@ pub(crate) fn plain(ty: &EntityType, key: &str) -> Option<f32> {
 
 /// A text of the `[Characteristics/Strings]` of a unit: the section of its subtype, then of the
 /// default subtype.
-pub(super) fn unit_text(ty: &EntityType, key: &str) -> Option<String> {
+pub(crate) fn unit_text(ty: &EntityType, key: &str) -> Option<String> {
     let config = ty.config.as_deref()?;
     let default = config
         .section("Global")
@@ -230,7 +230,7 @@ pub(super) fn icon_at(names: &[String], step: usize) -> Option<&String> {
 
 /// The animation of each value of `[Images]` in `ui/infoimg.cfg` (a missing file or a key that is
 /// not a number gives nothing for it).
-pub(super) fn infoimg(vfs: &Vfs) -> HashMap<i32, String> {
+pub(crate) fn infoimg(vfs: &Vfs) -> HashMap<i32, String> {
     let config = vfs.read("ui/infoimg.cfg").ok();
     let config = config.and_then(|b| Config::parse(&b).ok());
     let Some(section) = config.as_ref().and_then(|c| c.section("Images")) else {

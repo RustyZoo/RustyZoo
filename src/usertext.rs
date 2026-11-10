@@ -6,7 +6,7 @@
 //! 30000 and 55000 (string tables 4.2).
 
 use crate::config::{Config, Section};
-use crate::entity::Catalogue;
+use crate::entity::{Catalogue, EntityType};
 use crate::text::from_cp1252;
 use crate::ui::interface::Interface;
 use std::ops::RangeInclusive;
@@ -113,6 +113,17 @@ pub(crate) fn names(
         out.push((ty.name_id + THE, text(&texts.the)));
     }
     out
+}
+
+/// The member named by `cGeneralInfoFileName` of the language section of the user type `ty`.
+pub(crate) fn info_file(ui: &Interface, ty: &EntityType) -> Option<String> {
+    let section = section(
+        ty.config.as_deref()?,
+        &ui.string(22015),
+        user_locale().as_deref(),
+    )?;
+    let name = texts(section).info_file?;
+    Some(name.iter().map(|&b| from_cp1252(b)).collect())
 }
 
 /// Shows the texts of the user types of `catalogue` wherever their ids are shown, in the install
