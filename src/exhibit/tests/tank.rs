@@ -1254,3 +1254,46 @@ fn a_tank_cut_from_a_land_exhibit_with_its_gate_across_is_resized_once_and_the_l
     };
     assert_eq!((count(false), count(true)), (3, 1));
 }
+
+/// A land pen of 6 x 2 tiles whose east half is closed by tank walls, with a path below its west
+/// half; the cut between the halves makes the east half a tank and leaves the west half land.
+fn tank_survivor_cut(gate: Option<(i32, i32, u32)>) -> usize {
+    let mut z = zoo(&[]);
+    for (class, (x, y, d)) in ring("fences", 1, 1, 6, 2) {
+        let mut e = wall(if x >= 4 { "tank" } else { class }, (x, y, d));
+        if Some((x, y, d)) == gate {
+            e.subtype = "g".into();
+        }
+        z.entities.push(e);
+    }
+    unique(&mut z);
+    let gate = z.entities.iter().position(|e| e.subtype == "g");
+    z.entities.push(entity("path", 2, 4, 0));
+    unique(&mut z);
+    let mut world = World::new(z, tank_shape);
+    world.set_tank_config(CONFIG);
+    let id = world.exhibits().list()[0].id;
+    if let Some(gate) = gate {
+        world.set_gate(id, gate as u32 + 1);
+    }
+    world.begin();
+    put_wall(&mut world, "tank", (3, 1, 2));
+    put_wall(&mut world, "tank", (3, 2, 2));
+    let t = 4 * SIZE as usize + 2;
+    let list = world.exhibits().list();
+    let land = list.iter().find(|e| e.tank.is_none()).unwrap();
+    assert!(list.iter().any(|e| e.tank.is_some()));
+    land.areas.iter().filter(|a| a.tiles == [t]).count()
+}
+
+#[test]
+fn a_land_cut_whose_survivor_becomes_a_tank_with_its_gate_across_resizes_the_new_part_twice() {
+    // The new land part: its constructor and the second pair of the split (habitat rating 10.1.1).
+    assert_eq!(tank_survivor_cut(Some((6, 1, 2))), 2);
+}
+
+#[test]
+fn a_land_cut_whose_survivor_becomes_a_tank_without_a_gate_resizes_the_new_part_twice() {
+    // Its constructor and the morph's refill from the piece's pair (10.1.1 point 3).
+    assert_eq!(tank_survivor_cut(None), 2);
+}
