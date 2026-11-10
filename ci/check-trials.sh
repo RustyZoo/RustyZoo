@@ -448,6 +448,9 @@ check expansion-trial 0,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -
 # The same in a window of the dummy video driver (the start-up picture is presented as the bar
 # moves): a click on Exit at y ends the run, and its log replays headless to the same lines.
 windowed_menu() {
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n' >"$tmp/user/zoo.ini"
   d=$(mktemp -d)
   printf '3 mouse 512 %s\n5 down\n6 up\n' "$1" >"$d/script"
   SDL_VIDEO_DRIVER=dummy rz run --seed 1 --size 1024x768 --passes 40 --script "$d/script" --log "$d/log" >/dev/null 2>&1
