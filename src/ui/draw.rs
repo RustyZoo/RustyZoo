@@ -588,7 +588,16 @@ impl Painter {
 
     /// The font an element names with its `font` and `fontsize` strings: Arial 8 without them.
     fn font(&mut self, e: &Element, strings: &dyn Strings) -> &mut text::Font {
-        let (face, size) = match e.look.font {
+        self.font_named(e.look.font, strings)
+    }
+
+    /// The font of a `font` and `fontsize` string pair, Arial 8 for none.
+    pub(crate) fn font_named(
+        &mut self,
+        named: Option<(i32, i32)>,
+        strings: &dyn Strings,
+    ) -> &mut text::Font {
+        let (face, size) = match named {
             Some((face, size)) => (strings.string(face), strings.string(size)),
             None => ("Arial".to_string(), "8".to_string()),
         };

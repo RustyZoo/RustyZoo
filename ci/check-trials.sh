@@ -466,6 +466,16 @@ windowed_game() { # windowed_game <y of Continue> <last file>
 check base-trial 2,same 'windowed_game 489 "maps\\default.zoo" | paste -sd, -'
 # The same refusal in a window: no game starts, and the log replays to the same lines.
 check expansion-trial 0,same 'windowed_game 474 "maps\\scn19.zoo" | paste -sd, -'
+# A resolution button in a window of the dummy video driver (it does not resize the window, so only
+# the texture and frame sizes staying in step is checked): the run ends without error, then both keys.
+resized_window() {
+  d=$(mktemp -d)
+  printf '3 press 1004\n5 press 1507\n8 press 1517\n' >"$d/script"
+  RUSTYZOO_USER_DIR=$d SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --seed 1 --size 1024x768 --passes 24 --script "$d/script" >/dev/null 2>&1
+  echo "$?,$(sed -n 's/^screenwidth=//p' "$d/zoo.ini"),$(sed -n 's/^screenheight=//p' "$d/zoo.ini")"
+  rm -rf "${d:?}"
+}
+check base-trial 0,800,600 'resized_window'
 
 # The same in a window of the dummy video driver (the start-up picture is presented as the bar
 # moves): a click on Exit at y ends the run, and its log replays headless to the same lines.

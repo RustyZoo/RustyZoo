@@ -4,7 +4,7 @@
 use rustyzoo::config::Config;
 use sdl3::pixels::Color;
 use sdl3::render::{Canvas, FRect, Texture};
-use sdl3::video::Window;
+use sdl3::video::{Window, WindowPos};
 
 use super::fullscreen;
 use super::size::{clamp, ini_size, plan};
@@ -18,6 +18,28 @@ pub struct Screen {
     /// The game is full screen (the camera's rules apply). It follows the last switch that the
     /// window accepted, and what the window reports on its own.
     pub fullscreen: bool,
+    /// The window waits for a fit to the game size.
+    fit: Fit,
+}
+
+/// When the window is fitted to the game size: at once in a window, and when a full screen is
+/// left if the game was resized in it.
+#[derive(Default)]
+struct Fit {
+    waiting: bool,
+}
+
+impl Fit {
+    /// The game was resized: whether to fit the window now.
+    fn resized(&mut self, fullscreen: bool) -> bool {
+        self.waiting |= fullscreen;
+        !fullscreen
+    }
+
+    /// Whether the window is due a fit: it was waiting and is not in full screen any more.
+    fn due(&mut self, fullscreen: bool) -> bool {
+        !fullscreen && std::mem::take(&mut self.waiting)
+    }
 }
 
 impl Screen {
@@ -42,6 +64,53 @@ impl Screen {
             );
         }
         done.is_ok()
+    }
+
+    /// Gives the game another size (16.9 point 2): the window takes the new size times the factor
+    /// of the display and is centred on the primary screen. In full screen the picture is scaled
+    /// to the display, so only the size changes, and the window is fitted when it is left
+    /// ([`Screen::refit`]). Whether it was done; a failure warns and changes nothing.
+    pub fn resize(&mut self, video: &sdl3::VideoSubsystem, size: (u32, u32)) -> bool {
+        if size == self.size {
+            return false;
+        }
+        if self.fit.resized(self.fullscreen)
+            && let Err(e) = self.fit_window(video, size)
+        {
+            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
+            return false;
+        }
+        self.size = size;
+        true
+    }
+
+    /// Fits the window to the game size once the window is back from a full screen in which the
+    /// game was resized. A failure warns.
+    pub fn refit(&mut self, video: &sdl3::VideoSubsystem) {
+        if self.fit.due(self.fullscreen)
+            && let Err(e) = self.fit_window(video, self.size)
+        {
+            eprintln!("rustyzoo: cannot fit the window: {e}");
+        }
+    }
+
+    fn fit_window(
+        &mut self,
+        video: &sdl3::VideoSubsystem,
+        size: (u32, u32),
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let usable = video.get_primary_display()?.get_usable_bounds()?;
+        let window = self.canvas.window_mut();
+        let (_, want) = plan(
+            size,
+            window.display_scale(),
+            window.pixel_density(),
+            (usable.width(), usable.height()),
+        );
+        window.set_size(want.0, want.1)?;
+        window.set_position(WindowPos::Centered, WindowPos::Centered);
+        window.sync();
+        Ok(())
     }
 
     /// The pixel of the game under the cursor at `at`, in points of the window.
@@ -110,5 +179,26 @@ pub fn open(
         canvas,
         size,
         fullscreen: false,
+        fit: Fit::default(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A game resized in full screen sizes the window for the way back (16.9 point 2): nothing
+    /// at the resize, one fit when the window is back, none after.
+    #[test]
+    fn a_resize_in_full_screen_fits_the_window_when_it_is_left() {
+        let mut fit = Fit::default();
+        assert!(!fit.resized(true), "no window to size in full screen");
+        assert!(!fit.due(true), "still full screen");
+        assert!(fit.due(false), "back in a window");
+        assert!(!fit.due(false), "once");
+        assert!(
+            fit.resized(false) && !fit.due(false),
+            "in a window: at once"
+        );
+    }
 }
