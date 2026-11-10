@@ -353,13 +353,18 @@ impl World {
             let Some(new) = new.filter(|n| built.fresh.contains(n)) else {
                 continue;
             };
-            let Some(j) = (0..plan.parts.len()).find(|&j| plan.winner[j] == Some(x)) else {
+            // The survivor may have been morphed: its part then has no winner.
+            let kept = |j: usize| plan.winner[j] == Some(x) || plan.morphed.get(&j) == Some(&x);
+            let Some(j) = (0..plan.parts.len()).find(|&j| kept(j)) else {
                 continue;
             };
             if !holds(i, a) || !holds(j, b) || holds(j, a) {
                 continue;
             }
-            built.early.push((x, exhibit::fill(self, a)));
+            // A survivor that becomes a tank goes with its resizes (10.1.1).
+            if plan.morphed.get(&j) != Some(&x) {
+                built.early.push((x, exhibit::fill(self, a)));
+            }
             // A new part that becomes a tank is made by the morph, resized by its constructor only.
             if plan.kinds[i].is_none() {
                 built.early.push((new, exhibit::fill(self, b)));
