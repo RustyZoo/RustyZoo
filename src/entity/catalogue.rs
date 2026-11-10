@@ -7,7 +7,8 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::behaviour::{Behaviours, Call, Row};
-use crate::config::{Config, Section};
+use crate::config::{Config, Section, to_float};
+use crate::timing::ini_value;
 use crate::strings::is_user_id;
 use crate::usertext;
 use crate::vfs::{Vfs, normalise};
@@ -96,6 +97,9 @@ struct Class {
 }
 
 /// The registry readers in the order of the original. (Items are not entity types.)
+/// The fence types of the base trial, in the order its program makes them (base trial 1.1).
+const TRIAL_FENCES: [&[u8]; 4] = [b"zoobars", b"zoowall", b"chaincon", b"wpicket"];
+
 const CLASSES: [Class; 12] = [
     class("food", "food", "food", Shape::Flat, None),
     class("paths", "paths", "paths", Shape::Flat, None),
@@ -289,6 +293,7 @@ impl Catalogue {
     /// the start-up).
     pub fn load_with(vfs: &Vfs, step: &mut dyn FnMut()) -> Result<Catalogue, EntityError> {
         let mut catalogue = Catalogue::default();
+        let trial = vfs.is_base_trial();
         for class in &CLASSES {
             let mut loaded_any = false;
             // `*` also matches `/`: the test is on the whole name, so `items/x.cfg` matches `items`.
@@ -309,7 +314,14 @@ impl Catalogue {
                         catalogue.warn(|| format!("staff entry of unknown kind: {}", show(key)));
                     }
                 }
-                catalogue.add_all(vfs, entries(class, &registry), step)?;
+                let mut listed = entries(class, &registry);
+                if trial && class.name == "fences" {
+                    // The trial makes its fence types in code, in a fixed order (base trial 1.1).
+                    let mut all: Vec<_> = listed.take(MAX_ENTRIES + 1).collect();
+                    all.sort_by_key(|e| TRIAL_FENCES.iter().position(|n| *n == e.type_name));
+                    listed = Box::new(all.into_iter());
+                }
+                catalogue.add_all(vfs, listed, step)?;
             }
             if let (true, Some(extension)) = (loaded_any, class.user_extension) {
                 for name in vfs.list(Some(&format!("*{extension}"))) {
@@ -367,6 +379,9 @@ impl Catalogue {
         catalogue.chase_time_out = key("cChaseTimeOut");
         catalogue.chase_look_ahead = key("cChaseLookAhead");
         catalogue.awards = crate::award::Definitions::load(vfs);
+        if trial {
+            catalogue.price_staff(vfs);
+        }
         warnings.into_iter().for_each(|w| catalogue.warn(|| w));
         if catalogue.suppressed > 0 {
             let more = catalogue.suppressed;
@@ -375,6 +390,33 @@ impl Catalogue {
                 .push(format!("{more} more warnings not shown"));
         }
         Ok(catalogue)
+    }
+
+    /// The base trial's staff prices (base trial 2.2, 2.4): the hire fee and the monthly wage of a
+    /// staff type are the economy file's `cKeeperCost`, `cTourCost` or `cMaintenanceCost` (1000
+    /// when absent), whatever the staff file says.
+    fn price_staff(&mut self, vfs: &Vfs) {
+        let economy = vfs.read("economy.cfg").ok();
+        let economy = economy.and_then(|b| Config::parse(&b).ok());
+        for ty in &mut self.types {
+            let key = match ty.class {
+                "keeper" => "cKeeperCost",
+                "tour" => "cTourCost",
+                "maint" => "cMaintenanceCost",
+                _ => continue,
+            };
+            let value = (economy.as_ref())
+                .and_then(|e| ini_value(e, "characteristics", key))
+                .map(to_float)
+                .filter(|v| v.is_finite())
+                .unwrap_or(1000.0);
+            let mut config = ty.config.as_deref().cloned().unwrap_or_default();
+            let section = format!("{}/Characteristics/Integers", String::from_utf8_lossy(&ty.subtype));
+            for key in ["cPurchaseCost", "cMonthlyCost"] {
+                config.set(&section, key, &value.to_string());
+            }
+            ty.config = Some(Arc::new(config));
+        }
     }
 
     /// Adds a type that a test made, findable by its names.

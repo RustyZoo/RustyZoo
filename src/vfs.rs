@@ -486,6 +486,13 @@ impl Vfs {
         &self.root
     }
 
+    /// Whether the program of the install is the base trial's `zoodemo.exe` (base trial 1, 2): the
+    /// install has no `zoo.exe`.
+    pub fn is_base_trial(&self) -> bool {
+        let has = |name| matches!(path::find_ignoring_case(&self.root, name, false), Ok(Some(_)));
+        has("zoodemo.exe") && !has("zoo.exe")
+    }
+
     /// The bytes of the ini file next to the executable.
     pub fn ini(&self) -> &[u8] {
         &self.ini
