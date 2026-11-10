@@ -98,7 +98,6 @@ impl App<'_> {
             .as_mut()
             .map(|t| t.apply(self.renderer.catalogue(), &mut world.research));
         let (flags, section_life) = applied.map_or((None, Vec::new()), |(f, l)| (Some(f), l));
-        world.units.set_ini(self.renderer.vfs().ini());
         if let Some(ui) = &self.ui {
             world.units.guest_name = ui.string(GUEST_NAME);
             world.units.names = self.type_names(ui);
@@ -106,12 +105,8 @@ impl App<'_> {
         }
         let types = crate::terrain::types(self.renderer.vfs());
         let water = place::water(&types);
-        world.set_water(water.clone());
-        world.units.class = crate::animal::Class {
-            reset_interval: self.sim.ai.animal_reset_interval,
-            ..crate::animal::Class::load(self.renderer.vfs())
-        };
-        world.set_decay(crate::world::Decay::load(self.renderer.vfs()));
+        let reset = self.sim.ai.animal_reset_interval;
+        world.set_install(self.renderer.vfs(), water.clone(), reset);
         self.sim.load(&mut world, self.renderer.catalogue());
         self.sim
             .fences_loaded(&mut world, self.renderer.catalogue());

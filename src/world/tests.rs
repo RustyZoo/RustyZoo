@@ -1159,3 +1159,20 @@ fn a_typed_name_replaces_the_old_one_only_with_a_visible_character() {
     world.rename_entity(0, b" New ");
     assert_eq!(name(&world), " New ");
 }
+
+#[test]
+fn set_install_takes_the_numbers_of_the_install_as_the_game_start_does() {
+    let dir = crate::fixtures::TempDir::new("set_install");
+    dir.write("zoo.ini", b"[AI]\nexhibitServiceInterval=33\n");
+    dir.write(
+        "fences/fence.ai",
+        b"[Decay]\nminDecayTime=5\nmaxDecayTime=90\n",
+    );
+    let vfs = crate::vfs::Vfs::open(&dir.0).unwrap();
+    let mut world = World::new(zoo(2, 2, (0, 0)), |_| None);
+    world.set_install(&vfs, vec![false, true], 7);
+    assert_eq!(world.units.service_interval, 33);
+    assert_eq!(world.water, [false, true]);
+    assert_eq!(world.units.class.reset_interval, 7);
+    assert_eq!(world.decay, Decay { min: 5, max: 90 });
+}
