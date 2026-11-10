@@ -206,7 +206,7 @@ else
   paid=$(awk '$4 == "sim" && $5 == "wages" { n++; s += $7 } END { print n + 0, s + 0 }' "$tmp/log")
   case $paid in
     "0 "*) fail "wages: none booked at a month change" ;;
-    *" 0") ok "wages: ${paid% *} booked, all 0 (the staff of this data cost nothing); table: $(row 7)" ;;
+    *" 0") ok "wages: ${paid% *} booked, all 0 (zero wage in this data); table: $(row 7)" ;;
     *) nonzero 7 && ok "wages in the table: $(row 7), ${paid% *} booked" || fail "wages in the table: $(row 7)" ;;
   esac
 fi
