@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::behaviour::{Behaviours, Call, Row};
 use crate::config::{Config, Section, to_float};
-use crate::timing::ini_value;
 use crate::strings::is_user_id;
+use crate::timing::ini_value;
 use crate::usertext;
 use crate::vfs::{Vfs, normalise};
 
@@ -411,7 +411,10 @@ impl Catalogue {
                 .filter(|v| v.is_finite())
                 .unwrap_or(1000.0);
             let mut config = ty.config.as_deref().cloned().unwrap_or_default();
-            let section = format!("{}/Characteristics/Integers", String::from_utf8_lossy(&ty.subtype));
+            let section = format!(
+                "{}/Characteristics/Integers",
+                String::from_utf8_lossy(&ty.subtype)
+            );
             for key in ["cPurchaseCost", "cMonthlyCost"] {
                 config.set(&section, key, &value.to_string());
             }
