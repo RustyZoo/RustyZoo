@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::animal::Class;
 use crate::entity::Catalogue;
 use crate::exhibit::{EXTERIOR, Exhibits, GROUNDS, TankConfig};
 #[cfg(test)]
@@ -17,6 +18,7 @@ use crate::path::{Finder, Settings};
 use crate::render::order::{Kind, Object, Scene, ground_height};
 use crate::strings::Language;
 use crate::unit::Units;
+use crate::vfs::Vfs;
 use crate::zoo::{Entity, Tile, Zoo};
 use held::Shift;
 use undo::Action;
@@ -237,6 +239,19 @@ impl World {
     #[cfg(test)]
     pub(crate) fn new(zoo: Zoo, shape: impl Fn(&Entity) -> Option<Shape>) -> World {
         World::with_language(zoo, shape, Language::shipped())
+    }
+
+    /// The numbers of the install a loaded world needs before its units are created: the ini
+    /// settings, the `water` of the terrain types, the animal class (with the `reset_interval`
+    /// of the AI) and the wear interval. The game start and the static picture share it.
+    pub fn set_install(&mut self, vfs: &Vfs, water: Vec<bool>, reset_interval: i32) {
+        self.units.set_ini(vfs.ini());
+        self.set_water(water);
+        self.units.class = Class {
+            reset_interval,
+            ..Class::load(vfs)
+        };
+        self.set_decay(Decay::load(vfs));
     }
 
     /// The world of a zoo in the install language `language`, with the exterior of the zoo marked

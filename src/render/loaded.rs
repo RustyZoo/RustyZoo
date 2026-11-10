@@ -13,11 +13,9 @@ impl MapRenderer<'_> {
         let (vfs, cat) = (self.vfs, self.catalogue);
         let language = crate::strings::Language::of(vfs.root());
         let mut world = World::with_language(zoo.clone(), |e| self.shape(e), language);
-        world.units.set_ini(vfs.ini());
-        world.set_water(crate::place::water(&crate::terrain::types(vfs)));
-        world.units.class = crate::animal::Class::load(vfs);
-        world.set_decay(crate::world::Decay::load(vfs));
         let mut sim = Sim::new(vfs.ini());
+        let water = crate::place::water(&crate::terrain::types(vfs));
+        world.set_install(vfs, water, sim.ai.animal_reset_interval);
         sim.start_game(world.zoo.tiles.len(), world.zoo.clocks.clone());
         sim.load(&mut world, cat);
         world.set_tank_config(crate::exhibit::TankConfig::load(vfs));
