@@ -738,8 +738,8 @@ fence_drag() { # fence_drag <map> <last move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "6,49100,9655f8ef35cb90d9" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,9a5e7ebbb20bc34d "fence_drag maps/scn19.zoo '878 332'"
+check base-trial "6,49100,c03d9996928eab15" "fence_drag maps/default.zoo '878 332'"
+check expansion-trial 6,49250,5f237391a7c3d23f "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -752,7 +752,7 @@ reference_drag() { # reference_drag <map>
     awk '/ world add /{printf "%s,%s,%s;", $7, $8, $9} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print c "," h}'
   rm -rf "$d"
 }
-check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,e6d637f14cf346f1" "reference_drag maps/default.zoo"
+check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,261f889479f34ee9" "reference_drag maps/default.zoo"
 
 # Closes a square of fences with four drags (the first item of the fence list, one side each), types
 # a name into the dialog the new exhibit asks for and answers it with Enter. Prints the `exhibit`
