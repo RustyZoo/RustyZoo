@@ -96,6 +96,30 @@ fn a_helicopter_clicked_shows_the_team_panel_and_not_the_staff_panel() {
 }
 
 #[test]
+fn the_selected_base_or_its_helicopter_clicked_again_deselects_it() {
+    with_team("team-toggle", "", |s| {
+        let (team, _) = heli(s);
+        let selected = |s: &Session| s.app.game.as_ref().unwrap().selected;
+        for (tx, ty) in [(19, 20), (20, 22)] {
+            // Selected by a click on the helicopter, deselected by a click on the helicopter or the base.
+            s.click(s.at(19, 20, 32, 32));
+            s.pass(&[]);
+            assert_eq!(selected(s), Some(team));
+            assert!(shown(s, LAYOUT));
+            s.click(s.at(tx, ty, 32, 32));
+            s.pass(&[]);
+            assert_eq!(selected(s), None, "click at {tx},{ty}");
+            assert!(!shown(s, LAYOUT));
+        }
+        // The base unselected is selected by a click on it.
+        s.click(s.at(20, 22, 32, 32));
+        s.pass(&[]);
+        assert_eq!(selected(s), Some(team));
+        assert!(shown(s, LAYOUT));
+    });
+}
+
+#[test]
 fn the_name_field_renames_the_team_and_the_follow_button_follows_it() {
     with_team("team-name", "", |s| {
         let (team, _) = heli(s);
@@ -154,10 +178,10 @@ fn the_helicopter_clicked_selects_its_base_with_its_darts() {
             s.app.ui.as_ref().unwrap().text(1409).unwrap_or_default(),
             b"7"
         );
-        // Clicked again it stays selected: the helicopter is not picked up.
+        // Clicked again it is deselected: the helicopter is not picked up.
         s.click(s.at(19, 20, 32, 32));
         s.pass(&[]);
-        assert_eq!(s.app.game.as_ref().unwrap().selected, Some(base));
+        assert_eq!(s.app.game.as_ref().unwrap().selected, None);
         assert!(s.app.game.as_ref().unwrap().carry.is_none());
     });
 }
