@@ -13,6 +13,7 @@ use rustyzoo::zoo::Zoo;
 /// The rotation and the options of `render-map`, from the words after the output file.
 pub fn render_flags(mut flags: &[&str]) -> Result<(u8, Options), CliError> {
     let (mut rotation, mut options) = (0, Options::default());
+    options.loaded = true;
     let number = |word: &&str| word.parse::<i32>().map_err(|_| CliError::Usage);
     while let [flag, rest @ ..] = flags {
         flags = match (*flag, rest) {

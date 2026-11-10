@@ -10,7 +10,7 @@
 //! sends the animal ([`crate::animal::tank::switch`]).
 
 use super::{Kind, Part, Unit, movement};
-use crate::behaviour::{Place, Rest, Target};
+use crate::behaviour::{Data, Place, Rest, Target};
 use crate::render::order::ground_height;
 use crate::sim::Rng;
 use crate::staff::ladder::Ladder;
@@ -111,14 +111,14 @@ pub(crate) fn check(unit: &mut Unit, world: &mut World, at: usize) {
     }
 }
 
-/// The unit `id`, just put on the map, takes the tank mode of where it stands and, for an animal,
-/// its terrain mode (4, 5); the world moves it on at its next step.
-pub(crate) fn put(world: &mut World, id: u32) {
+/// The unit `id`, just put on the map, takes the tank mode of where it stands, its idle animation
+/// and, for an animal, its terrain mode (4, 5); the world moves it on at its next step.
+pub(crate) fn put(world: &mut World, id: u32, data: &dyn Data) {
     let (Some(at), Some(slot)) = (world.find(id), world.units.get_mut(id)) else {
         return;
     };
     let mut unit = std::mem::replace(slot, Unit::new(id, slot.kind));
-    check(&mut unit, world, at);
+    added(&mut unit, world, data, at);
     add_to_map(&mut unit, world, at);
     if let Some(slot) = world.units.get_mut(id) {
         *slot = unit;
@@ -184,13 +184,41 @@ pub(crate) fn idle_name(unit: &Unit) -> &'static str {
     }
 }
 
-/// The picture a unit restarts when it stands (unit placing 9.1): an egg's, a crate's, else the
-/// idle one of its tank mode.
-pub(crate) fn restart_name(unit: &Unit) -> &'static str {
-    match &unit.part {
-        Part::Animal(a) if a.egg => "egg_idle",
-        Part::Animal(a) if a.crated => "box_idle",
-        _ => idle_name(unit),
+/// The idle animation of the unit at position `at` that the type has (behaviours 5.10): the choice
+/// of the play calls, the stop and the idle reset.
+pub(crate) fn idle_pick(
+    unit: &Unit,
+    world: &World,
+    data: &dyn Data,
+    at: usize,
+) -> Option<&'static str> {
+    let entity = &world.zoo.entities[at];
+    rest(unit, wet(world, at)).pick(|name| data.timing(entity, name).is_some())
+}
+
+/// The idle reset (behaviours 5.10.1): the base is the idle animation and the player is cleared.
+pub(crate) fn idle_reset(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    if let Some(name) = idle_pick(unit, world, data, at) {
+        let entity = &world.zoo.entities[at];
+        unit.animation.set_base(name, &|n| data.timing(entity, n));
+    }
+}
+
+/// The add of the unit at position `at` to the map (behaviours 5.10.1 points 2 and 3): out of a
+/// tank exhibit its idle reset, then the tank check; the reset again when the check changed the
+/// tank mode (in a tank exhibit only then). A moving unit keeps its move animation (the engine
+/// never adds one that moves).
+pub(crate) fn added(unit: &mut Unit, world: &mut World, data: &dyn Data, at: usize) {
+    let tank = (world.zoo.entities.get(at).and_then(|e| e.common.as_ref()))
+        .and_then(|c| world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64)))
+        .is_some_and(|t| world.tank_at(t).is_some());
+    if !tank && !unit.moving {
+        idle_reset(unit, world, data, at);
+    }
+    let before = unit.tank;
+    check(unit, world, at);
+    if unit.tank != before && !unit.moving {
+        idle_reset(unit, world, data, at);
     }
 }
 

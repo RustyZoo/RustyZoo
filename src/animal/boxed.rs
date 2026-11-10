@@ -3,7 +3,7 @@
 //! the keeper's capture is here too. The crate's pictures are not drawn yet.
 
 use super::{Animal, ENERGY, Keys, fire};
-use crate::behaviour::{Animation, Runner};
+use crate::behaviour::{Animation, Data, Runner};
 use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::place::{Class, snap as grid};
 use crate::unit::{Ctx, Part, Unit, movement, swim};
@@ -41,7 +41,7 @@ pub(crate) fn snap(world: &mut World, at: usize) {
 
 /// A keeper's crate job (staff 7.11): the animal `id` is crated where it stands, stops everything
 /// and is put on the map again, taking the terrain mode of its tile.
-pub(crate) fn crate_in_place(world: &mut World, id: u32) {
+pub(crate) fn crate_in_place(world: &mut World, id: u32, data: &dyn Data) {
     let Some(unit) = world.units.get_mut(id) else {
         return;
     };
@@ -50,7 +50,9 @@ pub(crate) fn crate_in_place(world: &mut World, id: u32) {
     }
     crate::goal::stop_all(unit);
     unit.animation = Animation::default();
-    swim::put(world, id);
+    swim::put(world, id, data);
+    // The stop of the crating installs the crate's picture, whatever the add did (unit placing 9.1 step 5).
+    crate::place::unit::show_idle(world, id, data);
 }
 
 /// A keeper's dart (staff 7.11, animals 21.3): the animal is tranquilised, its goal stopped unless
@@ -72,7 +74,7 @@ pub(crate) fn tranquilise(unit: &mut Unit, k: &Keys) {
 /// animal: every `cBoxedCheck` ticks the crate opens where it stands in an exhibit (a tank holding
 /// water, else a land exhibit for a species that does not live only under water); otherwise one
 /// draw queues `bRattle` with the chance `cRattleChance`.
-pub(crate) fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize) {
+pub(crate) fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let period = world.units.class.boxed;
     let Part::Animal(a) = &mut unit.part else {
         return;
@@ -102,7 +104,7 @@ pub(crate) fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize
     (unit.moving, unit.destination) = (false, None);
     unit.path.clear();
     snap(world, at);
-    swim::check(unit, world, at);
+    swim::added(unit, world, data, at);
     swim::add_to_map(unit, world, at);
     if let Some(t) = tile {
         world.mark_rating(t);

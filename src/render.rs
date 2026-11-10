@@ -11,6 +11,7 @@
 //! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
 //! placed in view space, then draws them all on a canvas that holds them.
 
+mod loaded;
 mod object;
 pub mod order;
 mod pick;
@@ -78,6 +79,9 @@ pub struct Options {
     pub zoom: i32,
     /// Draw the grid lines of every tile (the grid switched on).
     pub grid: bool,
+    /// Show each unit as the game does right after the load (its idle animation), not the plain
+    /// one.
+    pub loaded: bool,
 }
 
 /// The north grid, east grid and highlight sprites of a shape.
@@ -628,7 +632,15 @@ impl<'a> MapRenderer<'a> {
         rotation: u8,
         options: &Options,
     ) -> Result<(Framebuffer, Summary), RenderError> {
-        let staged = self.stage(zoo, rotation, options.no_units)?;
+        let extra = Extra {
+            shown: if options.loaded && !options.no_units {
+                self.loaded_units(zoo)
+            } else {
+                Vec::new()
+            },
+            ..Extra::default()
+        };
+        let staged = self.stage_with(zoo, rotation, options.no_units, &extra)?;
         let (x, y, w, h) = match options.window {
             Some(window) => window,
             None => {

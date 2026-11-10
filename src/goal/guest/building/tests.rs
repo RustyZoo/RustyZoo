@@ -1054,7 +1054,8 @@ fn a_carried_unit_stays_off_the_map_across_a_map_edit() {
         &mut w,
         1,
         (2 * 64 + 32, 6 * 64 + 32, 0),
-        0
+        0,
+        &crate::behaviour::NoData
     ));
     assert!(w.is_drawn(at) && w.units_on(own).any(|e| e == at));
 }
@@ -1443,7 +1444,8 @@ fn a_customer_picked_up_leaves_the_stand_paying_and_with_no_goal() {
         &mut w,
         1,
         (2 * 64 + 32, 6 * 64 + 32, 0),
-        0
+        0,
+        &crate::behaviour::NoData
     ));
     run(&mut s, &cat, &mut w, &mut money, 50, "never");
     assert_eq!(w.units.buildings[&7].income[2], 6.0);
@@ -1485,7 +1487,13 @@ fn a_guest_picked_up_on_its_way_in_is_taken_out_unserved() {
     assert!(w.units.buildings.get(&7).is_none_or(|l| l.users.is_empty()));
     assert_eq!((task(&w), guest(&w).building), (0, 0));
     // Put down, it does not walk into the stand on the old goal.
-    crate::place::unit::put_down(&mut w, 1, (2 * 64 + 32, 6 * 64 + 32, 0), 0);
+    crate::place::unit::put_down(
+        &mut w,
+        1,
+        (2 * 64 + 32, 6 * 64 + 32, 0),
+        0,
+        &crate::behaviour::NoData,
+    );
     assert!(run(&mut s, &cat, &mut w, &mut money, 5, "use").is_empty());
 }
 

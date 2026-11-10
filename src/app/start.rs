@@ -104,7 +104,7 @@ impl App<'_> {
         self.sim.load(&mut world, self.renderer.catalogue());
         self.sim
             .fences_loaded(&mut world, self.renderer.catalogue());
-        world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
+        self.settle_units(&mut world);
         world.units.show = crate::show::Params::load(self.renderer.vfs());
         let exhibits = world.exhibits().list().len();
         // The terrain brush starts at the size the file stores (terrain editing 4.1); a size
@@ -433,9 +433,23 @@ impl App<'_> {
     /// The animals of an open game are created again, so that their draws follow the new seeding
     /// as they do when the seed is known from the start.
     pub(super) fn load_units(&mut self) {
-        if let Some(game) = &mut self.game {
+        if let Some(mut game) = self.game.take() {
             self.sim.load(&mut game.world, self.renderer.catalogue());
+            self.settle_units(&mut game.world);
+            self.game = Some(game);
         }
+    }
+
+    /// The tank settings, then the idle animation of the units just loaded (behaviours 5.10.1
+    /// point 3: the tank check needs the settings).
+    fn settle_units(&self, world: &mut World) {
+        world.set_tank_config(crate::exhibit::TankConfig::load(self.renderer.vfs()));
+        let data = crate::behaviour::Library {
+            catalogue: self.renderer.catalogue(),
+            vfs: self.renderer.vfs(),
+            timings: &self.timings,
+        };
+        crate::unit::resume::settle(world, &data);
     }
 }
 

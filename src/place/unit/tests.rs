@@ -900,7 +900,13 @@ fn a_carried_animal_counts_in_no_exhibit() {
     pick_up(&mut w, &cat, id, 0).unwrap();
     assert_eq!(counted(&w), (0, 0));
     let (x, y) = (2 * 64 + 32, 2 * 64 + 32);
-    assert!(put_down(&mut w, id, (x, y, 0), 0));
+    assert!(put_down(
+        &mut w,
+        id,
+        (x, y, 0),
+        0,
+        &crate::behaviour::NoData
+    ));
     assert_eq!(counted(&w), (1, 1));
 }
 
@@ -1036,7 +1042,13 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     assert_eq!((p.tile, p.verdict), ((3, 2), Verdict::Valid));
     let tank = w.tank_at(tank_tile).unwrap();
     w.exhibits_mut().get_mut(tank).unwrap().rating.dirty = false;
-    assert!(put_down(&mut w, id, (p.x, p.y, p.z), p.facing));
+    assert!(put_down(
+        &mut w,
+        id,
+        (p.x, p.y, p.z),
+        p.facing,
+        &crate::behaviour::NoData
+    ));
     let c = w.zoo.entities.last().unwrap().common.as_ref().unwrap();
     assert_eq!(
         (c.x, c.y, c.z, c.rotation, c.movement_mode),
@@ -1046,8 +1058,20 @@ fn a_unit_is_picked_up_off_the_map_and_put_down_in_the_tank_mode_of_its_tile() {
     assert!(!w.units.get(id).unwrap().carried);
     assert!(w.exhibits().get(tank).unwrap().rating.dirty);
     // Not carried, or gone: nothing to put down.
-    assert!(!put_down(&mut w, id, (p.x, p.y, p.z), 0));
-    assert!(!put_down(&mut w, 99, (p.x, p.y, p.z), 0));
+    assert!(!put_down(
+        &mut w,
+        id,
+        (p.x, p.y, p.z),
+        0,
+        &crate::behaviour::NoData
+    ));
+    assert!(!put_down(
+        &mut w,
+        99,
+        (p.x, p.y, p.z),
+        0,
+        &crate::behaviour::NoData
+    ));
     // A type that is not moveable is not picked up.
     let mut still = catalogue();
     still.types[MARINE].config = Some(std::sync::Arc::new(
@@ -1073,7 +1097,13 @@ fn a_guest_put_down_has_lost_its_wish_to_leave() {
     };
     g.leave = true;
     pick_up(&mut w, &cat, id, 0).unwrap();
-    assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
+    assert!(put_down(
+        &mut w,
+        id,
+        (4 * 64, 4 * 64, 0),
+        0,
+        &crate::behaviour::NoData
+    ));
     let Some(crate::unit::Part::Guest(g)) = w.units.get(id).map(|u| &u.part) else {
         panic!("a guest");
     };
@@ -1108,7 +1138,13 @@ fn a_guest_forgets_its_return_building_when_picked_up_and_when_put_down() {
     // The state clear of a pick-up writes "no slot" (goals 11.3.1 point 2).
     assert_eq!(slot(&mut w, 2), crate::guest::NO_SLOT, "pick-up slot");
     assert_eq!(set(&mut w, Some(5)), None, "pick-up");
-    assert!(put_down(&mut w, id, (4 * 64, 4 * 64, 0), 0));
+    assert!(put_down(
+        &mut w,
+        id,
+        (4 * 64, 4 * 64, 0),
+        0,
+        &crate::behaviour::NoData
+    ));
     assert_eq!(set(&mut w, None), None, "drop");
 }
 
@@ -1146,7 +1182,13 @@ fn a_picked_up_escaped_animal_is_a_crate_that_may_stand_on_the_grounds() {
     assert_eq!(looks(&w), (false, false, true, false));
     let refused = (Verdict::Invalid, Some(IN_AN_EXHIBIT));
     assert_eq!(judged(&w, &carry, ZEBRA, (4, 4)), refused);
-    assert!(put_down(&mut w, id, carry.from, 0));
+    assert!(put_down(
+        &mut w,
+        id,
+        carry.from,
+        0,
+        &crate::behaviour::NoData
+    ));
     // An escaped one is crated: no longer loose, its walk and its need flags gone.
     state(&mut w, true);
     let carry = pick_up(&mut w, &cat, id, 0).unwrap();
@@ -1529,4 +1571,64 @@ fn an_animal_refused_by_a_tank_is_crated_and_moved_and_an_egg_never_crated() {
     assert!(!refuse(&mut full, &cat, last, 0, &NoData));
     let crated = matches!(full.units.get(last).map(|u| &u.part), Some(Part::Animal(a)) if a.crated);
     assert!(crated, "crated where it stood");
+}
+
+struct TimedData;
+
+impl crate::behaviour::Data for TimedData {
+    fn set(&self, _: &Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+        None
+    }
+    fn ambient(&self, _: &Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Timing> {
+        Some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
+    }
+    fn number(&self, _: &Entity, _: &crate::behaviour::Number) -> i32 {
+        0
+    }
+    fn sound(&self, _: &Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+#[test]
+fn an_egg_put_down_in_a_dry_tank_keeps_its_egg_picture() {
+    // Behaviours 5.10.1 points 2.3 and 4: a pick-up keeps the base of an egg, and a drop where the
+    // tank mode stays 0 changes nothing.
+    let cat = catalogue();
+    let mut w = tank_world(0);
+    let egg = animal("m", (6, 6));
+    let id = w.add(egg.clone(), shape(&egg)).unwrap();
+    let Some(crate::unit::Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) else {
+        panic!("not an animal");
+    };
+    a.egg = true;
+    let at = w.find(id).unwrap();
+    let mut unit = std::mem::replace(
+        w.units.get_mut(id).unwrap(),
+        crate::unit::Unit::new(id, crate::unit::Kind::Animal),
+    );
+    crate::unit::swim::idle_reset(&mut unit, &w, &TimedData, at);
+    *w.units.get_mut(id).unwrap() = unit;
+    let carry = pick_up(&mut w, &cat, id, 0).unwrap();
+    assert!(put_down(
+        &mut w,
+        id,
+        (3 * 64 + 32, 2 * 64 + 32, 0),
+        carry.facing,
+        &TimedData
+    ));
+    let unit = w.units.get_mut(id).unwrap();
+    unit.animation.advance(100, &|_| {
+        Some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
+    });
+    assert_eq!(unit.animation.name, "egg_idle");
 }

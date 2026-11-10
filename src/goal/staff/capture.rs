@@ -275,7 +275,7 @@ impl Cx<'_, '_> {
     pub(super) fn retrieve_complete(&mut self) {
         let id = self.record().job_target.id;
         match self.animal(id) {
-            Some(_) => boxed::crate_in_place(self.world, id),
+            Some(_) => boxed::crate_in_place(self.world, id, self.data),
             None => self.set_job(0, 0, None),
         }
     }
