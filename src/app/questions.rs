@@ -41,6 +41,9 @@ impl App<'_> {
     /// The answer to the question that was asked: Yes saves first and goes on if it saved, No goes
     /// on, Cancel stays.
     pub(super) fn answered(&mut self, code: i32) {
+        if self.warned {
+            return self.warning_closed();
+        }
         if self.ending {
             return self.end_answered(code);
         }

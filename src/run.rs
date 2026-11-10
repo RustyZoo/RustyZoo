@@ -357,8 +357,13 @@ fn load_game(
 }
 
 /// What a windowed run takes of the flags, with the commands of the script.
-fn window_flags(flags: &Flags, script: Vec<(u64, Command)>) -> crate::window::Flags<'_> {
+fn window_flags<'a>(
+    flags: &'a Flags,
+    open: Option<&'a str>,
+    script: Vec<(u64, Command)>,
+) -> crate::window::Flags<'a> {
     crate::window::Flags {
+        open,
         size: flags.size,
         log: flags.log.as_deref(),
         passes: flags.passes,
@@ -434,8 +439,14 @@ fn play_intros(
     Ok(false)
 }
 
-/// Plays `member`, or, without one, starts up to the main menu.
-pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
+/// Plays `member`, or, without one, starts up to the main menu, where `open` is the saved game of
+/// the command line (main menu 3.5 point 4).
+pub fn run(
+    vfs: &Vfs,
+    member: Option<&str>,
+    open: Option<&str>,
+    words: &[&str],
+) -> Result<(), CliError> {
     let flags = flags(words)?;
     // Only a game that opens with the run has a main panel to leave out.
     if flags.bare && member.is_none() {
@@ -462,7 +473,12 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         None => None,
     };
     if !flags.headless {
-        return crate::window::run(vfs, loaded, &ini, window_flags(&flags, commands.collect()));
+        return crate::window::run(
+            vfs,
+            loaded,
+            &ini,
+            window_flags(&flags, open, commands.collect()),
+        );
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
@@ -550,7 +566,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }
-            app.first_run();
+            app.start_up(open);
             app
         }
     };

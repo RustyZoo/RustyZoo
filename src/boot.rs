@@ -89,6 +89,7 @@ pub fn boot(
     );
     let (pages, delay) = menu::credit_pages(vfs);
     menu.set_credits(pages, delay);
+    menu.set_user_types(rustyzoo::usertext::user_made(&catalogue, &interface));
     menu.set_lists(scenario_list(vfs, expansions), freeform_list(vfs));
     Ok(Booted {
         catalogue,

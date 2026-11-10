@@ -109,9 +109,9 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
         ["dump-layout", flags @ ..] => layout::dump_layout(data_dir, flags),
         ["render-ui", out, flags @ ..] => layout::render_ui(data_dir, out, flags),
         ["run", flags @ ..] if flags.first().is_none_or(|w| w.starts_with("--")) => {
-            run::run(&open_game(data_dir)?, None, flags)
+            run::run(&open_game(data_dir)?, None, None, flags)
         }
-        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, Some(member), flags),
+        ["run", member, flags @ ..] => run::run(&open_game(data_dir)?, Some(member), None, flags),
         ["find-path", member, flags @ ..] => {
             findcmd::find_path(&open_game(data_dir)?, member, flags)
         }
@@ -129,9 +129,50 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
             &open_game(data_dir)?,
             n.parse().map_err(|_| CliError::Usage)?,
         ),
+        // A saved game given alone is opened in place of the menu, as a file association passes it.
+        [path, flags @ ..] if !COMMANDS.contains(path) && !path.starts_with('-') => {
+            run::run(&open_game(data_dir)?, None, Some(path), flags)
+        }
         _ => Err(CliError::Usage),
     }
 }
+
+/// The first words of the commands above.
+const COMMANDS: &[&str] = &[
+    "help",
+    "window-smoke",
+    "ls",
+    "cat",
+    "dump-strings",
+    "strings",
+    "types",
+    "check-config",
+    "check-behaviours",
+    "check-sprites",
+    "which",
+    "movie-info",
+    "check-maps",
+    "check-exhibits",
+    "check-rating",
+    "render-ani",
+    "check-bitmaps",
+    "check-wavs",
+    "check-music",
+    "check-anis",
+    "text-width",
+    "draw-text",
+    "check-ground",
+    "render-ground",
+    "render-map",
+    "check-layouts",
+    "dump-layout",
+    "render-ui",
+    "run",
+    "find-path",
+    "sim",
+    "mcp",
+    "check-render",
+];
 
 /// The game folder given by `--data`, or else by `ZT_DATA_DIR`.
 pub fn game_folder(data_dir: Option<OsString>) -> Result<PathBuf, CliError> {

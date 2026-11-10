@@ -115,6 +115,21 @@ pub(crate) fn names(
     out
 }
 
+/// Whether a user-made type of `catalogue` has a name in its text section (main menu 3.5 point 6.1):
+/// the name has a value (`cName =` has none), and the Yeti and the flag, the two user files that
+/// ship with the full game, do not count.
+pub fn user_made(catalogue: &Catalogue, ui: &Interface) -> bool {
+    let (install, user) = (ui.string(22015), user_locale());
+    catalogue.types.iter().any(|t| {
+        NAMES.contains(&t.name_id)
+            && t.type_name != b"b101b026"
+            && t.subtype != b"f554b047"
+            && (t.config.as_deref())
+                .and_then(|c| section(c, &install, user.as_deref()))
+                .is_some_and(|s| !texts(s).name.is_empty())
+    })
+}
+
 /// The member named by `cGeneralInfoFileName` of the language section of the user type `ty`.
 pub(crate) fn info_file(ui: &Interface, ty: &EntityType) -> Option<String> {
     let section = section(

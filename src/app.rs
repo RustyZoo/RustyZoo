@@ -292,6 +292,8 @@ pub struct App<'a> {
     fullscreen: bool,
     /// The question that is open and what it leads to.
     asked: Option<Asked>,
+    /// The warning about user-made types is open (main menu 3.5 point 6.4).
+    warned: bool,
     /// Whether the end dialog of a scenario is open.
     ending: bool,
     /// The save dialog, while it is open, and the list of saved games, while it is shown.
@@ -431,6 +433,7 @@ impl<'a> App<'a> {
             settings,
             fullscreen: false,
             asked: None,
+            warned: false,
             ending: false,
             saving: None,
             listing: None,
@@ -880,6 +883,7 @@ mod scenario_ui;
 mod show_panel;
 mod staff_panel;
 mod start;
+mod start_up;
 #[cfg(test)]
 pub(crate) use start::continued_save;
 mod tank_panel;

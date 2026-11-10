@@ -316,6 +316,15 @@ impl Interface {
         std::mem::take(&mut self.deselected)
     }
 
+    /// [`Interface::take_deselected`] for the buttons `ids` alone; the others stay in the list.
+    pub(crate) fn take_deselected_of(&mut self, ids: &[i32]) -> Vec<i32> {
+        let (taken, kept) = std::mem::take(&mut self.deselected)
+            .into_iter()
+            .partition(|id| ids.contains(id));
+        self.deselected = kept;
+        taken
+    }
+
     /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,
     /// `sound uiclick`, `show 32`, ...), without the `ui ` the log puts before them.
     pub(crate) fn take_events(&mut self) -> Vec<String> {
