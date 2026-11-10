@@ -192,6 +192,13 @@ impl T<'_> {
         self.ui().slider(id).unwrap()
     }
 
+    /// What the shell does when a resolution button asked for a size: takes it and tells the game.
+    fn resize(&mut self, w: u32, h: u32) {
+        assert_eq!(self.app.take_size_request(), Some((w, h)));
+        self.app.resized((w, h), true);
+        self.pass(&[]);
+    }
+
     fn down(&mut self, id: i32) -> bool {
         self.ui().is_down(id)
     }
@@ -464,8 +471,12 @@ fn a_resolution_is_kept_for_the_next_start_and_the_video_check_follows_the_displ
             "only Full Screen shows in a window"
         );
         t.press(1518);
-        assert_eq!(written(dir, "user", "screenwidth"), Some(1024));
-        assert_eq!(written(dir, "user", "screenheight"), Some(768));
+        assert_eq!(
+            written(dir, "user", "screenwidth"),
+            None,
+            "not before the resize"
+        );
+        t.resize(1024, 768);
         // In full screen a size is enabled when the display is as large, and Window Mode shows.
         t.pass(&[Command::Fullscreen(true)]);
         assert_eq!([1517, 1518, 1519].map(|id| on(t, id)), [true, true, true]);
@@ -740,5 +751,86 @@ fn the_options_button_goes_up_only_after_the_restart_notice_is_answered() {
         t.pass(&[Command::Key(Key::Enter, false, false)]);
         assert!(!t.ui().modal_open());
         assert!(last(t) > at(t, "ui answer 1"), "deselected after OK");
+    });
+}
+
+#[test]
+fn a_resolution_resizes_the_game_at_once_and_writes_its_keys_only_then() {
+    with_options("resize", "", |t, dir| {
+        t.app.set_display(Some((1280, 1024, 32)));
+        t.open(1507);
+        let scroll = (123, -45);
+        t.app.game.as_mut().unwrap().camera.scroll = scroll;
+        t.press(1518);
+        assert_eq!(written(dir, "user", "screenwidth"), None);
+        t.resize(1024, 768);
+        assert_eq!(written(dir, "user", "screenwidth"), Some(1024));
+        assert_eq!(written(dir, "user", "screenheight"), Some(768));
+        let (frame, map) = (&t.app.frame, &t.app.map);
+        assert_eq!((frame.width, frame.height), (1024, 768));
+        assert_eq!((map.width, map.height), (1024, 768));
+        let game = t.app.game.as_ref().unwrap();
+        assert_eq!(
+            (game.camera.size, game.camera.scroll),
+            ((1024, 768), scroll)
+        );
+        let root = t.ui().tree.elements[0].placed.unwrap();
+        assert_eq!(
+            (root.dx, root.dy),
+            (1024, 768),
+            "the interface is resolved again"
+        );
+        assert!(t.down(1518), "the clicked button stays pressed");
+        // The video check ran for the new size: the clicked size is not disabled again.
+        assert!(t.ui().is_enabled(1518) && t.ui().is_enabled(1517));
+        assert_eq!(t.app.take_size_request(), None, "once");
+    });
+}
+
+#[test]
+fn a_click_on_the_current_size_does_nothing_and_a_failed_resize_writes_nothing() {
+    with_options("resize-same", "", |t, dir| {
+        t.app.set_display(Some((1280, 1024, 32)));
+        t.open(1507);
+        t.press(1517);
+        assert_eq!(t.app.take_size_request(), None);
+        assert_eq!(written(dir, "user", "screenwidth"), None);
+        // The shell could not resize: no keys, the interface and the buffers as they were, and
+        // the video check enables the button again.
+        t.press(1518);
+        assert_eq!(t.app.take_size_request(), Some((1024, 768)));
+        t.app.resized((1024, 768), false);
+        t.pass(&[]);
+        assert_eq!(written(dir, "user", "screenwidth"), None);
+        assert_eq!((t.app.frame.width, t.app.frame.height), SIZE);
+        assert!(t.ui().is_enabled(1518));
+        // A desktop too small for the size keeps the button disabled after a failure.
+        t.app.set_display(Some((1000, 1024, 32)));
+        t.pass(&[]);
+        t.app.resized((1024, 768), false);
+        assert!(!t.ui().is_enabled(1518));
+        // A size that no button asks for is ignored.
+        t.app.resized((0, 0), true);
+        t.app.resized((u32::MAX, u32::MAX), true);
+        assert_eq!((t.app.frame.width, t.app.frame.height), SIZE);
+    });
+}
+
+#[test]
+fn the_zoom_check_runs_after_the_resize() {
+    with_options("resize-zoom", "", |t, _| {
+        t.app.set_display(Some((1280, 1024, 32)));
+        t.open(1507);
+        t.pass(&[Command::Fullscreen(true)]);
+        t.press(1518);
+        t.resize(1024, 768);
+        t.app.game.as_mut().unwrap().camera.zoom = 2;
+        t.press(1517);
+        t.resize(800, 600);
+        let zoom = t.app.game.as_ref().unwrap().camera.zoom;
+        assert_eq!(
+            zoom, 0,
+            "full screen at a width of 800 does not offer zoom 2"
+        );
     });
 }

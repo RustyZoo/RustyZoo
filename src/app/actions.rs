@@ -9,6 +9,7 @@ impl App<'_> {
     /// questions, the actions of the lists and the cash field, the buttons selected.
     pub(super) fn acts(&mut self) {
         self.main_pressed();
+        self.warning_ticked();
         self.windows_acted();
         let Some(ui) = &mut self.ui else { return };
         // The list of saved games was closed by its own Back button, or by a game that started.

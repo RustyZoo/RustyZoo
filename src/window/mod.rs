@@ -56,6 +56,8 @@ use wait::Wait;
 
 /// What the command line asks of a windowed run.
 pub struct Flags<'a> {
+    /// The saved game of the command line, opened in place of the main menu.
+    pub open: Option<&'a str>,
     /// `--size`: the game size, instead of the ini file's, and not clamped.
     pub size: Option<(u32, u32)>,
     /// `--log`: where to write the lines a headless run prints.
@@ -91,6 +93,24 @@ fn switch(
         commands.push(Command::Fullscreen(on));
         remember(on);
     }
+}
+
+/// A resolution button asked for the size `want`: the texture of that size when the window took it.
+fn resize<'t>(
+    screen: &mut Screen,
+    video: &sdl3::VideoSubsystem,
+    textures: &'t sdl3::render::TextureCreator<sdl3::video::WindowContext>,
+    want: (u32, u32),
+) -> Option<Texture<'t>> {
+    let mut texture = match textures.create_texture_streaming(PixelFormat::RGBA32, want.0, want.1) {
+        Ok(texture) => texture,
+        Err(e) => {
+            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", want.0, want.1);
+            return None;
+        }
+    };
+    texture.set_scale_mode(ScaleMode::Nearest);
+    screen.resize(video, want).then_some(texture)
 }
 
 /// Writes the mode into the settings of the user folder (`[user] fullscreen`), which the next
@@ -182,7 +202,12 @@ fn make_app<'c>(
         }
         (None, Some(booted)) => {
             let catalogue = catalogue.insert(booted.catalogue);
-            let mut app = App::menu(
+            // A saved game on the command line opens before the menu is shown.
+            let menu_app = match flags.open.is_some_and(|p| !p.is_empty()) {
+                true => App::held_menu,
+                false => App::menu,
+            };
+            let mut app = menu_app(
                 MapRenderer::new(vfs, catalogue),
                 Settings::from_config(ini),
                 timers,
@@ -194,7 +219,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
-            app.first_run();
+            app.start_up(flags.open);
             app
         }
         (None, None) => unreachable!("a run without a map boots"),
@@ -360,7 +385,7 @@ pub fn run(
     let sdl = sdl3::init()?;
     let video = sdl.video()?;
     let mut screen = screen::open(&video, ini, flags.size)?;
-    let size = screen.size;
+    let mut size = screen.size;
     let textures = screen.canvas.texture_creator();
     let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)?;
     texture.set_scale_mode(ScaleMode::Nearest);
@@ -472,6 +497,16 @@ pub fn run(
         if let Some(on) = app.take_mode_request() {
             switch(&mut screen, &mut state, &mut commands, on, true);
         }
+        if let Some(want) = app.take_size_request() {
+            let made = resize(&mut screen, &video, &textures, want);
+            let ok = made.is_some();
+            if let Some(new) = made {
+                (texture, size) = (new, want);
+                state.exposed = true;
+            }
+            app.resized(want, ok);
+        }
+        screen.refit(&video);
         app.set_display(screen::desktop(&video));
         run_script(&mut script, pass, &mut screen, &mut state, &mut commands);
         if has_pointer {

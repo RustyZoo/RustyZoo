@@ -172,6 +172,21 @@ impl Interface {
         self.dirty
     }
 
+    /// Resolves every element again for a window of `width` x `height` pixels (the interface
+    /// reload of ui layout 3.9, 16.9 point 4.2): the shown state, contents and selections stay.
+    pub fn resize(&mut self, width: i32, height: i32) {
+        let Interface {
+            tree,
+            painter,
+            strings,
+            ..
+        } = self;
+        tree.resolve(width, height, |font| {
+            painter.font_named(font, &*strings).line_height()
+        });
+        self.dirty = true;
+    }
+
     /// Marks the interface as changed.
     pub(crate) fn touch(&mut self) {
         self.dirty = true;
@@ -314,6 +329,15 @@ impl Interface {
     /// The ids of the toggle buttons released as deselected since the last call, in order.
     pub(crate) fn take_deselected(&mut self) -> Vec<i32> {
         std::mem::take(&mut self.deselected)
+    }
+
+    /// [`Interface::take_deselected`] for the buttons `ids` alone; the others stay in the list.
+    pub(crate) fn take_deselected_of(&mut self, ids: &[i32]) -> Vec<i32> {
+        let (taken, kept) = std::mem::take(&mut self.deselected)
+            .into_iter()
+            .partition(|id| ids.contains(id));
+        self.deselected = kept;
+        taken
     }
 
     /// The lines that tell what the interface did since the last call (`hover 7111`, `press ...`,

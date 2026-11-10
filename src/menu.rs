@@ -156,6 +156,9 @@ pub struct Menu {
     /// The table of unlocked ids (entity types 10.4): emptied and refilled at each lookup, and each
     /// id the append step lists is marked, whether it has a type or not.
     marked: HashSet<i32>,
+    /// A user-made type with a name was loaded and the end of the start-up has not looked yet
+    /// (main menu 3.5 point 6.1).
+    user_types: bool,
 }
 
 /// [`Menu::last_path`] for the settings `ini` of the install folder `root`.
@@ -190,6 +193,7 @@ impl Menu {
             cash: Cash::from_settings(&Config::default()),
             request: None,
             marked: HashSet::new(),
+            user_types: false,
         }
     }
 
@@ -313,6 +317,19 @@ impl Menu {
         } else {
             None
         }
+    }
+
+    /// The catalogue held a user-made type with a name (main menu 3.5 point 6.1).
+    pub fn set_user_types(&mut self, found: bool) {
+        self.user_types = found;
+    }
+
+    /// Whether the warning about user-made types is due, once: the flag of the catalogue is read
+    /// and cleared, and `[user] showUserEntityWarning` (a missing, empty or unreadable value is 1)
+    /// must not be 0 (main menu 3.5 points 6.2, 6.3).
+    pub(crate) fn warning_due(&mut self) -> bool {
+        std::mem::take(&mut self.user_types)
+            && ini_whole(&self.ini, "user", "showUserEntityWarning").unwrap_or(1) != 0
     }
 
     /// Whether the map of a start is a plain file that exists.

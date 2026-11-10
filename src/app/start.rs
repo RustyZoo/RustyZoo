@@ -276,32 +276,44 @@ impl App<'_> {
         }
     }
 
-    /// The end of the start-up (main menu 3.5 points 1 to 3, 7, 8): the tutorial that is due is
-    /// started as its scenario is, and the keys that tell it started are written at once. A start
-    /// that fails writes nothing and tries no other tutorial: only a map that opens but does not
-    /// load says why; the main menu stays.
-    pub fn first_run(&mut self) {
-        let Some(menu) = &mut self.menu else { return };
+    /// The first of the end of the start-up (main menu 3.5 points 1 to 3, 7, 8): the tutorial that
+    /// is due is started as its scenario is, and the keys that tell it started are written at
+    /// once. A start that fails writes nothing and tries no other tutorial: only a map that opens
+    /// but does not load says why. Whether a tutorial started.
+    pub(super) fn first_run(&mut self) -> bool {
+        let Some(menu) = &mut self.menu else {
+            return false;
+        };
         let Some((file, keys)) = menu.first_tutorial() else {
-            return;
+            return false;
         };
         menu.start_file(self.renderer.vfs(), file);
         let Some(Request::Open(start)) = menu.take_request() else {
-            return;
+            return false;
         };
-        if !menu.has_file(&start.path) {
-            return;
+        if !self.open_file(&start) {
+            return false;
         }
-        self.start_busy();
-        let Some(menu) = &self.menu else { return };
-        let read = menu.load(&start.path, self.renderer.catalogue());
-        if self.open(&start, read)
-            && let Some(menu) = &mut self.menu
-        {
+        if let Some(menu) = &mut self.menu {
             for key in keys {
                 menu.write_back("UI", key, "1");
             }
         }
+        true
+    }
+
+    /// Opens the plain file of `start` as a saved game, as the end of the start-up does: a path
+    /// that does not open says nothing, a file that does not load says why. Whether the game opened.
+    pub(super) fn open_file(&mut self, start: &Start) -> bool {
+        if !self.menu.as_ref().is_some_and(|m| m.has_file(&start.path)) {
+            return false;
+        }
+        self.start_busy();
+        let Some(menu) = &self.menu else {
+            return false;
+        };
+        let read = menu.load(&start.path, self.renderer.catalogue());
+        self.open(start, read)
     }
 
     /// `load FILE` of a script: a saved game opens as a Continue does. Whether it opened.

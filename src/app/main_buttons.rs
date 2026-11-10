@@ -43,6 +43,8 @@ impl App<'_> {
 
     /// Runs the action of every one of these buttons the interface selected since the last look.
     pub(super) fn main_pressed(&mut self) {
+        // Before the view toggles, which take every toggle that was deselected.
+        self.warning_ticked();
         let ids = match &mut self.ui {
             Some(ui) => ui.take_selected_of(&ALL),
             None => return,

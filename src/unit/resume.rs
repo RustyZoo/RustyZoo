@@ -5,10 +5,15 @@
 //! start, duration) and the 3D target name, whatever the task (behaviours 4.7), and the frightened
 //! flag and the kept predator.
 
-use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, Record, USE, active_goal, stop_use};
+use crate::goal::{ENTER_BUILDING, EXIT_BUILDING, USE, stop_use};
 use crate::unit::Part;
 use crate::world::World;
-use crate::zoo::{Target, UnitBlock};
+use crate::zoo::UnitBlock;
+
+mod goal;
+use goal::goal_back;
+#[cfg(test)]
+mod moving;
 
 /// Whether a building stands on tile `t`: one of its quarters holds it, or it is anchored there.
 fn building_on(world: &World, t: usize) -> bool {
@@ -45,52 +50,6 @@ pub(crate) fn saved_way(world: &World, block: &UnitBlock) -> Way {
     (path, levels, there)
 }
 
-/// The goal record of unit `id` as saved (`block`, zoo format 6.14): task and job with their targets
-/// and done flags, start and duration, and the 3D target `name` the unit's move calls compare.
-/// From version 72 the goal and job objects the file holds are built and not initialised again
-/// ([`crate::goal::Goals::built`], behaviours 4.7). A task that has no goal object for the kind of
-/// unit is not restored (the save writes none for it, save games S7): the unit keeps the goal it
-/// has.
-fn goal_back(world: &mut World, id: u32, now: u32, block: &Target, version: u32, name: &str) {
-    let Some(kind) = world.units.get(id).map(|u| u.kind) else {
-        return;
-    };
-    let Ok(task) = u8::try_from(block.goal) else {
-        return;
-    };
-    if active_goal(task, kind) < 0 {
-        return;
-    }
-    let pos = |p: [i32; 3]| (p[0] >= 0 && p[1] >= 0).then_some((p[0], p[1], p[2]));
-    let (start, duration) = if version >= 53 {
-        (block.extra[0], block.extra[1])
-    } else {
-        (now, 0)
-    };
-    let mut record = Record {
-        task,
-        mode: 1,
-        job: u8::try_from(block.sub_goal).unwrap_or(0),
-        start,
-        duration,
-        done: block.bytes[0] != 0,
-        job_done: block.bytes[1] != 0,
-        ..Record::default()
-    };
-    record.target.id = block.words[0];
-    record.target.set_pos(world, pos(block.target));
-    record.job_target.id = block.words[1];
-    record.job_target.set_pos(world, pos(block.sub_target));
-    let Some(unit) = world.units.get_mut(id) else {
-        return;
-    };
-    unit.goal.record = record;
-    if version >= 72 {
-        unit.goal.built(kind, block.active, block.active_sub);
-    }
-    unit.target = crate::behaviour::target(name);
-}
-
 /// Gives every loaded unit its saved set, path, pending set name, goal task with its target and
 /// the 3D target name (whatever the task); or stops it when its saved task is in a building and
 /// the stored tile of that building holds none (shown, goal reset, path emptied, set and pending
@@ -108,6 +67,11 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let flier = world.zoo.entities[at].class == "helicopter";
         let (way, pending) = (saved_way(world, block), block.pending.clone());
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
+        let moving = (
+            block.b8 != 0,
+            block.w5,
+            (world.zoo.version >= 98).then_some(block.short),
+        );
         let [trick, show] = block.flags.map(|f| if f.0 == 1 { f.1 } else { 0 });
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1, block.b2 != 0);
@@ -127,6 +91,12 @@ pub(crate) fn load(world: &mut World, now: u32) {
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
             (unit.held, unit.show, unit.trick) = (held, show, trick);
+            // The walk's live state is read as stored (behaviours 5.10.2 point 1); before version
+            // 98 the animation speed keeps the creation value.
+            (unit.moving, unit.speed) = (moving.0, moving.1);
+            if let Some(percent) = moving.2 {
+                unit.anim_speed = percent;
+            }
             // The need being served comes back as it was saved (shows 32.1 point 3).
             if let Part::Animal(a) = &mut unit.part {
                 (a.need, a.slot) = (need, usize::from(slot));
@@ -160,7 +130,8 @@ pub(crate) fn load(world: &mut World, now: u32) {
 }
 
 /// The idle animation of every loaded unit before any step (behaviours 5.10.1 point 3): the add of
-/// each, then the tank check of the load, which resets a unit in a tank only when its mode changes.
+/// each, then the tank check of the load, which resets a unit in a tank only when its mode changes;
+/// then the move reset of a unit saved moving (5.10.2 point 3).
 /// The tank mode is not saved, so every unit starts in mode 0.
 pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
     for at in 0..world.zoo.entities.len() {
@@ -179,6 +150,9 @@ pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
         let mut unit = std::mem::replace(slot, crate::unit::Unit::new(id, slot.kind));
         crate::unit::movement::read_type(&mut unit, data, &world.zoo.entities[at]);
         crate::unit::swim::added(&mut unit, world, data, at);
+        if unit.moving {
+            crate::unit::movement::reset(&mut unit, world, data, at);
+        }
         if let Some(slot) = world.units.get_mut(id) {
             *slot = unit;
         }
@@ -188,6 +162,7 @@ pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::goal::{Record, active_goal};
     use crate::unit::testing::{centre, entity, world_with};
     use crate::zoo::{Level, UnitBlock};
 
@@ -292,7 +267,7 @@ mod tests {
 
     /// A keeper saved at tile (1, 1) in the set `bWalk` (one move call, running) with these path
     /// records and pending name, in a file of version `version`; `resume::load` has run.
-    fn walking(version: u32, records: Vec<[u32; 3]>, pending: &str) -> World {
+    pub(super) fn walking(version: u32, records: Vec<[u32; 3]>, pending: &str) -> World {
         saved_goal(version, records, pending, (-1, [-1; 3], ""))
     }
 
@@ -320,7 +295,7 @@ mod tests {
 
     /// A keeper at tile (1, 1) saved with `block`, in a file of version `version`; `resume::load`
     /// has run.
-    fn saved_block_in(version: u32, block: UnitBlock) -> World {
+    pub(super) fn saved_block_in(version: u32, block: UnitBlock) -> World {
         block_of("keeper", version, block)
     }
 
@@ -638,7 +613,7 @@ mod tests {
     }
 
     /// The keeper's block in the zoo a save of the world of [`walking`] writes.
-    fn saved_block(w: &World) -> UnitBlock {
+    pub(super) fn saved_block(w: &World) -> UnitBlock {
         saved_of("keeper", w)
     }
 
