@@ -171,6 +171,9 @@ pub struct World {
     paused: bool,
     /// The ids of the water effects the world manager made (simulation 7.2), which no save keeps.
     waves: std::collections::HashSet<u32>,
+    /// Where a building held by the player stood in the entity list: the position it is put back
+    /// at, which follows the entities added to or removed from the list meanwhile.
+    pub(crate) held_at: Option<usize>,
     /// The water sparkles of each tank (map drawing 9.7.10), not saved.
     sparkles: BTreeMap<u32, Sparkles>,
     /// The sparkles flagged for removal at the next removal pass.
@@ -265,6 +268,7 @@ impl World {
             edits: 0,
             paused: false,
             waves: Default::default(),
+            held_at: None,
             sparkles: BTreeMap::new(),
             doomed: Vec::new(),
             hidden: Vec::new(),
@@ -763,6 +767,9 @@ impl World {
 
     /// The world was edited; `shift` tells how the entity list moved since the last rebuild.
     fn changed(&mut self, shift: Option<Shift>) {
+        if let (Some(at), Some(shift)) = (self.held_at.as_mut(), shift) {
+            *at = shift.slot(*at);
+        }
         let held = self.held_units(shift);
         let paths = self.path_tiles();
         (self.scene, self.owner) = index(&self.zoo, &self.shapes);

@@ -89,12 +89,42 @@ impl App<'_> {
 
     /// The file the game saves as it is.
     pub(super) fn saved_bytes(&mut self) -> Result<Vec<u8>, String> {
+        let zoo = self.saved_zoo()?;
+        let game = self.game.as_ref().ok_or("no game to save")?;
+        zoo.write(&game.money)
+    }
+
+    /// The zoo of the file the game saves as it is.
+    pub(super) fn saved_zoo(&mut self) -> Result<crate::zoo::Zoo, String> {
         let game = self.game.as_mut().ok_or("no game to save")?;
         self.sim.save_started(&mut game.world);
         let cat = self.renderer.catalogue();
         let mut zoo = (game.world).saved(crate::zoo::knows(cat));
+        // A building held is written in the list where it stands, with the figures it has.
+        let held = (game.held.as_ref()).zip(game.world.held_at);
+        if let Some((held, at)) = held {
+            held.put_in(&mut zoo, game.world.saved_place(at, crate::zoo::knows(cat)));
+            held.lend(&mut game.world);
+        }
         (zoo.clocks, zoo.view) = (self.sim.clocks(), game.camera.view());
         game.world.finish_save(&mut zoo, cat);
+        if let Some((held, _)) = held {
+            held.unlend(&mut game.world);
+        }
+        // A unit or a building carried is written at the last point under the pointer, a held
+        // building being put back in the list before (unit placing 9.1.2 points 3, 7).
+        if let Some(carry) = &game.carry {
+            let found =
+                |e: &&mut crate::zoo::Entity| e.common.as_ref().is_some_and(|c| c.id == carry.id);
+            if let Some(c) = zoo
+                .entities
+                .iter_mut()
+                .find(found)
+                .and_then(|e| e.common.as_mut())
+            {
+                (c.x, c.y, c.z) = carry.at;
+            }
+        }
         zoo.expansion = game.build.value() as u32;
         if let Some(section) = self.sim.research_section() {
             zoo.set_research(section);
@@ -103,7 +133,7 @@ impl App<'_> {
         if let Some(scenario) = self.sim.scenario() {
             zoo.set_scenario(scenario.file(), &scenario.states());
         }
-        zoo.write(&game.money)
+        Ok(zoo)
     }
 
     /// Makes `path` the last file: `[user] lastfile` of the menu, or without the menu the file of

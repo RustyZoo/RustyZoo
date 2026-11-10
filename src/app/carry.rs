@@ -171,6 +171,7 @@ impl App<'_> {
             id,
             ty,
             from: (c.x, c.y, c.z),
+            at: (c.x, c.y, c.z),
             facing: c.rotation,
             view: game.camera.rotation,
         };

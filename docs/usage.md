@@ -239,6 +239,7 @@ picking a unit up by hand (no tool chosen): a click on an animal, a guest or a s
 - a release on a valid place puts it down, selected again (`world drop ID X,Y`, with `home N` for an animal in an exhibit) and plays the type's `placesound`, else `sounds/place.wav`
 - a guest put down on water outside a tank starts the recovery from water (`unit goal ID recoverfromwater 0 - -`), a keeper put down in an exhibit its duties (unless two keepers work there), and a staff member forgets the targets it could not reach
 - Escape, the right button or choosing an item puts it back where it stood (`world putback ID X,Y`)
+- a save made while it is carried (a unit or a building) writes it at the last point the pointer gave on the map (the pick-up point until then; a pointer off the map or over a panel changes nothing), with its pick-up facing and not the carried state; a building held is written in the list where it stood (counting the entities that came and went since) with its own figures: price, guests, income, upgrade
 - a swimmer or a guest over a tank under the pointer is lifted to its water
 
 `rustyzoo run maps/scn01.zoo --headless --passes 32 --clock 67 --seed 3 --script staffpanel.txt`

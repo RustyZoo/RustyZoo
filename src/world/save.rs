@@ -111,6 +111,18 @@ impl World {
         zoo
     }
 
+    /// The place in the list [`World::saved`] makes that the position `at` of the entity list
+    /// has there: the entities before it that a save leaves out do not count.
+    pub(crate) fn saved_place(&self, at: usize, known: impl Fn(&Entity) -> bool) -> usize {
+        let kept = |e: &&Entity| {
+            known(e) && (e.common.as_ref()).is_none_or(|c| !self.waves.contains(&c.id))
+        };
+        self.zoo.entities[..at.min(self.zoo.entities.len())]
+            .iter()
+            .filter(kept)
+            .count()
+    }
+
     /// Finishes a zoo from [`World::saved`] for writing, from the types of `cat`: the record of a
     /// transient type keeps no body (zoo format 6.2, the original refuses a file where it has one;
     /// a fence keeps its figures), an animal gets the record of its live state over the one it was
