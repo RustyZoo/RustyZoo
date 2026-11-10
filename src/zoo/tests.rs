@@ -3207,6 +3207,44 @@ fn parse_in_drops_the_entities_of_an_unknown_type_after_the_load() {
 }
 
 #[test]
+fn the_id_counter_after_a_load_adds_one_per_record_whose_type_is_found() {
+    let mut cat = Catalogue::default();
+    cat.push(crate::entity::EntityType {
+        class: "objects",
+        type_name: b"tree".to_vec(),
+        subtype: b"oak".to_vec(),
+        file: None,
+        config: None,
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    // Two records of a known type, one of them transient (size 0), and one of an unknown type.
+    let ents = [
+        ("objects", "tree", "oak", scenery(70, 1, "Tree")),
+        ("objects", "zqgone", "bin", scenery(70, 2, "Gone")),
+        ("objects", "tree", "oak", Vec::new()),
+    ];
+    let bytes = file(106, 1, 1, &[], &ents);
+    // Stored 7777: the reader without the types keeps it, the one with them adds the two found.
+    assert_eq!(parse(&bytes).id_counter, 7777);
+    assert_eq!(Zoo::parse_in(&bytes, &cat).unwrap().id_counter, 7779);
+    // No record found, no change.
+    let none = file(106, 1, 1, &[], &ents[1..2]);
+    assert_eq!(Zoo::parse_in(&none, &cat).unwrap().id_counter, 7777);
+    // A counter at the top stays there.
+    let mut huge = bytes.clone();
+    let at = Zoo::sections(&bytes)
+        .unwrap()
+        .iter()
+        .find(|m| m.0 == "id counter")
+        .unwrap()
+        .1;
+    huge[at - 4..at].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert_eq!(Zoo::parse_in(&huge, &cat).unwrap().id_counter, u32::MAX);
+}
+
+#[test]
 fn a_record_stored_as_staff_is_read_with_the_layout_of_its_type() {
     let mut cat = Catalogue::default();
     cat.push(crate::entity::EntityType {
