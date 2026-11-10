@@ -115,6 +115,24 @@ pub(crate) fn names(
     out
 }
 
+/// Whether a user-made type of `catalogue` has a name in its text section (main menu 3.5 point 6.1):
+/// the name has a value (`cName =` has none), and the Yeti and the flag, the two user files that
+/// ship with the full game, do not count.
+pub fn user_made(catalogue: &Catalogue, ui: &Interface) -> bool {
+    named(catalogue, &ui.string(22015), user_locale().as_deref())
+}
+
+fn named(catalogue: &Catalogue, install: &str, user: Option<&str>) -> bool {
+    catalogue.types.iter().any(|t| {
+        NAMES.contains(&t.name_id)
+            && t.type_name != b"b101b026"
+            && t.subtype != b"f554b047"
+            && (t.config.as_deref())
+                .and_then(|c| section(c, install, user))
+                .is_some_and(|s| !texts(s).name.is_empty())
+    })
+}
+
 /// The member named by `cGeneralInfoFileName` of the language section of the user type `ty`.
 pub(crate) fn info_file(ui: &Interface, ty: &EntityType) -> Option<String> {
     let section = section(
@@ -293,6 +311,42 @@ mod tests {
         for user in [None, Some("1040"), Some(""), Some("-1"), Some("4294967295")] {
             assert_eq!(name(user), "Yeti");
         }
+    }
+
+    #[test]
+    fn a_user_type_with_a_name_is_found_but_the_two_shipped_files_and_empty_names_are_not() {
+        let found = |ty: EntityType| {
+            let mut catalogue = Catalogue::default();
+            catalogue.types.push(ty);
+            named(&catalogue, "1033", None)
+        };
+        assert!(found(user_type(19000, "[1033]\ncName = Yeti\n")));
+        assert!(found(user_type(21999, "[1033]\ncName = Y\n")));
+        // No value, no section, no id of the user range.
+        assert!(!found(user_type(19000, "[1033]\ncName =\n")));
+        assert!(!found(user_type(19000, "[1033]\ncLongHelp = x\n")));
+        assert!(!found(user_type(
+            19000,
+            "[1036]\ncName = Yeti\n[defaultLCID]\nLCID = 1031\n"
+        )));
+        assert!(!found(user_type(0, "[1033]\ncName = Yeti\n")));
+        assert!(!found(user_type(22000, "[1033]\ncName = Yeti\n")));
+        // The Yeti and the flag of the full game.
+        let text = "[1033]\ncName = Yeti\n";
+        assert!(!found(EntityType {
+            type_name: b"b101b026".to_vec(),
+            ..user_type(19000, text)
+        }));
+        assert!(!found(EntityType {
+            class: "scenery",
+            type_name: b"other".to_vec(),
+            subtype: b"f554b047".to_vec(),
+            ..user_type(19001, text)
+        }));
+        assert!(found(EntityType {
+            type_name: b"b101b027".to_vec(),
+            ..user_type(19000, text)
+        }));
     }
 
     #[test]

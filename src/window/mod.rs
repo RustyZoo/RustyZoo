@@ -56,6 +56,8 @@ use wait::Wait;
 
 /// What the command line asks of a windowed run.
 pub struct Flags<'a> {
+    /// The saved game of the command line, opened in place of the main menu.
+    pub open: Option<&'a str>,
     /// `--size`: the game size, instead of the ini file's, and not clamped.
     pub size: Option<(u32, u32)>,
     /// `--log`: where to write the lines a headless run prints.
@@ -182,7 +184,12 @@ fn make_app<'c>(
         }
         (None, Some(booted)) => {
             let catalogue = catalogue.insert(booted.catalogue);
-            let mut app = App::menu(
+            // A saved game on the command line opens before the menu is shown.
+            let menu_app = match flags.open.is_some_and(|p| !p.is_empty()) {
+                true => App::held_menu,
+                false => App::menu,
+            };
+            let mut app = menu_app(
                 MapRenderer::new(vfs, catalogue),
                 Settings::from_config(ini),
                 timers,
@@ -194,7 +201,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
-            app.first_run();
+            app.start_up(flags.open);
             app
         }
         (None, None) => unreachable!("a run without a map boots"),

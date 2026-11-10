@@ -63,7 +63,14 @@ struct Flags {
     seed: Option<u32>,
 }
 
-fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
+#[cfg(test)]
+fn flags(words: &[&str]) -> Result<Flags, CliError> {
+    parse_flags(words, false)
+}
+
+/// [`flags`], where `loose` ignores the words that are not flags (the other files a file
+/// association passes after the saved game, main menu 3.5 point 4).
+fn parse_flags(mut words: &[&str], loose: bool) -> Result<Flags, CliError> {
     let mut flags = Flags::default();
     let (mut passes, mut clock) = (false, false);
     let mut size = false;
@@ -171,6 +178,7 @@ fn flags(mut words: &[&str]) -> Result<Flags, CliError> {
                 flags.out = Some(dir.to_string());
                 rest
             }
+            (word, rest) if loose && !word.starts_with("--") => rest,
             _ => return Err(CliError::Usage),
         };
     }
@@ -357,8 +365,13 @@ fn load_game(
 }
 
 /// What a windowed run takes of the flags, with the commands of the script.
-fn window_flags(flags: &Flags, script: Vec<(u64, Command)>) -> crate::window::Flags<'_> {
+fn window_flags<'a>(
+    flags: &'a Flags,
+    open: Option<&'a str>,
+    script: Vec<(u64, Command)>,
+) -> crate::window::Flags<'a> {
     crate::window::Flags {
+        open,
         size: flags.size,
         log: flags.log.as_deref(),
         passes: flags.passes,
@@ -434,9 +447,15 @@ fn play_intros(
     Ok(false)
 }
 
-/// Plays `member`, or, without one, starts up to the main menu.
-pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliError> {
-    let flags = flags(words)?;
+/// Plays `member`, or, without one, starts up to the main menu, where `open` is the saved game of
+/// the command line (main menu 3.5 point 4).
+pub fn run(
+    vfs: &Vfs,
+    member: Option<&str>,
+    open: Option<&str>,
+    words: &[&str],
+) -> Result<(), CliError> {
+    let flags = parse_flags(words, open.is_some())?;
     // Only a game that opens with the run has a main panel to leave out.
     if flags.bare && member.is_none() {
         return Err(CliError::Usage);
@@ -462,7 +481,12 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
         None => None,
     };
     if !flags.headless {
-        return crate::window::run(vfs, loaded, &ini, window_flags(&flags, commands.collect()));
+        return crate::window::run(
+            vfs,
+            loaded,
+            &ini,
+            window_flags(&flags, open, commands.collect()),
+        );
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));
@@ -535,7 +559,12 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             for line in booted.lines {
                 report.line(format_args!("startup {line}"));
             }
-            let mut app = App::menu(
+            // A saved game on the command line opens before the menu is shown.
+            let menu_app = match open.is_some_and(|p| !p.is_empty()) {
+                true => App::held_menu,
+                false => App::menu,
+            };
+            let mut app = menu_app(
                 MapRenderer::new(vfs, &menu_catalogue),
                 Settings::from_config(&ini),
                 Timers::from_config(&ini),
@@ -550,7 +579,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }
-            app.first_run();
+            app.start_up(open);
             app
         }
     };
@@ -585,6 +614,20 @@ mod tests {
         assert!(nested.is_dir());
         assert!(create_out_dir(&nested).is_ok());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn loose_flags_ignore_the_words_that_are_not_flags() {
+        let run = ["--headless", "--passes", "1", "--clock", "1"];
+        let got = parse_flags(&[&run[..], &["extra.zoo"]].concat(), true);
+        assert_eq!(got.unwrap_or_else(|_| panic!("refused")).passes, Some(1));
+        let got = parse_flags(&[&["a.zoo", "b.zoo"][..], &run].concat(), true);
+        assert!(got.is_ok());
+        // A flag that is wrong stays wrong, and the strict form refuses any stray word.
+        assert!(parse_flags(&[&run[..], &["--window"]].concat(), true).is_err());
+        assert!(parse_flags(&[&run[..], &["--passes"]].concat(), true).is_err());
+        assert!(parse_flags(&[&run[..], &["extra.zoo"]].concat(), false).is_err());
+        assert!(parse_flags(&["x"], true).is_ok());
     }
 
     #[test]

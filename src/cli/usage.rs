@@ -34,4 +34,31 @@ mod tests {
         }
         assert!(seen > 20);
     }
+
+    /// A first word that is not in the list opens a saved game, so the list has every command.
+    #[test]
+    fn the_list_of_commands_has_every_first_word() {
+        let source = include_str!("mod.rs");
+        let mut seen = 0;
+        for line in source.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("[\"") else {
+                continue;
+            };
+            for name in rest.split(']').next().unwrap_or("").split(" | ") {
+                let name = name
+                    .split('"')
+                    .nth(if name.starts_with('"') { 1 } else { 0 });
+                let name = name.unwrap_or("");
+                if name.starts_with('-') || name.is_empty() {
+                    continue;
+                }
+                seen += 1;
+                assert!(
+                    super::super::COMMANDS.contains(&name),
+                    "{name} is not listed"
+                );
+            }
+        }
+        assert!(seen > 20);
+    }
 }
