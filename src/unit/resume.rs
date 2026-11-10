@@ -167,7 +167,13 @@ pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
         let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
             continue;
         };
-        let Some(slot) = world.units.get_mut(id) else {
+        // A unit that already shows something was settled by an earlier load (the animals are made
+        // again when the seed is told, the other units stay).
+        let Some(slot) = world
+            .units
+            .get_mut(id)
+            .filter(|u| u.animation.name.is_empty())
+        else {
             continue;
         };
         let mut unit = std::mem::replace(slot, crate::unit::Unit::new(id, slot.kind));
