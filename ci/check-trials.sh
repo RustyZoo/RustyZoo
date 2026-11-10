@@ -79,6 +79,7 @@ fullscreen() {
 
 check() {
   trial=$1 expected=$2 command=$3
+  case "$command" in *"${CHECK_ONLY:-}"*) ;; *) return 0 ;; esac # CHECK_ONLY=<text>: only the commands holding it
   got=$(eval "$command" | tr -d ' \r') # wc pads its numbers on macOS
   if [ "$got" = "$expected" ]; then
     echo "ok: $trial: $command = $got"
