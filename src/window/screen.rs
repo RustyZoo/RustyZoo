@@ -18,6 +18,8 @@ pub struct Screen {
     /// The game is full screen (the camera's rules apply). It follows the last switch that the
     /// window accepted, and what the window reports on its own.
     pub fullscreen: bool,
+    /// The game was resized in full screen: the window is fitted to the size when it is left.
+    unfitted: bool,
 }
 
 impl Screen {
@@ -44,22 +46,33 @@ impl Screen {
         done.is_ok()
     }
 
-    /// Gives the game another size (16.9 point 2): in a window, the window takes the new size
-    /// times the factor of the display and is centred on the primary screen; in full screen the
-    /// picture is scaled to the display, so only the size changes. Whether it was done; a
-    /// failure warns and changes nothing.
+    /// Gives the game another size (16.9 point 2): the window takes the new size times the factor
+    /// of the display and is centred on the primary screen. In full screen the picture is scaled
+    /// to the display, so only the size changes, and the window is fitted when it is left
+    /// ([`Screen::refit`]). Whether it was done; a failure warns and changes nothing.
     pub fn resize(&mut self, video: &sdl3::VideoSubsystem, size: (u32, u32)) -> bool {
         if size == self.size {
             return false;
         }
-        if !self.fullscreen
-            && let Err(e) = self.fit_window(video, size)
-        {
+        if self.fullscreen {
+            self.unfitted = true;
+        } else if let Err(e) = self.fit_window(video, size) {
             eprintln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
             return false;
         }
         self.size = size;
         true
+    }
+
+    /// Fits the window to the game size once the window is back from a full screen in which the
+    /// game was resized. A failure warns.
+    pub fn refit(&mut self, video: &sdl3::VideoSubsystem) {
+        if self.unfitted && !self.fullscreen {
+            self.unfitted = false;
+            if let Err(e) = self.fit_window(video, self.size) {
+                eprintln!("rustyzoo: cannot fit the window: {e}");
+            }
+        }
     }
 
     fn fit_window(
@@ -147,5 +160,40 @@ pub fn open(
         canvas,
         size,
         fullscreen: false,
+        unfitted: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A game resized in full screen sizes the window for the way back: the window keeps its size
+    /// in full screen, and takes the new one once the window is back (16.9 point 2).
+    #[test]
+    fn a_resize_in_full_screen_sizes_the_window_when_it_is_left() {
+        sdl3::hint::set("SDL_VIDEO_DRIVER", "dummy");
+        let sdl = sdl3::init().unwrap();
+        let video = sdl.video().unwrap();
+        let ini = Config::parse(b"").unwrap();
+        let mut screen = open(&video, &ini, Some((1024, 768))).ok().unwrap();
+        let before = screen.canvas.window().size();
+        screen.fullscreen = true;
+        assert!(screen.resize(&video, (800, 600)));
+        assert_eq!(screen.size, (800, 600));
+        assert_eq!(screen.canvas.window().size(), before);
+        screen.refit(&video);
+        assert_eq!(screen.canvas.window().size(), before, "still full screen");
+        screen.fullscreen = false;
+        screen.refit(&video);
+        let (_, want) = plan(
+            (800, 600),
+            screen.canvas.window().display_scale(),
+            screen.canvas.window().pixel_density(),
+            (0, 0),
+        );
+        assert_eq!(screen.canvas.window().size(), want);
+        assert_ne!(want, before);
+        assert!(!screen.resize(&video, (800, 600)), "the same size changes nothing");
+    }
 }

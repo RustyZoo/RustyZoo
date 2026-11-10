@@ -499,6 +499,7 @@ pub fn run(
             }
             app.resized(want, ok);
         }
+        screen.refit(&video);
         app.set_display(screen::desktop(&video));
         run_script(&mut script, pass, &mut screen, &mut state, &mut commands);
         if has_pointer {
