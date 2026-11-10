@@ -578,17 +578,12 @@ impl Build {
     /// closes the panel (input 4.6 steps 7 and 10). Whether it did something.
     #[cfg(test)]
     pub(crate) fn cancel(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
-        self.cancel_after_modes(ui, log, |_| false)
+        self.cancel_modes(ui, log) || self.cancel_held(ui, log)
     }
 
-    /// [`Build::cancel`], with step 6 of input 4.6 (`plaques`: close the facts plaques, whether it
-    /// did) between the tool modes (steps 2 to 5) and the held item (step 7).
-    pub(crate) fn cancel_after_modes(
-        &mut self,
-        ui: &mut Interface,
-        log: &mut Vec<String>,
-        plaques: impl FnOnce(&mut Interface) -> bool,
-    ) -> bool {
+    /// The tool modes of the cancel cascade (input 4.6 steps 2 to 5): the bulldozer, the gate
+    /// placement, then the terrain editing. Whether one was left.
+    pub(crate) fn cancel_modes(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         if self.bulldozer {
             self.stop_bulldozer(ui, log);
             log.push("tool drop".into());
@@ -607,9 +602,12 @@ impl Build {
                 return true;
             }
         }
-        if plaques(ui) {
-            return true;
-        }
+        false
+    }
+
+    /// The held item of the cancel cascade (input 4.6 step 7): dropped, or the open panel closed
+    /// when none is held. Whether a panel was open.
+    pub(crate) fn cancel_held(&mut self, ui: &mut Interface, log: &mut Vec<String>) -> bool {
         let Some(p) = self.open else { return false };
         match self.held.take() {
             Some(_) => {

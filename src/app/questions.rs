@@ -120,17 +120,21 @@ impl App<'_> {
     /// building panels is dropped, then the open panels close, and only Escape then asks the
     /// question that leads to the menu.
     pub(super) fn cancel(&mut self, ask: bool) {
-        if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
-            return self.put_back();
-        }
         if self.end_assign() {
             return;
         }
+        if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui)
+            && (game.build.cancel_modes(ui, &mut self.lines.tool) || close_plaques(ui))
+        {
+            self.terrain_sync();
+            return self.aim(false);
+        }
+        // A unit carried by hand is the pending entity, after the plaques (step 7).
+        if self.game.as_ref().is_some_and(|g| g.carry.is_some()) {
+            return self.put_back();
+        }
         if let (Some(game), Some(ui)) = (&mut self.game, &mut self.ui) {
-            if game
-                .build
-                .cancel_after_modes(ui, &mut self.lines.tool, close_plaques)
-            {
+            if game.build.cancel_held(ui, &mut self.lines.tool) {
                 self.terrain_sync();
                 return self.aim(false);
             }

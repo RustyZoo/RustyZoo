@@ -639,6 +639,25 @@ fn escape_and_the_right_button_close_both_plaques_before_anything_else() {
 }
 
 #[test]
+fn review_a_carried_unit_is_put_back_after_the_plaques_close() {
+    with_facts("facts-carry", |s| {
+        let id = s.add(FOX, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.app.carry_up(id);
+        s.pass(&[]);
+        s.app.interface().unwrap().show(27);
+        escape(s);
+        assert!(!shown(s, 27), "the first Escape closes the plaque");
+        assert!(
+            s.app.game.as_ref().unwrap().carry.is_some(),
+            "still carried"
+        );
+        escape(s);
+        assert!(s.app.game.as_ref().unwrap().carry.is_none(), "put back");
+    });
+}
+
+#[test]
 fn escape_leaves_the_staff_plaque() {
     with_facts("facts-escape-staff", |s| {
         hold(&mut s.app, RANGER);

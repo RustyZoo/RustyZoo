@@ -663,21 +663,6 @@ fn the_objects_panel_opens_through_the_radio_set_and_the_other_closes() {
 }
 
 #[test]
-fn the_plaques_step_of_cancel_comes_before_the_held_item() {
-    let (mut ui, vfs, _install) = interface("cancel-plaques");
-    let cat = types();
-    let (mut build, mut log) = (Build::new(3), vec![]);
-    ui.show(8);
-    ui.set_button(1002, true, true);
-    build.sync(&mut ui, &vfs, &cat, &mut log);
-    log.clear();
-    assert!(build.cancel_after_modes(&mut ui, &mut log, |_| true));
-    assert_eq!((log.len(), build.tool().is_some()), (0, true));
-    assert!(build.cancel_after_modes(&mut ui, &mut log, |_| false));
-    assert_eq!((log, build.tool()), (vec!["tool drop".to_string()], None));
-}
-
-#[test]
 fn cancel_drops_the_tool_then_closes_the_panel() {
     let (mut ui, vfs, _install) = interface("cancel");
     let cat = types();
