@@ -104,6 +104,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
             // The position is read; the tile is the one under it (shows 32.2 point 6, staff 19
             // point 3): nothing is claimed by it.
             (unit.own_pos, unit.own_tile) = (own.0, own.1);
+            unit.own_loaded = true;
             (unit.called, unit.back) = (call.0 != 0, call.1 != 0);
             (unit.frightened, unit.predator, unit.caught) = fright;
             // A guest runs with the non-path cost it was saved with (pathfinding 6.5).

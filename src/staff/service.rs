@@ -184,6 +184,7 @@ pub(crate) fn claimed(world: &World) -> Vec<usize> {
         .units
         .iter()
         .filter(keeper)
+        .filter(|u| !u.own_loaded)
         .filter_map(|u| u.own_tile)
         .collect()
 }

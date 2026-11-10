@@ -282,6 +282,9 @@ pub struct Unit {
     /// 32.2): the tile across a show portal while it swims to cross. Only the position is saved.
     pub own_tile: Option<usize>,
     pub own_pos: [i32; 3],
+    /// The tile came from a load: its claimed bit is not saved, so it is unclaimed until the next
+    /// setter call or reset (staff 19 points 3 and 4).
+    pub own_loaded: bool,
 }
 
 impl Unit {
@@ -341,6 +344,7 @@ impl Unit {
             back: false,
             own_tile: None,
             own_pos: own::NONE_POINT,
+            own_loaded: false,
         }
     }
 

@@ -819,3 +819,20 @@ fn the_trick_id_of_a_unit_is_saved_in_the_first_flag_and_comes_back_at_the_load(
     assert_eq!(loaded.units.get(1).unwrap().trick, 0);
     assert_eq!(saved_block(&loaded).flags[0], (2, 9));
 }
+
+#[test]
+fn rv_a_loaded_keeper_claims_no_tile() {
+    let p1 = [7 * 64 + 32, 2 * 64 + 32, 0];
+    let w = saved_block_in(
+        104,
+        UnitBlock {
+            p1,
+            ..Default::default()
+        },
+    );
+    assert!(w.units.get(1).unwrap().own_tile.is_some());
+    assert!(crate::staff::service::claimed(&w).is_empty());
+    let mut u = w.units.get(1).unwrap().clone();
+    u.aim(&w, u.own_tile);
+    assert!(!u.own_loaded);
+}
