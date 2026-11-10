@@ -63,7 +63,7 @@ rustyzoo help                                    # print this reference
 rustyzoo window-smoke                            # open a window and the default audio device, present one frame, exit; needs no game data
 ```
 
-`movie-info` reads the intro movies (AVI files with Indeo 5 video, 640x480 or 800x600, and PCM audio; the `.wmv` copies are not used). The window does not play them yet.
+`movie-info` reads the intro movies (AVI files with Indeo 5 video, 640x480 or 800x600, and PCM audio; the `.wmv` copies are not used). The window plays the two logo movies at the start of `run` (see below).
 
 Files are found the way the game finds them: in the directories listed in `[resource] path` of `zoo.ini` (the install folder itself if there is no such key), the earlier directory winning, ignoring letter case, with `/` or `\` as separator. A directory may be relative to the install folder or not (`../mods`, an absolute path); a missing one is skipped. Spaces at the end of an element are dropped, an element that starts with a space is skipped with a warning, and the value is cut at 1,023 bytes with a warning, as the game does. Mods are only files these rules find: put them in a directory listed before the ones they override (the Complete Collection lists an empty `dlupdate` first, then `updates`). An archive in a sub-folder of a listed directory is not opened. There is no limit on the number of archives. Inside a directory the loose files come first, then the archives (`.ztd` and `.zip`); among the archives of one directory the one whose lower-cased name sorts last wins, so `magnet02.ztd` beats `magnet01.ztd`, which beats `magnet.ztd`.
 
