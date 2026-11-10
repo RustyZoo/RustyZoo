@@ -41,7 +41,7 @@ mod habitat;
 mod read;
 use habitat::{HABITAT_MIN, habitat};
 pub(crate) use read::knows;
-use read::{Bad, Marks, R, Reader, bad, cp1252, read};
+use read::{Bad, Marks, R, Reader, bad, read};
 pub(crate) mod fresh;
 #[cfg(test)]
 mod parity;
@@ -523,10 +523,13 @@ impl Zoo {
         let block = self.kept.scenario.get(4..).filter(|b| !b.is_empty())?;
         if self.version < 51 {
             // Before 51 the block is the name alone, with no length word.
-            return Some(cp1252(block));
+            return Some(crate::strings::decode_text(self.locale, block));
         }
         let len = u32::from_le_bytes(block.get(..4)?.try_into().ok()?) as usize;
-        Some(cp1252(block.get(4..)?.get(..len)?))
+        Some(crate::strings::decode_text(
+            self.locale,
+            block.get(4..)?.get(..len)?,
+        ))
     }
 
     /// The goal states of the scenario block, one word per goal as stored (zoo format 7.2); none

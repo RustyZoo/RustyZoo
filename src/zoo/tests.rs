@@ -2203,7 +2203,7 @@ fn zero_body(v: u32, class: &str, own: usize) -> Vec<u8> {
     };
     if unit {
         w.z(own);
-        let mut o = Out(Vec::new());
+        let mut o = Out(Vec::new(), 1033);
         unit::write(&mut o, v, class == "guests", 2, &UnitBlock::default()).unwrap();
         w.bytes(&o.0);
     }
@@ -2224,7 +2224,7 @@ fn animal_through(v: u32, own: usize) -> Vec<u8> {
     let mut r = Reader::new(&body, v);
     let a = animal::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
     assert!(r.data.is_empty(), "version {v}");
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     animal::write(&mut o, &a).unwrap();
     o.0
 }
@@ -2295,7 +2295,7 @@ fn the_staff_record_of_every_version_is_written_as_that_of_106() {
             let record = staff::read(&mut r, class.as_bytes())
                 .unwrap_or_else(|e| panic!("{class} in version {v}: {}", e.0));
             assert!(r.data.is_empty(), "{class} in version {v}");
-            let mut o = Out(Vec::new());
+            let mut o = Out(Vec::new(), 1033);
             staff::write(&mut o, class.as_bytes(), &record);
             assert_eq!(o.0.len(), to, "{class} in version {v}");
         }
@@ -2445,7 +2445,7 @@ fn block() -> UnitBlock {
 
 /// The unit block as written in version `v`, read back in version `v`.
 fn through(v: u32, guest: bool, u: &UnitBlock) -> UnitBlock {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, v, guest, 2, u).unwrap();
     let mut r = Reader::new(&o.0, v);
     let (back, mode) = unit::read(&mut r, guest).unwrap_or_else(|e| panic!("{}", e.0));
@@ -2511,7 +2511,7 @@ fn a_field_a_version_lacks_takes_the_value_the_original_writes() {
     assert_eq!(old.records, [[1, 2, 0]]);
     assert_eq!(through(83, false, &u).records, [[1, 2, 0]]);
     // Reading version 84 gives the mode and the type 2 only when the file lacks them.
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, 83, false, 3, &u).unwrap();
     let (back, mode) = read_unit(&o.0, 83);
     assert_eq!((mode, back.move_kind), (2, 2));
@@ -2530,7 +2530,7 @@ fn old_tiles_become_world_positions() {
         p3: [32 + 64 * 9, 32 + 64 * 8, 0],
         ..UnitBlock::default()
     };
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, 70, false, 2, &u).unwrap();
     let int = |o: &Out, at: usize| i32::from_le_bytes(o.0[at..at + 4].try_into().unwrap());
     // 6 bytes, then the first tile; a tile and two words; then the pair of tiles.
@@ -2557,7 +2557,7 @@ fn old_tiles_become_world_positions() {
         p2: [-65, -65, 0],
         ..UnitBlock::default()
     };
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, 70, false, 2, &none).unwrap();
     assert_eq!([int(&o, 6), int(&o, 10)], [-1, -1]);
     assert_eq!(
@@ -2621,7 +2621,7 @@ fn old_tiles_carry_the_ground_height() {
         },
         ..UnitBlock::default()
     };
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, 70, false, 2, &u).unwrap();
     let mut r = Reader::new(&o.0, 70);
     r.ground = Some(ground);
@@ -2637,7 +2637,7 @@ fn old_tiles_carry_the_ground_height() {
 
 #[test]
 fn a_unit_block_value_above_10_is_reset() {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     let u = UnitBlock {
         limited: 11,
         ..UnitBlock::default()
@@ -2681,7 +2681,7 @@ fn a_movement_of_type_3_keeps_its_data_and_the_mode_is_the_type_before_93() {
     let back = through(95, false, &u);
     assert_eq!(back.move_data.len(), 13);
     // Before 93 the type written is the mode, so a mode of 3 gets data and another mode drops it.
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     unit::write(&mut o, 92, false, 1, &u).unwrap();
     let (back, mode) = read_unit(&o.0, 92);
     assert_eq!((mode, back.move_kind, back.move_data.len()), (1, 1, 0));
@@ -2696,16 +2696,16 @@ fn a_movement_of_type_3_keeps_its_data_and_the_mode_is_the_type_before_93() {
 
 #[test]
 fn a_string_of_4096_characters_in_a_unit_block_is_not_written() {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     let u = UnitBlock {
         pending: "x".repeat(4096),
         ..UnitBlock::default()
     };
     assert!(unit::write(&mut o, 106, false, 2, &u).is_err());
     let mut b = block().behaviour;
-    assert!(unit::write_behaviour(&mut Out(Vec::new()), &b).is_ok());
+    assert!(unit::write_behaviour(&mut Out(Vec::new(), 1033), &b).is_ok());
     b.levels[1].args.push("y".repeat(4096));
-    assert!(unit::write_behaviour(&mut Out(Vec::new()), &b).is_err());
+    assert!(unit::write_behaviour(&mut Out(Vec::new(), 1033), &b).is_err());
 }
 
 #[test]
@@ -2934,7 +2934,7 @@ fn a_short_or_wild_guest_record_is_refused_and_never_panics() {
 
 /// An animal record written as 106 and read back.
 fn animal_back(a: &AnimalRecord) -> AnimalRecord {
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     animal::write(&mut o, a).unwrap();
     let mut r = Reader::new(&o.0, 106);
     let back = animal::read(&mut r).unwrap_or_else(|e| panic!("{}", e.0));
@@ -3072,7 +3072,7 @@ fn a_staff_record_of_version_106_is_read_and_written_back_byte_for_byte() {
         let record = staff_read(106, class, &body).unwrap();
         assert_eq!((record.work, record.chase, record.captured), (-7, 30, 55));
         assert_eq!(record.tiles, [[3, 4], [-1, -1]], "{class}");
-        let mut o = Out(Vec::new());
+        let mut o = Out(Vec::new(), 1033);
         staff::write(&mut o, class.as_bytes(), &record);
         assert_eq!(o.0, body, "{class}");
     }
@@ -3089,7 +3089,7 @@ fn a_staff_record_of_version_106_is_read_and_written_back_byte_for_byte() {
 fn a_worker_writes_the_count_of_switches_on_from_its_flags() {
     let mut record = staff_read(106, "maint", &staff_106("maint")).unwrap();
     let count = |record: &StaffRecord| {
-        let mut o = Out(Vec::new());
+        let mut o = Out(Vec::new(), 1033);
         staff::write(&mut o, b"maint", record);
         o.0[12..14].to_vec()
     };
@@ -3105,7 +3105,7 @@ fn a_worker_writes_the_count_of_switches_on_from_its_flags() {
 #[test]
 fn the_staff_fields_a_version_lacks_take_the_values_of_the_original() {
     let write = |class: &str, record: &StaffRecord| {
-        let mut o = Out(Vec::new());
+        let mut o = Out(Vec::new(), 1033);
         staff::write(&mut o, class.as_bytes(), record);
         o.0
     };
@@ -3168,7 +3168,7 @@ fn a_staff_record_with_a_count_past_the_end_or_cut_short_is_an_error() {
 fn a_guide_written_with_a_zero_countdown_reads_it_back() {
     let mut tour = staff_read(106, "tour", &staff_106("tour")).unwrap();
     tour.crowd = Some(0);
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     staff::write(&mut o, b"tour", &tour);
     assert_eq!(staff_read(106, "tour", &o.0).unwrap().crowd, Some(0));
 }
@@ -3493,7 +3493,7 @@ fn a_show_info_is_read_into_its_fields_in_file_order_and_written_back_the_same()
         (31, -1, false, true, true)
     );
     assert_eq!((i.cue_sent, i.ready, i.started), (false, true, false));
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     info.write(&mut o);
     assert_eq!(o.0, bytes);
     // A file cut short anywhere is an error, never a panic.
@@ -3613,7 +3613,7 @@ fn the_scripts_and_the_two_counters_are_fields() {
         (i.help, i.icons.clone()),
         ([8, 9], ["icon".to_string(), "grey".to_string()])
     );
-    let mut o = Out(Vec::new());
+    let mut o = Out(Vec::new(), 1033);
     shows.write_section(&mut o).unwrap();
     assert_eq!(o.0, w.0);
     // Before 97 the counters are not stored: a fresh map's stay.
@@ -3902,12 +3902,30 @@ fn a_name_outside_the_code_page_is_not_written() {
     let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
     zoo.entities[0].common.as_mut().unwrap().name = "Zebra \u{4e2d}".into();
     let why = zoo.write(&money).unwrap_err();
-    assert!(
-        why.contains("Zebra") && why.contains("Windows-1252"),
-        "{why}"
-    );
-    let mut o = Out(Vec::new());
+    assert!(why.contains("Zebra") && why.contains("1033"), "{why}");
+    let mut o = Out(Vec::new(), 1033);
     assert!(o.string("caf\u{e9}").is_ok());
     assert!(o.string("\u{100}").is_err());
     assert!(o.string("\u{0152}").is_ok(), "OE ligature is 0x8C");
+}
+
+#[test]
+fn a_name_is_in_the_code_page_of_the_language() {
+    for (lang, name, bytes) in [
+        (
+            1028,
+            "\u{6ce5}\u{571f}\u{8def}",
+            &[0xaa, 0x64, 0xa4, 0x67, 0xb8, 0xf4][..],
+        ),
+        (1041, "\u{3042}", &[0x82, 0xa0]),
+        (1033, "\u{e9}", &[0xe9]),
+    ] {
+        let mut o = Out(Vec::new(), lang);
+        o.string(name).unwrap();
+        assert_eq!(o.0[4..], *bytes, "{lang}");
+        let mut r = Reader::new(&o.0, 106);
+        r.lang = lang;
+        assert_eq!(r.text().ok().as_deref(), Some(name), "{lang}");
+    }
+    assert!(Out(Vec::new(), 1028).string("\u{e9}\u{1f600}").is_err());
 }

@@ -91,6 +91,18 @@ pub(crate) fn encode_text(language: u32, text: &str) -> Vec<u8> {
     }
 }
 
+/// The bytes of the character `c` in the code page of `language`, `None` when the page lacks it.
+pub(crate) fn encode_char(language: u32, c: char) -> Option<Vec<u8>> {
+    match encoding(language) {
+        Some(encoding) => {
+            let mut buf = [0; 4];
+            let (bytes, _, lacks) = encoding.encode(c.encode_utf8(&mut buf));
+            (!lacks).then(|| bytes.into_owned())
+        }
+        None => crate::text::to_cp1252_exact(c).map(|b| vec![b]),
+    }
+}
+
 /// The double-byte code page of `language`, `None` for the Windows-1252 ones.
 fn encoding(language: u32) -> Option<&'static encoding_rs::Encoding> {
     match language {

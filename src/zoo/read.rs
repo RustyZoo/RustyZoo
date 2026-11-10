@@ -28,6 +28,8 @@ pub(crate) fn knows(catalogue: &Catalogue) -> impl Fn(&Entity) -> bool + '_ {
 pub(super) struct Reader<'a> {
     pub(super) data: &'a [u8],
     pub(super) v: u32,
+    /// The language of the file, which gives the code page of its strings.
+    pub(super) lang: u32,
     /// The length `data` had at the start of the body being read, and where its entity base lies.
     pub(super) total: usize,
     pub(super) spans: Spans,
@@ -101,6 +103,7 @@ impl<'a> Reader<'a> {
         Reader {
             data,
             v,
+            lang: 1033,
             total: data.len(),
             spans: Spans::default(),
             behaviour: None,
@@ -222,9 +225,10 @@ impl<'a> Reader<'a> {
         self.take(len as usize)
     }
 
-    /// A string, one Windows-1252 character per byte.
+    /// A string in the code page of the language of the file.
     pub(super) fn text(&mut self) -> R<String> {
-        Ok(cp1252(self.string()?))
+        let lang = self.lang;
+        Ok(crate::strings::decode_text(lang, self.string()?))
     }
 
     /// A `u32` count of elements of at least `min_size` bytes each, checked against the bytes
@@ -252,16 +256,12 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// The text of Windows-1252 bytes (zoo format 1), the code page of the western installs.
-pub(super) fn cp1252(bytes: &[u8]) -> String {
-    bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect()
-}
-
 /// Reads the file after the magic and the version, noting in `section` where it is.
 pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money) -> R<Zoo> {
     let v = r.v;
     let locale = if v >= 69 { r.u32()? } else { 0 };
     let locale = if locale == 0 { 1033 } else { locale };
+    r.lang = locale;
     let expansion = if v >= 82 { r.u32()? } else { 0 };
     r.mark("header");
 
@@ -397,13 +397,13 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
             _ if size == 0 => None,
             // A body that does not decode to its size with its type's layout fails the load
             // (6.16 point 6).
-            Some(Some(_)) => match sized(data, r.v, r.ground.clone(), class.as_bytes()) {
+            Some(Some(_)) => match sized(data, r, class.as_bytes()) {
                 None => {
                     return bad("a body that does not decode to its size with its type's layout");
                 }
                 common => common,
             },
-            None => sized(data, r.v, r.ground.clone(), class.as_bytes()),
+            None => sized(data, r, class.as_bytes()),
         };
         (Some(size), common)
     } else if found == Some(None) {
@@ -411,6 +411,7 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
     } else {
         let (from, v) = (r.data, r.v);
         let mut body = Reader::new(from, v);
+        body.lang = r.lang;
         body.ground = r.ground.clone();
         match body::decode(&mut body, class.as_bytes())? {
             Some(mut common) => {
@@ -444,9 +445,9 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
 
 /// Decodes a body that has its stored size. A body that does not decode to exactly its size is
 /// skipped, like an unknown class.
-fn sized(data: &[u8], v: u32, ground: Option<Rc<Ground>>, class: &[u8]) -> Option<Common> {
-    let mut body = Reader::new(data, v);
-    body.ground = ground;
+fn sized(data: &[u8], r: &Reader, class: &[u8]) -> Option<Common> {
+    let mut body = Reader::new(data, r.v);
+    (body.ground, body.lang) = (r.ground.clone(), r.lang);
     match body::decode(&mut body, class) {
         Ok(Some(mut common)) if body.data.is_empty() && !data.is_empty() => {
             common.raw = Raw {
@@ -503,7 +504,7 @@ pub(super) fn after_entities(
     // Name counters: type name and number.
     let mut names = BTreeMap::new();
     for _ in 0..r.count(8)? {
-        let name = cp1252(r.string()?);
+        let name = r.text()?;
         names.insert(name, r.u32()?);
     }
     r.mark("name counters");
