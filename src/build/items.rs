@@ -81,13 +81,19 @@ pub(super) fn items_of(
 /// the default subtype, or the plain one when there is none (entity types 6.2); a guest the one of
 /// its default subtype (`man`), whose pass is the only one of the unit level. Never infinite.
 pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
+    integer_text(ty, key)
+        .map(to_float)
+        .filter(|v| v.is_finite())
+}
+
+/// The text behind [`number`].
+pub(crate) fn integer_text<'a>(ty: &'a EntityType, key: &str) -> Option<&'a [u8]> {
     let config = ty.config.as_deref()?;
     let read = |prefix: &[u8]| {
         config
             .section([prefix, b"Characteristics/Integers"].concat())?
             .get(key)
-            .map(to_float)
-            .filter(|v| v.is_finite())
+            .filter(|v| to_float(v).is_finite())
     };
     let own = [&ty.subtype[..], b"/"].concat();
     match ty.class {
@@ -110,6 +116,43 @@ pub(crate) fn number(ty: &EntityType, key: &str) -> Option<f32> {
         }
         _ => read(b""),
     }
+}
+
+/// The preferred-object number of an animal type, the tooltip id of its preference icon (unit
+/// placing 17.4). A built-in type reads the integer of `cPrefIconID`. A user type keeps the
+/// value as text and resolves it once the catalogue is built: an integer of 100 or more is the
+/// number, anything smaller is the name of a user type, lower-cased, whose name id is the number
+/// (0 for an unknown name or a missing key).
+pub(crate) fn preferred_object(cat: &Catalogue, ty: &EntityType) -> i32 {
+    if !crate::usertext::NAMES.contains(&ty.name_id) {
+        return number(ty, "cPrefIconID").map_or(0, |v| v as i32);
+    }
+    let Some(text) = integer_text(ty, "cPrefIconID") else {
+        return 0;
+    };
+    // C atoi: no hexadecimal.
+    let leading = if text.trim_ascii_start().starts_with(b"0x") {
+        0
+    } else {
+        crate::config::to_int(text).unwrap_or(0)
+    };
+    if leading >= 100 {
+        return leading;
+    }
+    let name = text.to_ascii_lowercase();
+    let mut user = cat
+        .types
+        .iter()
+        .filter(|t| crate::usertext::NAMES.contains(&t.name_id));
+    user.find(|t| {
+        let own = if t.class == "animals" {
+            &t.type_name
+        } else {
+            &t.subtype
+        };
+        own.eq_ignore_ascii_case(&name)
+    })
+    .map_or(0, |t| t.name_id)
 }
 
 /// A number of the plain `[Characteristics/Integers]`, whatever the subtype (`cExpansionID`,

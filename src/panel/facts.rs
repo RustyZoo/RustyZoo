@@ -6,7 +6,7 @@
 //! the map view holds (or the animal selected), one just hidden is forgotten and releases its
 //! button, and the species plaque follows the animal panel and the Adopt choice.
 
-use crate::build::{infoimg, number, unit_text};
+use crate::build::{infoimg, number, preferred_object, unit_text};
 use crate::entity::{Catalogue, EntityType};
 use crate::panel::exhibit::{PLAQUE, keeper_kind};
 use crate::show::trick::performs;
@@ -52,6 +52,10 @@ pub(crate) struct Look {
     pub staff: Option<usize>,
     /// The animal selected: its entity id and type.
     pub selected: Option<(u32, usize)>,
+    /// The Hire panel was closed since the last look (point 11).
+    pub hire_closed: bool,
+    /// The Adopt list was emptied in full since the last look (point 12).
+    pub adopt_emptied: bool,
 }
 
 /// What the two plaques showed at the last look.
@@ -82,6 +86,10 @@ impl Panel {
         cat: &Catalogue,
         look: &Look,
     ) -> Option<u32> {
+        // Closing the Hire panel with the facts button down hides the staff plaque.
+        if look.hire_closed && ui.is_down(HIRE_BUTTON) {
+            ui.set_hidden(STAFF, true);
+        }
         let back = self.species_sync(ui, vfs, cat, look);
         let staff = ui.shown(STAFF);
         if staff != self.staff {
@@ -107,6 +115,11 @@ impl Panel {
         // The Adopt button: down shows the held animal, up hides the plaque; with no animal held
         // nothing happens (point 2).
         let down = ui.is_down(ADOPT_BUTTON);
+        // An emptied Adopt list hides the plaque that shows the pending animal; one opened from
+        // a placed animal stays (point 12).
+        if look.adopt_emptied && down && self.species.is_some() && self.from.is_none() {
+            ui.set_hidden(SPECIES, true);
+        }
         if down != std::mem::replace(&mut self.down, down) {
             match (down, look.held) {
                 (true, Some((ty, _))) if !ui.shown(SPECIES) => {
@@ -182,7 +195,7 @@ impl Panel {
 
     fn write(&self, ui: &mut Interface, vfs: &Vfs, cat: &Catalogue) {
         if let Some(ty) = self.species {
-            write_species(ui, vfs, &cat.types[ty], self.from.is_some());
+            write_species(ui, vfs, cat, &cat.types[ty], self.from.is_some());
         }
     }
 }
@@ -225,7 +238,13 @@ fn species_text(ui: &mut Interface, vfs: &Vfs, id: i32, ty: &EntityType) {
 
 /// Writes the species plaque for `ty` (point 5) and sets the keeper button (point 6), enabled
 /// when the plaque was opened from an animal's panel.
-fn write_species(ui: &mut Interface, vfs: &Vfs, ty: &EntityType, from_animal: bool) {
+fn write_species(
+    ui: &mut Interface,
+    vfs: &Vfs,
+    cat: &Catalogue,
+    ty: &EntityType,
+    from_animal: bool,
+) {
     ui.set_text(NAME, &to_cp1252(&ui.string(ty.name_id)));
     picture(ui, vfs, PICTURE, ty);
     let table = infoimg(vfs);
@@ -250,7 +269,7 @@ fn write_species(ui: &mut Interface, vfs: &Vfs, ty: &EntityType, from_animal: bo
     }
     ui.set_picture(PREFERRED[0], icon);
     if let Some(i) = ui.tree.find(PREFERRED[0]) {
-        ui.tree.elements[i].help_id = vec![number(ty, "cPrefIconID").map_or(0, |v| v as i32)];
+        ui.tree.elements[i].help_id = vec![preferred_object(cat, ty)];
     }
     let shows = performs(ty) && ty.name_id != NO_SHOWS;
     for id in SHOWS {
