@@ -5,6 +5,7 @@
 //! wear with time.
 
 use super::World;
+use crate::animal::Class;
 use crate::build::number;
 use crate::config::{Config, to_int};
 use crate::entity::type_of;
@@ -69,6 +70,19 @@ impl Decay {
 }
 
 impl World {
+    /// The numbers of the install a loaded world needs before its units are created: the ini
+    /// settings, the `water` of the terrain types, the animal class (with the `reset_interval`
+    /// of the AI) and the wear interval. The game start and the static picture share it.
+    pub fn set_install(&mut self, vfs: &Vfs, water: Vec<bool>, reset_interval: i32) {
+        self.units.set_ini(vfs.ini());
+        self.set_water(water);
+        self.units.class = Class {
+            reset_interval,
+            ..Class::load(vfs)
+        };
+        self.set_decay(Decay::load(vfs));
+    }
+
     /// The bounds of the wear interval a piece made healthy draws from.
     pub fn set_decay(&mut self, decay: Decay) {
         self.decay = decay;
