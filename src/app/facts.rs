@@ -20,10 +20,13 @@ impl App<'_> {
             let ty = type_at(&game.world, cat, game.world.find(id)?)?;
             Some((id, cat.position(ty.class, &ty.type_name, &ty.subtype)?))
         });
+        let (hire_closed, adopt_emptied) = game.build.take_ended();
         let look = Look {
             held,
             staff: facts::staff_of(cat, tool),
             selected,
+            hire_closed,
+            adopt_emptied,
         };
         if let Some(id) = game.animal.facts.sync(ui, vfs, cat, &look) {
             ui.set_button(animal::RECOMMENDATIONS, true, true);

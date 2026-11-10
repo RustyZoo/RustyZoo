@@ -127,6 +127,7 @@ impl Build {
         }
         log.push(format!("tool expansion {value}"));
         if let Some(p) = self.open {
+            self.emptied(p);
             self.fill(ui, vfs, cat, p, log);
         }
         self.mark_selector(ui);
@@ -198,6 +199,7 @@ impl Build {
         log: &mut Vec<String>,
     ) {
         if let (true, Some(p)) = (changed, self.open) {
+            self.emptied(p);
             self.fill(ui, vfs, cat, p, log);
         }
     }
