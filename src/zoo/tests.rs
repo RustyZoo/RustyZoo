@@ -3902,7 +3902,10 @@ fn a_name_outside_the_code_page_is_not_written() {
     let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
     zoo.entities[0].common.as_mut().unwrap().name = "Zebra \u{4e2d}".into();
     let why = zoo.write(&money).unwrap_err();
-    assert!(why.contains("Zebra") && why.contains("Windows-1252"), "{why}");
+    assert!(
+        why.contains("Zebra") && why.contains("Windows-1252"),
+        "{why}"
+    );
     let mut o = Out(Vec::new());
     assert!(o.string("caf\u{e9}").is_ok());
     assert!(o.string("\u{100}").is_err());
