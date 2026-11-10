@@ -469,10 +469,8 @@ impl Window {
         // The selection and the first shown row are row numbers (20.11 point 8): a row removed
         // above one lowers it, the selected row's own removal leaves the number on the next row.
         let (mut row, mut top) = (ui.selected_row(spec.list), ui.list_top(spec.list));
-        let mut gone = 0;
-        for k in (0..keep.len()).filter(|&k| !keep[k]) {
+        for (gone, k) in (0..keep.len()).filter(|&k| !keep[k]).enumerate() {
             let r = k - gone;
-            gone += 1;
             row = row.map(|s| s - usize::from(r < s));
             top -= usize::from(r < top);
         }
