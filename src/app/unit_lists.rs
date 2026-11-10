@@ -7,9 +7,10 @@ use crate::panel::unitlist::{self as lists, HIDES, PLAQUES, SPECS, STAFF};
 use crate::unit::Kind;
 
 impl App<'_> {
-    /// Looks at the three windows (20.7): one that was shown hides the panels it replaces and
-    /// takes its filter again, one hidden releases its main bar button; a shown one is refilled
-    /// when a unit came or went, or when due (a rename asks for it, the clock's 10 s); and the
+    /// Looks at the three windows (20.7, 20.11): one that was shown hides the panels it replaces
+    /// and takes its filter again, one hidden releases its main bar button; a unit that came or
+    /// went changes the rows at once, an added animal refills; a shown one is refilled when due
+    /// (a change or a rename asks for it, the clock's 10 s); and the
     /// selected entity's row follows the selection, shown or not (4.1 point 4).
     pub(super) fn lists_pass(&mut self, now: u64, ticking: bool) {
         playing!(self, game, ui);
@@ -35,16 +36,22 @@ impl App<'_> {
                 }
             }
             w.follow(which, ui, selected);
-            if !shown {
+            if !shown && !w.filled {
                 continue;
             }
             let list = lists::entries(which, &game.world);
-            if w.changed(&list) {
-                w.now = true;
-            } else if w.renamed(&list) {
-                w.force = true;
+            // A change shows at once in a window, shown or not and paused or not (20.11): an
+            // added animal refills it, any other change only edits the rows.
+            if w.filled && !w.now {
+                if which == lists::ANIMALS && list.iter().any(|e| !w.ids.contains(&e.id)) {
+                    w.now = true;
+                } else if w.changed(&list) {
+                    w.edit(which, &list, (ui, &game.world, cat, vfs));
+                } else if w.renamed(&list) {
+                    w.force = true;
+                }
             }
-            if w.due(now, ticking) {
+            if w.due(now, ticking && shown) {
                 w.refill(which, list, (ui, &game.world, cat, vfs), selected);
             }
         }
