@@ -512,6 +512,21 @@ fn the_position_of_the_own_target_tile_is_saved_and_the_tile_is_built_from_it_at
 }
 
 #[test]
+fn a_staff_member_saves_its_own_target_position_and_rebuilds_the_tile_at_load() {
+    // Staff 19 points 2 and 3: a hired keeper (block with the none point) walking to an exhibit.
+    let mut w = block_of("keeper", 104, UnitBlock::default());
+    let tile = w.tile_index(7, 2);
+    let mut u = w.units.get(1).unwrap().clone();
+    (u.started, u.typed) = (true, true);
+    u.aim(&w, tile);
+    *w.units.get_mut(1).unwrap() = u;
+    let saved = saved_block(&w);
+    assert_eq!(saved.p1[..2], [7 * 64 + 32, 2 * 64 + 32]);
+    let back = saved_block_in(104, saved);
+    assert_eq!(back.units.get(1).unwrap().own_tile, tile);
+}
+
+#[test]
 fn a_save_writes_the_whole_record_and_a_load_gives_it_back() {
     let mut w = walking(104, Vec::new(), "");
     let u = w.units.get_mut(1).unwrap();
