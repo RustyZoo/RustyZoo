@@ -795,6 +795,8 @@ mod bulldozer_tests;
 #[cfg(test)]
 mod facts_tests;
 #[cfg(test)]
+mod minimap_bar_tests;
+#[cfg(test)]
 mod options_tests;
 #[cfg(test)]
 mod unit_lists_tests;

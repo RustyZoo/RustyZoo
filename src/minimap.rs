@@ -239,7 +239,8 @@ impl Minimap {
     pub(crate) fn due(&mut self, now: u64, camera: &Camera) -> bool {
         let look = (camera.scroll, camera.zoom, camera.rotation);
         let due = self.last.is_none_or(|(at, was)| {
-            was != look || i64::try_from(now.saturating_sub(at)).unwrap_or(i64::MAX) >= self.interval
+            was != look
+                || i64::try_from(now.saturating_sub(at)).unwrap_or(i64::MAX) >= self.interval
         });
         if due {
             self.last = Some((now, look));
@@ -303,10 +304,16 @@ impl Minimap {
             return [0; 3];
         };
         let tile = world.zoo.tiles[t];
-        let ex = world.exhibits().region(t).and_then(|id| world.exhibits().get(id));
-        let mut colour = self
-            .colors
-            .get(TERRAIN.get(usize::from(tile.terrain)).copied().unwrap_or(""));
+        let ex = world
+            .exhibits()
+            .region(t)
+            .and_then(|id| world.exhibits().get(id));
+        let mut colour = self.colors.get(
+            TERRAIN
+                .get(usize::from(tile.terrain))
+                .copied()
+                .unwrap_or(""),
+        );
         if let Some(tank) = ex.and_then(|e| e.tank) {
             colour = self.colors.get(match (tank.show, tank.salt) {
                 (true, _) => "showtank",
@@ -321,7 +328,10 @@ impl Minimap {
         let path = world.path(t).is_some();
         let edges = [0, 2, 4, 6].map(|d| world.edge(t, d));
         let wall = |f: &dyn Fn(crate::world::Shape) -> bool| {
-            edges.iter().flatten().any(|&e| world.shape(e).is_some_and(f))
+            edges
+                .iter()
+                .flatten()
+                .any(|&e| world.shape(e).is_some_and(f))
         };
         let colour = if kinds.iter().any(|k| !matches!(*k, "animals" | "guests")) {
             self.colors.get("keeper")

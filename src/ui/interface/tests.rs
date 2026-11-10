@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::Mouse;
 use crate::fixtures::Install;
+use crate::text::fill_color;
 use crate::vfs::Vfs;
 
 struct NoTexts;
@@ -278,6 +279,75 @@ fn the_pointer_text_is_written_right_of_the_pointer_in_the_map_view_colour() {
     interface("pointer-none", "[LayoutInfo]\nid=1\n").pointer_text(&mut frame, b"x", 23);
     ui.mouse(Mouse::Move(i32::MAX, i32::MIN));
     ui.pointer_text(&mut frame, b"($25)", i32::MAX);
+}
+
+/// The minimap 20 by 10 at (10, 10) with a layout of its own colours.
+fn minimap_ui(name: &str) -> Interface {
+    let root = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
+        [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\n\
+        [b]\ntype=ZTMiniMap\nid=1026\nx=10\ny=10\ndx=20\ndy=10\nlayer=5\n\
+        backcolor=255\nbackcolor=0\nbackcolor=255\ncolormap=ui/miniclr.cfg\n";
+    let mut ui = interface(name, root);
+    ui.tree.elements[2].state &= !HIDDEN;
+    ui
+}
+
+/// A picture of the minimap's size, all `back` but the pixel (5, 5), which is red.
+fn minimap_picture() -> Framebuffer {
+    let mut picture = Framebuffer::new(20, 10);
+    picture.fill(fill_color([255, 0, 255]));
+    let at = (5 * 20 + 5) * 4;
+    picture.pixels[at..at + 4].copy_from_slice(&[255, 0, 0, 255]);
+    picture
+}
+
+#[test]
+fn the_minimap_shows_the_picture_with_its_background_keyed_out_and_a_release_on_it_is_an_action() {
+    let mut ui = minimap_ui("minimap");
+    assert_eq!(ui.minimap_file(), Some(&b"ui/miniclr.cfg"[..]));
+    assert_eq!(ui.minimap_slot(), Some(((20, 10), [255, 0, 255])));
+    let click = |ui: &mut Interface, at: (i32, i32)| {
+        ui.mouse(Mouse::Move(at.0, at.1));
+        ui.mouse(Mouse::Down);
+        ui.mouse(Mouse::Up);
+        ui.take_actions()
+    };
+    // Before a picture there is nothing to hit.
+    assert_eq!(click(&mut ui, (15, 15)), []);
+    ui.dirty = false;
+    ui.set_minimap(minimap_picture());
+    assert!(ui.dirty());
+    ui.dirty = false;
+    ui.set_minimap(minimap_picture());
+    assert!(!ui.dirty(), "the same picture changes nothing");
+    let mut frame = Framebuffer::new(64, 48);
+    frame.fill([9, 9, 9, 255]);
+    ui.paint(&mut frame, &mut |_, _| {});
+    let at = |x: usize, y: usize| frame.pixels[(y * 64 + x) * 4..][..3].to_vec();
+    assert_eq!(at(15, 15), [255, 0, 0]);
+    assert_eq!(
+        at(16, 15),
+        [0, 0, 0],
+        "the keyed-out pixel shows what is below"
+    );
+    // The release on the red pixel is an action with the point in the widget; on a keyed-out
+    // pixel, or off the widget, it is none.
+    assert_eq!(click(&mut ui, (15, 15)), [Action::Minimap(5, 5)]);
+    assert_eq!(click(&mut ui, (16, 15)), []);
+    assert_eq!(click(&mut ui, (0, 0)), []);
+    // Pressed on the pixel and released off it: none.
+    ui.mouse(Mouse::Move(15, 15));
+    ui.mouse(Mouse::Down);
+    ui.mouse(Mouse::Move(40, 40));
+    ui.mouse(Mouse::Up);
+    assert_eq!(ui.take_actions(), []);
+    // Hidden: no slot.
+    ui.tree.elements[2].state |= HIDDEN;
+    assert_eq!(ui.minimap_slot(), None);
+    assert_eq!(
+        interface("none", "[LayoutInfo]\nid=1\n").minimap_file(),
+        None
+    );
 }
 
 /// The message line with a colour for each kind, in the interface's clock.

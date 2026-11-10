@@ -266,7 +266,8 @@ impl Interface {
                 Kind::MessageQueue if usable && on_line => self.line_clicked(),
                 Kind::MiniMap(_) if usable && on_map => {
                     let (x, y) = self.tree.screen(h);
-                    self.actions.push(super::Action::Minimap(at.0 - x, at.1 - y));
+                    self.actions
+                        .push(super::Action::Minimap(at.0 - x, at.1 - y));
                 }
                 _ => {}
             }

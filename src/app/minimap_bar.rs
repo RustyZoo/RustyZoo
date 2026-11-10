@@ -19,7 +19,8 @@ impl App<'_> {
     /// The interface pass of the map view (10.7 point 4): the picture is made again when it is
     /// due, and shown when it differs.
     pub(super) fn minimap_pass(&mut self, now: u64) {
-        let slot = (self.ui.as_ref()).and_then(|ui| ui.minimap_slot().filter(|_| ui.map_view_shown()));
+        let slot =
+            (self.ui.as_ref()).and_then(|ui| ui.minimap_slot().filter(|_| ui.map_view_shown()));
         let (Some((size, back)), true) = (slot, self.game.is_some()) else {
             return;
         };
