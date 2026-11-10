@@ -72,7 +72,7 @@ impl App<'_> {
             ui.set_question_icon(WARNING, picture);
             ui.set_down(WARNING_BOX, false);
             for id in [WARNING_BOX, WARNING_LABEL] {
-                ui.set_hidden(id, false);
+                ui.reveal(id, true);
             }
             self.warned = true;
         }
@@ -102,7 +102,7 @@ impl App<'_> {
         if let Some(ui) = &mut self.ui {
             ui.set_down(WARNING_BOX, false);
             for id in [WARNING_BOX, WARNING_LABEL] {
-                ui.set_hidden(id, true);
+                ui.reveal(id, false);
             }
         }
     }

@@ -925,6 +925,8 @@ mod first_run_tests;
 mod main_buttons_tests;
 #[cfg(test)]
 mod start_tests;
+#[cfg(test)]
+mod start_up_tests;
 
 #[cfg(test)]
 mod saves_tests;
