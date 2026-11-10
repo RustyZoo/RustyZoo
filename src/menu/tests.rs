@@ -515,3 +515,29 @@ fn a_game_that_starts_hides_the_menu_screens_and_scenarios_forget_the_last_file(
     assert_eq!(menu.show(&mut ui), ["continue disabled"]);
     assert!(shown(&ui, 26) && disabled(&ui, 7113));
 }
+
+#[test]
+fn the_user_type_warning_is_due_once_and_unless_the_setting_is_0() {
+    let menu = |ini: &str, found| {
+        let mut menu = Menu::new(
+            Config::parse(ini.as_bytes()).unwrap(),
+            Path::new("."),
+            None,
+            None,
+            0,
+        );
+        menu.set_user_types(found);
+        menu
+    };
+    // Missing, empty, unreadable, negative and huge values warn: only 0 does not.
+    for value in ["", "x", "1", "-1", "99", "2147483647", " 5"] {
+        let ini = format!("[user]\nshowUserEntityWarning={value}\n");
+        assert!(menu(&ini, true).warning_due(), "{value:?}");
+    }
+    assert!(menu("", true).warning_due());
+    assert!(!menu("[user]\nshowUserEntityWarning=0\n", true).warning_due());
+    assert!(!menu("", false).warning_due());
+    // The flag is read once.
+    let mut once = menu("", true);
+    assert!(once.warning_due() && !once.warning_due());
+}
