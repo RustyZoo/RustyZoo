@@ -55,6 +55,10 @@ fi
 cat >"$ov/mod/scenario/ci/win.scn" <<EOF
 [desc]
 name=16022
+winpicture=ui/scenario/win/win
+winstory=SCENARIO_WIN_STORY_SCN01
+losepicture=ui/scenario/lose/lose
+losestory=SCENARIO_LOSE_STORY_SCN01
 [start]
 savegame=$map
 setcash=100000
@@ -70,6 +74,10 @@ EOF
 cat >"$ov/mod/scenario/ci/lose.scn" <<EOF
 [desc]
 name=16022
+winpicture=ui/scenario/win/win
+winstory=SCENARIO_WIN_STORY_SCN01
+losepicture=ui/scenario/lose/lose
+losestory=SCENARIO_LOSE_STORY_SCN01
 [start]
 savegame=$map
 setcash=100000
@@ -103,9 +111,10 @@ play() {
   return 0
 }
 
-# check_end <name> <won|lost> <list key> <pass the cause came at>: the properties of the end in $tmp/log.txt.
+# check_end <name> <won|lost> <list key> <pass the cause came at> <install> <scenario file>: the properties
+# of the end in $tmp/log.txt.
 check_end() {
-  name=$1 result=$2 key=$3 cause=$4
+  name=$1 result=$2 key=$3 cause=$4 inst=$5 file=$6
   [ "$result" = won ] && want=1 || want=2
   ends=$(grep -c ' sim scenario end ' "$tmp/log.txt")
   got=$(sed -n 's/^pass \([0-9]*\) .* sim scenario end \(.*\)$/\1 \2/p' "$tmp/log.txt" | head -1)
@@ -138,19 +147,29 @@ check_end() {
   shown=$(grep -c ' menu scenario select ' "$tmp/log.txt")
   [ "$stop" = 1 ] && [ "$shown" -ge 1 ] && ok "$name: No ends the game and shows the scenario screen" ||
     fail "$name: after No: $stop game stops, $shown scenario screens"
+  # The scenario screen shows the picture and story of that result (win*/lose* of the file's [desc]), not
+  # the ones of a game not yet played: the last selection says so.
+  [ "$result" = won ] && pre=win || pre=lose
+  pic=$("$bin" --data "$inst" cat "$file" 2>/dev/null | tr -d '\r' |
+    awk -F= -v k="${pre}picture" 'tolower($1) == "[desc]" { d = 1 } d && tolower($1) == k { print $2; exit }')
+  sel=$(grep ' menu scenario select ' "$tmp/log.txt" | tail -1)
+  case "$sel" in
+  *"select $key "*" picture ${pic:-none} story shown "*) ok "$name: the screen shows the ${pic:-none} picture and a story" ;;
+  *) fail "$name: the screen after the end shows '${sel#*select }', expected picture '${pic:-none}' and a story" ;;
+  esac
 }
 
 # The win: five donations at passes 21 to 25; the cash passes the goal with the fifth.
 play "$ov" scenario/ci/win.scn 60 "21 char 36" "22 char 36" "23 char 36" "24 char 36" "25 char 36" "40 key n"
 cause=$(awk '$4 == "money" && $5 == "cash" && $6 >= 150000 { print $2; exit }' "$tmp/log.txt")
 [ -n "$cause" ] || fail "win: the cash never reached the goal"
-check_end win won zz "${cause:-0}"
+check_end win won zz "${cause:-0}" "$ov" scenario/ci/win.scn
 
 # The loss at the end of the month: the calendar reaches the second month, and the goal is not met.
 play "$ov" scenario/ci/lose.scn 2100 "2050 key n"
 cause=$(awk '$4 == "sim" && $5 == "month" { print $2; exit }' "$tmp/log.txt")
 [ -n "$cause" ] || fail "lose: no month change"
-check_end lose lost zy "${cause:-0}"
+check_end lose lost zy "${cause:-0}" "$ov" scenario/ci/lose.scn
 
 # The third scenario of a full game, played as shipped: lost when the sixth month ends.
 if rz ls 'scenario/scn03/scn03.scn' | grep -qi scn03; then
@@ -158,6 +177,6 @@ if rz ls 'scenario/scn03/scn03.scn' | grep -qi scn03; then
   cause=$(awk '$4 == "sim" && $5 == "month" && $6 == 7 { print $2; exit }' "$tmp/log.txt")
   [ -n "$cause" ] || fail "scn03: no seventh month"
   key=$(sed -n 's/^.* menu scenario result \([a-z]*\) 2$/\1/p' "$tmp/log.txt" | head -1)
-  check_end scn03 lost "${key:-none}" "${cause:-0}"
+  check_end scn03 lost "${key:-none}" "${cause:-0}" "$data" scenario/scn03/scn03.scn
 fi
 exit $failed
