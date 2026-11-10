@@ -141,12 +141,13 @@ struct Inner {
     order: Vec<Queue>,
 }
 
-/// The three queues the triggers leave things in.
+/// The queues the triggers leave things in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Queue {
     Avail,
     Deed,
     Effect,
+    Forced,
 }
 
 /// A run of things left one after the other in the same queue.
@@ -155,6 +156,8 @@ pub(crate) enum Act {
     Avail(Vec<Avail>),
     Deed(Vec<Deed>),
     Effects(Vec<Effect>),
+    /// Trigger 10: every research program is completed, with the progress set too when true.
+    Forced(bool),
 }
 
 /// The state shared by the rules and the triggers. Rules read it through `&self`.
@@ -239,13 +242,17 @@ impl Gui {
     }
 
     pub(super) fn push_forced(&self, progress: bool) {
-        self.0.borrow_mut().forced.push(progress);
+        let mut g = self.0.borrow_mut();
+        g.forced.push(progress);
+        g.order.push(Queue::Forced);
     }
 
     /// The forced researches trigger 10 left since the last call, each with whether the progress
-    /// is set too (research 6.8).
+    /// is set too (research 6.8). Taken out of the queue: a game load lets the saved research stand.
     pub(crate) fn take_forced(&self) -> Vec<bool> {
-        std::mem::take(&mut self.0.borrow_mut().forced)
+        let mut g = self.0.borrow_mut();
+        g.order.retain(|&q| q != Queue::Forced);
+        std::mem::take(&mut g.forced)
     }
 
     /// The deeds the triggers left since the last call.
@@ -257,10 +264,35 @@ impl Gui {
     }
 
     /// The availability changes the triggers left since the last call.
+    #[cfg(test)]
     pub(crate) fn take_avail(&self) -> Vec<Avail> {
         let mut g = self.0.borrow_mut();
         g.order.retain(|&q| q != Queue::Avail);
         std::mem::take(&mut g.avail)
+    }
+
+    /// The availability changes and the forced researches the triggers left since the last call,
+    /// in the order they ran (`scenarios.md` 8.6 point 2); consecutive changes come as one run.
+    pub(crate) fn take_tree(&self) -> Vec<Act> {
+        let mut g = self.0.borrow_mut();
+        let g = &mut *g;
+        let mut out: Vec<Act> = Vec::new();
+        g.order.retain(|&q| match q {
+            Queue::Avail => {
+                let avail = g.avail.remove(0);
+                match out.last_mut() {
+                    Some(Act::Avail(run)) => run.push(avail),
+                    _ => out.push(Act::Avail(vec![avail])),
+                }
+                false
+            }
+            Queue::Forced => {
+                out.push(Act::Forced(g.forced.remove(0)));
+                false
+            }
+            _ => true,
+        });
+        out
     }
 
     /// The effects the triggers left since the last call.
@@ -282,6 +314,7 @@ impl Gui {
             Queue::Avail => Act::Avail(g.avail.drain(..1).collect()),
             Queue::Deed => Act::Deed(g.deeds.drain(..1).collect()),
             Queue::Effect => Act::Effects(g.out.drain(..1).collect()),
+            Queue::Forced => Act::Forced(g.forced.remove(0)),
         })
     }
 

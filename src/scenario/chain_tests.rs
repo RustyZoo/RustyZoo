@@ -84,6 +84,7 @@ fn once(s: &mut Scenario, month: i32, held: &[i32], rewards: &mut Vec<i32>) -> V
                 Effect::Popup(p) => format!("popup {}", p.layout),
                 other => format!("{other:?}"),
             })),
+            Act::Forced(progress) => seen.push(format!("forced {progress}")),
             Act::Avail(made) => {
                 for a in made {
                     if let Which::Unlock(id) = a.which {

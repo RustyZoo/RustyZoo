@@ -412,7 +412,6 @@ impl App<'_> {
         }
         if start.scenario.is_some() {
             // The triggers set the availability over the tree, the ini rewards come last (7.4).
-            self.scenario_forced();
             self.scenario_avail();
             // The start hook follows the start triggers and the research tree (cheats 6.3 point 2);
             // the ini rewards come after it.

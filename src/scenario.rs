@@ -434,53 +434,44 @@ impl Goal {
         if self.optional { 1 } else { self.state }
     }
 
-    /// One update (4.2, 4.4). The timer is updated by the manager, which knows the other goals.
-    fn update(&mut self, env: &Env, states: &[u8], gui: &Gui, log: &mut Vec<String>) {
-        let new = match &mut self.body {
-            Body::Timer(_) => return,
-            Body::Simple(s) => {
-                if s.sticky && self.state != 0 {
-                    return;
-                }
-                s.judge(s.read(env, states, gui))
-            }
-            Body::Complex(children) => {
-                for c in children.iter_mut() {
-                    c.update(env, states, gui, log);
-                }
-                let of = |c: &Goal| c.reported();
-                Some(if children.iter().any(|c| of(c) == 2) {
-                    2
-                } else if children.iter().any(|c| of(c) == 0) {
-                    0
-                } else {
-                    1
-                })
-            }
-            Body::Chain(children) => {
-                let mut state = 1;
-                for c in children.iter_mut() {
-                    c.update(env, states, gui, log);
-                    if c.reported() != 1 {
-                        state = c.reported();
-                        break;
-                    }
-                }
-                Some(state)
-            }
+    /// One update of a simple goal (4.2): its state and, when it moves to 1 to 3, its trigger at
+    /// once. Whether the trigger ran. A group is updated by [`Scenario::update_node`].
+    fn update_simple(
+        &mut self,
+        env: &Env,
+        states: &[u8],
+        gui: &Gui,
+        log: &mut Vec<String>,
+    ) -> bool {
+        let Body::Simple(s) = &mut self.body else {
+            return false;
         };
-        match (new, &self.body) {
-            // Only a simple goal runs a trigger; a group just takes its state.
-            (Some(s @ 1..=3), Body::Simple(simple)) if s != self.state => {
-                self.state = s;
-                simple
-                    .trigger
-                    .fire(&self.name, &s.to_string(), true, log, gui);
-            }
-            (Some(s), _) => self.state = s,
-            (None, _) => {}
+        if s.sticky && self.state != 0 {
+            return false;
         }
+        let Some(new) = s.judge(s.read(env, states, gui)) else {
+            return false;
+        };
+        let fire = matches!(new, 1..=3) && new != self.state;
+        self.state = new;
+        if fire {
+            s.trigger
+                .fire(&self.name, &new.to_string(), true, log, gui);
+        }
+        fire
     }
+}
+
+/// The goal at `path` (a top-level index, then child indexes).
+fn node<'a>(goals: &'a mut [Goal], path: &[usize]) -> &'a mut Goal {
+    let mut goal = &mut goals[path[0]];
+    for &i in &path[1..] {
+        goal = match &mut goal.body {
+            Body::Complex(c) | Body::Chain(c) => &mut c[i],
+            _ => unreachable!("a path goes through groups"),
+        };
+    }
+    goal
 }
 
 /// How a scenario ended (5.4): the file, the result and the types a win unlocks.
@@ -808,39 +799,71 @@ impl Scenario {
         out
     }
 
-    /// One goal is updated, and the popups its trigger left take the hint line as it is then (8.3).
-    fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
-        let mark = self.gui.mark();
-        self.update_one(at, env, log);
-        self.gui.hint(mark, &|| self.hint_line());
-    }
-
     /// The timer is the first goal; the others are updated in list order.
-    fn update_one(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
-        let total = env.total_months();
-        let gui = &self.gui;
-        let (timer, rest) = self.goals.split_first_mut().expect("the timer");
-        let seen = &mut self.reported;
+    fn update_goal(&mut self, at: usize, env: &Env, log: &mut Vec<String>) {
         if at > 0 {
-            rest[at - 1].update(env, seen, gui, log);
-            seen[at] = rest[at - 1].reported();
+            self.update_node(&mut vec![at], env, log);
+            self.reported[at] = self.goals[at].reported();
             return;
         }
-        if let Body::Timer(months) = timer.body
-            && timer.state == 0
+        let total = env.total_months();
+        if let Body::Timer(months) = self.goals[0].body
+            && self.goals[0].state == 0
             && (0..total).contains(&months)
         {
-            timer.state = 3;
-            seen[0] = 3;
-            for (i, g) in rest.iter_mut().enumerate() {
-                g.update(env, seen, gui, log);
-                seen[i + 1] = g.reported();
+            self.goals[0].state = 3;
+            self.reported[0] = 3;
+            for i in 1..self.goals.len() {
+                self.update_goal(i, env, log);
             }
-            if rest.iter().any(|g| !matches!(g.reported(), 1 | 3)) {
-                timer.state = 2;
+            if self.goals[1..]
+                .iter()
+                .any(|g| !matches!(g.reported(), 1 | 3))
+            {
+                self.goals[0].state = 2;
             }
-            seen[0] = timer.reported();
+            self.reported[0] = self.goals[0].reported();
         }
+    }
+
+    /// One update of the goal at `path` (4.2, 4.4). A group updates its children one by one, and
+    /// stores its own state after them. The popups a simple goal's trigger left take the hint line
+    /// as the goals are at that trigger (8.3, `scenarios.md` 8.6 point 5).
+    fn update_node(&mut self, path: &mut Vec<usize>, env: &Env, log: &mut Vec<String>) {
+        let goal = node(&mut self.goals, path);
+        let (kids, chain) = match &goal.body {
+            Body::Timer(_) => return,
+            Body::Simple(_) => {
+                let mark = self.gui.mark();
+                if goal.update_simple(env, &self.reported, &self.gui, log) {
+                    self.gui.hint(mark, &|| self.hint_line());
+                }
+                return;
+            }
+            Body::Complex(c) => (c.len(), false),
+            Body::Chain(c) => (c.len(), true),
+        };
+        let mut stop = None;
+        for i in 0..kids {
+            path.push(i);
+            self.update_node(path, env, log);
+            let state = node(&mut self.goals, path).reported();
+            path.pop();
+            if chain && state != 1 {
+                stop = Some(state);
+                break;
+            }
+        }
+        let goal = node(&mut self.goals, path);
+        let (Body::Complex(c) | Body::Chain(c)) = &goal.body else {
+            return;
+        };
+        goal.state = match (chain, stop) {
+            (true, stop) => stop.unwrap_or(1),
+            _ if c.iter().any(|c| c.reported() == 2) => 2,
+            _ if c.iter().any(|c| c.reported() == 0) => 0,
+            _ => 1,
+        };
     }
 
     /// A step of `ms` milliseconds (5.1): from 1500 ms gathered the pass updates every goal and
