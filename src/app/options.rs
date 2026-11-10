@@ -469,7 +469,9 @@ impl App<'_> {
     /// On success the keys are written; then, either way, the interface is resolved again and
     /// the video and zoom checks run. The scroll, zoom and rotation are not touched.
     pub fn resized(&mut self, size: (u32, u32), ok: bool) {
-        let id = RESOLUTIONS.iter().find(|r| r.1.0 as u32 == size.0 && r.1.1 as u32 == size.1);
+        let id = RESOLUTIONS
+            .iter()
+            .find(|r| r.1.0 as u32 == size.0 && r.1.1 as u32 == size.1);
         if !ok || size.0 == 0 || size.1 == 0 {
             if let (Some(ui), Some(id)) = (&mut self.ui, id) {
                 ui.set_enabled(id.0, false);
