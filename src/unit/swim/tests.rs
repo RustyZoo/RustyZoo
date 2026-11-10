@@ -54,8 +54,11 @@ impl crate::behaviour::Data for Names {
             delay: 100,
         })
     }
-    fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
-        0
+    fn number(&self, _: &crate::zoo::Entity, number: &crate::behaviour::Number) -> i32 {
+        // Every type of the tests lives in tanks.
+        i32::from(
+            matches!(number, crate::behaviour::Number::Characteristic(k) if k == "cUnderwater"),
+        )
     }
     fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
         None
