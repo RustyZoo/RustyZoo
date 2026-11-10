@@ -612,11 +612,10 @@ impl Build {
         match self.held.take() {
             Some(_) => {
                 ui.select_item(PANELS[p].list, None);
-                // The shelter's capacity goes with the item (unit placing 3.3 item 6).
+                // The Adopt list's own release hides the details (unit placing 3.3 item 9); the
+                // rotate buttons follow the tab.
                 if PANELS[p].layout == ADOPT {
-                    for id in CAPACITY {
-                        ui.set_hidden(id, true);
-                    }
+                    Self::release(ui, &PANELS[p]);
                 }
                 log.push("tool drop".into());
             }
@@ -799,23 +798,28 @@ impl Build {
         }
     }
 
-    /// The panel shows no item: no name, cost, rotate buttons, era, fence descriptor or pictures.
+    /// The panel shows no item: no rotate buttons, and the release of the list item.
     fn no_item(ui: &mut Interface, panel: &Panel) {
+        for id in panel.rotate.into_iter().filter(|&id| id != 0) {
+            ui.set_hidden(id, true);
+        }
+        Self::release(ui, panel);
+    }
+
+    /// The release of a list item (unit placing 3.3 items 6 and 9): no name, cost, era, fence
+    /// descriptor, pictures or shelter capacity. The rotate buttons are not touched.
+    fn release(ui: &mut Interface, panel: &Panel) {
         for id in [panel.name_text, panel.cost_text] {
             ui.set_text(id, b"");
         }
         if panel.layout == HIRE {
             ui.set_text(HIRE_DUTIES, b"");
         }
-        let shown = (panel.rotate.into_iter())
-            .chain(panel.details)
+        let adopt =
+            (panel.layout == ADOPT).then_some([PREFERRED.0, PREFERRED.1, CAPACITY[0], CAPACITY[1]]);
+        let shown = (panel.details.into_iter())
             .chain(panel.pictures)
-            .chain(
-                (panel.layout == ADOPT)
-                    .then_some([PREFERRED.0, PREFERRED.1])
-                    .into_iter()
-                    .flatten(),
-            );
+            .chain(adopt.into_iter().flatten());
         for id in shown.filter(|&id| id != 0) {
             ui.set_hidden(id, true);
         }
@@ -884,6 +888,19 @@ impl Build {
         self.stop_bulldozer(ui, log);
         self.stop_gate(ui, log);
         self.chosen[p][tab] = Some(index);
+        // An egg layer with no young type makes nothing: the other buttons are released first, so
+        // the panel ends with the species selected, no details and nothing held (3.3 item 8.1).
+        if ty.class == "animals"
+            && number(ty, "cLaysEggs") == Some(1.0)
+            && !cat
+                .types
+                .iter()
+                .any(|t| t.class == "animals" && t.type_name == ty.type_name && t.subtype == b"y")
+        {
+            self.held = None;
+            ui.select_item(panel.list, Some(at));
+            return Self::release(ui, panel);
+        }
         self.held = Some(index);
         if is_unit(ty) || ty.class == "building" {
             self.made.push(index);

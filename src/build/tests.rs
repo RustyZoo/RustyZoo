@@ -376,7 +376,9 @@ pub(crate) fn interface(name: &str) -> (Interface, Vfs, Install) {
          [e]\ntype=UIText\nid=2082\ndx=50\ndy=10\n[em]\ntype=UIText\nid=2009\ndx=50\ndy=10\n\
          [li]\ntype=UIImage\nid=2045\n[hi]\ntype=UIImage\nid=2047\n[hb]\ntype=UIImage\nid=2046\n\
          [cl]\ntype=UIText\nid=2090\ndx=50\ndy=10\n[cn]\ntype=UIText\nid=2091\ndx=50\ndy=10\n\
-         [yb]\ntype=UIButton\nid=2051\ndx=5\ndy=5\nstate=1\n",
+         [yb]\ntype=UIButton\nid=2051\ndx=5\ndy=5\nstate=1\n\
+         [r1]\ntype=UIButton\nid=2054\ndx=5\ndy=5\n[r2]\ntype=UIButton\nid=2055\ndx=5\ndy=5\n\
+         [pi]\ntype=UIImage\nid=2060\n[pb]\ntype=UIImage\nid=2070\n",
     );
     let hire = panel(
         10,
@@ -1214,6 +1216,87 @@ fn a_shelter_shows_its_capacity_as_a_plain_number_until_the_unselect_or_a_rebuil
     assert_eq!(shown(&ui), [false, false]);
     // The Young button stays hidden whatever is chosen.
     assert_ne!(state_of(&ui, 2051) & HIDDEN, 0);
+}
+
+#[test]
+fn escape_releases_the_adopt_item_with_the_details_and_leaves_the_rotate_buttons() {
+    let (mut ui, vfs, _install) = interface("adopt-escape");
+    let cat = catalogue(vec![
+        animal(
+            "zebra",
+            "m",
+            "cHabitat=9400\ncLocation=9600\ncEra=77\ncPurchaseCost=800\n",
+            101,
+        ),
+        EntityType {
+            name_id: 102,
+            ..ty(
+                "building",
+                "hut",
+                "",
+                "[Member]\nshelters\n[Characteristics/Integers]\ncPurchaseCost=50\ncCapacity=4\n",
+            )
+        },
+    ]);
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    assert!(ui.show(3));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    let hidden = |ui: &Interface, id| state_of(ui, id) & HIDDEN != 0;
+    let details = [2082, 2045, 2047, 2046, 2060, 2070, 2090, 2091];
+    // The animal: name, cost, era and the habitat border show.
+    assert_eq!(
+        (text(&ui, 2043), hidden(&ui, 2082), hidden(&ui, 2046)),
+        ("Name101".into(), false, false)
+    );
+    assert!(build.cancel(&mut ui, &mut log));
+    assert_eq!(build.tool(), None);
+    assert_eq!(
+        (text(&ui, 2043), text(&ui, 2014)),
+        (String::new(), String::new())
+    );
+    assert!(
+        details.iter().all(|&id| hidden(&ui, id)),
+        "details left shown"
+    );
+    // The shelter: the rotate buttons show with it and stay shown, as the tab keeps them.
+    ui.set_button(2075, false, true);
+    ui.set_button(3255, true, true);
+    build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
+    assert!(!hidden(&ui, 2054) && !hidden(&ui, 2091));
+    assert!(build.cancel(&mut ui, &mut log));
+    assert!(details.iter().all(|&id| hidden(&ui, id)));
+    assert!(
+        !hidden(&ui, 2054) && !hidden(&ui, 2055),
+        "rotate buttons follow the tab"
+    );
+    assert_eq!(text(&ui, 2043), "");
+}
+
+#[test]
+fn an_egg_layer_with_no_young_type_leaves_no_details_and_nothing_held() {
+    let (mut ui, vfs, _install) = interface("adopt-eggs");
+    let egg = |sub: &str| {
+        animal(
+            "raptor",
+            sub,
+            "cLaysEggs=1\ncEra=77\ncPurchaseCost=900\n",
+            101,
+        )
+    };
+    // The species with a young type is held; the one with none is selected and holds nothing.
+    for (types, held) in [
+        (vec![egg("m"), egg("f"), egg("y")], true),
+        (vec![egg("m"), egg("f")], false),
+    ] {
+        let cat = catalogue(types);
+        let (mut build, mut log) = (Build::new(3), vec![]);
+        assert!(ui.show(3));
+        build.sync(&mut ui, &vfs, &cat, &mut log);
+        assert_eq!(build.tool().is_some(), held);
+        assert_eq!(text(&ui, 2043) == "Name101", held);
+        assert_eq!(state_of(&ui, 2082) & HIDDEN == 0, held);
+        assert!(build.take_made().len() == usize::from(held));
+    }
 }
 
 /// A staff type of the Hire panel: the keys are in the section of its subtype.
