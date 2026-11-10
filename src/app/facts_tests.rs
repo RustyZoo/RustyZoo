@@ -556,6 +556,20 @@ fn closing_the_adopt_panel_hides_the_plaque_of_the_pending_animal_only() {
 }
 
 #[test]
+fn closing_the_adopt_panel_keeps_the_plaque_when_no_animal_is_pending() {
+    with_facts("facts-adopt-close-none", |s| {
+        open_species(s, FOX);
+        // The tool changed to a non-animal: nothing is pending any more.
+        hold(&mut s.app, RANGER);
+        s.pass(&[]);
+        assert!(shown(s, 27));
+        close_panel(s, 2);
+        s.pass(&[]);
+        assert!(shown(s, 27) && down(s, 2050));
+    });
+}
+
+#[test]
 fn a_user_animal_plaque_gives_its_preferred_object_as_a_number_or_a_user_type_name() {
     let mut cat = types();
     let fox = "cPrefIcon=dozer/small";

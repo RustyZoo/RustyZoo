@@ -115,9 +115,15 @@ impl Panel {
         // The Adopt button: down shows the held animal, up hides the plaque; with no animal held
         // nothing happens (point 2).
         let down = ui.is_down(ADOPT_BUTTON);
-        // An emptied Adopt list hides the plaque that shows the pending animal; one opened from
-        // a placed animal stays (point 12).
-        if look.adopt_emptied && down && self.species.is_some() && self.from.is_none() {
+        // An emptied Adopt list hides the plaque that shows the pending animal (the one of the
+        // last look: the tool is already none); one opened from a placed animal, or with no
+        // animal pending, stays (point 12).
+        if look.adopt_emptied
+            && down
+            && self.species.is_some()
+            && self.from.is_none()
+            && self.held.is_some()
+        {
             ui.set_hidden(SPECIES, true);
         }
         if down != std::mem::replace(&mut self.down, down) {
