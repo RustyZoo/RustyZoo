@@ -274,10 +274,24 @@ fn the_show_job_runs_from_the_duties_to_the_stop_and_he_leaves_at_the_next_updat
 fn completing_the_job_clears_the_job_alone_not_his_own_target_tile() {
     let mut w = show_tank();
     with_cx(&mut w, |cx| {
-        cx.staff().unwrap().target = Some(30);
+        cx.unit.own_tile = Some(30);
         cx.set_job(CONDUCT, 0, None);
         cx.job_complete(CONDUCT);
         assert_eq!(cx.record().job, 0);
-        assert_eq!(cx.staff().unwrap().target, Some(30));
+        assert_eq!(cx.unit.own_tile, Some(30));
+    });
+}
+
+#[test]
+fn the_keeper_setter_sets_the_own_target_tile_and_its_position_together() {
+    // Staff 19 points 1 and 5.
+    let mut w = show_tank();
+    with_cx(&mut w, |cx| {
+        let tile = cx.world.tile_index(2, 2);
+        cx.keeper_target(tile);
+        assert_eq!(cx.unit.own_tile, tile);
+        assert_eq!(cx.unit.own_pos[..2], [2 * 64 + 32, 2 * 64 + 32]);
+        cx.keeper_reset();
+        assert_eq!((cx.unit.own_tile, cx.unit.own_pos), (None, [-1; 3]));
     });
 }

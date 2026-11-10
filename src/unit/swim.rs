@@ -57,7 +57,7 @@ pub(crate) fn check(unit: &mut Unit, world: &mut World, at: usize) {
         0
     };
     let ladder_tank = match &unit.part {
-        Part::Staff(s) if matches!(job, 20 | 21) => s.target.and_then(|t| world.tank_at(t)),
+        Part::Staff(_) if matches!(job, 20 | 21) => unit.own_tile.and_then(|t| world.tank_at(t)),
         _ => None,
     };
     let tank = tile.and_then(|t| {

@@ -90,7 +90,7 @@ impl Units {
                     h.word(s.lost_animals.len() as u32);
                     s.lost_animals.iter().for_each(|&a| h.word(a));
                     h.word(s.food_kind as u32);
-                    h.word(s.target.map_or(u32::MAX, |t| t as u32));
+                    h.word(u.own_tile.map_or(u32::MAX, |t| t as u32));
                     h.word(s.members.len() as u32);
                     s.members.iter().for_each(|&m| h.word(m));
                     h.word(s.crowd as u32);

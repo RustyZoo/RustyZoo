@@ -93,10 +93,9 @@ impl<'c> Cx<'_, 'c> {
 
     /// The keeper's own target tile (staff 7.4).
     fn own(&self) -> Option<usize> {
-        match &self.unit.part {
-            Part::Staff(s) => s.target,
-            _ => None,
-        }
+        matches!(self.unit.part, Part::Staff(_))
+            .then_some(self.unit.own_tile)
+            .flatten()
     }
 
     /// The keeper no longer comes to the exhibit of his own target tile: its count of keepers on
@@ -114,9 +113,7 @@ impl<'c> Cx<'_, 'c> {
     pub(super) fn keeper_target(&mut self, tile: Option<usize>) {
         if self.own() != tile {
             self.target_left();
-            if let Some(s) = self.staff() {
-                s.target = tile;
-            }
+            self.unit.aim(self.world, tile);
         }
     }
 

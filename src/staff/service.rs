@@ -179,11 +179,14 @@ pub(crate) fn present(world: &World, x: u32) -> usize {
 
 /// The own target tiles of the keepers (staff 4.3: the claimed tiles), on their way or at work.
 pub(crate) fn claimed(world: &World) -> Vec<usize> {
-    let own = |u: &crate::unit::Unit| match &u.part {
-        Part::Staff(s) if u.kind == Kind::Keeper => s.target,
-        _ => None,
-    };
-    world.units.iter().filter_map(own).collect()
+    let keeper = |u: &&crate::unit::Unit| u.kind == Kind::Keeper;
+    world
+        .units
+        .iter()
+        .filter(keeper)
+        .filter(|u| !u.own_loaded)
+        .filter_map(|u| u.own_tile)
+        .collect()
 }
 
 /// Whether exhibit `x` needs the keeper (7.2), now being the AI clock: a tank a marine keeper and
