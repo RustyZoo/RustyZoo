@@ -77,6 +77,16 @@ impl Band {
         }
     }
 
+    /// The band of a restored call, read from its name (behaviours 5.10.2 point 2): only
+    /// `fMoveMedium` and `fMoveFast` leave the slow one.
+    fn named(call: Option<&str>) -> Band {
+        match call {
+            Some("fMoveMedium") => Band::Medium,
+            Some("fMoveFast") => Band::Fast,
+            _ => Band::Slow,
+        }
+    }
+
     /// The move animation of the band and the keys of its rate and of its animation speed.
     fn names(self) -> (&'static str, &'static str, &'static str) {
         match self {
@@ -251,16 +261,15 @@ pub(crate) fn here(world: &World, at: usize) -> Option<usize> {
     point(world, at).and_then(|(x, y, _)| tile_of(world, (x, y)))
 }
 
-/// Shows the move animation of the unit's band, or `own` (the name and the percentage a call
-/// gives), and sets the animation speed, the one of the water on water (7.3). False when the type
-/// has no animation of that name.
-fn animate(
-    unit: &mut Unit,
+/// The move animation of the unit's band, or `own` (the name and the percentage a call gives),
+/// and the animation speed, the one of the water on water (7.3).
+fn move_anim<'a>(
+    unit: &Unit,
     world: &World,
     data: &dyn Data,
     at: usize,
-    own: Option<(&str, i32)>,
-) -> bool {
+    own: Option<(&'a str, i32)>,
+) -> (&'a str, u16) {
     let (walk, _, speed) = unit.band.names();
     let entity = &world.zoo.entities[at];
     let water = here(world, at).is_some_and(|t| world.is_water(t));
@@ -274,9 +283,6 @@ fn animate(
         (_, Some(name)) => name,
         _ => walk,
     };
-    if data.timing(entity, name).is_none() {
-        return false;
-    }
     let key = format!(
         "{speed}{}",
         if water || unit.tank > 2 { "Water" } else { "" }
@@ -287,9 +293,38 @@ fn animate(
         p => p,
     };
     // Kept in 16 bits.
-    unit.anim_speed = own.map_or(table, |o| o.1) as u16;
+    (name, own.map_or(table, |o| o.1) as u16)
+}
+
+/// Shows the move animation of the unit's band, or `own`, and sets the animation speed. False
+/// when the type has no animation of that name.
+fn animate(
+    unit: &mut Unit,
+    world: &World,
+    data: &dyn Data,
+    at: usize,
+    own: Option<(&str, i32)>,
+) -> bool {
+    let (name, speed) = move_anim(unit, world, data, at, own);
+    if data.timing(&world.zoo.entities[at], name).is_none() {
+        return false;
+    }
+    unit.anim_speed = speed;
     unit.animation.base_to(name);
     true
+}
+
+/// The move reset of a unit loaded while moving (behaviours 5.10.2 point 2): the band comes from
+/// the name of the call the unit's set is on; the move animation becomes the base and the player
+/// restarts at its first frame, when the type has it. The animation speed is the band's either way.
+pub(crate) fn reset(unit: &mut Unit, world: &World, data: &dyn Data, at: usize) {
+    let entity = &world.zoo.entities[at];
+    unit.band = Band::named(unit.runner.call_name(data, entity).as_deref());
+    let (name, speed) = move_anim(unit, world, data, at, None);
+    unit.anim_speed = speed;
+    if data.timing(entity, name).is_some() {
+        unit.animation.set_base(name, &|n| data.timing(entity, n));
+    }
 }
 
 /// Picks the move animation again after a swimmer changed between land and water (6.2), or the

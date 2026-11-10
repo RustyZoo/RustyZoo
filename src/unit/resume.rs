@@ -108,6 +108,11 @@ pub(crate) fn load(world: &mut World, now: u32) {
         let flier = world.zoo.entities[at].class == "helicopter";
         let (way, pending) = (saved_way(world, block), block.pending.clone());
         let (flag, held) = (block.pending_flag != 0, block.b7 != 0);
+        let moving = (
+            block.b8 != 0,
+            block.w5,
+            (world.zoo.version >= 98).then_some(block.short),
+        );
         let [trick, show] = block.flags.map(|f| if f.0 == 1 { f.1 } else { 0 });
         let (goal, name) = (block.target.clone(), block.text.clone());
         let fright = (block.b1 != 0, block.w1, block.b2 != 0);
@@ -127,6 +132,12 @@ pub(crate) fn load(world: &mut World, now: u32) {
         // The heal hold is the base block's first byte (staff 7.7, zoo format 6.14).
         if let Some(unit) = world.units.get_mut(id) {
             (unit.held, unit.show, unit.trick) = (held, show, trick);
+            // The walk's live state is read as stored (behaviours 5.10.2 point 1); before version
+            // 98 the animation speed keeps the creation value.
+            (unit.moving, unit.speed) = (moving.0, moving.1);
+            if let Some(percent) = moving.2 {
+                unit.anim_speed = percent;
+            }
             // The need being served comes back as it was saved (shows 32.1 point 3).
             if let Part::Animal(a) = &mut unit.part {
                 (a.need, a.slot) = (need, usize::from(slot));
@@ -160,7 +171,8 @@ pub(crate) fn load(world: &mut World, now: u32) {
 }
 
 /// The idle animation of every loaded unit before any step (behaviours 5.10.1 point 3): the add of
-/// each, then the tank check of the load, which resets a unit in a tank only when its mode changes.
+/// each, then the tank check of the load, which resets a unit in a tank only when its mode changes;
+/// then the move reset of a unit saved moving (5.10.2 point 3).
 /// The tank mode is not saved, so every unit starts in mode 0.
 pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
     for at in 0..world.zoo.entities.len() {
@@ -179,6 +191,9 @@ pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
         let mut unit = std::mem::replace(slot, crate::unit::Unit::new(id, slot.kind));
         crate::unit::movement::read_type(&mut unit, data, &world.zoo.entities[at]);
         crate::unit::swim::added(&mut unit, world, data, at);
+        if unit.moving {
+            crate::unit::movement::reset(&mut unit, world, data, at);
+        }
         if let Some(slot) = world.units.get_mut(id) {
             *slot = unit;
         }

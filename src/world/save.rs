@@ -305,6 +305,8 @@ impl World {
             })
             .collect();
         block.b7 = u8::from(u.held);
+        // The walk's live state (behaviours 5.10.2 point 1).
+        (block.b8, block.w5, block.short) = (u8::from(u.moving), u.speed, u.anim_speed);
         // A guest and an animal write their live slot byte, 0xff for none (the constructor writes
         // 0xff for every kind); a staff member never changes it, so its block keeps the byte it has
         // (goals 11.3.1 point 2).
