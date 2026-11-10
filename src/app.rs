@@ -623,18 +623,18 @@ impl<'a> App<'a> {
             game.world.units.eggs_hatch_fast = self.cheats.eggs_hatch_fast;
             let (season, cat) = (&mut self.cheats.season, self.renderer.catalogue());
             let (vehicles, mut trio) = (&mut game.vehicles, false);
-            let report = self.sim.step_hooked(
-                &data,
+            let report = self.sim.step_hooked(crate::sim::Step {
+                data: &data,
                 cat,
-                &mut game.world,
-                &mut game.money,
-                step,
-                |_, _, _| {},
-                &mut |sim, world| {
+                world: &mut game.world,
+                money: &mut game.money,
+                ms: step,
+                update: &mut |_, _, _| {},
+                created: &mut |sim, world| {
                     trio = world.units.cheat.lions_tigers_bears;
                     crate::cheat::guest_flights(season, &data, cat, sim, world, vehicles)
                 },
-            );
+            });
             self.cheats.flags = game.world.units.cheat;
             month_end = report.month_end;
             if report.month_end {

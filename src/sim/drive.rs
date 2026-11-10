@@ -445,7 +445,6 @@ impl Run {
 
     /// [`Run::step`] whose units run their sets and animations, from the files of `vfs`.
     pub fn step_with(&mut self, ms: u32, vfs: Option<&Vfs>) -> Vec<String> {
-        let update = |_: &mut World, _, _| {};
         let data: &dyn Data = &NoData;
         let library;
         let data = match vfs {
@@ -466,7 +465,17 @@ impl Run {
             guest_flights(season, data, cat, sim, world, &mut Vec::new());
         };
         let (world, money) = (&mut self.world, &mut self.money);
-        (self.sim).step_hooked(data, cat, world, money, ms, update, hook);
+        let (update, created) = (&mut |_: &mut World, _, _| {}, hook);
+        let ctx = crate::sim::Step {
+            data,
+            cat,
+            world,
+            money,
+            ms,
+            update,
+            created,
+        };
+        self.sim.step_hooked(ctx);
         let mut lines: Vec<String> = (self.sim.take_lines().into_iter())
             .map(|l| format!("sim {l}"))
             .collect();
