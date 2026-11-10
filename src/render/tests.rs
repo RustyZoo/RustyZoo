@@ -427,6 +427,17 @@ fn a_flights_shadow_is_painted_with_the_tile_under_its_shadow_point_after_its_ob
 }
 
 #[test]
+fn shadows_of_one_tile_are_drawn_oldest_first() {
+    // Three flights over the same point: equal sort keys, so the list order shows.
+    let scene = flights_scene(0, &[(Kind::Flight, 300, 0); 3]);
+    let shadows: Vec<Item> = paint_order(&scene)
+        .into_iter()
+        .filter(|i| matches!(i, Item::Shadow(_)))
+        .collect();
+    assert_eq!(shadows, [Item::Shadow(0), Item::Shadow(1), Item::Shadow(2)]);
+}
+
+#[test]
 fn a_flights_shadow_is_sorted_with_the_temporary_entities_of_its_tile() {
     // The shadow point (10, 310) is on tile (0, 4), the overlay stands there at view y 64.
     let flight = |z| Object {
