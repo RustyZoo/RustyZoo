@@ -295,7 +295,7 @@ mod tests {
 
     /// A keeper at tile (1, 1) saved with `block`, in a file of version `version`; `resume::load`
     /// has run.
-    fn saved_block_in(version: u32, block: UnitBlock) -> World {
+    pub(super) fn saved_block_in(version: u32, block: UnitBlock) -> World {
         block_of("keeper", version, block)
     }
 

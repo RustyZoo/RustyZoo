@@ -135,8 +135,37 @@ fn a_save_writes_the_live_moving_flag_speed_and_animation_speed() {
     (u.started, u.moving, u.speed, u.anim_speed) = (true, true, 123, 77);
     let b = saved_block(&w);
     assert_eq!((b.b8, b.w5, b.short), (1, 123, 77));
+}
+
+#[test]
+fn a_standing_unit_keeps_the_stored_speed_which_is_never_read() {
+    let block = UnitBlock {
+        w5: 25,
+        ..Default::default()
+    };
+    let mut w = saved_in_started(block);
     let u = w.units.get_mut(1).unwrap();
     (u.moving, u.speed) = (false, 0);
     let b = saved_block(&w);
-    assert_eq!((b.b8, b.w5), (0, 0));
+    assert_eq!((b.b8, b.w5), (0, 25));
+}
+
+#[test]
+fn a_flag_byte_that_reads_as_the_live_value_is_written_as_it_was() {
+    let block = UnitBlock {
+        b8: 2,
+        w5: 25,
+        ..Default::default()
+    };
+    let mut w = saved_in_started(block);
+    assert_eq!(saved_block(&w).b8, 2);
+    w.units.get_mut(1).unwrap().moving = false;
+    assert_eq!(saved_block(&w).b8, 0);
+}
+
+/// A keeper loaded from `block` and started.
+fn saved_in_started(block: UnitBlock) -> World {
+    let mut w = super::tests::saved_block_in(104, block);
+    w.units.get_mut(1).unwrap().started = true;
+    w
 }
