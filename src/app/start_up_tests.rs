@@ -85,11 +85,18 @@ fn the_command_line_opens_the_game_and_the_menu_never_shows() {
 fn the_menu_steps_do_not_run_when_the_command_line_game_starts() {
     // `lastfile` names a missing file: the Continue check would empty it.
     let ini = format!("{DONE}[user]\nlastfile=gone.zoo\n");
-    started_up("cl-gone", &ini, false, &[], Some("saved.zoo"), |app, install| {
-        assert!(app.camera().is_some());
-        assert!(!app.menu_events.iter().any(|l| l.starts_with("continue")));
-        assert!(!settings(install).contains("lastfile"));
-    });
+    started_up(
+        "cl-gone",
+        &ini,
+        false,
+        &[],
+        Some("saved.zoo"),
+        |app, install| {
+            assert!(app.camera().is_some());
+            assert!(!app.menu_events.iter().any(|l| l.starts_with("continue")));
+            assert!(!settings(install).contains("lastfile"));
+        },
+    );
     // A path that does not open leaves the menu: its steps run, as without a path.
     for path in [Some("ghost.zoo"), Some("bad.zoo")] {
         started_up("cl-gone2", &ini, false, &[], path, |app, install| {
