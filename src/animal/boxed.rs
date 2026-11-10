@@ -72,13 +72,7 @@ pub(crate) fn tranquilise(unit: &mut Unit, k: &Keys) {
 /// animal: every `cBoxedCheck` ticks the crate opens where it stands in an exhibit (a tank holding
 /// water, else a land exhibit for a species that does not live only under water); otherwise one
 /// draw queues `bRattle` with the chance `cRattleChance`.
-pub(crate) fn check(
-    unit: &mut Unit,
-    world: &mut World,
-    ctx: &mut Ctx,
-    at: usize,
-    data: &dyn Data,
-) {
+pub(crate) fn check(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
     let period = world.units.class.boxed;
     let Part::Animal(a) = &mut unit.part else {
         return;

@@ -218,7 +218,13 @@ fn a_drop_clears_the_string_and_the_member_lists_and_a_pick_up_the_name_id_only(
     assert!(crate::place::unit::pick_up(&mut w, &cat, 1, 0).is_some());
     assert_eq!(names(&w), (None, Some("bReturndolshack0")));
     let (x, y) = centre((1, 3));
-    assert!(crate::place::unit::put_down(&mut w, 1, (x, y, 0), 0));
+    assert!(crate::place::unit::put_down(
+        &mut w,
+        1,
+        (x, y, 0),
+        0,
+        &crate::behaviour::NoData
+    ));
     assert_eq!(names(&w), (None, None));
     assert!(w.units.buildings[&9].members.is_empty());
 }

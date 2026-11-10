@@ -38,24 +38,118 @@ fn checked(w: &mut World, id: u32) -> (u8, u32) {
     (tank, mode)
 }
 
+/// A type with the animations `names`, each of one frame.
+struct Names(&'static [&'static str]);
+
+impl crate::behaviour::Data for Names {
+    fn set(&self, _: &crate::zoo::Entity, _: &str) -> Option<&[crate::behaviour::Call]> {
+        None
+    }
+    fn ambient(&self, _: &crate::zoo::Entity, _: usize) -> &[crate::behaviour::Row] {
+        &[]
+    }
+    fn timing(&self, _: &crate::zoo::Entity, name: &str) -> Option<crate::behaviour::Timing> {
+        self.0.contains(&name).then_some(crate::behaviour::Timing {
+            count: 1,
+            delay: 100,
+        })
+    }
+    fn number(&self, _: &crate::zoo::Entity, _: &crate::behaviour::Number) -> i32 {
+        0
+    }
+    fn sound(&self, _: &crate::zoo::Entity, _: &str) -> Option<crate::behaviour::Heard> {
+        None
+    }
+}
+
+const ALL: Names = Names(&["idle", "surfidle", "subidle", "egg_idle", "box_idle"]);
+
+/// The name the unit shows once the player has taken its base.
+fn shown(unit: &mut Unit, names: &Names) -> String {
+    let entity = crate::unit::testing::entity("animals", "fish", 1, (0, 0), 0);
+    unit.animation
+        .advance(0, &|n| crate::behaviour::Data::timing(names, &entity, n));
+    unit.animation.name.clone()
+}
+
 #[test]
-fn an_egg_and_a_crate_restart_their_own_idle_picture() {
+fn the_stop_the_reset_and_the_play_calls_read_one_idle_choice() {
+    // Behaviours 5.10.1 point 5.
     let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
     fish(&mut w, 1, 1, |_| ());
-    let unit = w.units.get_mut(1).unwrap();
+    let at = w.find(1).unwrap();
+    let mut unit = std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
     unit.tank = 3;
-    assert_eq!(restart_name(unit), "surfidle");
+    assert_eq!(idle_pick(&unit, &w, &ALL, at), Some("surfidle"));
+    // The mode idle falls back to the plain idle; none when the type has no idle at all.
+    assert_eq!(idle_pick(&unit, &w, &Names(&["idle"]), at), Some("idle"));
+    assert_eq!(idle_pick(&unit, &w, &Names(&[]), at), None);
     let Part::Animal(a) = &mut unit.part else {
         panic!("not an animal");
     };
     a.crated = true;
-    assert_eq!(restart_name(unit), "box_idle");
-    // An egg comes first, and it does not dive or surface as its species does.
+    assert_eq!(idle_pick(&unit, &w, &ALL, at), Some("box_idle"));
+    // The egg or the crate has no fallback.
+    assert_eq!(idle_pick(&unit, &w, &Names(&["idle"]), at), None);
     let Part::Animal(a) = &mut unit.part else {
         panic!("not an animal");
     };
-    a.egg = true;
-    assert_eq!(restart_name(unit), "egg_idle");
+    (a.crated, a.egg) = (false, true);
+    assert_eq!(idle_pick(&unit, &w, &ALL, at), Some("egg_idle"));
+    // The stop installs it as the base, without a view or a clear.
+    movement::idle(&mut unit, &w, &ALL, at);
+    assert_eq!(shown(&mut unit, &ALL), "egg_idle");
+}
+
+#[test]
+fn a_stop_in_a_filled_tank_shows_the_surface_idle_or_the_plain_one() {
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32)]);
+    fish(&mut w, 1, 1, |_| ());
+    let at = w.find(1).unwrap();
+    let mut unit = std::mem::replace(w.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
+    unit.tank = 3;
+    movement::idle(&mut unit, &w, &ALL, at);
+    assert_eq!(shown(&mut unit, &ALL), "surfidle");
+    let none = Names(&["idle"]);
+    movement::idle(&mut unit, &w, &none, at);
+    assert_eq!(shown(&mut unit, &none), "idle");
+}
+
+#[test]
+fn the_add_resets_the_idle_outside_a_tank_and_in_one_only_when_the_mode_changes() {
+    // Behaviours 5.10.1 point 2.
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32), (2, (8, 6), 0), (3, (3, 3), 32)]);
+    (1..=3).for_each(|id| fish(&mut w, id, 1, |_| ()));
+    let mut shows = |w: &mut World, id: u32| {
+        let at = w.find(id).unwrap();
+        let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
+        added(&mut unit, w, &ALL, at);
+        (shown(&mut unit, &ALL), unit.tank)
+    };
+    // Filled tank: the mode goes 0 to 4 and the reset shows the underwater idle at once.
+    assert_eq!(shows(&mut w, 1), ("subidle".to_string(), 4));
+    // Outside the tank the reset is the idle of mode 0.
+    assert_eq!(shows(&mut w, 2), ("idle".to_string(), 0));
+    // A dry tank leaves the mode at 0: the base it had stays, nothing is cleared.
+    let mut dry = tank_world(5, 0, &[(1, (3, 3), 40)]);
+    fish(&mut dry, 1, 1, |_| ());
+    let at = dry.find(1).unwrap();
+    let mut unit = std::mem::replace(dry.units.get_mut(1).unwrap(), Unit::new(1, Kind::Animal));
+    unit.animation.base_to("box_idle");
+    added(&mut unit, &mut dry, &ALL, at);
+    assert_eq!((shown(&mut unit, &ALL), unit.tank), ("box_idle".into(), 0));
+}
+
+#[test]
+fn a_load_gives_each_unit_its_idle_before_any_step() {
+    // Behaviours 5.10.1 point 3: the tank mode is not saved.
+    let mut w = tank_world(5, 4, &[(1, (3, 3), 32), (2, (8, 6), 0)]);
+    (1..=2).for_each(|id| fish(&mut w, id, 1, |_| ()));
+    crate::unit::resume::settle(&mut w, &ALL);
+    for (id, name) in [(1, "subidle"), (2, "idle")] {
+        let mut unit = std::mem::replace(w.units.get_mut(id).unwrap(), Unit::new(id, Kind::Animal));
+        assert_eq!(shown(&mut unit, &ALL), name, "unit {id}");
+    }
 }
 
 #[test]

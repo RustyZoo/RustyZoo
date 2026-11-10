@@ -164,10 +164,7 @@ pub(crate) fn load(world: &mut World, now: u32) {
 /// The tank mode is not saved, so every unit starts in mode 0.
 pub(crate) fn settle(world: &mut World, data: &dyn crate::behaviour::Data) {
     for at in 0..world.zoo.entities.len() {
-        let Some(id) = (world.zoo.entities[at].common.as_ref())
-            .filter(|c| c.unit.is_some())
-            .map(|c| c.id)
-        else {
+        let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id) else {
             continue;
         };
         let Some(slot) = world.units.get_mut(id) else {

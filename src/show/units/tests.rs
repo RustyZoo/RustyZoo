@@ -453,7 +453,13 @@ fn pick_up_put_down_and_death_tell_the_lists() {
     settle(&mut w, &cat);
     assert!(units(&w).is_empty());
     let tile = (3 * 64 + 32, 3 * 64 + 32, 0);
-    assert!(crate::place::unit::put_down(&mut w, 40, tile, 0));
+    assert!(crate::place::unit::put_down(
+        &mut w,
+        40,
+        tile,
+        0,
+        &crate::behaviour::NoData
+    ));
     settle(&mut w, &cat);
     assert_eq!(units(&w), [40]);
     assert_eq!(w.exhibit_of(w.find(40).unwrap()), Some(plain));
