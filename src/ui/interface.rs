@@ -47,6 +47,8 @@ pub(crate) enum Action {
     /// The message line was clicked: the index of the message on it in the history (ui layout
     /// 4.14 point 8).
     Message(i32),
+    /// The minimap was clicked: the point in the widget (map drawing 10.8).
+    Minimap(i32, i32),
 }
 
 /// The game's strings, with the texts the game code has put in place of some of them (a version
@@ -185,6 +187,35 @@ impl Interface {
             painter.font_named(font, &*strings).line_height()
         });
         self.dirty = true;
+    }
+
+    /// The colour file the minimap names, if the tree has a minimap.
+    pub(crate) fn minimap_file(&self) -> Option<&[u8]> {
+        self.tree.elements.iter().find_map(|e| match &e.kind {
+            Kind::MiniMap(file) => Some(file.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// The size and the background colour of the minimap when it is on the screen.
+    pub(crate) fn minimap_slot(&self) -> Option<((i32, i32), [u8; 3])> {
+        let i = self.minimap_index()?;
+        let e = &self.tree.elements[i];
+        let placed = e.placed.filter(|_| self.visible(i))?;
+        Some(((placed.dx, placed.dy), e.look.back_color))
+    }
+
+    fn minimap_index(&self) -> Option<usize> {
+        (self.tree.elements.iter()).position(|e| matches!(e.kind, Kind::MiniMap(_)))
+    }
+
+    /// Shows `picture` on the minimap; the interface is painted again if it differs.
+    pub(crate) fn set_minimap(&mut self, picture: Framebuffer) {
+        if let Some(i) = self.minimap_index()
+            && self.painter.set_picture(i, picture)
+        {
+            self.dirty = true;
+        }
     }
 
     /// Marks the interface as changed.

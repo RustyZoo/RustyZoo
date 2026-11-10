@@ -34,6 +34,7 @@ impl App<'_> {
                     self.requested();
                 }
                 Action::Row(HISTORY_LIST, row) | Action::Message(row) => self.message_clicked(row),
+                Action::Minimap(x, y) => self.minimap_clicked((x, y)),
                 Action::Row(exhibit::LIST, row) if self.game.is_some() => self.panel_row(row),
                 Action::Row(exhibit::ANIMALS, row) if self.game.is_some() => {
                     self.panel_animal(row);

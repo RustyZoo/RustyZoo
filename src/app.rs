@@ -166,6 +166,8 @@ struct Game {
     global: i32,
     /// What the hide/show buttons hide, and Shift (map drawing 15).
     view: view_buttons::View,
+    /// The minimap of the main bar (map drawing 10).
+    minimap: crate::minimap::Minimap,
 }
 
 impl Game {
@@ -581,6 +583,7 @@ impl<'a> App<'a> {
                 game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
             }
             self.pause_message();
+            self.minimap_pass(now);
             if let Some(ui) = &mut self.ui {
                 if let Some(game) = &self.game {
                     ui.entities_found(|id| game.world.find(id).is_some());
@@ -705,6 +708,7 @@ mod ids;
 mod kinds;
 mod log;
 mod main_buttons;
+mod minimap_bar;
 mod options;
 mod paint;
 mod view_buttons;

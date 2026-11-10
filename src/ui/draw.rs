@@ -27,6 +27,7 @@
 //! draws its track (tiled along it), arrows and thumb, each in the look of its state (normal, hovered, held).
 //! An image set draws the one of its pictures that the game's code chose; a status bar draws the
 //! picture of its level over the part of its width that its value fills.
+//! The minimap copies the picture the game gave it ([`Painter::set_picture`]) like a canvas.
 //! The other widgets that later milestones fill draw nothing yet.
 
 mod controls;
@@ -179,6 +180,19 @@ impl Painter {
         changed
     }
 
+    /// Gives element `i` the picture the game made for it (the minimap); whether it differs from
+    /// the one it showed.
+    pub(crate) fn set_picture(&mut self, i: usize, canvas: Framebuffer) -> bool {
+        let same = self.canvases.get(&i).is_some_and(|(_, old)| {
+            (old.width, old.height, &old.pixels) == (canvas.width, canvas.height, &canvas.pixels)
+        });
+        let size = (canvas.width as i32, canvas.height as i32);
+        if !same {
+            self.canvases.insert(i, (Made { size }, canvas));
+        }
+        !same
+    }
+
     /// Starts the icon clock of element `i` over: its next frame is the first.
     pub(crate) fn restart_icon(&mut self, i: usize) {
         self.icons.remove(&i);
@@ -285,6 +299,13 @@ impl Painter {
             }
             Kind::StatusImage(levels) => self.bar(pictures, levels, screen, frame),
             Kind::MapView => map(frame, screen),
+            // The picture the game made (map drawing 10.1): the pixels it left at `backcolor`
+            // are not copied.
+            Kind::MiniMap(_) => {
+                if let Some((_, canvas)) = self.canvases.get(&i) {
+                    copy_canvas(frame, canvas, (sx, sy), e, (0, 0));
+                }
+            }
             // The message line: its picture and the text, centred in the rectangle the borders
             // leave (ui layout 4.12).
             Kind::MessageQueue => {
@@ -449,6 +470,7 @@ impl Painter {
                 | Kind::ListBox(_)
                 | Kind::ScrollBar(_)
                 | Kind::Graph(_)
+                | Kind::MiniMap(_)
         ) || (matches!(e.kind, Kind::Image) && (e.dynamic_width || e.dynamic_height));
         if canvas {
             let (made, pixels) = self.canvases.get(&i)?;

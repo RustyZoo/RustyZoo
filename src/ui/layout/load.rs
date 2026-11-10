@@ -176,7 +176,7 @@ impl Tree {
             }),
             b"UIGraph" => Kind::Graph(Box::new(Graph::read(s))),
             b"ZTMapView" => Kind::MapView,
-            b"ZTMiniMap" => Kind::MiniMap,
+            b"ZTMiniMap" => Kind::MiniMap(s.get("colormap").unwrap_or_default().to_vec()),
             b"ZTMessageQueue" => Kind::MessageQueue,
             b"UIMessageQueue" => Kind::UiMessageQueue,
             _ => return None,

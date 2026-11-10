@@ -27,6 +27,7 @@ pub mod lists;
 pub mod marketing;
 pub mod mcp;
 pub mod menu;
+mod minimap;
 pub mod money;
 pub mod month;
 pub mod movie;

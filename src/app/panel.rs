@@ -404,3 +404,17 @@ impl App<'_> {
         self.zoo_window_pass(now, ticking);
     }
 }
+
+/// The view stops following a unit: the follow buttons of the panels come up (camera 10.1).
+pub(super) fn stop_following(ui: &mut Interface) {
+    for follow in [
+        animal::FOLLOW,
+        staff::FOLLOW,
+        recovery::FOLLOW,
+        guest::FOLLOW,
+    ] {
+        if ui.is_down(follow) {
+            ui.set_button(follow, false, true);
+        }
+    }
+}
