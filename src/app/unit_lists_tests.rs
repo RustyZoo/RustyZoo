@@ -447,7 +447,17 @@ fn a_guest_added_to_a_hidden_window_gets_its_row_and_one_failing_the_filter_is_h
         s.app.interface().unwrap().show(12);
         s.pass(&[]);
         // Thirsty filter (3719): only Gus passes, then the window is hidden.
-        match &mut s.app.game.as_mut().unwrap().world.units.get_mut(ids[2]).unwrap().part {
+        match &mut s
+            .app
+            .game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .get_mut(ids[2])
+            .unwrap()
+            .part
+        {
             crate::unit::Part::Guest(g) => g.values[crate::guest::THIRST] = 255,
             _ => unreachable!(),
         }
@@ -457,7 +467,17 @@ fn a_guest_added_to_a_hidden_window_gets_its_row_and_one_failing_the_filter_is_h
         s.pass(&[]);
         s.app.game.as_mut().unwrap().paused = true;
         let ann = add_guest(s);
-        match &mut s.app.game.as_mut().unwrap().world.units.get_mut(ann).unwrap().part {
+        match &mut s
+            .app
+            .game
+            .as_mut()
+            .unwrap()
+            .world
+            .units
+            .get_mut(ann)
+            .unwrap()
+            .part
+        {
             crate::unit::Part::Guest(g) => g.values[crate::guest::THIRST] = 0,
             _ => unreachable!(),
         }
