@@ -229,12 +229,30 @@ pub(super) fn with_game(
     catalogue: Option<Catalogue>,
     body: impl FnOnce(&mut App, &Install),
 ) {
+    with_game_in(name, ini, 0, more, catalogue, body);
+}
+
+/// [`with_game`] with the expansions the menu is started with.
+pub(super) fn with_game_in(
+    name: &str,
+    ini: &str,
+    expansions: i32,
+    more: &[(&str, Vec<u8>)],
+    catalogue: Option<Catalogue>,
+    body: impl FnOnce(&mut App, &Install),
+) {
     let files = Install::new(&format!("start-{name}"), &[]);
     std::fs::write(files.0.join("saved.zoo"), map()).unwrap();
     std::fs::write(files.0.join("bad.zoo"), b"not a map").unwrap();
     let ui = interface(&files);
     let ini = Config::parse(ini.as_bytes()).unwrap();
-    let menu = Menu::new(ini.clone(), &files.0, Some(files.0.join("user")), None, 0);
+    let menu = Menu::new(
+        ini.clone(),
+        &files.0,
+        Some(files.0.join("user")),
+        None,
+        expansions,
+    );
     let scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=t\n[t]\ntrulea=2\n\
         [goals]\ngoal=g\n[g]\nrulea=99\narga=1\nvalue=1\ntrulea=1\n";
     let ui_scn = b"[duration]\nnummonths=-1\n[start]\ntriggers=off\n\
@@ -283,7 +301,14 @@ pub(super) fn with_game(
         ("ra.cfg", b"[research]\nname=10\ncost=0\n".to_vec()),
         ("rd.cfg", b"[research]\nname=11\ncost=5\n".to_vec()),
     ];
+    // A member of `more` replaces the one of the same name.
     let extra = [&extra[..], more].concat();
+    let extra: Vec<_> = extra
+        .iter()
+        .enumerate()
+        .filter(|(i, (n, _))| !extra[i + 1..].iter().any(|(m, _)| m == n))
+        .map(|(_, e)| e.clone())
+        .collect();
     let game = cache_install_with(&format!("start-game-{name}"), frame_file(), &extra);
     let vfs = Vfs::open(&game.0).unwrap();
     let catalogue = catalogue.unwrap_or_else(|| Catalogue::load(&vfs).unwrap());

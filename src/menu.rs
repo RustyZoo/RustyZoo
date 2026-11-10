@@ -288,6 +288,38 @@ impl Menu {
         (self.pages, self.delay) = (pages, delay);
     }
 
+    /// The tutorial that starts by itself at the end of the start-up, and the `[UI]` keys that are
+    /// set once it started (main menu 3.5 points 1 to 3). Only the first one that applies is tried:
+    /// a flag that is not 0 (a missing or unreadable key is 0) means it started already, and an
+    /// expansion tutorial needs its expansion.
+    pub fn first_tutorial(&self) -> Option<(&'static str, &'static [&'static str])> {
+        let todo = |key| ini_whole(&self.ini, "UI", key).unwrap_or(0) == 0;
+        if todo("startedFirstTutorial") {
+            Some((
+                "scenario/scn01a/scn01a.scn",
+                &[
+                    "startedFirstTutorial",
+                    "startedDinoTutorial",
+                    "startedAquaTutorial",
+                ],
+            ))
+        } else if todo("startedDinoTutorial") && self.expansions & 1 != 0 {
+            Some((
+                "scenario/scn19/scn19.scn",
+                &["startedDinoTutorial", "startedAquaTutorial"],
+            ))
+        } else if todo("startedAquaTutorial") && self.expansions & 2 != 0 {
+            Some(("scenario/scn27/scn27.scn", &["startedAquaTutorial"]))
+        } else {
+            None
+        }
+    }
+
+    /// Whether the map of a start is a plain file that exists.
+    pub(crate) fn has_file(&self, path: &str) -> bool {
+        find_file(&self.root, path).is_some()
+    }
+
     fn setting(&self, section: &str, key: &str) -> Option<&[u8]> {
         ini_value(&self.ini, section, key)
     }

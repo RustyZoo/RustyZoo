@@ -909,6 +909,8 @@ mod tests;
 mod replay_tests;
 
 #[cfg(test)]
+mod first_run_tests;
+#[cfg(test)]
 mod main_buttons_tests;
 #[cfg(test)]
 mod start_tests;

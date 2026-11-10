@@ -550,6 +550,7 @@ pub fn run(vfs: &Vfs, member: Option<&str>, words: &[&str]) -> Result<(), CliErr
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }
+            app.first_run();
             app
         }
     };
