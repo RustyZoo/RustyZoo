@@ -4,6 +4,7 @@
 use super::start_tests::{click, key, shown, with_game_in};
 use super::*;
 use crate::fixtures::Install;
+use crate::ui::layout::{HIDDEN, NEVER_SHOWN};
 
 const FIRST: &str = "scenario/scn01a/scn01a.scn";
 const DONE: &str = "[UI]\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n";
@@ -44,6 +45,13 @@ fn messages<'a>(app: &'a App) -> Vec<&'a String> {
 /// Whether the element and its layouts are drawn and hit.
 fn visible(app: &mut App, id: i32) -> bool {
     app.interface().unwrap().shown(id)
+}
+
+/// Whether the element is back to hidden and never shown by its layout, as the file has it.
+fn put_away(app: &mut App, id: i32) -> bool {
+    let ui = app.interface().unwrap();
+    let i = ui.tree.find(id).unwrap();
+    ui.tree.elements[i].state & (HIDDEN | NEVER_SHOWN) == HIDDEN | NEVER_SHOWN
 }
 
 fn asking(app: &mut App) -> bool {
@@ -136,7 +144,7 @@ fn the_warning_shows_once_with_ok_alone_and_an_unticked_box() {
         assert!(!app.interface().unwrap().is_down(45514));
         // OK writes nothing, closes the box and hides the check box again.
         app.pass(66, &click(OK.0, OK.1));
-        assert!(!asking(app) && !visible(app, 45514) && !visible(app, 45515));
+        assert!(!asking(app) && put_away(app, 45514) && put_away(app, 45515));
         assert!(!settings(install).contains("showUserEntityWarning"));
         // The flag was read once: nothing asks again.
         app.start_up(None);
@@ -157,7 +165,7 @@ fn ticking_writes_0_at_once_and_unticking_1_and_ok_keeps_what_is_there() {
         assert!(value(app, 198, BOX).contains("showUserEntityWarning=0"));
         // Enter answers OK: the key stays as it was.
         app.pass(264, &key(Key::Enter));
-        assert!(!asking(app) && !visible(app, 45514));
+        assert!(!asking(app) && put_away(app, 45514));
         assert!(settings(install).contains("showUserEntityWarning=0"));
     });
 }

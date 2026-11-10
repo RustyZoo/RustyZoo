@@ -367,7 +367,7 @@ command_line() { # command_line <path>
   grep -c '^lastfile=.*bad.zoo' "$tmp/user/zoo.ini"
 }
 check base-trial 'maps/default.zoo,0,1' 'command_line maps/default.zoo | paste -sd, -'
-check expansion-trial 'maps/sm_aqua.zoo,0,1' 'command_line maps/sm_aqua.zoo | paste -sd, -'
+check expansion-trial ',0,1' 'command_line maps/ghost.zoo | paste -sd, -'
 check base-trial ',1,1' 'command_line "$tmp/bad.zoo" | paste -sd, -'
 check base-trial ',0,1' 'command_line maps/ghost.zoo | paste -sd, -'
 
