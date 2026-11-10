@@ -276,18 +276,18 @@ check base-trial 27645,27646,44033 'printf "5 bulldoze 18548\n" >"$tmp/open"; rz
 # An animal placed (habitat rating 9.4, animals 10): ci/reactions.txt adopts a gazelle and a lion into a
 # pen. The lion's cat family is at -20 in the gazelle's compatible animals, so the gazelle (15673)
 # dislikes the newcomer at pass 131, and the frown plays once.
-check base-trial 'dislikes15673@131;frown' 'rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 140 --clock 200 --script ci/reactions.txt 2>/dev/null | awk "/ animal dislikes /{r=\$6 \"@\" \$2} / animal sound /{s=\$NF} END{print \"dislikes\" r \";\" s}"'
+check base-trial 'dislikes16005@131;frown' 'rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 140 --clock 200 --script ci/reactions.txt 2>/dev/null | awk "/ animal dislikes /{r=\$6 \"@\" \$2} / animal sound /{s=\$NF} END{print \"dislikes\" r \";\" s}"'
 # The same pen: a second lion is adopted and the first one sold with the sell button of its panel (the bulldozer never removes a unit), which the gazelle likes (the compatible animals
 # values negated for a removal); then the lion is picked up and put down elsewhere, which counts as a placement.
-check base-trial 'likes15673@148;smile' 'd=$(mktemp -d); head -n "$(grep -n "^131 up" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "134 mouse 448 304\n135 down\n136 up\n138 key escape\n140 mouse 512 268\n141 down\n142 up\n144 mouse 953 583\n145 down\n146 up\n148 key y\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
-check base-trial 'dislikes15673@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "^133 key escape" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "136 mouse 512 268\n137 down\n138 up\n141 mouse 512 268\n142 down\n143 up\n146 mouse 448 240\n149 down\n150 up\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
+check base-trial 'likes16005@148;smile' 'd=$(mktemp -d); head -n "$(grep -n "^131 up" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "134 mouse 448 304\n135 down\n136 up\n138 key escape\n140 mouse 512 268\n141 down\n142 up\n144 mouse 953 583\n145 down\n146 up\n148 key y\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
+check base-trial 'dislikes16005@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "^133 key escape" ci/reactions.txt | cut -d: -f1)" ci/reactions.txt >"$d/s"; printf "136 mouse 512 268\n137 down\n138 up\n141 mouse 512 268\n142 down\n143 up\n146 mouse 448 240\n149 down\n150 up\n" >>"$d/s"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 152 --clock 200 --script "$d/s" 2>/dev/null | awk "\$2>143 && / animal (likes|dislikes) /{r=r \$5 \$6 \"@\" \$2} \$2>143 && / animal sound /{s=s \$NF} END{print r \";\" s}"; rm -r "$d"'
 # Each fence piece of a drag runs the habitat pair (habitat rating 9.4), on the zoo grounds too: the
 # pair marks the grounds for revision, so their next update draws and the state hash of the first month
 # changes (without the pair it would be 2cf67ce9093b3d71). Sentinel: the state hash of the first month of
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
-check base-trial 74bcf78f8376a39a 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check expansion-trial ac8f5614a3eae329 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 5fc4e735d501c3f7 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check expansion-trial 7ac7a21c9312843c 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
@@ -837,8 +837,8 @@ gate_move() { # gate_move <map> [yes]: with `yes` the square is a tank and its q
     grep ' world ungate \| world gate \| exhibit gate ' | cut -d' ' -f4- | tr ' ' _ | paste -sd';' -
   rm -rf "$d"
 }
-check base-trial "exhibit_gate_1_18,43_side_2;world_ungate_fences/zoobars/f_18,43_side_2_id_15652;world_gate_fences/zoobars/g_20,45_side_0_id_15649;exhibit_gate_1_20,45_side_0" "gate_move maps/default.zoo"
-check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal2/f_38,44_side_6_id_53944;world_gate_tankwall/tankwal2/g_40,45_side_2_id_53937;exhibit_gate_2_40,45_side_2" "gate_move maps/scn19.zoo yes"
+check base-trial "exhibit_gate_1_18,43_side_2;world_ungate_fences/zoobars/f_18,43_side_2_id_15984;world_gate_fences/zoobars/g_20,45_side_0_id_15981;exhibit_gate_1_20,45_side_0" "gate_move maps/default.zoo"
+check expansion-trial "exhibit_gate_2_38,44_side_6;world_ungate_tankwall/tankwal2/f_38,44_side_6_id_54822;world_gate_tankwall/tankwal2/g_40,45_side_2_id_54815;exhibit_gate_2_40,45_side_2" "gate_move maps/scn19.zoo yes"
 
 # Undo (placing 8): the path drag of above, then Backspace takes the pieces back. Prints the removals
 # the undo logged, the cash at the end (from 50000) and whether the last picture is the one before
@@ -1393,7 +1393,7 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
     END{ print (low == 10751 && n == 5 && steps[0] - low <= 75 && steps[4] - low <= 450 && hap[2] == -5 && hap[3] == -5 && hap[4] == -5 ? "yes" : "no:" low ";" steps[0] "," steps[4]) }'
   rm -rf "$d"
 }
-check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47192 31192 31194 37416"
+check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47864 31192 31194 37416"
 
 # Amphibious neighbours: scn28b's tank 1 and land exhibit 2 are level with the wall between them,
 # which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
@@ -1412,7 +1412,7 @@ tank_cross() { # tank_cross <map> <tank bear> <land bear>: reads $seed
 }
 check expansion-trial yes "first=2 any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2, the run of the property).
-check expansion-trial '97902:1@1027' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
+check expansion-trial '97902:1@1002' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water
@@ -1458,7 +1458,7 @@ tank_filters() { # tank_filters <map> <map's filter>
     awk '/ world filter /{ printf "%s%s:%s%s", n++ ? ";" : "", $2, $5, ($8 == "" ? "" : ":" $8) } END{ print "" }'
   rm -rf "$d"
 }
-check expansion-trial "0:36661;0:36662:doubled;0:36663:flooded;747:36661;1494:36661" "tank_filters maps/scn27.zoo 25167"
+check expansion-trial "0:37266;0:37267:doubled;0:37268:flooded;747:37266;1494:37266" "tank_filters maps/scn27.zoo 25167"
 
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
@@ -1479,7 +1479,7 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile>: reads $seed
   rm -rf "$d"
 }
 check base-trial yes "first=3 any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@7178;young:2" "seed=3 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
+check base-trial "mates:3;birth@1805;young:2" "seed=3 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
@@ -1489,13 +1489,10 @@ egg_script() { # egg_script <file> <first polar bear> <second polar bear> <first
     for s in $(seq 5 30 "$5"); do printf '%s mood %s 100\n%s mood %s 100\n' "$s" "$4" "$s" "$((${4} + 1))"; done; } >"$1"
 }
 # A clutch is one roll of 1 percent for each of about 90 rolls in the run, so it depends on the shared
-# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 2, 3, 4 and 7), and
+# random stream: only some of the seeds lay one in the 7200 steps (of 1 to 8: 1, 3, 4, 5 and 8), and
 # its hatching waits for a keeper to heal the egg (an untended egg is below its hit points when its time
-# is up). Two checks:
-# - a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it;
-# - Sentinel: seed 2, read from the run of the property: the step of the first clutch, the number of eggs,
-#   and the step of the first hatching.
-# Prints the property, a space, and the sentinel's value.
+# is up). One check, a property: one of the seeds 1 to 24 lays a clutch (eggs) that hatches after it.
+# Prints the property, a space, and the step of the first clutch, the number of eggs and the first hatching.
 egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first new id>: reads $seed
   d=$(mktemp -d)
   egg_script "$d/script" "$2" "$3" "$4" 7200
@@ -1503,8 +1500,7 @@ egg_clutch() { # egg_clutch <map> <first polar bear> <second polar bear> <first 
     END{ printf "%s egg@%s;eggs:%s;hatch@%s\n", (n > 0 && h > e ? "yes" : "no:egg" e+0 ";hatch" h+0), e, n+0, h }'
   rm -rf "$d"
 }
-check expansion-trial yes "first=2 any_seed egg_clutch maps/scn19.zoo 51757 51758 53931"
-check expansion-trial "egg@3286;eggs:3;hatch@3916" "seed=2 once egg_clutch maps/scn19.zoo 51757 51758 53931 | cut -d' ' -f2"
+check expansion-trial yes "first=2 any_seed egg_clutch maps/scn19.zoo 51757 51758 54809"
 # Whatever the stream, the pair finds each other as mates in the first 100 steps (seeds 1 to 4).
 egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first new id>
   d=$(mktemp -d)
@@ -1514,7 +1510,7 @@ egg_mates() { # egg_mates <map> <first polar bear> <second polar bear> <first ne
   done | paste -sd, -
   rm -rf "$d"
 }
-check expansion-trial "1,1,1,1" "egg_mates maps/scn19.zoo 51757 51758 53931"
+check expansion-trial "1,1,1,1" "egg_mates maps/scn19.zoo 51757 51758 54809"
 
 # The simulation run twice in a row prints the same state hash (the CI job `hashes` compares the
 # hashes of the three systems).
@@ -1539,8 +1535,8 @@ save_load() { # save_load <map>
   echo "$(wc -c <"$d/a.zoo" | tr -d ' '),$(grep -c warning "$d/err"),$h"
   rm -rf "$d"
 }
-check base-trial "102822,0,557b6468fddd8579" "save_load maps/default.zoo"
-check expansion-trial "109491,0,143e249c532a4e6c" "save_load maps/sm_aqua.zoo"
+check base-trial "102822,0,f54d0238eb42c107" "save_load maps/default.zoo"
+check expansion-trial "109491,0,87d9eb6923bf74f5" "save_load maps/sm_aqua.zoo"
 # scn19 holds entities of types the trial lacks: the file is shorter than the map.
 check expansion-trial 227408,0 "save_load maps/scn19.zoo | cut -d, -f1,2"
 

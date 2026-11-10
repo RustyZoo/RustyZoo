@@ -48,6 +48,9 @@ pub(super) struct Reader<'a> {
     pub(super) marks: Option<Marks>,
     /// Finds the type of a record before its body is read.
     pub(super) resolve: Option<Resolve<'a>>,
+    /// The records whose type `resolve` found; each one is a create of the original's loader and
+    /// adds one to the id counter (zoo format 6.16 point 8).
+    pub(super) found: u32,
 }
 
 /// Finds the class of the type of a record from its class, type and subtype names.
@@ -109,6 +112,7 @@ impl<'a> Reader<'a> {
             post: Vec::new(),
             marks: None,
             resolve: None,
+            found: 0,
         }
     }
 
@@ -296,7 +300,7 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
     }
 
     *section = "id counter";
-    let id_counter = r.u32()?;
+    let stored_counter = r.u32()?;
     r.mark("id counter");
 
     *section = "tiles";
@@ -329,6 +333,9 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
         }
         entities.push(entity);
     }
+
+    // The original's loader adds one to the counter for each record it finds a type for.
+    let id_counter = stored_counter.saturating_add(r.found);
 
     *section = "later sections";
     let mut awards = Vec::new();
@@ -373,6 +380,9 @@ pub(super) fn entity(r: &mut Reader) -> R<Entity> {
     // body is read with the layout of the type's class; the stored class served the lookup only
     // (zoo format 6.16 points 1 and 2). Without them the stored class is the layout.
     let found = r.resolve.map(|find| find(&stored, &type_name, &subtype));
+    if matches!(found, Some(Some(_))) {
+        r.found = r.found.saturating_add(1);
+    }
     let class = match found {
         Some(Some(class)) => class.to_string(),
         _ => stored,

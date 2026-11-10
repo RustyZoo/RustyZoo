@@ -778,6 +778,40 @@ fn a_saved_zoo_starts_on_its_date_and_a_new_game_on_the_first_of_january_2001() 
 }
 
 #[test]
+fn the_show_records_of_an_old_file_get_the_date_the_game_held_before_the_load() {
+    // A file of version 98 with one show record; the file stores no date for it.
+    let old = |version: u32, date: u64| {
+        let mut zoo = Zoo::parse(&map()).unwrap();
+        let mut info = crate::zoo::ShowInfo::new(1, 0, 0);
+        info.records
+            .push(crate::zoo::TypeRecord::new(5400, 2001, date));
+        zoo.version = version;
+        zoo.shows.infos = vec![Some(info)];
+        zoo
+    };
+    let dated = |app: &App| {
+        let world = &app.game.as_ref().unwrap().world;
+        world.zoo.shows.infos[0].as_ref().unwrap().records[0].date
+    };
+    with_menu("old-record-date", "", |app, _| {
+        app.pass(0, &[]);
+        // The first load of the session: 1 January 2001.
+        app.open_game(old(98, 0), Money::default()).unwrap();
+        assert_eq!(dated(app), crate::timing::file_time(0));
+        // The game before held 14 March 2003 (the date of the map); a scenario start comes after.
+        app.open_game(Zoo::parse(&map()).unwrap(), Money::default())
+            .unwrap();
+        let held = app.calendar().unwrap().elapsed_ms();
+        assert_ne!(held, 0);
+        app.open_game(old(97, 0), Money::default()).unwrap();
+        assert_eq!(dated(app), crate::timing::file_time(held));
+        // A file of version 99 keeps its own date.
+        app.open_game(old(99, 77), Money::default()).unwrap();
+        assert_eq!(dated(app), 77);
+    });
+}
+
+#[test]
 fn a_start_with_reset_zeroes_the_upkeep_of_the_filters_and_dates_them_today() {
     with_menu("filter-reset", "", |app, _| {
         app.pass(0, &[]);

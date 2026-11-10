@@ -616,6 +616,9 @@ pub(super) fn build(i: &Inputs) -> Result<Built, String> {
                 out[8..12].copy_from_slice(&i.language.to_le_bytes());
             }
             "name counters" => out.extend(counter_section(bytes)),
+            // The load adds one per record whose type it found (zoo format 6.16 point 8), and the
+            // save writes it so.
+            "id counter" => out.extend(zoo.id_counter.to_le_bytes()),
             "thoughts, ai clock, events" => {
                 let events = posted(&world, i.cat);
                 for &(_, kind) in &events {

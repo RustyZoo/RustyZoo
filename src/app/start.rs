@@ -14,6 +14,16 @@ impl App<'_> {
         self.open_game_as(zoo, money, false)
     }
 
+    /// The zoo of a file before version 99, which stores no date for its show records, with the
+    /// date the game held before this load replaces it (zoo format 4.3).
+    fn dated(&self, mut zoo: Zoo) -> Zoo {
+        if zoo.version < 99 {
+            let held = crate::timing::file_time(self.sim.calendar().elapsed_ms());
+            zoo.shows.date_old_records(held);
+        }
+        zoo
+    }
+
     /// Opens a file the game read ([`App::open_game`]). A saved game (`saved`) whose scenario cannot
     /// be read is refused before anything changes: the load fails with the old-version message
     /// (research 7.2).
@@ -55,6 +65,7 @@ impl App<'_> {
         money: Money,
         saved: bool,
     ) -> Result<(), RenderError> {
+        let zoo = self.dated(zoo);
         // Every file load stops the loops of the sleigh and the biplane (cheats 6.4, 6.5.1).
         self.cheats.season.loops_stopped();
         let file = zoo.scenario_file().filter(|_| saved);
