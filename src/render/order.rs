@@ -982,7 +982,8 @@ fn paint_order_here(scene: &Scene) -> Vec<Item> {
         out: Vec::with_capacity(n + scene.objects.len()),
         calls: 0,
     };
-    for &o in &scene.flights {
+    // The shadows are attached newest first, each at the head, so a tile lists the oldest first.
+    for &o in scene.flights.iter().rev() {
         let (x, y) = shadow_point(rotation, scene.objects[o].x, scene.objects[o].y);
         if let Some(t) = scene.tile_at(x, y) {
             painter.shadows.entry(t).or_default().push(o);
