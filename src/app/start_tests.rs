@@ -52,6 +52,20 @@ impl UiStrings for Texts {
     }
 }
 
+/// The warning about user-made types: OK (45512) at 20, 0 and the hidden check box (45514) and
+/// its label (45515) below.
+fn warning_layout(button: &str) -> String {
+    format!(
+        "[LayoutInfo]\nid=45500\nlayer=7\nx=0\ny=0\ndx=40\ndy=24\nstate=1\n\
+         [m]\ntype=UIText\nid=45506\nx=0\ny=0\ndx=40\ndy=10\n\
+         [o]\nid=45512\nx=20\ny=0\ntarget=1\naction=5\n{button}\
+         [y]\nid=45510\nx=0\ny=0\ntarget=6\naction=5\n{button}\
+         [g]\ntype=UIImage\nid=45502\nx=0\ny=0\nlayer=1\n\
+         [k]\ntype=UIButton\nid=45514\nx=0\ny=10\ndx=10\ndy=6\ncolorasicon=1\nstate=2065\n\
+         [l]\ntype=UIText\nid=45515\nx=10\ny=10\ndx=20\ndy=6\nstate=17\n"
+    )
+}
+
 /// The main menu (layout 26) with Exit (7116, at the top left) and Continue (7113, at 20, 0), a
 /// question (45000, its message 45006 and the buttons Yes, No, OK and Cancel at 0, 10, 20 and 30
 /// of its top), the name dialog (45300: message 45306, field 45308, OK 45312 and Cancel 45313), the
@@ -62,16 +76,14 @@ pub(super) fn interface(install: &Install) -> Interface {
         [a]\ntype=ZTMapView\nid=7000\ndx=whole\ndy=whole\ntransparent=0\n\
         [mq]\ntype=ZTMessageQueue\nid=7001\nx=0\ny=0\ndx=40\ndy=8\ntimed=1\ntimerDuration=3000\n\
         [b]\ntype=UILayout\nlayout=ui/menu.lyt\n\
-        [c]\ntype=UILayout\nlayout=ui/q.lyt\n\
-        [wn]\ntype=UILayout\nlayout=ui/warn.lyt\n\
+        [c]\ntype=UILayout\nlayout=ui/q.lyt\n[wn]\ntype=UILayout\nlayout=ui/warn.lyt\n\
         [d]\ntype=UILayout\nlayout=ui/options.lyt\n\
         [n]\ntype=UILayout\nlayout=ui/name.lyt\n\
         [l]\ntype=UILayout\nlayout=ui/list.lyt\n\
         [e]\ntype=UILayout\nlayout=ui/panel.lyt\n\
         [h]\ntype=UILayout\nlayout=ui/hint.lyt\n\
         [w]\ntype=UILayout\nlayout=ui/end.lyt\n\
-        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n\
-        [r]\ntype=UILayout\nlayout=ui/res.lyt\n\
+        [o]\ntype=UILayout\nlayout=ui/obj.lyt\n[r]\ntype=UILayout\nlayout=ui/res.lyt\n\
         [x]\ntype=UILayout\nlayout=ui/sel.lyt\n";
     let button = "type=UIButton\ndx=10\ndy=10\ncolorasicon=1\n";
     let menu = format!(
@@ -91,17 +103,6 @@ pub(super) fn interface(install: &Install) -> Interface {
          [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
          [j]\ntype=UIImage\nid=45005\nx=0\ny=0\nlayer=1\n\
          [g]\ntype=UIImage\nid=45002\nx=0\ny=0\nlayer=1\n"
-    );
-    // The warning about user-made types: OK (45512) at 20, 0 and the hidden check box (45514)
-    // and its label (45515) below.
-    let warn = format!(
-        "[LayoutInfo]\nid=45500\nlayer=7\nx=0\ny=0\ndx=40\ndy=24\nstate=1\n\
-         [m]\ntype=UIText\nid=45506\nx=0\ny=0\ndx=40\ndy=10\n\
-         [o]\nid=45512\nx=20\ny=0\ntarget=1\naction=5\n{button}\
-         [y]\nid=45510\nx=0\ny=0\ntarget=6\naction=5\n{button}\
-         [g]\ntype=UIImage\nid=45502\nx=0\ny=0\nlayer=1\n\
-         [k]\ntype=UIButton\nid=45514\nx=0\ny=10\ndx=10\ndy=6\ncolorasicon=1\nstate=2065\n\
-         [l]\ntype=UIText\nid=45515\nx=10\ny=10\ndx=20\ndy=6\nstate=17\n"
     );
     let options = format!(
         "[LayoutInfo]\nid=5\nlayer=3\nx=40\ny=20\ndx=20\ndy=20\nstate=1\n\
@@ -132,7 +133,7 @@ pub(super) fn interface(install: &Install) -> Interface {
             ("ui/root.lyt", root.as_bytes().to_vec()),
             ("ui/menu.lyt", menu.into_bytes()),
             ("ui/q.lyt", q.into_bytes()),
-            ("ui/warn.lyt", warn.into_bytes()),
+            ("ui/warn.lyt", warning_layout(button).into_bytes()),
             ("ui/options.lyt", options.into_bytes()),
             ("ui/name.lyt", name.into_bytes()),
             ("ui/list.lyt", list.into_bytes()),

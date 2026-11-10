@@ -353,6 +353,24 @@ first_run() {
 check base-trial 'scenarioaamaps/scn01a.zoo,3' 'first_run'
 check expansion-trial ',0' 'first_run'
 
+# The saved game of the command line (main menu 3.5 point 4): the file given as the only word opens in
+# place of the menu and Continue keeps its file; a file that does not load is a message over the menu;
+# a path that does not open says nothing. Prints the game started, the messages told and whether
+# lastfile is still there.
+command_line() { # command_line <path>
+  rm -rf "$tmp/user"
+  mkdir -p "$tmp/user"
+  printf 'not a zoo' >"$tmp/bad.zoo"
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "$tmp/bad.zoo" >"$tmp/user/zoo.ini"
+  rz "$1" --seed 1 --headless --passes 3 --clock 100 2>/dev/null |
+    awk '/ menu game start /{g=$8} / menu message /{m++} END{print g","m+0}'
+  grep -c '^lastfile=.*bad.zoo' "$tmp/user/zoo.ini"
+}
+check base-trial 'maps/default.zoo,0,1' 'command_line maps/default.zoo | paste -sd, -'
+check expansion-trial 'maps/sm_aqua.zoo,0,1' 'command_line maps/sm_aqua.zoo | paste -sd, -'
+check base-trial ',1,1' 'command_line "$tmp/bad.zoo" | paste -sd, -'
+check base-trial ',0,1' 'command_line maps/ghost.zoo | paste -sd, -'
+
 # The freeform screen from its menu button: the number of maps, then the starting cash and its
 # difficulty. (The spinners of the full game are not in the trials' layout; the unit tests cover
 # them.)
