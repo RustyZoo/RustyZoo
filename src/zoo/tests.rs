@@ -3881,3 +3881,30 @@ fn a_record_is_matched_by_its_names_byte_for_byte() {
         assert!(z.entities.is_empty(), "{name}/{sub}");
     }
 }
+
+#[test]
+fn a_name_with_a_cp1252_character_round_trips() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    let name = "Thomson\u{2019}s gazelle 1 \u{e9}\u{20ac}";
+    zoo.names.insert(name.into(), 1);
+    zoo.habitat_info[1].name = name.into();
+    zoo.entities[0].common.as_mut().unwrap().name = name.into();
+    let bytes = zoo.write(&money).unwrap();
+    assert!(bytes.windows(8).any(|w| w == b"Thomson\x92"));
+    let (back, _) = Zoo::parse_money(&bytes).unwrap();
+    assert_eq!(back.names.get(name), Some(&1));
+    assert_eq!(back.habitat_info[1].name, name);
+    assert_eq!(back.entities[0].common.as_ref().unwrap().name, name);
+}
+
+#[test]
+fn a_name_outside_the_code_page_is_not_written() {
+    let (mut zoo, money) = Zoo::parse_money(&lean(106)).unwrap();
+    zoo.entities[0].common.as_mut().unwrap().name = "Zebra \u{4e2d}".into();
+    let why = zoo.write(&money).unwrap_err();
+    assert!(why.contains("Zebra") && why.contains("Windows-1252"), "{why}");
+    let mut o = Out(Vec::new());
+    assert!(o.string("caf\u{e9}").is_ok());
+    assert!(o.string("\u{100}").is_err());
+    assert!(o.string("\u{0152}").is_ok(), "OE ligature is 0x8C");
+}

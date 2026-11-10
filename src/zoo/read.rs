@@ -222,9 +222,9 @@ impl<'a> Reader<'a> {
         self.take(len as usize)
     }
 
-    /// A string, one character per byte.
+    /// A string, one Windows-1252 character per byte.
     pub(super) fn text(&mut self) -> R<String> {
-        Ok(latin1(self.string()?))
+        Ok(cp1252(self.string()?))
     }
 
     /// A `u32` count of elements of at least `min_size` bytes each, checked against the bytes
@@ -252,8 +252,9 @@ impl<'a> Reader<'a> {
     }
 }
 
-pub(super) fn latin1(bytes: &[u8]) -> String {
-    bytes.iter().map(|&b| b as char).collect()
+/// The text of Windows-1252 bytes (zoo format 1), the code page of the western installs.
+pub(super) fn cp1252(bytes: &[u8]) -> String {
+    bytes.iter().map(|&b| crate::text::from_cp1252(b)).collect()
 }
 
 /// Reads the file after the magic and the version, noting in `section` where it is.
@@ -502,7 +503,7 @@ pub(super) fn after_entities(
     // Name counters: type name and number.
     let mut names = BTreeMap::new();
     for _ in 0..r.count(8)? {
-        let name = latin1(r.string()?);
+        let name = cp1252(r.string()?);
         names.insert(name, r.u32()?);
     }
     r.mark("name counters");

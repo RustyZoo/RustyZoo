@@ -36,13 +36,20 @@ impl Out {
         self.u8(e.sender_channel);
         self.u8(e.channel);
     }
-    /// A string of one byte per character, below 4096 bytes.
+    /// A string of one Windows-1252 byte per character (zoo format 1), below 4096 bytes; a
+    /// character the code page lacks fails the write, naming it.
     pub(super) fn string(&mut self, s: &str) -> Result<(), String> {
-        if s.chars().count() >= 4096 || s.chars().any(|c| c as u32 > 255) {
-            return Err(format!("a string of {} characters", s.chars().count()));
+        let n = s.chars().count();
+        if n >= 4096 {
+            return Err(format!("a string of {n} characters"));
         }
-        self.u32(s.chars().count() as u32);
-        self.0.extend(s.chars().map(|c| c as u8));
+        self.u32(n as u32);
+        for c in s.chars() {
+            let Some(b) = crate::text::to_cp1252_exact(c) else {
+                return Err(format!("{s:?}: {c:?} is not in Windows-1252"));
+            };
+            self.0.push(b);
+        }
         Ok(())
     }
 }
