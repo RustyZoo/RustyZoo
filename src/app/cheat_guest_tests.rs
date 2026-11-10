@@ -4,7 +4,7 @@
 use super::cheat_guest::*;
 use super::developer_tests::with_game;
 use super::*;
-use crate::cheat::{Cheat, Subject, spread};
+use crate::cheat::{Cheat, Subject, palette_set, spread};
 use crate::config::Config;
 use crate::entity::{Catalogue, EntityType};
 use crate::money::Money;

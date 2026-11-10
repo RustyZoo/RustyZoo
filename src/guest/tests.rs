@@ -1336,6 +1336,18 @@ fn the_step_passes_the_computers_date_to_the_arrival() {
     );
 }
 
+#[test]
+fn a_run_started_on_the_computers_31_october_launches_the_permanent_witch_once() {
+    let mut run = game("", true);
+    run.sim.take_lines();
+    run.game_started();
+    assert_eq!(run.sim.take_lines(), Vec::<String>::new(), "another day");
+    run.sim.real_day = || (10, 31);
+    run.game_started();
+    run.game_started();
+    assert_eq!(run.sim.take_lines(), ["fly 5084 30"], "once per run");
+}
+
 /// The ambient flights of a run that stepped on the game date `month`/`day` until guests arrived.
 fn flights_on(month: u32, day: u32) -> (usize, Run) {
     let mut run = game("", true);

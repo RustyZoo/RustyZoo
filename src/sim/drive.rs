@@ -4,7 +4,7 @@
 use super::{Sim, hash};
 use crate::animal::Class;
 use crate::behaviour::{Data, Library, NoData, Timings};
-use crate::cheat::{Season, guest_flights};
+use crate::cheat::{Season, guest_flights, start_hook};
 use crate::entity::Catalogue;
 use crate::money::Money;
 use crate::soundscape::Soundscape;
@@ -288,14 +288,23 @@ impl Run {
             Some(fences) => sim.new_game(&mut world, &cat, &mut money, fences),
             None => sim.loaded(&world, &cat, &mut money),
         }
-        Run {
+        let mut run = Run {
             cat,
             sim,
             world,
             money,
             timings: Timings::default(),
             season: Season::default(),
-        }
+        };
+        run.game_started();
+        run
+    }
+
+    /// The start hook of the computer's 31 October, as the window's game runs it (cheats 6.3);
+    /// there is no build list here to hold the availability it returns.
+    pub(crate) fn game_started(&mut self) {
+        let (season, sim) = (&mut self.season, &mut self.sim);
+        start_hook(season, sim, &mut self.world, &self.cat);
     }
 
     /// Applies a command; whether it did anything (a tile off the map, a tank that is none, do
