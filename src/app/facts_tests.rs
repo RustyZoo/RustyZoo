@@ -507,3 +507,77 @@ fn the_info_file_is_read_for_the_species_plaque_of_user_animals_only() {
         },
     );
 }
+
+/// The panel `p` of the build panels was open and is closed by the next pass.
+fn close_panel(s: &mut Session, p: usize) {
+    s.app.game.as_mut().unwrap().build.open_hidden(p);
+    s.pass(&[]);
+}
+
+#[test]
+fn closing_the_hire_panel_with_the_facts_button_down_hides_the_staff_plaque() {
+    with_facts("facts-hire-close", |s| {
+        hold(&mut s.app, RANGER);
+        press(s, 3699);
+        assert!(shown(s, 33));
+        close_panel(s, 3);
+        s.pass(&[]);
+        assert!(!shown(s, 33) && !down(s, 3699));
+        // The button up: nothing to hide, and the plaque opened again is not closed by a stale close.
+        hold(&mut s.app, RANGER);
+        press(s, 3699);
+        s.pass(&[]);
+        assert!(shown(s, 33) && down(s, 3699));
+        // Another panel closing leaves it.
+        close_panel(s, 1);
+        s.pass(&[]);
+        assert!(shown(s, 33));
+    });
+}
+
+#[test]
+fn closing_the_adopt_panel_hides_the_plaque_of_the_pending_animal_only() {
+    with_facts("facts-adopt-close", |s| {
+        open_species(s, FOX);
+        close_panel(s, 2);
+        s.pass(&[]);
+        assert!(!shown(s, 27) && !down(s, 2050));
+        // A plaque opened from a placed animal is not the pending one: it stays.
+        let id = s.add(FOX, 20 * 64 + 32, 20 * 64 + 32, 0);
+        s.app.open_animal(id);
+        s.pass(&[]);
+        press(s, 3122);
+        press(s, 26021);
+        assert!(shown(s, 27));
+        close_panel(s, 2);
+        s.pass(&[]);
+        assert!(shown(s, 27) && down(s, 2050));
+    });
+}
+
+#[test]
+fn a_user_animal_plaque_gives_its_preferred_object_as_a_number_or_a_user_type_name() {
+    let mut cat = types();
+    let fox = "cPrefIcon=dozer/small";
+    let wants = [("8102", 8102), ("myrock", 19002), ("unknown", 0), ("99", 0)];
+    let first = cat.types.len();
+    cat.push(animal("myrock", 19002, fox, "", false));
+    for (value, _) in wants {
+        let ints = format!("cPrefIconID={value}\n");
+        cat.push(animal("yeti", 19001, fox, &ints, false));
+    }
+    let files = files();
+    let more: Vec<(&str, Vec<u8>)> = files.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
+    with_game_of("facts-pref", "", (cat, &root(), &more), |s| {
+        for id in [2050, 3699] {
+            s.app.interface().unwrap().set_hidden(id, false);
+        }
+        s.pass(&[]);
+        open_species(s, first + 1);
+        for (n, (value, want)) in wants.into_iter().enumerate() {
+            hold(&mut s.app, first + 1 + n);
+            s.pass(&[]);
+            assert_eq!(tip(s, 25053), want, "{value}");
+        }
+    });
+}

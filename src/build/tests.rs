@@ -1807,3 +1807,73 @@ fn the_animals_title_follows_the_selector() {
         assert_eq!(text(&ui, 2023), want, "row {row}");
     }
 }
+
+#[test]
+fn closing_hire_and_emptying_the_adopt_list_in_full_are_told_to_the_facts_plaques() {
+    let (mut ui, vfs, _install) = interface("ended");
+    let keys = "cHabitat=9400\ncLocation=9600\ncPurchaseCost=800\n";
+    let cat = catalogue(vec![
+        animal("zebra", "m", keys, 101),
+        animal("zebra", "f", keys, 101),
+        scenery("objects", "shelter", "hut", "shelters", 50, 104),
+        hand("keeper", "keeper", "m", "staff", 105),
+    ]);
+    let (mut build, mut log) = (Build::new(3), vec![]);
+    assert!(ui.show(3));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(build.take_ended(), (false, false), "opening");
+    // The sex button keeps the pending unit; a tab empties the list in full.
+    ui.set_button(2000, false, true);
+    ui.set_button(2001, true, true);
+    build.selected(&mut ui, &vfs, &cat, 2001, &mut log);
+    assert_eq!(build.take_ended(), (false, false), "sex");
+    ui.set_button(2075, false, true);
+    ui.set_button(3255, true, true);
+    build.selected(&mut ui, &vfs, &cat, 3255, &mut log);
+    assert_eq!(build.take_ended(), (false, true), "tab");
+    assert_eq!(build.take_ended(), (false, false), "told once");
+    ui.set_hidden(3, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(build.take_ended(), (false, true), "closing the Adopt panel");
+    assert!(ui.show(10));
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(build.take_ended(), (false, false));
+    ui.set_hidden(10, true);
+    build.sync(&mut ui, &vfs, &cat, &mut log);
+    assert_eq!(build.take_ended(), (true, false), "closing the Hire panel");
+}
+
+#[test]
+fn a_user_animal_resolves_its_preferred_object_from_a_number_or_the_name_of_a_user_type() {
+    let rock = EntityType {
+        name_id: 19002,
+        ..ty("objects", "rocks", "MyRock", "[Characteristics/Integers]\n")
+    };
+    let mut types = vec![rock, animal("yeti", "m", "cPrefIconID=0\n", 19001)];
+    let wants = [
+        ("cPrefIconID=8102\n", 8102),
+        ("cPrefIconID=100\n", 100),
+        ("cPrefIconID=99\n", 0),
+        ("cPrefIconID=-5\n", 0),
+        ("cPrefIconID=0x64\n", 0),
+        ("cPrefIconID=4294967296\n", 0),
+        ("cPrefIconID=2147483648\n", 0),
+        ("cPrefIconID=myrock\n", 19002),
+        ("cPrefIconID=MYROCK\n", 19002),
+        ("cPrefIconID=yeti\n", 19001),
+        ("cPrefIconID=nothing\n", 0),
+        ("cPrefIconID=\n", 0),
+        ("", 0),
+    ];
+    for (keys, _) in wants {
+        types.push(animal("y", "m", keys, 19010));
+    }
+    let cat = catalogue(types);
+    for (n, (keys, want)) in wants.into_iter().enumerate() {
+        let got = preferred_object(&cat, &cat.types[2 + n]);
+        assert_eq!(got, want, "{keys:?}");
+    }
+    // A built-in type reads the integer as it is, small or not.
+    let plain = animal("lion", "m", "cPrefIconID=50\n", 5100);
+    assert_eq!(preferred_object(&cat, &plain), 50);
+}
