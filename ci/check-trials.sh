@@ -362,7 +362,8 @@ command_line() { # command_line <path> [lastfile] [extra words]
   rm -rf "$tmp/user"
   mkdir -p "$tmp/user"
   printf 'not a zoo' >"$tmp/bad.zoo"
-  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "${2:-$tmp/bad.zoo}" >"$tmp/user/zoo.ini"
+  bad=$(cygpath -m "$tmp/bad.zoo" 2>/dev/null || echo "$tmp/bad.zoo") # the ini needs a path the Windows engine opens
+  printf '[UI]\nplayMovie=0\nstartedFirstTutorial=1\nstartedDinoTutorial=1\nstartedAquaTutorial=1\n[user]\nlastfile=%s\n' "${2:-$bad}" >"$tmp/user/zoo.ini"
   rz "$1" --seed 1 --headless --passes 3 --clock 100 ${3:-} 2>/dev/null |
     awk '/ menu game start /{g=$8} / menu message /{m++} END{print g","m+0}'
   grep -c '^lastfile=.\+' "$tmp/user/zoo.ini"
