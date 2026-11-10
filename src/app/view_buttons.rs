@@ -84,9 +84,10 @@ impl App<'_> {
         self.view_sync();
     }
 
-    /// Each of the three buttons as its bit leaves it: with the bit clear (hidden) down and with
-    /// the tooltip that says "show", else up and with the tooltip that says "hide". A game that
-    /// opens starts with all three set.
+    /// Each of the three buttons as its bit leaves it: with the bit set (drawn) down, showing its
+    /// picture of the shown element, and with the tooltip that says "hide"; with the bit clear
+    /// up, showing the crossed-out picture, and the tooltip that says "show". A game that opens
+    /// starts with all three set.
     pub(super) fn view_sync(&mut self) {
         let (Some(game), Some(ui)) = (&self.game, &mut self.ui) else {
             return;
@@ -97,7 +98,7 @@ impl App<'_> {
                 .into_iter()
                 .zip([hide.foliage, hide.buildings, hide.guests])
         {
-            ui.set_down(id, hidden);
+            ui.set_down(id, !hidden);
             ui.set_help(id, if hidden { show } else { id });
         }
     }

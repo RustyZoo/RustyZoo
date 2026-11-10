@@ -61,6 +61,8 @@ fn play(name: &str, ini: &str, body: impl FnOnce(&mut Session)) {
         for id in [FOLIAGE, BUILDINGS, GUESTS, SNAPSHOT, ON_SCREEN] {
             ui.set_hidden(id, false);
         }
+        // What the start of a game does (the tree here is the test's own).
+        s.app.view_sync();
         body(s)
     });
 }
@@ -103,14 +105,14 @@ fn the_foliage_button_hides_and_shows_every_foliage_object_and_swaps_its_tooltip
     play("view-foliage", "", |s| {
         stock(s);
         assert_eq!(drawn(s), 5);
-        assert_eq!(state(s, FOLIAGE), (false, FOLIAGE));
+        assert_eq!(state(s, FOLIAGE), (true, FOLIAGE));
         s.pass(&click_on(FOLIAGE));
         assert_eq!(drawn(s), 4, "the palm alone is gone");
-        assert_eq!(state(s, FOLIAGE), (true, 1065), "down, \"show foliage\"");
-        assert_eq!(state(s, BUILDINGS), (false, BUILDINGS));
+        assert_eq!(state(s, FOLIAGE), (false, 1065), "up, \"show foliage\"");
+        assert_eq!(state(s, BUILDINGS), (true, BUILDINGS));
         s.pass(&click_on(FOLIAGE));
         assert_eq!(drawn(s), 5);
-        assert_eq!(state(s, FOLIAGE), (false, FOLIAGE));
+        assert_eq!(state(s, FOLIAGE), (true, FOLIAGE));
         // Foliage added while hidden is hidden too; the world keeps all of it.
         s.pass(&click_on(FOLIAGE));
         s.add(PALM, 30 * 64 + 32, 22 * 64 + 32, 0);
@@ -125,18 +127,18 @@ fn the_building_and_guest_buttons_hide_their_kind_and_leave_the_rest_drawn() {
         stock(s);
         s.pass(&click_on(BUILDINGS));
         assert_eq!(drawn(s), 4, "the hut alone, not the shop");
-        assert_eq!(state(s, BUILDINGS), (true, 1069));
+        assert_eq!(state(s, BUILDINGS), (false, 1069));
         // The guest stays drawn while the buildings are hidden.
         s.pass(&click_on(GUESTS));
         assert_eq!(drawn(s), 3);
-        assert_eq!(state(s, GUESTS), (true, 1070));
-        assert_eq!(state(s, FOLIAGE), (false, FOLIAGE));
+        assert_eq!(state(s, GUESTS), (false, 1070));
+        assert_eq!(state(s, FOLIAGE), (true, FOLIAGE));
         s.pass(&click_on(BUILDINGS));
         assert_eq!(drawn(s), 4);
-        assert_eq!(state(s, BUILDINGS), (false, BUILDINGS));
+        assert_eq!(state(s, BUILDINGS), (true, BUILDINGS));
         s.pass(&click_on(GUESTS));
         assert_eq!(drawn(s), 5);
-        assert_eq!(state(s, GUESTS), (false, GUESTS));
+        assert_eq!(state(s, GUESTS), (true, GUESTS));
     });
 }
 
@@ -146,11 +148,11 @@ fn the_keys_press_the_buttons_and_ctrl_b_is_another_key_in_the_developer_mode() 
         stock(s);
         let ctrl = |key| [Command::Key(key, true, false)];
         s.pass(&ctrl(Key::F));
-        assert_eq!((drawn(s), state(s, FOLIAGE).0), (4, true));
+        assert_eq!((drawn(s), state(s, FOLIAGE).0), (4, false));
         s.pass(&ctrl(Key::B));
-        assert_eq!((drawn(s), state(s, BUILDINGS).0), (3, true));
+        assert_eq!((drawn(s), state(s, BUILDINGS).0), (3, false));
         s.pass(&ctrl(Key::V));
-        assert_eq!((drawn(s), state(s, GUESTS).0), (2, true));
+        assert_eq!((drawn(s), state(s, GUESTS).0), (2, false));
         s.pass(&ctrl(Key::F));
         s.pass(&ctrl(Key::B));
         s.pass(&ctrl(Key::V));
@@ -166,7 +168,7 @@ fn the_keys_press_the_buttons_and_ctrl_b_is_another_key_in_the_developer_mode() 
         s.pass(&ctrl(Key::B));
         assert_eq!(
             (drawn(s), state(s, BUILDINGS).0),
-            (5, false),
+            (5, true),
             "no press in the developer mode"
         );
         s.pass(&ctrl(Key::F));
@@ -317,7 +319,7 @@ fn a_snapshot_that_cannot_be_written_says_so_and_the_game_goes_on() {
 }
 
 #[test]
-fn a_game_that_opens_starts_with_everything_shown_and_the_buttons_up() {
+fn a_game_that_opens_starts_with_everything_shown_and_the_buttons_selected() {
     use super::start_tests::{CONTINUE, click, key, started, with_menu};
     with_menu("view-reopen", "[user]\nlastfile=saved.zoo\n", |app, _| {
         let mut now = started(app);
@@ -332,9 +334,9 @@ fn a_game_that_opens_starts_with_everything_shown_and_the_buttons_up() {
         };
         go(app, &click(42, 46));
         go(app, &click(50, 46));
-        assert_eq!(state(app, FOLIAGE), (true, 1065));
-        assert_eq!(state(app, GUESTS), (true, 1070));
-        assert_eq!(state(app, BUILDINGS), (false, BUILDINGS));
+        assert_eq!(state(app, FOLIAGE), (false, 1065));
+        assert_eq!(state(app, GUESTS), (false, 1070));
+        assert_eq!(state(app, BUILDINGS), (true, BUILDINGS));
         // Leave the game for the menu, and open it again.
         go(app, &key(Key::Escape));
         go(app, &key(Key::N));
@@ -343,7 +345,7 @@ fn a_game_that_opens_starts_with_everything_shown_and_the_buttons_up() {
         assert!(app.camera().is_some());
         assert_eq!(app.game.as_ref().unwrap().view.hide, Hide::default());
         for id in [FOLIAGE, BUILDINGS, GUESTS] {
-            assert_eq!(state(app, id), (false, id));
+            assert_eq!(state(app, id), (true, id));
         }
     });
 }
