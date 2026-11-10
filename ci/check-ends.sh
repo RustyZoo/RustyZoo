@@ -53,13 +53,18 @@ if [ ! -s "$ov/$map" ]; then
   rz cat $map >"$ov/$map" || true
 fi
 [ -s "$ov/$map" ] || { fail "no map to start the scenarios on"; exit 1; }
+# The stories of the result screen are those of the first scenario the install lists (the texts of an
+# edition differ).
+first=$(for cfg in $(rz ls 'scenar*.cfg' | grep -v /); do rz cat "$cfg"; done | tr -d '\r' | sed -n 's/^scenario=[[:space:]]*//p' | head -1)
+story() { rz cat "$first" | tr -d '\r' | sed -n "s/^$1=//p" | head -1; }
+winstory=$(story winstory) losestory=$(story losestory)
 cat >"$ov/mod/scenario/ci/win.scn" <<EOF
 [desc]
 name=16022
 winpicture=ui/scenario/win/win
-winstory=SCENARIO_WIN_STORY_SCN01
+winstory=$winstory
 losepicture=ui/scenario/lose/lose
-losestory=SCENARIO_LOSE_STORY_SCN01
+losestory=$losestory
 [start]
 savegame=$map
 setcash=100000
@@ -76,9 +81,9 @@ cat >"$ov/mod/scenario/ci/lose.scn" <<EOF
 [desc]
 name=16022
 winpicture=ui/scenario/win/win
-winstory=SCENARIO_WIN_STORY_SCN01
+winstory=$winstory
 losepicture=ui/scenario/lose/lose
-losestory=SCENARIO_LOSE_STORY_SCN01
+losestory=$losestory
 [start]
 savegame=$map
 setcash=100000
