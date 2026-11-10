@@ -9,11 +9,11 @@ on:
 permissions:
   contents: read
 
-# One run per pull request: a new push cancels the one in progress. A label waits for it instead (both
-# run on the same head, which would keep the cancelled jobs as failed checks). Never on master.
+# One run per pull request or master ref: a new push cancels the one in progress. A label waits for it instead (both
+# run on the same head, which would keep the cancelled jobs as failed checks).
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'labeled') }}
 
 jobs:
   # The legs this run builds: `all` on master and on a pull request with the label `full-ci` (merge-queue
