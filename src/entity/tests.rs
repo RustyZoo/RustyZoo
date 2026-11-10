@@ -1106,3 +1106,76 @@ fn full_game_counts() {
     assert!(c.find("objects", b"foliage", b"acacia").is_some());
     assert!(c.find("paths", b"paths", b"dirtpath").is_some());
 }
+
+/// The members of a base trial: the `zoodemo.exe` next to the install.
+const STAFF: &str = "[Global]\nDefaultSubtype=f\n[f/Characteristics/Integers]\ncPurchaseCost=0\n";
+
+fn trial_install(name: &str, economy: &str, program: &str) -> Install {
+    let members = [
+        ("economy.cfg", economy),
+        (
+            "staff.cfg",
+            "[staff]\nkeeper = k.ai\nmaint = m.ai\n[keeper/subtypes]\nf\n[maint/subtypes]\nf\n",
+        ),
+        ("k.ai", STAFF),
+        ("m.ai", STAFF),
+        (
+            "fences.cfg",
+            "[fences]\nzoobars = z.ai\nzoowall = z.ai\nchaincon = z.ai\nwpicket = z.ai\n",
+        ),
+        ("z.ai", "[Characteristics/Integers]\ncPurchaseCost=1\n"),
+    ];
+    install(name, &members).loose(program, b"")
+}
+
+#[test]
+fn the_base_trial_makes_its_fences_in_a_fixed_order() {
+    let load = |program| trial_install("trial_fences", "", program).load().unwrap();
+    let fences = |c: &Catalogue| -> Vec<String> {
+        let all = c.types.iter().filter(|t| t.class == "fences");
+        all.map(|t| String::from_utf8_lossy(&t.type_name).into_owned())
+            .collect()
+    };
+    assert_eq!(
+        fences(&load("zoodemo.exe")),
+        ["zoobars", "zoowall", "chaincon", "wpicket"]
+    );
+    // The full game and the expansion trial keep the ascending key order.
+    assert_eq!(
+        fences(&load("zoo.exe")),
+        ["chaincon", "wpicket", "zoobars", "zoowall"]
+    );
+}
+
+#[test]
+fn the_base_trial_prices_its_staff_by_the_economy_file() {
+    let prices = |economy: &str, program| {
+        let c = trial_install("trial_staff", economy, program)
+            .load()
+            .unwrap();
+        let of = |class| {
+            let t = c.types.iter().find(|t| t.class == class).unwrap();
+            (crate::build::cost(t), crate::staff::monthly(t))
+        };
+        (of("keeper"), of("maint"))
+    };
+    let economy = "[characteristics]\ncKeeperCost=800\ncMaintenanceCost=300\n";
+    assert_eq!(
+        prices(economy, "zoodemo.exe"),
+        ((800.0, 800.0), (300.0, 300.0))
+    );
+    // The full game keeps the staff file's value.
+    assert_eq!(prices(economy, "zoo.exe"), ((0.0, 0.0), (0.0, 0.0)));
+    // Missing: 1000; zero, negative and huge values are taken as they are.
+    assert_eq!(
+        prices("", "zoodemo.exe"),
+        ((1000.0, 1000.0), (1000.0, 1000.0))
+    );
+    let odd = "[characteristics]\ncKeeperCost=0\ncMaintenanceCost=-5\n";
+    assert_eq!(prices(odd, "zoodemo.exe"), ((0.0, 0.0), (-5.0, -5.0)));
+    let huge = "[characteristics]\ncKeeperCost=1e30\ncMaintenanceCost=1e999\n";
+    assert_eq!(
+        prices(huge, "zoodemo.exe"),
+        ((1e30, 1e30), (1000.0, 1000.0))
+    );
+}
