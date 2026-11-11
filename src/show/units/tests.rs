@@ -597,3 +597,57 @@ fn full_game_scripts_are_made_of_the_trick_lists() {
         "{seen} items"
     );
 }
+
+/// The land exhibit `L` beside the plain tank (the dolphin stands at `(1, 3)` there).
+fn land(w: &World) -> u32 {
+    w.exhibit_of(w.find(40).unwrap()).unwrap()
+}
+
+#[test]
+fn an_animal_of_a_land_exhibit_joins_the_show_of_the_tank_next_to_its_tank_and_leaves() {
+    let (mut w, cat) = world(&[(40, "dolphin", (1, 3))]);
+    let (_, plain) = tanks(&w);
+    assert!(
+        w.exhibits()
+            .get(land(&w))
+            .unwrap()
+            .amphibious
+            .contains(&plain)
+    );
+    w.show_moved(w.find(40).unwrap(), true);
+    settle(&mut w, &cat);
+    assert_eq!(units(&w), [40]);
+    assert_eq!(w.zoo.shows.scripts.len(), 1);
+    assert!(crate::place::unit::pick_up(&mut w, &cat, 40, 0).is_some());
+    settle(&mut w, &cat);
+    assert!(units(&w).is_empty());
+}
+
+#[test]
+fn the_link_takes_the_animals_of_the_land_exhibit_after_those_of_the_plain_tank() {
+    let (mut w, cat) = world(&[(41, "dolphin", (1, 3)), (40, "dolphin", (3, 3))]);
+    let (show, _) = tanks(&w);
+    let set = |w: &mut World, filled: bool| {
+        w.exhibits_mut()
+            .get_mut(show)
+            .unwrap()
+            .tank
+            .as_mut()
+            .unwrap()
+            .filled = filled;
+    };
+    // The link is made again after the world was built: both join, the tank's animal first.
+    set(&mut w, false);
+    w.set_height(show, 5);
+    settle(&mut w, &cat);
+    assert!(units(&w).is_empty());
+    set(&mut w, true);
+    w.set_height(show, 4);
+    settle(&mut w, &cat);
+    assert_eq!(units(&w), [40, 41]);
+    // Drained: the link is dropped and both leave.
+    set(&mut w, false);
+    w.set_height(show, 5);
+    settle(&mut w, &cat);
+    assert!(units(&w).is_empty());
+}
