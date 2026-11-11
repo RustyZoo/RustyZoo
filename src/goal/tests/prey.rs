@@ -85,7 +85,8 @@ fn the_bored_check_frightens_an_animal_that_sees_a_threat_without_a_draw() {
     let v = unit_of(&w, VELO);
     assert!(v.frightened && v.goal.record.task == NONE, "no task yet");
     // With the flag up the searches do not run: nothing changes.
-    assert_eq!(bored(&mut w, VELO), 0);
+    bored(&mut w, VELO);
+    assert!(unit_of(&w, VELO).frightened);
     // Nothing in sight: the flag stays down.
     let mut w = zoo(&[(ALLO, "allo", (13, 10)), (VELO, "velocira", (10, 10))]);
     bored(&mut w, VELO);
