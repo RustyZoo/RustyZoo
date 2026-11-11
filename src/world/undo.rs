@@ -460,7 +460,8 @@ impl World {
     /// is recorded at the gate's tile (the tank's first tile when the gate stands across), with the
     /// price the tool paid.
     pub(crate) fn note_water(&mut self, id: u32, purity: Option<u32>, filled: bool, price: f32) {
-        (self.undo.clear(), self.fresh = false);
+        self.undo.clear();
+        self.fresh = false;
         let Some(e) = self.exhibits.get(id).filter(|e| e.gate.is_some()) else {
             return;
         };
