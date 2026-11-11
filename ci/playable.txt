@@ -10,7 +10,7 @@
 # list is empty when a man is drawn, and a gazelle may never eat: what the stream draws moves with every
 # change that adds a draw, so the `#seeds` line gives the seeds to try when the first fails.
 # The hires come before the adoption: an animal placed rates its exhibit at once (habitat rating 9.4),
-# which draws from the shared stream. The trial's staff cost nothing
+# which draws from the shared stream. The trial's staff have a purchase cost and a monthly wage
 # and its keeper rakes no dung, so the gazelles are happy until the first dung and unhappy after it.
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.
@@ -32,6 +32,22 @@
 #expect 1 money cash 70520
 #expect 1 money cash 66200
 #expect 1 money cash 62965
+# and after each purchase between them: path, burger stand, restroom, can, bench; keeper, worker;
+# two gazelles; two trees
+#expect 1 money cash 66125
+#expect 1 money cash 65875
+#expect 1 money cash 65625
+#expect 1 money cash 65600
+#expect 1 money cash 65560
+#expect 1 money cash 64760
+#expect 1 money cash 64460
+#expect 1 money cash 63960
+#expect 1 money cash 63460
+#expect 1 money cash 63250
+#expect 1 money cash 63040
+# the income of the unpaused game, as the original shows it between runs: 2400 to 6000 over the 62965
+# after the build, at pass 2990
+#expect-range money cash 2990 65365 68965
 # pause the game while building
 2 pause
 # construction panel, terrain paint tab: savannah grass with a brush of 5 x 5 tiles over the exhibit to be
@@ -224,8 +240,9 @@
 233 up
 # run unpaused
 239 pause
+# save the game and load it back while both gazelles live (a dead animal is not saved): a gazelle's name
+# holds the apostrophe of its code page (issue 1564)
+15000 save @zoo@
+15010 load @zoo@
 # the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
 22200 char Z
-# save the game and load it back: a gazelle's name holds the apostrophe of its code page (issue 1564)
-22250 save @zoo@
-22260 load @zoo@

@@ -13,6 +13,11 @@
 #                         pass and the time) with the words, each an extended regular expression that
 #                         must match a whole word (`unit add [0-9]+ keeper`); N 0 means no such line.
 #                         The checks fail when the game did not build it; they never skip for it
+#   #expect-range W... PASS MIN MAX
+#                         the last log line at or before PASS that starts with the words W... (such as
+#                         `money cash`, printed when the cash changes) has a number after them between
+#                         MIN and MAX, for what the original does by chance. The check fails when the
+#                         run has no such line
 #   #probe N              the pass at which the script has hired and adopted everything (the unpause).
 #                         Each seed is first played for N passes only (under a second) and the #expect
 #                         lines `unit add` are checked; a seed whose hires came out as men (the staff of
@@ -168,6 +173,21 @@ count() { awk "$1 { n++ } END { print n + 0 }" "$tmp/log"; }
 
 expects
 
+# The ranges of the original at a given pass.
+sed -n 's/^#expect-range //p' "$script" | tr -d '\r' >"$tmp/ranges"
+while read -r -a r; do
+  [ "${#r[@]}" -gt 3 ] || continue
+  nw=$((${#r[@]} - 3))
+  case "${r[*]:$nw}" in *[!0-9\ ]*) fail "range: '${r[*]}' does not end with PASS MIN MAX"; continue ;; esac
+  got=$(awk -v w="${r[*]:0:$nw}" -v pass="${r[$nw]}" 'BEGIN { nw = split(w, p, " ") }
+    $2 <= pass + 0 { for (i = 1; i <= nw; i++) if ($(3 + i) != p[i]) next; v = $(4 + nw); f = 1 }
+    END { if (f) print v }' "$tmp/log")
+  if [ -z "$got" ]; then fail "range: no line '${r[*]:0:$nw}' by pass ${r[$nw]}"
+  elif [ "$got" -ge "${r[$((nw + 1))]}" ] && [ "$got" -le "${r[$((nw + 2))]}" ]; then
+    ok "range: ${r[*]:0:$nw} $got at pass ${r[$nw]}, within ${r[$((nw + 1))]} to ${r[$((nw + 2))]}"
+  else fail "range: ${r[*]:0:$nw} $got at pass ${r[$nw]}, outside ${r[$((nw + 1))]} to ${r[$((nw + 2))]}"; fi
+done <"$tmp/ranges"
+
 # The save and the load back of the script: no warning, and the file holds the text.
 saves=$(header saves)
 if [ -n "$saves" ]; then
@@ -236,7 +256,7 @@ else
   paid=$(awk '$4 == "sim" && $5 == "wages" { n++; s += $7 } END { print n + 0, s + 0 }' "$tmp/log")
   case $paid in
     "0 "*) fail "wages: none booked at a month change" ;;
-    *" 0") ok "wages: ${paid% *} booked, all 0 (the staff of this data cost nothing); table: $(row 7)" ;;
+    *" 0") ok "wages: ${paid% *} booked, all 0 (zero wage in this data); table: $(row 7)" ;;
     *) nonzero 7 && ok "wages in the table: $(row 7), ${paid% *} booked" || fail "wages in the table: $(row 7)" ;;
   esac
 fi

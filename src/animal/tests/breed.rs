@@ -1015,3 +1015,36 @@ fn the_reproduction_keys_default_to_the_program_and_survive_odd_values() {
         );
     }
 }
+
+/// The animals of the game read their egg and crate sizes from their files, and the map and a
+/// birth agree: the dinosaurs and whales have a crate of 4 by 4, every egg is 2 by 2.
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn full_game_animals_take_their_egg_and_crate_sizes_from_their_type_files() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let cat = Catalogue::load(&vfs).unwrap();
+    let renderer = crate::render::MapRenderer::new(&vfs, &cat);
+    let mut crates = 0;
+    for ty in cat.types.iter().filter(|t| t.class == "animals") {
+        let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        let entity = crate::zoo::Entity {
+            class: "animals".into(),
+            type_name: text(&ty.type_name),
+            subtype: text(&ty.subtype),
+            body_size: None,
+            common: None,
+        };
+        let forms = renderer.shape(&entity).unwrap().forms;
+        assert_eq!(forms, breed::shape(ty).forms, "{}", entity.type_name);
+        let big = matches!(entity.type_name.as_str(), "allo" | "trex" | "bowhead");
+        if big {
+            assert_eq!(forms, Some([(2, 2), (4, 4)]), "{}", entity.type_name);
+            crates += 1;
+        } else if matches!(entity.type_name.as_str(), "lion" | "zebra") {
+            assert_eq!(forms, Some([(2, 2), (2, 2)]), "{}", entity.type_name);
+        }
+    }
+    // The dinosaurs and whales come with the expansions.
+    assert!(crates > 0 || !crate::fixtures::has_expansions(&dir));
+}

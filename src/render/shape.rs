@@ -158,4 +158,42 @@ mod tests {
         assert!((0..4).all(|q| world.quadrant(t, q).is_none()));
         assert!(world.is_empty(t) && world.units_on(t).next().is_none());
     }
+
+    /// A `thing` animal of each subtype whose default subtype `f` gives an egg of 3 by 4 and a
+    /// crate of 5 by 6, and whose young `y` gives an egg of 1 by 2 of its own.
+    fn animals() -> Catalogue {
+        let ini = "[Global]\nDefaultSubtype=f\n[f/Characteristics/Integers]\n\
+            cEggFootprintX=3\ncEggFootprintY=4\ncBoxFootprintX=5\ncBoxFootprintY=6\n\
+            [y/Characteristics/Integers]\ncEggFootprintX=1\ncEggFootprintY=2\n";
+        let mut cat = Catalogue::default();
+        for sub in ["f", "y"] {
+            cat.push(crate::fixtures::ty("animals", "thing", sub, ini));
+        }
+        cat
+    }
+
+    #[test]
+    fn an_animal_takes_its_egg_then_its_crate_size_from_its_type_on_the_map_and_in_a_birth() {
+        let cat = animals();
+        let forms = |sub: &str| {
+            let entity = Entity {
+                class: "animals".into(),
+                type_name: "thing".into(),
+                subtype: sub.into(),
+                body_size: None,
+                common: Some(Common::default()),
+            };
+            let ty = cat.find("animals", b"thing", sub.as_bytes()).unwrap();
+            let map = shape_of(&cat, &entity).unwrap().forms;
+            assert_eq!(map, crate::animal::breed::shape(ty).forms, "{sub}");
+            map
+        };
+        // The default subtype's sizes, then the young's own on top.
+        assert_eq!(forms("f"), Some([(3, 4), (5, 6)]));
+        assert_eq!(forms("y"), Some([(1, 2), (5, 6)]));
+        // Only an animal has them.
+        for class in ["objects", "keeper", "guests"] {
+            assert_eq!(shape(class, "cEggFootprintX=3\n").unwrap().forms, None);
+        }
+    }
 }
