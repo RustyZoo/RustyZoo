@@ -1374,6 +1374,44 @@ fn a_saved_game_builds_its_scenarios_tree_reads_its_section_and_writes_it_back()
     });
 }
 
+#[test]
+fn a_run_opens_its_file_as_continue_does_with_the_research_of_the_save() {
+    with_menu("research-run", "", |app, files| {
+        app.pass(0, &[]);
+        // The program 11 of the tree is done.
+        let mut section = 0u32.to_le_bytes().to_vec();
+        for (kind, id, value) in [(0i32, 1u32, 0u32), (2, 11, 5f32.to_bits())] {
+            section.extend(kind.to_le_bytes());
+            section.extend(id.to_le_bytes());
+            section.extend(value.to_le_bytes());
+        }
+        section.extend((-1i32).to_le_bytes());
+        let mut zoo = Zoo::parse(&crate::zoo::tests::naming(map(), Some("s/res.scn"))).unwrap();
+        zoo.set_research(section);
+        let file = files.0.join("run.zoo");
+        std::fs::write(&file, zoo.write(&Money::default()).unwrap()).unwrap();
+        // The window: Continue on the file.
+        assert!(app.load_saved(file.to_str().unwrap()));
+        let window = app.sim.research_share();
+        assert_eq!(window, 100);
+        // The headless run: the map as the run reads it, then the same open.
+        let bytes = std::fs::read(&file).unwrap();
+        let (zoo, money) = Zoo::parse_money_in(&bytes, app.renderer.catalogue()).unwrap();
+        let renderer = MapRenderer::new(app.renderer.vfs(), app.renderer.catalogue());
+        let mut run = App::new(
+            renderer,
+            zoo.clone(),
+            Settings::default(),
+            Timers::new(66, 16, 200),
+            SIZE,
+        )
+        .unwrap();
+        assert_eq!(run.sim.research_share(), 0);
+        assert!(run.continue_game(zoo, money, None));
+        assert_eq!(run.sim.research_share(), window);
+    });
+}
+
 /// The two expansions of the made-up install, and scenarios that say what they want.
 fn selector_files() -> Vec<(&'static str, Vec<u8>)> {
     vec![

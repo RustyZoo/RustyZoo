@@ -320,17 +320,22 @@ impl App<'_> {
         let read = read.and_then(|bytes| {
             Zoo::parse_money_in(&bytes, catalogue).map_err(|e| format!("{file}: {e}"))
         });
-        let start = Start {
-            path: file.to_string(),
-            label: "load".to_string(),
-            forget_last: false,
-            freeform: false,
-            cash: Default::default(),
-            reset: false,
-            reset_fences: false,
-            scenario: None,
-        };
-        self.open(&start, read)
+        self.open(&Start::load(file), read)
+    }
+
+    /// The file a run starts on, opened as Continue does (research, scenario resume, the load's
+    /// checks), with the menu `music` fading as the game starts. The window and the headless run
+    /// share it. A file that does not load says why and the map as read stays. Whether it opened.
+    pub fn continue_game(&mut self, zoo: Zoo, money: Money, music: Option<Music>) -> bool {
+        // A process that has played nothing holds the AI clock at 0 (zoo format 6.4).
+        self.sim.forget_ticks();
+        self.music = music;
+        let opened = self.open(&Start::load(""), Ok((zoo, money)));
+        if !opened {
+            let music = self.music.take();
+            self.start_game(music);
+        }
+        opened
     }
 
     /// `scenario FILE` of a script: the menu starts the scenario as its Play button does. Without a
@@ -483,13 +488,9 @@ pub(crate) fn continued_save(
     let (zoo, money) = Zoo::parse_money_in(source, cat).map_err(|e| e.to_string())?;
     let renderer = crate::render::MapRenderer::new(vfs, cat);
     let ini = Config::parse(vfs.ini()).unwrap_or_default();
-    // The window's first game is the file itself, in a process that has played nothing: the AI
-    // clock held is 0 (zoo format 6.4).
-    let mut first = zoo.clone();
-    first.clocks.ai_ticks = 0;
     let mut app = App::new(
         renderer,
-        first,
+        zoo.clone(),
         Settings::from_config(&ini),
         Timers::from_config(&ini),
         size,
@@ -511,17 +512,7 @@ pub(crate) fn continued_save(
             app.set_interface(Interface::new(tree, Box::new(tables)));
         }
     }
-    let start = Start {
-        path: String::new(),
-        label: "load".to_string(),
-        forget_last: false,
-        freeform: false,
-        cash: Default::default(),
-        reset: false,
-        reset_fences: false,
-        scenario: None,
-    };
-    if !app.open(&start, Ok((zoo, money))) {
+    if !app.continue_game(zoo, money, None) {
         return Err("the file did not open".to_string());
     }
     app.saved_bytes()

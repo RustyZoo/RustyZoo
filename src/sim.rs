@@ -313,6 +313,11 @@ impl Sim {
         self.hire_male = self.rng.rand() & 1 == 1;
     }
 
+    /// The AI clock held is 0, as in a process that has played nothing.
+    pub(crate) fn forget_ticks(&mut self) {
+        self.ai_ticks = 0;
+    }
+
     /// A game on a map of `tiles` tiles that stores these clocks: the total time starts again, the
     /// calendar starts from the stored date (a new game restarts it, `restart_calendar`), the AI
     /// and world clocks start from the map's (simulation 4.3, 8.3), the queue is empty,

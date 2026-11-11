@@ -521,7 +521,7 @@ pub fn run(
             menu_catalogue = catalogue;
             let mut app = App::new(
                 MapRenderer::new(vfs, &menu_catalogue),
-                zoo,
+                zoo.clone(),
                 Settings::from_config(&ini),
                 Timers::from_config(&ini),
                 size,
@@ -541,8 +541,7 @@ pub fn run(
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }
-            app.set_money(money);
-            app.start_game(Music::from_config(&ini));
+            app.continue_game(zoo, money, Music::from_config(&ini));
             app
         }
         None => {

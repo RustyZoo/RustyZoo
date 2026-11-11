@@ -180,7 +180,7 @@ fn make_app<'c>(
             let catalogue = catalogue.insert(owned);
             let mut app = App::new(
                 MapRenderer::new(vfs, catalogue),
-                zoo,
+                zoo.clone(),
                 Settings::from_config(ini),
                 timers,
                 size,
@@ -196,8 +196,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
-            app.set_money(money);
-            app.start_game(menu);
+            app.continue_game(zoo, money, menu);
             app
         }
         (None, Some(booted)) => {
