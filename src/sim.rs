@@ -20,6 +20,8 @@
 //! `sim wages ID AMOUNT` of each staff member and `sim upkeep AMOUNT` of the buildings ([`crate::month`]).
 
 pub mod drive;
+#[cfg(test)]
+mod escape_tests;
 mod events;
 pub mod hash;
 pub(crate) mod idle;

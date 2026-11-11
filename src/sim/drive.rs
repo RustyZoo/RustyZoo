@@ -47,6 +47,9 @@ pub enum Command {
     /// `heal ID`: the animal is healed as a keeper's heal does (animals-needs 9.7), without the
     /// keeper and without the booking.
     Heal(u32),
+    /// `escape ID`: the animal is loose, as its escape check makes it (it goes on the list of the
+    /// escaped and the alert is posted); it stays loose while it stands on the zoo grounds.
+    Escape(u32),
     /// `mood ID N`: the animal's happiness is N, from -100 to 100.
     Mood(u32, i32),
     /// `award add ID`: the zoo holds the award (`awards.md` 4.1); an id without a definition is
@@ -82,6 +85,7 @@ impl std::str::FromStr for Command {
             Some("remove") if words.len() == 2 => Command::Remove(id(1)?),
             Some("bulldoze") if words.len() == 2 => Command::Bulldoze(id(1)?),
             Some("heal") if words.len() == 2 => Command::Heal(id(1)?),
+            Some("escape") if words.len() == 2 => Command::Escape(id(1)?),
             Some("mood") if words.len() == 3 => {
                 let mood = n(2).ok().filter(|m| (-100..=100).contains(m));
                 Command::Mood(
@@ -358,6 +362,7 @@ impl Run {
             }
             Command::Food(x, y, ref name, units) => self.put_food(x, y, name, units),
             Command::Heal(id) => self.heal(id),
+            Command::Escape(id) => self.escape(id),
             Command::Mood(id, mood) => match self.world.units.get_mut(id).map(|u| &mut u.part) {
                 Some(Part::Animal(a)) => {
                     a.happiness = mood;
@@ -433,6 +438,23 @@ impl Run {
         };
         a.heal(&k);
         self.world.units.tell(format!("heal {id}"));
+        true
+    }
+
+    /// Lets the animal `id` loose; whether there is one.
+    fn escape(&mut self, id: u32) -> bool {
+        let Some(Part::Animal(a)) = self.world.units.get_mut(id).map(|u| &mut u.part) else {
+            return false;
+        };
+        let was = std::mem::replace(&mut a.escaped, true);
+        (a.thirsty, a.drinking) = (false, false);
+        if !was {
+            let units = &mut self.world.units;
+            units.escapes.retain(|&e| e != id);
+            units.escapes.push(id);
+            units.post(crate::animal::ESCAPED, id);
+            units.tell(format!("escape {id}"));
+        }
         true
     }
 
