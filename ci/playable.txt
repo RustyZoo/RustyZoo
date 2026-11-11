@@ -15,7 +15,7 @@
 # A gazelle lives 4320 s of the game, about the length of the run: one may die of old age in the
 # thirteenth month.
 #run maps/default.zoo --cash 75000 --seed 9 --passes 22300 --clock 200
-#seeds 3 8 6 1 2 4 5 7
+#seeds 3 8 14 16 17 22 27 28 35 36 41 46 47 54 55 60 65 66 68 74 79 85 87 93 98 104 106 112 117
 #probe 239
 #exhibit 16,36,21,41
 #months 12
