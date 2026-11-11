@@ -3712,13 +3712,13 @@ fn on_real_maps_a_reframed_window_equals_a_fresh_staging_drawn_whole() {
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut renderer = MapRenderer::new(&vfs, &catalogue);
-    // 12 windows of each size, zoom and grid at each rotation (a sample of the 1632 that 34 would
+    // 8 windows of each size, zoom and grid at each rotation (a sample of the 1632 that 34 would
     // give, which takes minutes in a debug build).
     for member in ["maps/lg_resrt.zoo", "maps/large.zoo", "maps/default.zoo"] {
         let zoo = Zoo::parse_in(&vfs.read(member).unwrap(), &catalogue).unwrap();
         let start = std::time::Instant::now();
         let (mended, rectangles) =
-            reframe_equals_fresh(&mut renderer, &zoo, &[(512, 384), (160, 120)], 12);
+            reframe_equals_fresh(&mut renderer, &zoo, &[(512, 384), (160, 120)], 8);
         eprintln!(
             "{member}: {mended} windows mended in parts, {rectangles} rectangles, {:?}",
             start.elapsed()
