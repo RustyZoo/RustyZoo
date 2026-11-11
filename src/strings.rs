@@ -613,11 +613,36 @@ mod tests {
         assert!(tables.warnings()[0].contains("langbad.dll"));
     }
 
+    /// Child half of the test below: opens the tables of the install named by the environment
+    /// twice; does nothing in a normal run.
     #[test]
-    fn a_skipped_library_is_reported_once_per_run() {
-        assert!(first_time("once-test".to_string()));
-        assert!(!first_time("once-test".to_string()));
-        assert!(first_time("once-test-other".to_string()));
+    fn open_twice_for_the_parent_test() {
+        if let Some(dir) = std::env::var_os("ZT_TEST_OPEN_TWICE") {
+            StringTables::open(Path::new(&dir)).unwrap();
+            StringTables::open(Path::new(&dir)).unwrap();
+        }
+    }
+
+    #[test]
+    fn opening_the_tables_twice_prints_the_skipped_library_warning_once() {
+        let dir = mod_install("mod-once");
+        dir.write("langbad.dll", b"MZ");
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "strings::tests::open_twice_for_the_parent_test",
+                "--exact",
+                "--nocapture",
+            ])
+            .env("ZT_TEST_OPEN_TWICE", &dir.0)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{stderr}");
+        assert_eq!(
+            stderr.matches("langbad.dll is skipped").count(),
+            1,
+            "{stderr}"
+        );
     }
 
     #[test]
