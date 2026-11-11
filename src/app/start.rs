@@ -395,7 +395,8 @@ impl App<'_> {
         if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
             menu.hide(ui, start.forget_last);
         }
-        if self.menu.is_some() {
+        // The file of a run is no start the menu or a script asked for: it has no path.
+        if !start.path.is_empty() {
             self.menu_events
                 .push(format!("game start {} {}", start.label, start.path));
         }
