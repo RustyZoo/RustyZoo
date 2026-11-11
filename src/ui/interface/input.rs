@@ -256,12 +256,19 @@ impl Interface {
             let usable = self.tree.elements[h].state & (DISABLED | READ_ONLY) == 0;
             let on_line =
                 matches!(self.tree.elements[h].kind, Kind::MessageQueue) && self.hit(at) == Some(h);
+            let on_map =
+                matches!(self.tree.elements[h].kind, Kind::MiniMap(_)) && self.hit(at) == Some(h);
             match self.tree.elements[h].kind {
                 Kind::Button(_) => self.release(h, at),
                 Kind::Layout => self.event(format!("release {id}")),
                 Kind::ScrollBar(_) if usable => self.bar_up(h),
                 Kind::ListBox(_) if usable => self.list_up(h),
                 Kind::MessageQueue if usable && on_line => self.line_clicked(),
+                Kind::MiniMap(_) if usable && on_map => {
+                    let (x, y) = self.tree.screen(h);
+                    self.actions
+                        .push(super::Action::Minimap(at.0 - x, at.1 - y));
+                }
                 _ => {}
             }
         }

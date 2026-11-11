@@ -2,6 +2,7 @@
 //! hides them, the refill on the interface clock, the filter buttons and the row clicks. The
 //! lists themselves are [`crate::panel::unitlist`].
 
+use super::panel::stop_following;
 use super::*;
 use crate::panel::unitlist::{self as lists, HIDES, PLAQUES, SPECS, STAFF};
 use crate::unit::Kind;
@@ -118,16 +119,7 @@ impl App<'_> {
             && let (Ok(x), Ok(y)) = (u32::try_from(x), u32::try_from(y))
         {
             game.camera.centre_on(&game.world.zoo, x, y);
-            for follow in [
-                animal::FOLLOW,
-                staff::FOLLOW,
-                recovery::FOLLOW,
-                guest::FOLLOW,
-            ] {
-                if ui.is_down(follow) {
-                    ui.set_button(follow, false, true);
-                }
-            }
+            stop_following(ui);
         }
     }
 }

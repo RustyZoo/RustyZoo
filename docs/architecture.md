@@ -31,6 +31,7 @@ SDL3 is used only there, built from source and linked statically.
 - `audio`, `music`, `soundscape`: sound playback on SDL3; menu music; the ambient one-shots of a game.
 - `movie`, `intro`, `startup`: AVI and Indeo 5 decoding; which intro movies play; the start-up picture.
 - `zoom`, `camera`: the zoom levels; the camera and its scroll range.
+- `minimap`: the minimap of the main bar: the tiles as a diamond in the view's rotation, the view frame and the click that centres the view.
 - `render`: draws a whole map at the three zoom levels: staging, ordering, picking.
 
 ## Interface

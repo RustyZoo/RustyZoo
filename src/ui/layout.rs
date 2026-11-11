@@ -341,7 +341,8 @@ pub enum Kind {
     ScrollingRegion(Region),
     Graph(Box<Graph>),
     MapView,
-    MiniMap,
+    /// The colour file its `colormap` key names.
+    MiniMap(Vec<u8>),
     MessageQueue,
     /// `UIMessageQueue`, which no shipped file uses.
     UiMessageQueue,
@@ -364,7 +365,7 @@ impl Kind {
             Kind::ScrollingRegion(_) => "UIScrollingRegion",
             Kind::Graph(_) => "UIGraph",
             Kind::MapView => "ZTMapView",
-            Kind::MiniMap => "ZTMiniMap",
+            Kind::MiniMap(_) => "ZTMiniMap",
             Kind::MessageQueue => "ZTMessageQueue",
             Kind::UiMessageQueue => "UIMessageQueue",
         }

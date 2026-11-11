@@ -693,9 +693,9 @@ pending_object() { # pending_object <map> <script>
   rm -rf "$d"
 }
 open='1 mouse 25 130\n2 down\n3 up\n5 mouse 600 400\n'
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;272b61a1cede756f" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
-check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;2db6bcf8b62085de" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
-check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;b50a02df497757c8" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,17,47,1,valid;2582327eeaf86853" "pending_object maps/default.zoo '${open}7 mouse 700 420\n'"
+check base-trial "building/building/vendfood,16,45,1,valid;building/building/vendfood,10,57,3,invalid;message10311;261651c5275d2c92" "pending_object maps/default.zoo '${open}7 mouse 800 700\n8 down\n8 up\n'"
+check expansion-trial "building/building/bounce,35,46,3,valid;building/building/bounce,37,48,3,valid;3960ec440cf4bd10" "pending_object maps/scn19.zoo '${open}7 mouse 700 420\n'"
 
 # A path drag: the path tab of the construction panel, a press, a move along one axis and one to the far
 # end of an L of 8 tiles, the release and one more move. Prints the pieces placed (the `world add`
@@ -708,10 +708,10 @@ path_drag() { # path_drag <map> <first move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "8,49800,daef63d71b710f9f" "path_drag maps/default.zoo '632 384'"
-check base-trial "8,49800,f47d3badaee28088" "path_drag maps/default.zoo '632 416'"
-check expansion-trial "8,49920,4653ddd9fa7cbdbd" "path_drag maps/scn19.zoo '632 384'"
-check expansion-trial "8,49920,9233c23b784953da" "path_drag maps/scn19.zoo '632 416'"
+check base-trial "8,49800,7298d0ef0b18992b" "path_drag maps/default.zoo '632 384'"
+check base-trial "8,49800,05efa5c055943118" "path_drag maps/default.zoo '632 416'"
+check expansion-trial "8,49920,00871462e1830e81" "path_drag maps/scn19.zoo '632 384'"
+check expansion-trial "8,49920,e942a1b0fb928f07" "path_drag maps/scn19.zoo '632 416'"
 
 # The paint tab: the building panel, the paint tab, the second terrain type, then the pointer
 # over the map; the log tells the brush, the amount next to the pointer and the tooltips (one for
@@ -724,8 +724,8 @@ paint_text() { # paint_text <map> <script>
   rm -rf "$d"
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
-check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;202088c2ac763dc7" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;cbdfe4eacbc3f2c1" "paint_text maps/scn19.zoo '$paint'"
+check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;75f700313cd3a4e3" "paint_text maps/default.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;ca0c8be739e7f7d5" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -738,8 +738,8 @@ fence_drag() { # fence_drag <map> <last move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "6,49100,9655f8ef35cb90d9" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,9a5e7ebbb20bc34d "fence_drag maps/scn19.zoo '878 332'"
+check base-trial "6,49100,c03d9996928eab15" "fence_drag maps/default.zoo '878 332'"
+check expansion-trial 6,49250,5f237391a7c3d23f "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -752,7 +752,7 @@ reference_drag() { # reference_drag <map>
     awk '/ world add /{printf "%s,%s,%s;", $7, $8, $9} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print c "," h}'
   rm -rf "$d"
 }
-check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,e6d637f14cf346f1" "reference_drag maps/default.zoo"
+check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,261f889479f34ee9" "reference_drag maps/default.zoo"
 
 # Closes a square of fences with four drags (the first item of the fence list, one side each), types
 # a name into the dialog the new exhibit asks for and answers it with Enter. Prints the `exhibit`
@@ -796,8 +796,8 @@ bulldozer_area() { # bulldozer_area <map>
     awk '/ world remove .* refund /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "8,49960,9b688670e4bbd60c" "bulldozer_area maps/default.zoo"
-check expansion-trial 16,50156,5878f3616bd107b2 "bulldozer_area maps/scn19.zoo"
+check base-trial "8,49960,7af5c070d52965b8" "bulldozer_area maps/default.zoo"
+check expansion-trial 16,50156,415c3c76e3b9ba8e "bulldozer_area maps/scn19.zoo"
 
 # A building: the Objects panel opens with its first item chosen, a click on the map places it (the
 # log tells the add with the quadrants it holds and the cash) and a second click on the same place
@@ -810,8 +810,8 @@ building_place() { # building_place <map>
     awk '/ world add /{p=p ";" $6 "," $7 "," $11} / tool message /{p=p ";message" $6} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print substr(p, 2) ";" c ";" h}'
   rm -rf "$d"
 }
-check base-trial "building/building/vendfood,16,45,2;message10555;49950;2928c60237fda309" "building_place maps/default.zoo"
-check expansion-trial "building/building/bounce,35,46,4;message10555;49900;351c313d0226e1b6" "building_place maps/scn19.zoo"
+check base-trial "building/building/vendfood,16,45,2;message10555;49950;ff2813ef6d05c289" "building_place maps/default.zoo"
+check expansion-trial "building/building/bounce,35,46,4;message10555;49900;738c990859eb7f82" "building_place maps/scn19.zoo"
 # A walkable type (bounce) is placed over guests: units on its tiles never refuse it (placing 5.2).
 walkable_place() { # walkable_place <map>
   d=$(mktemp -d)

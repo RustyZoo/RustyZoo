@@ -166,6 +166,8 @@ struct Game {
     global: i32,
     /// What the hide/show buttons hide, and Shift (map drawing 15).
     view: view_buttons::View,
+    /// The minimap of the main bar (map drawing 10), made at the first pass with an interface.
+    minimap: Option<crate::minimap::Minimap>,
 }
 
 impl Game {
@@ -573,14 +575,9 @@ impl<'a> App<'a> {
             self.drew = self.paint();
         }
         if let Some(period) = self.fired.interface {
-            self.follow();
-            if self.map_keys()
-                && !self.following()
-                && let Some(game) = &mut self.game
-            {
-                game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
-            }
+            self.scroll_view(now);
             self.pause_message();
+            self.minimap_pass(now);
             if let Some(ui) = &mut self.ui {
                 if let Some(game) = &self.game {
                     ui.entities_found(|id| game.world.find(id).is_some());
@@ -705,6 +702,7 @@ mod ids;
 mod kinds;
 mod log;
 mod main_buttons;
+mod minimap_bar;
 mod options;
 mod paint;
 mod view_buttons;
@@ -790,6 +788,8 @@ mod terrain_tests;
 mod bulldozer_tests;
 #[cfg(test)]
 mod facts_tests;
+#[cfg(test)]
+mod minimap_bar_tests;
 #[cfg(test)]
 mod options_tests;
 #[cfg(test)]

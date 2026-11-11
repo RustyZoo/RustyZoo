@@ -244,6 +244,18 @@ impl App<'_> {
         self.followed().is_some()
     }
 
+    /// The view moves at the interface pass: it follows its unit, else it scrolls at the screen
+    /// edge while the map view has the keys (camera 6.2, 10.3).
+    pub(super) fn scroll_view(&mut self, now: u64) {
+        self.follow();
+        if self.map_keys()
+            && !self.following()
+            && let Some(game) = &mut self.game
+        {
+            game.camera.edge_scroll(&game.world.zoo, now, self.pointer);
+        }
+    }
+
     /// At the interface pass of a following view, the unit is at the centre (camera 10.3).
     pub(super) fn follow(&mut self) {
         let followed = self.followed();
@@ -402,5 +414,19 @@ impl App<'_> {
             self.lines.panel.extend(lines);
         }
         self.zoo_window_pass(now, ticking);
+    }
+}
+
+/// The view stops following a unit: the follow buttons of the panels come up (camera 10.1).
+pub(super) fn stop_following(ui: &mut Interface) {
+    for follow in [
+        animal::FOLLOW,
+        staff::FOLLOW,
+        recovery::FOLLOW,
+        guest::FOLLOW,
+    ] {
+        if ui.is_down(follow) {
+            ui.set_button(follow, false, true);
+        }
     }
 }
