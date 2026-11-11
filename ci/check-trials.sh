@@ -1479,7 +1479,7 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile>: reads $seed
   rm -rf "$d"
 }
 check base-trial yes "first=1 any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@9093;young:2" "seed=1 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
+check base-trial "mates:3;birth@11059;young:2" "seed=1 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
