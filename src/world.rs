@@ -194,6 +194,9 @@ pub struct World {
     /// The tanks a split updates once more when the gate of its new tank (the key) is chosen.
     /// The flag tells that the walls of the tanks are brought inwards once more first.
     tails: Vec<(u32, Vec<u32>, bool)>,
+    /// The (new tank, exhibit beside it) pairs whose resize waits for the answer to the question
+    /// about the tank's refused objects (not saved).
+    owed: Vec<(u32, u32)>,
     /// The set-ups queued while the two tanks of a split stand on each other's side
     /// ([`World::swapped`]): the tank, whether it removes its ripples first, and the walls it held.
     overs: Vec<Option<(u32, bool, Vec<u32>)>>,
@@ -276,6 +279,7 @@ impl World {
             wet: Vec::new(),
             draws: Vec::new(),
             tails: Vec::new(),
+            owed: Vec::new(),
             overs: Vec::new(),
             swapped: false,
             bare: Vec::new(),

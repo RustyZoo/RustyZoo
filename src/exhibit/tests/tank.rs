@@ -1286,8 +1286,10 @@ fn tank_survivor_cut_asked(gate: Option<(i32, i32, u32)>, answer: Option<bool>) 
         world.set_gate(id, gate as u32 + 1);
     }
     world.begin();
-    put_wall(&mut world, "tank", (3, 1, 2));
-    put_wall(&mut world, "tank", (3, 2, 2));
+    // With a question the pieces are on the east side of the line: the east half is the survivor.
+    let (x, d) = if answer.is_some() { (4, 6) } else { (3, 2) };
+    put_wall(&mut world, "tank", (x, 1, d));
+    put_wall(&mut world, "tank", (x, 2, d));
     if let Some(yes) = answer {
         let tank = world
             .exhibits()

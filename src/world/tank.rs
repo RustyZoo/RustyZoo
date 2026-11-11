@@ -465,6 +465,12 @@ impl World {
     /// The player said Yes to the question about the objects of tank `id`, which have been
     /// dealt with: it goes on to its name.
     pub(crate) fn accept_tank(&mut self, id: u32) {
+        let owed: Vec<u32> = (self.owed.iter())
+            .filter(|o| o.0 == id)
+            .map(|o| o.1)
+            .collect();
+        self.owed.retain(|o| o.0 != id);
+        self.resize_areas(&[], &owed);
         self.fill(id);
         self.events.push(Event::New { id, ask: true });
     }
@@ -472,6 +478,7 @@ impl World {
     /// The player said No: the operation that made tank `id` is undone, its number given back.
     pub(crate) fn decline_tank(&mut self, id: u32) -> Undone {
         self.waiting.retain(|w| w.0 != id);
+        self.owed.retain(|o| o.0 != id);
         let done = self.undo();
         self.exhibits.counter = self.exhibits.counter.saturating_sub(1).max(1);
         done

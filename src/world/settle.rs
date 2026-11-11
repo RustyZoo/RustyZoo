@@ -41,6 +41,11 @@ struct Built {
     /// The resizes a split makes before those: when the survivor keeps the side across the piece,
     /// each exhibit is first resized over the side it does not keep (habitat rating 10.1).
     early: Vec<(u32, Vec<usize>)>,
+    /// The (tank made by a morph, exhibit beside it) pairs: the morph resizes the second after
+    /// the player has answered the question about the tank's refused objects (habitat rating 10.1.1).
+    outside: Vec<(u32, u32)>,
+    /// The new tanks that are show tanks.
+    shows: HashSet<u32>,
 }
 
 /// What a split gives: where each part comes from, the land exhibits cut, the tanks that kept a part.
@@ -314,7 +319,10 @@ impl World {
                     built.resized.push(id);
                     match kind {
                         // A tank has its ground, walls and objects to deal with before its name.
-                        Some(_) => {
+                        Some(show) => {
+                            if *show {
+                                built.shows.insert(id);
+                            }
                             let from = split_from.get(&i).and_then(|&x| old.get(x));
                             built.tanks.push((id, from.and_then(|e| e.tank)));
                         }
@@ -399,14 +407,14 @@ impl World {
     /// A morph refills the region across its start pair from that tile (3.1), and resizes its
     /// exhibit (habitat rating 10.1): once more when the split or merge resized it already.
     fn refill(&self, built: &mut Built) {
-        for &(id, (_, out)) in &built.starts {
+        for &(id, (_, out)) in &built.starts.clone() {
             if let Some(r) = built
                 .next
                 .region(out)
                 .filter(|&r| r != GROUNDS && r != EXTERIOR && r != id)
             {
                 built.next.reorder(r, exhibit::fill(self, out));
-                built.resized.push(r);
+                built.outside.push((id, r));
             }
         }
     }
@@ -433,6 +441,17 @@ impl World {
         } = plan;
         self.exhibits = std::mem::take(&mut built.next);
         self.reshaped = true;
+        // A morph that makes a tank asks about its refused objects before it resizes the exhibit
+        // beside it: that resize waits for the answer (10.1.1 point 5).
+        for (tank, r) in std::mem::take(&mut built.outside) {
+            let inherited = built.tanks.iter().any(|t| t.0 == tank && t.1.is_some());
+            let asks =
+                !quiet && !inherited && !self.unfit(tank, built.shows.contains(&tank)).is_empty();
+            match asks {
+                true => self.owed.push((tank, r)),
+                false => built.resized.push(r),
+            }
+        }
         self.resize_areas(&built.early, &built.resized);
         self.edits += 1;
         let mut changed = self.retank(quiet);
