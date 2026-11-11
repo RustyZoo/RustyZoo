@@ -299,3 +299,12 @@ fn a_log_is_read_back_as_passes_with_their_clock_and_commands() {
         assert!(replay(bad).is_err(), "{bad:?}");
     }
 }
+
+#[test]
+fn map_is_a_flag_of_both_kinds_of_run_and_takes_no_value() {
+    let got = flags(&["--map", "--headless", "--passes", "1", "--clock", "1"]);
+    assert!(got.unwrap_or_else(|_| panic!("refused")).map);
+    assert!(flags(&["--map"]).unwrap_or_else(|_| panic!("refused")).map);
+    assert!(!flags(&[]).unwrap_or_else(|_| panic!("refused")).map);
+    assert!(flags(&["--map", "1"]).is_err());
+}

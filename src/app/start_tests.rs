@@ -1407,8 +1407,20 @@ fn a_run_opens_its_file_as_continue_does_with_the_research_of_the_save() {
         )
         .unwrap();
         assert_eq!(run.sim.research_share(), 0);
-        assert!(run.continue_game(zoo, money, None));
+        assert!(run.continue_game(zoo.clone(), money.clone(), None));
         assert_eq!(run.sim.research_share(), window);
+        // `--map` leaves the file a bare map.
+        let renderer = MapRenderer::new(app.renderer.vfs(), app.renderer.catalogue());
+        let mut bare = App::new(
+            renderer,
+            zoo.clone(),
+            Settings::default(),
+            Timers::new(66, 16, 200),
+            SIZE,
+        )
+        .unwrap();
+        bare.start_run(zoo, money, None, true);
+        assert_eq!(bare.sim.research_share(), 0);
     });
 }
 
