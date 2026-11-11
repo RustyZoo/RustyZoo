@@ -674,3 +674,48 @@ fn calendar_real_months_and_leap_years() {
     // A year takes 73 minutes of simulated time.
     assert_eq!(at(&after(73 * 60_000, 1000)), (2002, 1, 1, 0, 0, 0, 0));
 }
+
+#[test]
+fn skipping_to_the_month_end_leaves_the_next_step_to_change_the_month() {
+    // A normal month, a February of a leap year and the end of a year, from the start, from the
+    // middle of a day and from before the start (a saved date before it is negative).
+    for from in [
+        0,
+        86_400_000 * 9 + 123,
+        86_400_000 * 59,
+        86_400_000 * 364,
+        -86_400_000 * 40,
+    ] {
+        let mut calendar = Calendar::at(from);
+        let before = calendar.date();
+        calendar.skip_to_month_end();
+        let end = calendar.date();
+        assert_eq!((end.year, end.month), (before.year, before.month), "{from}");
+        assert_eq!(
+            (end.hour, end.minute, end.second, end.millisecond),
+            (23, 59, 59, 999)
+        );
+        assert!(
+            !calendar.advance(1),
+            "the month flag is raised, not acted on"
+        );
+        let next = calendar.date();
+        assert_eq!(
+            (next.year, next.month, next.day),
+            if before.month == 12 {
+                (before.year + 1, 1, 1)
+            } else {
+                (before.year, before.month + 1, 1)
+            }
+        );
+        assert!(calendar.advance(1), "the next step does the month-end work");
+    }
+    let mut calendar = Calendar::new();
+    for _ in 0..24 {
+        calendar.skip_to_month_end();
+        calendar.advance(1);
+        calendar.advance(1);
+    }
+    let date = calendar.date();
+    assert_eq!((date.year, date.month, date.day), (2003, 1, 1));
+}

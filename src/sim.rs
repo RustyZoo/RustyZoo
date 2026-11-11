@@ -466,6 +466,11 @@ impl Sim {
         }
     }
 
+    /// The calendar stands on the last millisecond of its month (the `month` script command).
+    pub(crate) fn skip_to_month_end(&mut self) {
+        self.calendar.skip_to_month_end();
+    }
+
     pub(crate) fn calendar(&self) -> &Calendar {
         &self.calendar
     }

@@ -133,6 +133,9 @@ pub enum Command {
     Skip,
     /// `award add ID`: the zoo holds the award (`awards.md` 4.1).
     Award(i32),
+    /// `month`: the calendar jumps to the last moment of the current month, so that the next
+    /// step begins the next month (the month-end work follows one step later, as in play).
+    Month,
     /// `press ID`: the button with this id is pressed and released, as a hotkey does.
     Press(i32),
     Save(&'static str),
@@ -176,6 +179,7 @@ impl fmt::Display for Command {
             Command::Char(byte) => write!(f, "char {byte}"),
             Command::Skip => f.write_str("skip"),
             Command::Award(id) => write!(f, "award add {id}"),
+            Command::Month => f.write_str("month"),
             Command::Press(id) => write!(f, "press {id}"),
             Command::Save(file) => write!(f, "save {file}"),
             Command::Load(file) => write!(f, "load {file}"),
@@ -196,6 +200,7 @@ impl FromStr for Command {
         };
         Ok(match words.as_slice() {
             ["award", "add", id] => Command::Award(number(id)?),
+            ["month"] => Command::Month,
             ["press", id] => Command::Press(number(id)?),
             ["save", ..] => Command::Save(file("save")?),
             ["load", ..] => Command::Load(file("load")?),
