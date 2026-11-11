@@ -7,6 +7,9 @@ use super::*;
 /// The shipped map the games are played on.
 const MAP: &str = "freeform/svalley.scn";
 
+/// The adoption panel's animals tab, which the donation file disables (scenarios 11.3).
+const ADOPT: i32 = 2075;
+
 /// A freeform game just started.
 fn game<'a>(rig: &'a Rig, name: &str) -> App<'a> {
     let mut app = rig.app(name);
@@ -179,4 +182,124 @@ fn fifteen_awards_make_the_chain_of_the_best_zoo_give_cash_and_a_crated_panda_on
     ] {
         assert!(said(&play, what).is_empty(), "{what}");
     }
+}
+
+/// One animal on the grounds and every animal's happiness at `happiness` (-100 to 100): the zoo
+/// status reads it at the start of the next step, so the animal rating is `(h + 100) / 2`.
+fn mood(app: &mut App, happiness: i32) {
+    let game = app.game.as_mut().unwrap();
+    let ids: Vec<u32> = (game.world.zoo.entities.iter())
+        .filter(|e| e.class == "animals")
+        .filter_map(|e| e.common.as_ref().map(|c| c.id))
+        .collect();
+    for id in ids {
+        if let Some(crate::unit::Part::Animal(a)) =
+            game.world.units.get_mut(id).map(|u| &mut u.part)
+        {
+            a.happiness = happiness;
+        }
+    }
+}
+
+/// A zoo with one gazelle on the grounds, past the first pass.
+fn grazing<'a>(rig: &'a Rig, name: &str) -> App<'a> {
+    let mut app = game(rig, name);
+    let cat = app.renderer.catalogue();
+    let game = app.game.as_mut().unwrap();
+    let rng = &mut app.sim.rng;
+    let added = crate::sim::drive::add_unit(
+        &mut game.world,
+        cat,
+        rng,
+        "animals",
+        Some("gazelle"),
+        (22, 22),
+        None,
+    );
+    assert!(added, "no gazelle in this install");
+    app
+}
+
+/// A pass that answers a popup that holds the game.
+fn answering(play: &mut Play) {
+    let enter = [Command::Key(Key::Enter, false, false)];
+    let modal = play.app.ui.as_ref().unwrap().modal_open();
+    play.tick(STEP, if modal { &enter } else { &[] });
+}
+
+/// A pass at the end of the month: the calendar jumps, the month changes, the manager looks.
+fn month(play: &mut Play) {
+    play.tick(STEP, &[Command::Month]);
+    for _ in 0..4 {
+        answering(play);
+    }
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn twenty_four_months_of_a_freeform_zoo_give_the_animal_care_ribbon_at_month_six_and_never_award_17()
+ {
+    let rig = rig("freeform-months");
+    if !rig.measured("freeform months") {
+        return;
+    }
+    let mut app = grazing(&rig, "played");
+    let mut play = Play::new(&mut app, Vec::new());
+    let total = |play: &Play| {
+        let money = &play.app.game.as_ref().unwrap().money;
+        (money.month + 12 * money.year) as i32
+    };
+    let mut first = None;
+    for months in 1..=24 {
+        mood(play.app, 100);
+        month(&mut play);
+        // The animal rating of a happy animal passes 98; its award is the only one of a zoo
+        // with no guest and no exhibit, and comes with total month 6, not before (6.2).
+        let held = awards(&play);
+        assert_eq!(total(&play), months + 1);
+        assert!(!held.contains(&17), "{held:?}");
+        assert_eq!(
+            held.contains(&8),
+            total(&play) >= 6,
+            "{held:?} at {}",
+            total(&play)
+        );
+        if held.contains(&8) && first.is_none() {
+            first = Some(total(&play));
+        }
+    }
+    assert_eq!(first, Some(6));
+    assert_eq!(awards(&play), [8]);
+    assert_eq!(said(&play, "sim scenario cash 0 5000").len(), 1);
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn the_adoption_element_is_disabled_below_an_animal_rating_of_25_and_enabled_again_from_45() {
+    let rig = rig("freeform-adoption");
+    if !rig.measured("freeform adoption") {
+        return;
+    }
+    let mut app = grazing(&rig, "played");
+    let mut play = Play::new(&mut app, Vec::new());
+    // Settles at a happiness: the rating check is due every few passes.
+    let settle = |play: &mut Play, happiness: i32| {
+        for _ in 0..8 {
+            mood(play.app, happiness);
+            answering(play);
+        }
+        play.disabled(ADOPT)
+    };
+    // The rating is (happiness + 100) / 2: 100 gives 100 (enabled from the start), -52 gives 24,
+    // -50 gives 25, -10 gives 45, -12 gives 44.
+    assert!(!settle(&mut play, 100));
+    assert!(said(&play, "sim scenario popup 45200").is_empty());
+    assert!(!settle(&mut play, -50), "25 is not below 25");
+    assert!(settle(&mut play, -52), "24 is");
+    let popups = said(&play, "sim scenario popup").len();
+    assert_eq!(popups, 1);
+    assert!(settle(&mut play, -50), "25 does not enable it");
+    assert!(settle(&mut play, -12), "44 does not enable it");
+    assert!(!settle(&mut play, -10), "45 does");
+    assert_eq!(said(&play, "sim scenario popup").len(), 2);
 }

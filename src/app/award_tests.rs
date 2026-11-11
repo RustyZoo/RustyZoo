@@ -466,6 +466,7 @@ fn the_month_command_makes_24_months_and_a_month_gated_award_comes_at_its_date_o
             }
         }
         assert_eq!(first, Some(6));
+        // The first award's donation and the gated one's, once each.
         assert_eq!(cash.len(), 2, "{cash:?}");
         assert_eq!(date(app), (1, 2));
     });
