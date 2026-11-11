@@ -342,3 +342,87 @@ fn the_ground_price_comes_from_the_ini_not_from_tanks_cfg() {
         });
     }
 }
+
+/// A gated tank, drained, with an animal that may not be in water or a bench in it.
+fn drained_with(s: &mut Session, kind: usize) {
+    gated(s);
+    s.app.game.as_mut().unwrap().world.drain(1);
+    s.add(kind, 20 * 64 + 16, 20 * 64 + 16, 0);
+}
+
+#[test]
+fn undoing_a_refused_fill_drains_with_its_message_and_gives_the_price_back() {
+    with_game("tank-undo-refused", "", |s| {
+        drained_with(s, 13);
+        s.app.tank_fill(true);
+        assert_eq!((water(s), s.cash()), ((5, 0, false, true), 50_000.0 - 7.5));
+        assert_eq!(told(s), ["tool message 10550"]);
+        s.app.undo();
+        assert_eq!(told(s), ["tool message 10551"]);
+        assert_eq!((water(s), s.cash()), ((5, 0, false, true), 50_000.0));
+    });
+}
+
+#[test]
+fn undoing_a_fill_drains_and_gives_the_price_back_and_a_drain_undone_fills_again() {
+    with_game("tank-undo-fill", "", |s| {
+        gated(s);
+        s.app.game.as_mut().unwrap().world.drain(1);
+        s.app.tank_fill(true);
+        assert!(water(s).2);
+        s.app.undo();
+        assert_eq!((water(s).2, s.cash()), (false, 50_000.0));
+        assert!(told(s).is_empty());
+        s.app.game.as_mut().unwrap().world.fill(1);
+        s.app.tank_drain();
+        assert!(!water(s).2);
+        s.app.undo();
+        assert_eq!((water(s).2, s.cash()), (true, 50_000.0));
+    });
+}
+
+#[test]
+fn undoing_a_fill_the_drain_refuses_keeps_the_price_paid() {
+    with_game("tank-undo-kept", "", |s| {
+        gated(s);
+        s.app.game.as_mut().unwrap().world.drain(1);
+        s.app.tank_fill(true);
+        // The animal came in by itself: it is not in the undo list.
+        let (entity, shape) = s.entity(13, 20 * 64 + 40, 20 * 64 + 40, 0);
+        let world = &mut s.app.game.as_mut().unwrap().world;
+        world.unrecorded(|w| w.add(entity, shape));
+        s.app.undo();
+        assert_eq!(told(s), ["tool message 10551"]);
+        assert_eq!((water(s).2, s.cash()), (true, 50_000.0 - 7.5));
+    });
+}
+
+#[test]
+fn the_water_tools_of_a_tank_without_a_gate_record_nothing_to_undo() {
+    with_game("tank-undo-no-gate", "", |s| {
+        tank(s);
+        s.app.game.as_mut().unwrap().world.drain(1);
+        s.app.tank_fill(true);
+        assert!(!s.app.game.as_ref().unwrap().world.can_undo());
+    });
+}
+
+#[test]
+fn undo_of_a_gate_on_another_tank_acts_on_that_tank() {
+    with_game("tank-undo-other", "", |s| {
+        tank(s);
+        let other = s.fence(5, 30, 20, 0);
+        for side in [2, 4, 6] {
+            s.fence(5, 30, 20, side);
+        }
+        let world = &mut s.app.game.as_mut().unwrap().world;
+        assert!(world.tank(2).is_some_and(|t| t.filled));
+        world.exhibits_mut().get_mut(1).unwrap().gate = Some(other);
+        world.drain(1);
+        s.app.tank_fill(true);
+        s.app.undo();
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert!(!world.tank(2).unwrap().filled && world.tank(1).unwrap().filled);
+        assert_eq!(s.cash(), 50_000.0);
+    });
+}

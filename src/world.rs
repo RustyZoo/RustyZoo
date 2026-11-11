@@ -22,7 +22,7 @@ use held::Shift;
 use undo::Action;
 #[cfg(test)]
 use undo::TankValue;
-pub(crate) use undo::{Spot, Step, Undone};
+pub(crate) use undo::{Refusal, Spot, Step, Undone};
 
 mod amphibious;
 mod areas;

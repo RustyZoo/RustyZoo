@@ -23,9 +23,13 @@ pub(super) enum Action {
     /// A wall the wall step built for nothing: recorded as a placement, so the undo gives back
     /// the full price of its type (placing 8, kind 1).
     Copied { id: u32 },
-    /// A value of the tank on this tile before one of its walls was removed (placing 8, kinds 4
-    /// to 8).
-    Tank { tile: usize, value: TankValue },
+    /// A value of the tank on this tile before one of its walls was removed, or before a tank tool
+    /// changed its water, with the price that tool paid (placing 8, kinds 4 to 8).
+    Tank {
+        tile: usize,
+        value: TankValue,
+        price: f32,
+    },
     /// An entity was removed from this position of the list, and the refund it gave.
     Removed {
         at: usize,
@@ -91,9 +95,29 @@ pub(crate) enum Step {
     Skipped(Spot),
 }
 
+/// Why a fill or a drain run by an undo was refused (placing 8.2 point 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refusal {
+    /// The entity with this id may not be in water.
+    Fill(u32),
+    /// An animal or a unit that only lives in water is in the tank.
+    Drain,
+}
+
+/// The fill or the drain an undo ran on a tank (placing 8.2).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Water {
+    pub tank: u32,
+    pub refused: Option<Refusal>,
+    /// The price given back: the recorded one when the filled flag ended as recorded, else 0.
+    pub refund: f32,
+}
+
 /// What an undo did.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub(crate) struct Undone {
+    /// The fills and drains it ran, the last recorded first.
+    pub waters: Vec<Water>,
     /// The actions taken back, the last recorded first.
     pub steps: Vec<Step>,
     /// A removed object that cannot be put back because something stands in its place: the undo
@@ -106,7 +130,10 @@ pub(crate) struct Undone {
 impl Undone {
     /// Whether nothing was taken back.
     pub(crate) fn is_empty(&self) -> bool {
-        self.steps.is_empty() && self.blocked.is_none() && self.names.is_empty()
+        self.steps.is_empty()
+            && self.blocked.is_none()
+            && self.names.is_empty()
+            && self.waters.is_empty()
     }
 }
 
@@ -211,11 +238,11 @@ impl World {
                         done.steps.push(Step::Copied(spot, Box::new(entity)));
                     }
                 }
-                Action::Tank { tile, value } => {
+                Action::Tank { tile, value, price } => {
                     if std::mem::take(&mut stale) {
                         self.settle(None, true);
                     }
-                    self.restore_tank(tile, value);
+                    done.waters.extend(self.restore_tank(tile, value, price));
                 }
                 Action::Removed {
                     at,
@@ -420,13 +447,45 @@ impl World {
             TankValue::Height(tank.height),
             TankValue::Level(level),
         ] {
-            self.record(Action::Tank { tile: t, value });
+            self.record(Action::Tank {
+                tile: t,
+                value,
+                price: 0.0,
+            });
         }
     }
 
-    /// Sets a value of the tank now on tile `tile`; none there, nothing happens.
-    pub(super) fn restore_tank(&mut self, tile: usize, value: TankValue) {
-        let Some(id) = self.tank_at(tile) else { return };
+    /// A tank tool changed the water of tank `id` (exhibits and money 4.7, placing 8.2 point 1):
+    /// the list is emptied and, only with a gate, the purity if told, then the filled state `filled`
+    /// is recorded at the gate piece's own tile, with the price the tool paid; the undo looks the tank
+    /// up there, so a grounds tile passes over and another tank's tile acts on that tank.
+    pub(crate) fn note_water(&mut self, id: u32, purity: Option<u32>, filled: bool, price: f32) {
+        self.undo.clear();
+        self.fresh = false;
+        if self.exhibits.get(id).is_none_or(|e| e.gate.is_none()) {
+            return;
+        }
+        let Some((tile, _)) = self.gate_slot(id) else {
+            return;
+        };
+        for (value, price) in purity
+            .map(|p| (TankValue::Purity(p), 0.0))
+            .into_iter()
+            .chain([(TankValue::Filled(filled), price)])
+        {
+            self.undo.push(Action::Tank { tile, value, price });
+        }
+    }
+
+    /// Sets a value of the tank now on tile `tile`; none there, nothing happens. The filled state
+    /// runs the tank's fill or drain and tells what they refused and the price to give back.
+    pub(super) fn restore_tank(
+        &mut self,
+        tile: usize,
+        value: TankValue,
+        price: f32,
+    ) -> Option<Water> {
+        let id = self.tank_at(tile)?;
         if let TankValue::Level(level) = value {
             for t in self.tiles_of(id) {
                 let at = self.zoo.tiles[t];
@@ -444,11 +503,19 @@ impl World {
         }
         // The filled state goes through the fill or the drain, which makes the show links again;
         // the drain posts the abort event of the tank's show (shows 30.4 point 5).
+        let mut water = None;
         if let TankValue::Filled(v) = value {
-            match v {
-                true => _ = self.fill(id),
-                false => _ = self.drain(id),
-            }
+            let refused = match v {
+                true => self.fill(id).map(Refusal::Fill),
+                false => (!self.drain(id)).then_some(Refusal::Drain),
+            };
+            let kept = self.tank(id).is_some_and(|t| t.filled == v);
+            let refund = if kept { price } else { 0.0 };
+            water = Some(Water {
+                tank: id,
+                refused,
+                refund,
+            });
         }
         // The height goes through the wall height change: the water is cut to the new full level.
         if let TankValue::Height(v) = value {
@@ -456,6 +523,7 @@ impl World {
         }
         self.events.push(Event::Tank(id));
         self.sync_tanks();
+        water
     }
 
     /// Gives the exhibit on tile `tile` its name, and its gate on the line of the recorded slot

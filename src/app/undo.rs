@@ -7,7 +7,7 @@ use crate::build::cost;
 use crate::entity::type_of;
 use crate::money::{ANIMAL_PURCHASE, ANIMAL_REFUND, CONSTRUCTION, CONSTRUCTION_REFUND};
 use crate::text::format::whole_units;
-use crate::world::{Spot, Step, Undone};
+use crate::world::{Refusal, Spot, Step, Undone};
 
 /// The button of the game screen, grey until something can be undone, and the string that tells
 /// an object could not be put back (the object's name goes in its `%s`).
@@ -66,6 +66,15 @@ impl App<'_> {
 
     /// Moves the prices of the steps of an undo in the cash and tells what was done.
     pub(super) fn undone(&mut self, done: Undone) {
+        for water in &done.waters {
+            match water.refused {
+                Some(Refusal::Fill(object)) => self.not_filled(water.tank, object),
+                Some(Refusal::Drain) => self.not_drained(water.tank),
+                None => {}
+            }
+            playing!(self, game);
+            game.money.undo_charge(CONSTRUCTION, water.refund);
+        }
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let mut tiles = None;

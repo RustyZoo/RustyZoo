@@ -220,9 +220,9 @@ mod show {
         w.drain(t);
         assert!(shows(&w).0.is_empty(), "drained");
         // The undo of a removed wall puts the filled flag back.
-        w.restore_tank(2 * WIDE + 2, TankValue::Filled(true));
+        w.restore_tank(2 * WIDE + 2, TankValue::Filled(true), 0.0);
         assert_eq!(shows(&w), (vec![s], vec![t], vec![]), "filled again");
-        w.restore_tank(2 * WIDE + 2, TankValue::Filled(false));
+        w.restore_tank(2 * WIDE + 2, TankValue::Filled(false), 0.0);
         assert_eq!(shows(&w), (vec![], vec![], vec![]), "drained again");
     }
 }
