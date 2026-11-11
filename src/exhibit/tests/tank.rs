@@ -1258,6 +1258,12 @@ fn a_tank_cut_from_a_land_exhibit_with_its_gate_across_is_resized_once_and_the_l
 /// A land pen of 6 x 2 tiles whose east half is closed by tank walls, with a path below its west
 /// half; the cut between the halves makes the east half a tank and leaves the west half land.
 fn tank_survivor_cut(gate: Option<(i32, i32, u32)>) -> usize {
+    tank_survivor_cut_asked(gate, None)
+}
+
+/// The same with a bench in the east half when `answer` is given: the new tank refuses it, the
+/// player answers (Yes: true), and the undo of a No is run.
+fn tank_survivor_cut_asked(gate: Option<(i32, i32, u32)>, answer: Option<bool>) -> usize {
     let mut z = zoo(&[]);
     for (class, (x, y, d)) in ring("fences", 1, 1, 6, 2) {
         let mut e = wall(if x >= 4 { "tank" } else { class }, (x, y, d));
@@ -1269,6 +1275,9 @@ fn tank_survivor_cut(gate: Option<(i32, i32, u32)>) -> usize {
     unique(&mut z);
     let gate = z.entities.iter().position(|e| e.subtype == "g");
     z.entities.push(entity("path", 2, 4, 0));
+    if answer.is_some() {
+        z.entities.push(entity("bench", 5, 1, 0));
+    }
     unique(&mut z);
     let mut world = World::new(z, tank_shape);
     world.set_tank_config(CONFIG);
@@ -1277,12 +1286,28 @@ fn tank_survivor_cut(gate: Option<(i32, i32, u32)>) -> usize {
         world.set_gate(id, gate as u32 + 1);
     }
     world.begin();
-    put_wall(&mut world, "tank", (3, 1, 2));
-    put_wall(&mut world, "tank", (3, 2, 2));
+    // With a question the pieces are on the east side of the line: the east half is the survivor.
+    let (x, d) = if answer.is_some() { (4, 6) } else { (3, 2) };
+    put_wall(&mut world, "tank", (x, 1, d));
+    put_wall(&mut world, "tank", (x, 2, d));
+    if let Some(yes) = answer {
+        let tank = world
+            .exhibits()
+            .list()
+            .iter()
+            .find(|e| e.tank.is_some())
+            .unwrap()
+            .id;
+        assert!(world.take_events().contains(&Event::Objects(tank)));
+        match yes {
+            true => world.accept_tank(tank),
+            false => _ = world.decline_tank(tank),
+        }
+    }
     let t = 4 * SIZE as usize + 2;
     let list = world.exhibits().list();
     let land = list.iter().find(|e| e.tank.is_none()).unwrap();
-    assert!(list.iter().any(|e| e.tank.is_some()));
+    assert!(answer == Some(false) || list.iter().any(|e| e.tank.is_some()));
     land.areas.iter().filter(|a| a.tiles == [t]).count()
 }
 
@@ -1296,4 +1321,14 @@ fn a_land_cut_whose_survivor_becomes_a_tank_with_its_gate_across_resizes_the_new
 fn a_land_cut_whose_survivor_becomes_a_tank_without_a_gate_resizes_the_new_part_twice() {
     // Its constructor and the morph's refill from the piece's pair (10.1.1 point 3).
     assert_eq!(tank_survivor_cut(None), 2);
+}
+
+#[test]
+fn a_refused_sale_of_a_new_tank_skips_the_resize_of_the_exhibit_beside_it() {
+    // With no gate the morph resizes the new land part from the cut's pair (two entries after a
+    // Yes). The question comes before that resize and No skips it: the land part has its
+    // constructor's entry and the undo's merge resize, one entry less than a Yes then an undo
+    // would leave (habitat rating 10.1.1 point 5).
+    assert_eq!(tank_survivor_cut_asked(None, Some(true)), 2);
+    assert_eq!(tank_survivor_cut_asked(None, Some(false)), 2);
 }
