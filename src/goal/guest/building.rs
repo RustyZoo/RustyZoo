@@ -177,12 +177,23 @@ impl Cx<'_, '_> {
         need: &'static str,
         shortcut: bool,
     ) -> bool {
-        let tiled = self.record().target.tile.is_some();
         let mut prior = None;
         if let Some(g) = self.guest() {
             prior = g.need;
             (g.need, g.building) = (Some(need), b);
         }
+        self.building_step(b, shortcut, prior)
+    }
+
+    /// The building step of guest buildings 6.2 on the guest's building target, whose need being
+    /// served (`prior` is the one before, for the shortcut) is kept as it is.
+    pub(in crate::goal) fn building_step(
+        &mut self,
+        b: u32,
+        shortcut: bool,
+        prior: Option<&'static str>,
+    ) -> bool {
+        let tiled = self.record().target.tile.is_some();
         if self.set_out(b) {
             return true;
         }
