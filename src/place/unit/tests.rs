@@ -29,6 +29,8 @@ const ADULT: usize = 14;
 const ADULT_F: usize = 15;
 /// A species that lays eggs and has no young type.
 const LONE: usize = 16;
+/// A tall swimmer.
+const TALL: usize = 17;
 
 fn ty(subtype: &str, name: &str, ini: &str) -> EntityType {
     fixtures::ty("animals", name, subtype, ini)
@@ -89,6 +91,11 @@ fn catalogue() -> Catalogue {
     cat.push(ty("m", "trike", trike));
     cat.push(ty("f", "trike", trike));
     cat.push(ty("m", "lone", trike));
+    cat.push(ty(
+        "m",
+        "plesio",
+        "[Global]\nDefaultSubtype=m\n[m/Characteristics/Integers]\ncSwims=1\ncUnderwater=1\ncTall=1\n",
+    ));
     cat
 }
 
@@ -135,6 +142,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         "animals" | "keeper" | "maint" | "tour" | "guests" => (Kind::Unit, false),
         "fences" => (Kind::Edge, true),
         "tankwall" => (Kind::Wall, true),
+        "objects" if e.type_name == "sparkle" => (Kind::Sparkle, false),
         "objects" => (Kind::Fixed, false),
         _ => return None,
     };
@@ -150,7 +158,7 @@ fn shape(e: &Entity) -> Option<Shape> {
         gate: false,
         gated: fence,
         // A rock: walkable by tall units only.
-        walkable: (false, kind == Kind::Fixed),
+        walkable: (kind == Kind::Sparkle, kind == Kind::Fixed),
         forms: (e.type_name == "gnu").then_some([(3, 3), (4, 4)]),
         rubbleable: false,
         tank: TankKind {
@@ -878,6 +886,30 @@ fn a_unit_in_the_way_in_a_tank_gets_10555() {
         (p.tile, p.verdict, p.message, p.blocking.len()),
         ((3, 2), Verdict::Invalid, Some(super::super::IN_THE_WAY), 1)
     );
+}
+
+#[test]
+fn only_a_tall_unit_collects_the_transients_of_a_taken_tile() {
+    let guest = entity_at("guests", "guest", "m", 3 * 64 + 32, 2 * 64 + 32, 0);
+    let sparkle = |tx| entity_at("objects", "sparkle", "", tx * 64 + 8, 2 * 64 + 8, 0);
+    // A guest and a sparkle on tile (3, 2), a sparkle alone on (2, 2).
+    let w = tank_world_with(3, vec![guest, sparkle(3), sparkle(2)]);
+    let tank = Aim {
+        zoom: 0,
+        ..aim(0, behind_the_tank(3))
+    };
+    let (cat, wet) = (catalogue(), [false, true]);
+    let held = |ty| {
+        let p = pending_of(&w, &cat, &wet, ty, 0, 0, tank, 0.0, Form::Plain).unwrap();
+        assert_eq!(
+            (p.tile, p.message),
+            ((3, 2), Some(super::super::IN_THE_WAY))
+        );
+        p.blocking
+    };
+    // The guest is entity 0 and the sparkle of the taken tile is 1; the lone sparkle never is.
+    assert_eq!(held(TALL), [0, 1]);
+    assert_eq!(held(HIPPO), [0]);
 }
 
 #[test]

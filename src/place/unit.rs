@@ -471,6 +471,28 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
                 p.blocking.push(i);
             }
         }
+        // A tall unit is not let through by the transients (a sparkle, a ripple) of a list that
+        // holds a unit, rampaging or not (none is rubbleable): it collects them too (6.1 point 5.3).
+        if flag("cTall") {
+            for (i, e) in world.zoo.entities.iter().enumerate() {
+                let (Some(c), Some(s)) = (e.common.as_ref(), world.shape(i)) else {
+                    continue;
+                };
+                let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+                let taken = |t: usize| {
+                    units.iter().any(|u| {
+                        world.tile_index(u.1.div_euclid(64), u.2.div_euclid(64)) == Some(t)
+                    })
+                };
+                if s.kind == Kind::Sparkle
+                    && !s.walkable.1
+                    && on.is_some_and(|t| tiles.contains(&t) && taken(t))
+                    && !p.blocking.contains(&i)
+                {
+                    p.blocking.push(i);
+                }
+            }
+        }
     }
     // Without the tank point a tank tile is never valid.
     if tank.is_some() && !tanked {
