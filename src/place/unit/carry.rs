@@ -62,6 +62,7 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
     unit.carried = true;
     // The pick-up of the animal itself lowers the hold of an aborted heal (staff 7.7).
     unit.held = false;
+    let mut crated = false;
     match &mut unit.part {
         // An escaped animal is crated (8.2 point 4); any other one's escape walk ends.
         crate::unit::Part::Animal(a) => {
@@ -69,7 +70,10 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
             // (goals 11.3.1 point 2).
             (a.need, a.slot) = (crate::guest::NO_NEED, crate::guest::NO_SLOT);
             match a.escaped {
-                true => crate::animal::boxed::crate_up(a),
+                true => {
+                    crate::animal::boxed::crate_up(a);
+                    crated = true;
+                }
                 false => a.walk = None,
             }
         }
@@ -104,6 +108,10 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32, view: u8) -> 
         unit.animation.cut();
     }
     unit.events.clear();
+    // The crating's chase stop and predator release (staff 7.11 point 2).
+    if crated {
+        crate::goal::crate_stop(world, id);
+    }
     Some(carry)
 }
 

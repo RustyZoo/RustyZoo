@@ -1664,3 +1664,40 @@ fn an_egg_put_down_in_a_dry_tank_keeps_its_egg_picture() {
     });
     assert_eq!(unit.animation.name, "egg_idle");
 }
+
+#[test]
+fn a_crating_lets_the_holding_animal_go_at_the_pick_up_and_at_the_refusal() {
+    let cat = catalogue();
+    let (a, b) = (animal("m", (3, 2)), animal("m", (5, 5)));
+    let make = || {
+        let mut w = tank_world(3);
+        let id = w.add(a.clone(), shape(&a)).unwrap();
+        let other = w.add(b.clone(), shape(&b)).unwrap();
+        (w, id, other)
+    };
+    let (mut w, id, other) = make();
+    let release = |w: &mut World| {
+        if let Some(Part::Animal(a)) = w.units.get_mut(id).map(|u| &mut u.part) {
+            a.escaped = true;
+        }
+        w.units.get_mut(id).unwrap().predator = other;
+        let holder = w.units.get_mut(other).unwrap();
+        (holder.held, holder.hidden) = (true, true);
+        if let Part::Animal(h) = &mut holder.part {
+            (h.caught_prey, h.prey) = (true, id);
+        }
+    };
+    let state = |w: &World| match w.units.get(other).map(|u| (&u.part, u.held, u.hidden)) {
+        Some((Part::Animal(h), held, hidden)) => (h.caught_prey, h.prey, held, hidden),
+        _ => panic!("not an animal"),
+    };
+    release(&mut w);
+    assert_eq!(state(&w), (true, id, true, true));
+    pick_up(&mut w, &cat, id, 0).unwrap();
+    assert_eq!(state(&w), (false, 0, false, false));
+    assert_eq!(w.units.get(id).unwrap().predator, 0);
+    let (mut w, id, _) = make();
+    release(&mut w);
+    assert!(refuse(&mut w, &cat, id, 0, &NoData));
+    assert_eq!(state(&w), (false, 0, false, false));
+}

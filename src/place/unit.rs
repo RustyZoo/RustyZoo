@@ -756,22 +756,11 @@ pub(crate) fn refuse(
             }
             true
         }
-        Some(Part::Animal(a)) => {
-            crate::animal::boxed::crate_up(a);
-            (a.playing, a.caught_prey, a.prey) = (false, false, 0);
-            false
-        }
+        Some(Part::Animal(_)) => false,
         _ => return false,
     };
     if !egg {
-        crate::animal::boxed::snap(world, at);
-        if let Some(unit) = world.units.get_mut(id) {
-            crate::goal::stop_all(unit);
-            unit.animation = Animation::default();
-            unit.predator = 0;
-        }
-        swim::put(world, id, data);
-        show_idle(world, id, data);
+        crate::animal::boxed::crate_in_place(world, id, data);
     }
     let Some(spot) = crate_spot(world, start) else {
         return false;

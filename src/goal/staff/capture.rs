@@ -271,12 +271,12 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Job 15 complete: the animal is crated where it stands.
+    /// Job 15 complete: the animal is crated by the one crating routine (staff 7.11).
     pub(super) fn retrieve_complete(&mut self) {
         let id = self.record().job_target.id;
-        match self.animal(id) {
-            Some(_) => boxed::crate_in_place(self.world, id, self.data),
-            None => self.set_job(0, 0, None),
+        if self.animal(id).is_none() {
+            return self.set_job(0, 0, None);
         }
+        boxed::crate_in_place(self.world, id, self.data);
     }
 }
