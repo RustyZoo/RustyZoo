@@ -889,7 +889,7 @@ fn a_unit_in_the_way_in_a_tank_gets_10555() {
 }
 
 #[test]
-fn only_a_tall_unit_that_is_not_rampaging_collects_the_transients_of_a_taken_tile() {
+fn only_a_tall_unit_collects_the_transients_of_a_taken_tile() {
     let guest = entity_at("guests", "guest", "m", 3 * 64 + 32, 2 * 64 + 32, 0);
     let sparkle = |tx| entity_at("objects", "sparkle", "", tx * 64 + 8, 2 * 64 + 8, 0);
     // A guest and a sparkle on tile (3, 2), a sparkle alone on (2, 2).
@@ -899,8 +899,8 @@ fn only_a_tall_unit_that_is_not_rampaging_collects_the_transients_of_a_taken_til
         ..aim(0, behind_the_tank(3))
     };
     let (cat, wet) = (catalogue(), [false, true]);
-    let held = |ty, rampaging| {
-        let p = pending_of(&w, &cat, &wet, ty, 0, 0, tank, 0.0, Form::Plain, rampaging).unwrap();
+    let held = |ty| {
+        let p = pending_of(&w, &cat, &wet, ty, 0, 0, tank, 0.0, Form::Plain).unwrap();
         assert_eq!(
             (p.tile, p.message),
             ((3, 2), Some(super::super::IN_THE_WAY))
@@ -908,9 +908,8 @@ fn only_a_tall_unit_that_is_not_rampaging_collects_the_transients_of_a_taken_til
         p.blocking
     };
     // The guest is entity 0 and the sparkle of the taken tile is 1; the lone sparkle never is.
-    assert_eq!(held(TALL, false), [0, 1]);
-    assert_eq!(held(TALL, true), [0]);
-    assert_eq!(held(HIPPO, false), [0]);
+    assert_eq!(held(TALL), [0, 1]);
+    assert_eq!(held(HIPPO), [0]);
 }
 
 #[test]

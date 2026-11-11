@@ -143,7 +143,6 @@ pub(crate) fn pending(
         aim,
         price(t, october),
         form,
-        false,
     )
 }
 
@@ -191,7 +190,6 @@ pub(crate) fn carried(
             Some(crate::unit::Part::Animal(a)) if a.crated => Form::Crate,
             _ => Form::Plain,
         },
-        matches!(world.units.get(carry.id).map(|u| &u.part), Some(crate::unit::Part::Animal(a)) if a.rampaging),
     )
 }
 
@@ -213,7 +211,6 @@ fn pending_of(
     aim: Aim,
     price: f32,
     form: Form,
-    rampaging: bool,
 ) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let ground = (
@@ -247,7 +244,7 @@ fn pending_of(
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, world, t, water, lifted.is_some(), (form, rampaging));
+    check(&mut p, world, t, water, lifted.is_some(), form);
     Some(p)
 }
 
@@ -361,14 +358,7 @@ fn lets_through(world: &World, object: usize) -> bool {
 /// The checks of 6.1 for an animal (6.2: a crate may stand on the zoo grounds), of 6.3 for a staff
 /// member or of 6.4 for a guest, in order. `tanked`: the tank point found a tank, so the unit is in
 /// tank mode.
-fn check(
-    p: &mut Pending,
-    world: &World,
-    t: &EntityType,
-    water: &[bool],
-    tanked: bool,
-    (form, rampaging): (Form, bool),
-) {
+fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool, form: Form) {
     let crated = form == Form::Crate;
     let staff = staff::is_staff(t);
     let guest = t.class == "guests";
@@ -481,9 +471,9 @@ fn check(
                 p.blocking.push(i);
             }
         }
-        // Only a tall unit that is not rampaging is not let through by the transients (a sparkle,
-        // a ripple) of a list that holds a unit: it collects them too (6.1 point 5.3).
-        if flag("cTall") && !rampaging {
+        // A tall unit is not let through by the transients (a sparkle, a ripple) of a list that
+        // holds a unit, rampaging or not (none is rubbleable): it collects them too (6.1 point 5.3).
+        if flag("cTall") {
             for (i, e) in world.zoo.entities.iter().enumerate() {
                 let (Some(c), Some(s)) = (e.common.as_ref(), world.shape(i)) else {
                     continue;
