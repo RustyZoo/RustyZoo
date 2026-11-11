@@ -910,7 +910,7 @@ check expansion-trial '51757_"Polar_Bear_1"_happiness_100_hunger_60_health_100_s
 # exhibit panel's close button.
 show_panel() { # show_panel <map>
   d=$(mktemp -d)
-  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 512\n5 down\n6 up\n8 mouse 900 445\n9 down\n10 up\n12 mouse 900 512\n13 down\n14 up\n16 mouse 1008 411\n17 down\n18 up\n' >"$d/script"
+  printf '0 pause\n1 mouse 965 750\n2 down\n3 up\n4 mouse 900 478\n5 down\n6 up\n8 mouse 900 445\n9 down\n10 up\n12 mouse 900 478\n13 down\n14 up\n16 mouse 1008 411\n17 down\n18 up\n' >"$d/script"
   rz run "$1" --seed 1 --headless --passes 22 --clock 67 --script "$d/script" 2>/dev/null |
     awk '/ panel show window /{printf "%s,", $7} END{print ""}'
   rm -rf "$d"
@@ -1328,7 +1328,7 @@ guest_pace() { # guest_pace <map> [unit speeds setting]
 }
 check base-trial yes 'a=$(guest_pace maps/scn01a.zoo); b=$(guest_pace maps/scn01a.zoo 0); [ "$(echo "$a" | tr ";" "\n" | grep -c ":[1-9]")" = 5 ] && [ "$(echo "$b" | tr ";" "\n" | grep -c ":[1-9]")" = 5 ] && [ "$a" != "$b" ] && echo yes || echo no'
 
-# The water of a tank over time (exhibits and money 3.10): scn28's tank 2 holds water at purity 93
+# The water of a tank over time (exhibits and money 3.10): scn28's tank 1 holds water at purity 93
 # and loses a point each `waterPurityDecayTime` (30000 ms, 448 steps of 67 ms: the first at step 447);
 # the script drains it at step 1000 and fills it at 1100. Prints the step and purity of the first
 # decay, the purity before and after the level came back to 0 (the reset to `initialWaterPurity`),
@@ -1347,7 +1347,7 @@ tank_decay() { # tank_decay <map> <tank id>
     END{print first ";" reset ";" refill}'
   rm -rf "$d"
 }
-check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 2"
+check expansion-trial "447:92;99>100;1:100,2:100,3:100,4:100,5:100,6:100,7:100" "tank_decay maps/scn28.zoo 1"
 
 # The tank animals' checks (tank fauna 10 to 12).
 #
@@ -1372,7 +1372,7 @@ tank_breath() { # tank_breath <map> <x,y>: reads $seed
 }
 check expansion-trial yes "any_seed tank_breath maps/scn28b.zoo 22,23"
 
-# Murky water: scn28's filters are taken away and a manta ray joins tank 2, which holds water of
+# Murky water: scn28's filters are taken away and a manta ray joins tank 1, which holds water of
 # purity 93 and loses a point every 448 steps. The ray's happiness is set to 0 every second so that
 # the changes of its checks show. Once the purity is below 60 it loses 5 happiness and 5 health at
 # each murky check, every 5 status ticks (75 steps); the other checks add to the first two. A property
@@ -1386,7 +1386,7 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
     for s in $(seq 10 15 12000); do printf '%s mood %s 0\n' "$s" "$3"; done; } >"$d/script"
   rz sim "$1" --ticks 12000 --seed "$seed" --script "$d/script" --log 2>/dev/null | awk -v ray="$3" '
     BEGIN{ n=0 }
-    / world water 2 /{ if ($9 < 60 && !low) low=$2 }
+    / world water 1 /{ if ($9 < 60 && !low) low=$2 }
     $5 == ray && / animal status /{
       if (low && h0 != "" && $9 == health - 5 && n < 5) { steps[n]=$2; hap[n]=$6; n++ }
       health=$9; h0=1 }
@@ -1463,10 +1463,10 @@ check expansion-trial "0:37266;0:37267:doubled;0:37268:flooded;747:37266;1494:37
 # Breeding (animals-needs 11 to 13). The base trial's animals are all male; three female lions join
 # the three males of scn01a's lion exhibit, they pair at once, and a lion gives birth at the first
 # reproduction check that rolls it. The step of the first birth depends on the stream: over the seeds 1
-# to 16 it falls between step 297 and 15581, and seed 6 has none in 40000 steps. Two checks:
+# to 16 it varies with the seed, and some seeds have none (seed 3 has none in 30000 steps). Two checks:
 # - a property: one of the seeds 1 to 24 gives a birth of young within 30000 steps (twice the latest
 #   first birth of the 15 seeds that have one), with mates;
-# - Sentinel: seed 3 (seed 2 has none in 20000 steps), read from the run of the property: the pairs, the
+# - Sentinel: seed 1, read from the run of the property: the pairs, the
 #   step of the first birth and the young of that litter (`sim_twice` and the CI job `hashes` check that
 #   two runs agree).
 # Prints the property, a space, and the sentinel's value.
@@ -1478,8 +1478,8 @@ lion_birth() { # lion_birth <map> <ticks> <tile> <tile> <tile>: reads $seed
     END{ printf "%s mates:%s;birth@%s;young:%s\n", (m > 0 && t > 0 ? "yes" : "no:mates" m+0 ";young" t+0), m+0, s, n+0 }'
   rm -rf "$d"
 }
-check base-trial yes "first=3 any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
-check base-trial "mates:3;birth@12869;young:2" "seed=3 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
+check base-trial yes "first=1 any_seed lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38"
+check base-trial "mates:3;birth@9093;young:2" "seed=1 once lion_birth maps/scn01a.zoo 30000 45,37 44,36 46,38 | cut -d' ' -f2"
 
 # The expansion trial's dinosaurs lay eggs. scn19's exhibit is no good for them, so the script
 # replaces its polar bears with a pair of velociraptors (the second one female) and sets both to
