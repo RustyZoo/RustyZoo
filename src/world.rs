@@ -305,7 +305,7 @@ impl World {
         world.load_infos();
         world.post_loaded_drains(drained);
         world.name_loaded();
-        world.relink();
+        world.relink(false);
         // The loaded animals are placed in file order and join the show lists with the first step
         // (shows 26 point 3); the first rating of their exhibits then finds them listed.
         world.show_moves.clear();
@@ -746,7 +746,7 @@ impl World {
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
         self.edits += 1;
-        self.relink();
+        self.relink(false);
     }
 
     /// The objects standing on tile `t` take their height from the ground again (not the ones

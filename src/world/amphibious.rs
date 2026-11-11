@@ -94,7 +94,10 @@ impl World {
 
     /// 12.2: the links of every exhibit and the connectors, made again; the neighbours of an
     /// exhibit keep the order they became so in.
-    pub(super) fn relink(&mut self) {
+    ///
+    /// `show_first`: the edit runs the show update before the rebuild (the wall height setter, shows
+    /// 34.2 point 5), so the joins of a link made or dropped read the amphibious set from before it.
+    pub(super) fn relink(&mut self, show_first: bool) {
         // The links wait for the tanks of a split to stand on their own tiles again.
         if self.swapped {
             return;
@@ -135,7 +138,13 @@ impl World {
             let Some(e) = self.exhibits.get_mut(x) else {
                 continue;
             };
-            e.amphibious = keep(&e.amphibious, mine);
+            let next = keep(&e.amphibious, mine);
+            let old = std::mem::replace(&mut e.amphibious, next);
+            let near = if show_first {
+                old
+            } else {
+                e.amphibious.clone()
+            };
             let now = keep(&e.show_near, shows);
             let before = std::mem::replace(&mut e.show_near, now.clone());
             // The show lists hear of each link of a plain tank made or dropped (shows 20.1).
@@ -151,8 +160,12 @@ impl World {
                 .filter(|y| !now.contains(y))
                 .map(|&y| (y, false));
             for (show, on) in made.chain(dropped) {
-                self.show_moves
-                    .push(crate::show::Move::Link { plain: x, show, on });
+                self.show_moves.push(crate::show::Move::Link {
+                    plain: x,
+                    show,
+                    on,
+                    near: near.clone(),
+                });
             }
         }
         self.pair_portals();

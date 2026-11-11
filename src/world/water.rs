@@ -90,7 +90,7 @@ impl World {
             // a filled tank with a gate is rated again, and its animals react (habitat rating 4,
             // 5.8). The water level and the purity mark nothing.
             if now.height != before.height || now.filled != before.filled {
-                self.relink();
+                self.relink(true);
             }
             if now.height != before.height
                 && let Some(e) = self.exhibits.get_mut(id)

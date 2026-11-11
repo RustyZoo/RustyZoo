@@ -24,8 +24,14 @@ pub(crate) enum Move {
         subtype: String,
         exhibit: Option<u32>,
     },
-    /// A show-neighbour link between a plain tank and a show tank was made (`on`) or dropped.
-    Link { plain: u32, show: u32, on: bool },
+    /// A show-neighbour link between a plain tank and a show tank was made (`on`) or dropped; `near`
+    /// is the plain tank's amphibious set at that point of the edit (shows 34.2 point 5).
+    Link {
+        plain: u32,
+        show: u32,
+        on: bool,
+        near: Vec<u32>,
+    },
     /// A show decision ended: the grandstands facing a show tank take its show id (shows 31.2).
     Associate,
     /// An exhibit that held a show info is gone: its show id and the tiles it held (shows 30.4).
@@ -64,12 +70,16 @@ pub(crate) fn settle(world: &mut World, cat: &Catalogue) {
             }
             Move::Associate => super::associate(world, cat),
             Move::Gone { show, tiles } => super::exhibit_gone(world, cat, show, &tiles),
-            Move::Link { plain, show, on } => {
+            Move::Link {
+                plain,
+                show,
+                on,
+                near,
+            } => {
                 let Some(n) = super::info_slot(world, show) else {
                     continue;
                 };
-                let near = world.exhibits().get(plain).map(|e| e.amphibious.clone());
-                let from = std::iter::once(plain).chain(near.unwrap_or_default());
+                let from = std::iter::once(plain).chain(near);
                 let mut animals = Vec::new();
                 for x in from {
                     animals.extend(performers(world, cat, x));

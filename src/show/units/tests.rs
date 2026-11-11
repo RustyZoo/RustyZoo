@@ -651,3 +651,18 @@ fn the_link_takes_the_animals_of_the_land_exhibit_after_those_of_the_plain_tank(
     settle(&mut w, &cat);
     assert!(units(&w).is_empty());
 }
+
+#[test]
+fn a_height_change_joins_the_animal_of_the_land_the_edit_cuts_off() {
+    let (mut w, cat) = world(&[(40, "dolphin", (1, 3))]);
+    let (show, plain) = tanks(&w);
+    let land = w.exhibit_of(w.find(40).unwrap()).unwrap();
+    w.set_height(show, 5);
+    settle(&mut w, &cat);
+    assert!(units(&w).is_empty());
+    w.set_height(plain, 5);
+    assert!(!w.exhibits().get(plain).unwrap().amphibious.contains(&land));
+    assert!(w.exhibits().get(plain).unwrap().show_near.contains(&show));
+    settle(&mut w, &cat);
+    assert_eq!(units(&w), [40]);
+}
