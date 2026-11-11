@@ -15,6 +15,7 @@ use crate::world::World;
 
 mod after;
 mod inside;
+mod ladder;
 mod placed;
 mod ride;
 mod shortcut;

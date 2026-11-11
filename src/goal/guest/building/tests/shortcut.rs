@@ -4,7 +4,7 @@ use super::*;
 
 /// Guest 1 at (2, 6), tired, on its way to bench 9 (served need `energy`), which is then deleted;
 /// bench 10 at (8, 6) has an open slot; its entrance (8, 7) is walled in when `blocked`.
-fn benches(blocked: bool) -> (Catalogue, World) {
+pub(super) fn benches(blocked: bool) -> (Catalogue, World) {
     let (cat, mut w) = (types(), bench());
     let mut other = entity("building", "building", 10, centre((8, 6)), 4);
     other.subtype = "bench".into();
@@ -19,7 +19,7 @@ fn benches(blocked: bool) -> (Catalogue, World) {
 }
 
 /// Walls the entrance tile (8, 7) in: every tile round it has a step on all four edges.
-fn unreachable(w: &mut World, walled: bool) {
+pub(super) fn unreachable(w: &mut World, walled: bool) {
     for (x, y) in (7..=9).flat_map(|x| (6..=8).map(move |y| (x, y))) {
         let t = w.tile_index(x, y).unwrap();
         w.zoo.tiles[t].edges = 0xff * u8::from(walled);

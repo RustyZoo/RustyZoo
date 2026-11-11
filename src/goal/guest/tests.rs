@@ -537,7 +537,8 @@ fn the_site_goal_of_a_guest_that_has_seen_the_sites_of_the_zoo_forgets_them_and_
     let mut w = visit(50);
     let first = w.exhibits().list()[0].first;
     let u = w.units.get_mut(1).unwrap();
-    u.goal.record.task = crate::goal::SITE;
+    // The guest stands: a site task that is not new is otherwise a random walk (goals 10.2.1 point 8).
+    (u.goal.record.task, u.goal.wandered) = (crate::goal::SITE, true);
     if let Part::Guest(g) = &mut u.part {
         (g.seen, g.seen_count) = (vec![first], 5);
     }

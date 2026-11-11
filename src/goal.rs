@@ -471,10 +471,11 @@ impl Cx<'_, '_> {
         true
     }
 
-    /// 10.2 point 8: the task goes on. Point 10: the guest stands while its wandered flag is up,
-    /// else it picks again: the sites to see, else the seen count goes and it may decide to leave.
-    /// Point 1 (a guest in an exhibit or a tank leaves it), point 2 (a guest that is to leave
-    /// takes the leave task) and point 3 (a frightened guest avoids its predator) come first.
+    /// 10.2 and 10.2.1: the guest's ladder. Points 1 to 4 of 10.2 come first (a guest in an exhibit
+    /// leaves it, one that is to leave takes the leave task, a frightened one avoids its predator,
+    /// a sick one is sick); then eat standing, a guest busy in a building, the building step for a
+    /// walk without a slot, the task that goes on (a done one too), and, for a guest with no task,
+    /// food in hand, the wandered flag (stand, or one draw) and the next site.
     fn guest_ladder(&mut self, task: u8, done: bool) {
         self.spread();
         if self.return_ladder()
@@ -483,16 +484,24 @@ impl Cx<'_, '_> {
             || self.fright_ladder(task)
             || self.sick_ladder()
             || self.stand_ladder(task)
+            || self.busy_ladder(task, done)
         {
             return;
         }
-        // A guest after a guide keeps its done task until it is released (tour guide 10.3).
-        if task != NONE && task != SITE && (!done || task == LEG) {
+        // Points 3 and 4: a building target without a slot goes to the guard; else a task that is
+        // not 0 or 100 is kept, done or not (a guest after a guide keeps its done 0x76, too).
+        if !self.slotless(task, done) && task != NONE && task != SITE {
             return;
         }
-        // Point 9: a guest that holds food looks for a place to eat it.
-        let food = matches!(&self.unit.part, Part::Guest(g) if g.items[0].is_some());
-        if food && task != ENTRANCE && !(104..=106).contains(&task) {
+        // Point 5: the guard, then the building step with 0.
+        if self.stands()
+            || [ENTRANCE, DROWN, EXIT_TANK, LEAVE].contains(&task)
+            || self.ladder_step()
+        {
+            return;
+        }
+        // Point 6: a guest that holds food looks for a place to eat it.
+        if self.holds_item() && !(ENTER_BUILDING..=USE).contains(&self.record().task) {
             self.reset();
             self.set_task(EAT, 4, 0, None);
             return;
@@ -502,14 +511,22 @@ impl Cx<'_, '_> {
                 self.unit.goal.wandered = false;
                 self.unit.goal.wants_to_decide = true;
             }
-        } else if task != SITE {
+        } else if task == SITE {
+            // Point 8: a site task still there walks at random (no reset).
+            self.walk_at_random();
+        } else {
             self.reset();
-            if self.next_site() {
-                return;
+            if !self.next_site() {
+                self.walk_at_random();
             }
-            if self.keeps_moving() {
-                self.set_task(RANDOM, 1, 0, None);
-            }
+        }
+    }
+
+    /// 10.2.1 points 8 and 9: a guest that keeps moving takes the random task.
+    fn walk_at_random(&mut self) {
+        if self.keeps_moving() {
+            self.set_task(RANDOM, 1, 0, None);
+            self.unit.goal.wants_to_decide = false;
         }
     }
 

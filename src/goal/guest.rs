@@ -128,21 +128,71 @@ impl Cx<'_, '_> {
         self.unit.goal.wandered = true;
     }
 
-    /// Ladder point 5: a guest whose eat-standing flag is up and that is not eating standing
-    /// resets its goal and, holding an item, eats it standing. Whether it took a task.
+    /// 10.2.1 point 1: a guest whose eat-standing flag is up and that is not eating standing
+    /// resets its goal and, holding an item, eats it standing. The ladder ends there either way
+    /// (the reset lowers the flag; the rest waits for the next update). Whether it did.
     pub(super) fn stand_ladder(&mut self, task: u8) -> bool {
-        let Part::Guest(g) = &self.unit.part else {
-            return false;
-        };
-        if !g.stand || [super::EAT_STANDING, super::EATING_STANDING].contains(&task) {
+        if !self.stands() || [super::EAT_STANDING, super::EATING_STANDING].contains(&task) {
             return false;
         }
-        let item = g.items.iter().any(Option::is_some);
+        let item = self.holds_item();
         self.reset();
-        item && {
+        if item {
             self.set_task(super::EAT_STANDING, 1, 0, None);
-            true
         }
+        true
+    }
+
+    /// The guest's eat-standing flag is up.
+    pub(super) fn stands(&self) -> bool {
+        matches!(&self.unit.part, Part::Guest(g) if g.stand)
+    }
+
+    /// 10.2.1: the first entry of the guest's item list is not empty.
+    pub(super) fn holds_item(&self) -> bool {
+        matches!(&self.unit.part, Part::Guest(g) if g.items[0].is_some())
+    }
+
+    /// 10.2.1 point 2: a guest in 0x69, or done in 0x66 to 0x6a, is busy. Just out of a building
+    /// (0x69 done) with food it looks for a place to eat (no reset), else its wandered flag goes
+    /// up. Whether it was busy: the ladder ends there.
+    pub(super) fn busy_ladder(&mut self, task: u8, done: bool) -> bool {
+        if !(task == super::EXIT_BUILDING || (super::BUILDING.contains(&task) && done)) {
+            return false;
+        }
+        if task == super::EXIT_BUILDING && done {
+            match self.holds_item() {
+                true => self.set_task(super::EAT, 4, 0, None),
+                false => self.unit.goal.wandered = true,
+            }
+        }
+        true
+    }
+
+    /// 10.2.1 point 3: whether the keep (point 4) is skipped for the guard (point 5). The building
+    /// target is a need building and the task is not done, and either the record has no target tile
+    /// and the task is not 0x68 to 0x6a, or the task is 0x66 with an empty path.
+    pub(super) fn slotless(&mut self, task: u8, done: bool) -> bool {
+        if done || !self.heads_for_need() {
+            return false;
+        }
+        let r = &self.unit.goal.record;
+        (r.target.tile.is_none() && !IN_BUILDING.contains(&r.task))
+            || (task == super::GO_BUILDING && self.unit.path.is_empty())
+    }
+
+    /// 10.2.1 point 5: the building step with 0, for a guest whose building target is a need
+    /// building now and whose task is not 0x68 to 0x6a. Whether it ended the ladder (the guest
+    /// was set out, or sent back to its building). A failed step has reset the goal.
+    pub(super) fn ladder_step(&mut self) -> bool {
+        if !self.heads_for_need() || IN_BUILDING.contains(&self.record().task) {
+            return false;
+        }
+        let b = match &self.unit.part {
+            Part::Guest(g) => g.building,
+            _ => 0,
+        };
+        self.building_step(b, false, None)
     }
 
     /// Ladder point 10.3 and `checkLeaveZoo` (guests 11.1): a guest that is neither leaving nor
