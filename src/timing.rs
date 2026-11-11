@@ -321,6 +321,27 @@ impl Calendar {
         month_end
     }
 
+    /// Moves to the last millisecond of the current month; the next step changes the month.
+    pub(crate) fn skip_to_month_end(&mut self) {
+        let d = self.date();
+        let (year, month) = if d.month == 12 {
+            (d.year + 1, 1)
+        } else {
+            (d.year, d.month + 1)
+        };
+        let next = Date {
+            year,
+            month,
+            day: 1,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            millisecond: 0,
+            ..d
+        };
+        self.elapsed = self.elapsed.max(next.game_ms() - 1);
+    }
+
     /// The game milliseconds since the start and the month flag, for the state hash.
     pub(crate) fn state(&self) -> (i64, bool) {
         (self.elapsed, self.month_changed)

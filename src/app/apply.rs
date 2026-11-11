@@ -179,6 +179,11 @@ impl App<'_> {
                     crate::award::add(&mut game.world.zoo.awards, id);
                 }
             }
+            Command::Month => {
+                if self.game.is_some() {
+                    self.sim.skip_to_month_end();
+                }
+            }
             Command::Key(Key::S, true, _) if self.game.is_some() && self.map_keys() => {
                 self.save_key();
             }
