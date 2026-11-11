@@ -69,13 +69,18 @@ fn the_helicopter_of_the_full_game_scenario_recovers_a_loose_animal() {
     let cat = Catalogue::load(&vfs).unwrap();
     let loaded = Zoo::parse_money_in(&vfs.read(map).unwrap(), &cat).unwrap();
     let mut run = Run::from_vfs(&vfs, &[], cat, loaded, 1, Some(false));
-    let base = run
+    let heli = run
         .world
         .zoo
         .entities
         .iter()
-        .position(|e| e.type_name == "helibase")
-        .expect("the map holds a DRT base");
+        .find_map(|e| e.common.as_ref().filter(|_| e.class == "helicopter"))
+        .map(|c| c.id)
+        .expect("the map holds a helicopter");
+    let Some(Part::Staff(s)) = run.world.units.get(heli).map(|u| &u.part) else {
+        panic!("the helicopter is no staff");
+    };
+    let base = run.world.find(s.heli.base).expect("the DRT base");
     let c = run.world.zoo.entities[base].common.as_ref().unwrap();
     let (bx, by) = (c.x.div_euclid(64), c.y.div_euclid(64));
     let darts = |run: &Run| {
@@ -89,6 +94,14 @@ fn the_helicopter_of_the_full_game_scenario_recovers_a_loose_animal() {
             .fill
     };
     assert_eq!(darts(&run), 0);
+    // An old file stores no movement mode: the helicopter is free all the same.
+    let mode = |run: &Run| {
+        run.world.zoo.entities[run.world.find(heli).unwrap()]
+            .common
+            .as_ref()
+            .map(|c| c.movement_mode)
+    };
+    assert_eq!(mode(&run), Some(1));
     // A stegosaurus (a species the helicopter recovers) on the nearest free tile of the grounds.
     let tiles = (-12..=12).flat_map(|dx| (-12..=12).map(move |dy| (bx + dx, by + dy)));
     let mut near: Vec<_> = tiles.collect();
@@ -120,4 +133,5 @@ fn the_helicopter_of_the_full_game_scenario_recovers_a_loose_animal() {
         1,
         "the helicopter darted the animal within {steps} steps"
     );
+    assert!(matches!(&run.world.units.get(id).unwrap().part, Part::Animal(a) if a.tranq));
 }
