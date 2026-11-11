@@ -1437,3 +1437,16 @@ fn the_parts_found_from_a_line_are_those_of_the_whole_map() {
         }
     }
 }
+
+#[test]
+fn a_loaded_zoo_lists_its_exhibits_by_their_closing_piece() {
+    // The lower exhibit is built first in the file, the upper one (first tile earlier) closes
+    // last: the list keeps the file order, not the order of the first tiles.
+    let mut pieces = square(2, 6, 3, 7);
+    pieces.extend(square(2, 2, 3, 3));
+    let world = loaded(&pieces);
+    let first = world.exhibits().list()[0].order[0];
+    assert!(first / SIZE as usize >= 6);
+    assert_eq!(region(&world, 2, 6), 1);
+    assert_eq!(region(&world, 2, 2), 2);
+}
