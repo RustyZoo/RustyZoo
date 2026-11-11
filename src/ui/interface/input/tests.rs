@@ -334,6 +334,26 @@ fn the_wheel_and_a_press_on_nothing_reach_the_map() {
 }
 
 #[test]
+fn the_scenario_lock_is_apart_from_the_disabled_bit() {
+    use crate::ui::layout::LOCKED;
+    let mut ui = interface("scenario-lock");
+    let bits = |ui: &Interface, id| state(ui, id) & (DISABLED | LOCKED);
+    // An element that is only disabled is not locked: the scenario disable locks it.
+    assert!(ui.disable(20, true) && bits(&ui, 20) == DISABLED);
+    assert!(!ui.unlock(20, true) && bits(&ui, 20) == DISABLED);
+    assert!(ui.lock(20) && bits(&ui, 20) == DISABLED | LOCKED && !ui.lock(20));
+    // Every ordinary enable skips a locked element; an ordinary disable changes nothing.
+    assert!(!ui.disable(20, false) && !ui.disable(20, true));
+    ui.set_enabled(20, true);
+    ui.set_button(20, false, true);
+    assert_eq!(bits(&ui, 20), DISABLED | LOCKED);
+    // The scenario enable clears both bits; the release clears both on any element.
+    assert!(ui.unlock(20, true) && bits(&ui, 20) == 0 && !ui.unlock(20, true));
+    assert!(ui.disable(20, true) && ui.unlock(20, false) && bits(&ui, 20) == 0);
+    assert!(!ui.lock(999) && !ui.unlock(999, false) && !ui.unlock(999, true));
+}
+
+#[test]
 fn disabling_and_hiding_by_id_tell_what_changed_and_a_selected_radio_member_is_deselected() {
     let mut ui = interface("scenario-elements");
     assert!(
@@ -355,7 +375,7 @@ fn disabling_and_hiding_by_id_tell_what_changed_and_a_selected_radio_member_is_d
     // The selected member of a radio set gives way: deselected with its action, so its page goes.
     click(&mut ui, (14, 3));
     assert!(shown(&ui, 31));
-    assert!(ui.disable(21, true));
+    assert!(ui.lock(21));
     assert_eq!(state(&ui, 21) & (SELECTED | DISABLED), DISABLED);
     assert!(!shown(&ui, 31));
     // Hiding and showing a button on its own, and a layout.

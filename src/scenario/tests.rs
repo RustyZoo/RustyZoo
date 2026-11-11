@@ -490,7 +490,7 @@ fn trigger_2_blocks_and_the_question() {
         panic!("{got:?}")
     };
     let want = [
-        (1000, Op::Enable),
+        (1000, Op::Release),
         (1001, Op::Disable),
         (1002, Op::Hide),
         (1003, Op::Show),
@@ -519,7 +519,7 @@ fn trigger_16_acts_on_the_first_lower_case_letter_of_each_value() {
     };
     let want = [
         (1, Op::Disable),
-        (2, Op::Enable),
+        (2, Op::Release),
         (3, Op::Hide),
         (4, Op::Show),
     ];

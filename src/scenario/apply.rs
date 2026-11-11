@@ -79,15 +79,15 @@ impl Marks {
                 let mut changed = false;
                 for (id, op) in ops {
                     let did = match op {
-                        Op::Disable | Op::Enable => {
-                            let off = op == Op::Disable;
-                            let did = ui.disable(id, off);
-                            self.disabled.retain(|&d| d != id);
-                            if did && off {
+                        Op::Disable => {
+                            let did = ui.lock(id);
+                            if did && !self.disabled.contains(&id) {
                                 self.disabled.push(id);
                             }
                             did
                         }
+                        Op::Enable => ui.unlock(id, true),
+                        Op::Release => ui.unlock(id, false),
                         Op::Hide | Op::Show => {
                             let hide = op == Op::Hide;
                             let did = ui.conceal(id, hide);
@@ -99,6 +99,7 @@ impl Marks {
                         }
                     };
                     if did {
+                        let op = if op == Op::Release { Op::Enable } else { op };
                         log.push(format!("scenario element {id} {op:?}").to_lowercase());
                     }
                     changed |= did;
@@ -214,7 +215,7 @@ impl Marks {
     /// stays hidden: only its mark goes, so the next show of its layout brings it back.
     pub(crate) fn clean(&mut self, ui: &mut Interface) {
         for id in self.disabled.drain(..) {
-            ui.disable(id, false);
+            ui.unlock(id, false);
         }
         self.hidden.clear();
         if let Some(hint) = self.hint.take() {

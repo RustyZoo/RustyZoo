@@ -1,25 +1,50 @@
 //! What the scenarios do to elements by id: disable, hide, and read a row of a list.
 
 use super::Interface;
-use crate::ui::layout::{DISABLED, HIDDEN, Kind, NEVER_SHOWN, SELECTED};
+use crate::ui::layout::{DISABLED, HIDDEN, Kind, LOCKED, NEVER_SHOWN, SELECTED};
 
 impl Interface {
-    /// Disables (`off`) or enables the element `id`; whether it changed. A selected member of a
-    /// radio set is deselected as it is disabled, and so are the others of its set. `false` for an
-    /// element that does not exist.
+    /// The ordinary disable (`off`) or enable of the element `id`; whether it changed. Enabling a
+    /// locked element does nothing. `false` for an element that does not exist.
     pub(crate) fn disable(&mut self, id: i32, off: bool) -> bool {
         let Some(i) = self.tree.find(id) else {
             return false;
         };
+        let was = self.tree.elements[i].state;
+        self.flag(i, DISABLED, off);
+        self.tree.elements[i].state != was
+    }
+
+    /// The scenario disable: locks and disables the element `id` unless it is locked, taking a
+    /// selected radio member off its set; whether it changed. `false` for an element that does not
+    /// exist.
+    pub(crate) fn lock(&mut self, id: i32) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
         let state = self.tree.elements[i].state;
-        if (state & DISABLED != 0) == off {
+        if state & LOCKED != 0 {
             return false;
         }
-        if off && state & SELECTED != 0 && !self.radio_members(i).is_empty() {
+        if state & SELECTED != 0 && !self.radio_members(i).is_empty() {
             self.radio_deselect_all(i);
         }
-        self.flag(i, DISABLED, off);
+        self.flag(i, DISABLED | LOCKED, true);
         true
+    }
+
+    /// Clears the lock and the disabled bit of the element `id`; with `only_locked` an element
+    /// that is not locked is left as it is. Whether it changed.
+    pub(crate) fn unlock(&mut self, id: i32, only_locked: bool) -> bool {
+        let Some(i) = self.tree.find(id) else {
+            return false;
+        };
+        let was = self.tree.elements[i].state;
+        if only_locked && was & LOCKED == 0 {
+            return false;
+        }
+        self.flag(i, DISABLED | LOCKED, false);
+        self.tree.elements[i].state != was
     }
 
     /// Hides (`hide`) or shows the element `id` on its own, a layout with what it holds; whether
