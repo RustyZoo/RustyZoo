@@ -327,6 +327,11 @@ pub(crate) fn fill(world: &World, start: usize) -> Vec<usize> {
 /// 3.8): a line is closed by the earlier in the file of the exhibit fence pieces on its two slots.
 /// The tile inside, the tile across and the tile of the closing piece.
 pub(crate) fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usize, usize)> {
+    closing_line(world, tiles).map(|l| l.1)
+}
+
+/// [`closed_last`] with the file index of the closing piece.
+fn closing_line(world: &World, tiles: &[usize]) -> Option<(usize, (usize, usize, usize))> {
     let inside: std::collections::HashSet<usize> = tiles.iter().copied().collect();
     let mut last: Option<(usize, (usize, usize, usize))> = None;
     for &t in tiles {
@@ -346,7 +351,7 @@ pub(crate) fn closed_last(world: &World, tiles: &[usize]) -> Option<(usize, usiz
             }
         }
     }
-    last.map(|l| l.1)
+    last
 }
 
 /// The boundary pairs of the tile list `order` (3.1): for each tile, for the sides 0, 2, 4, 6, the
@@ -556,10 +561,10 @@ pub(crate) fn assert_same_parts(world: &World, near: &[Part]) {
 }
 
 impl Exhibits {
-    /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their first
-    /// tile. A region that holds the entrance tile or a tile beyond the zoo wall is the zoo
-    /// grounds (the gate buildings join the exterior to the grounds), and the tiles beyond the
-    /// wall are marked [`EXTERIOR`] in it.
+    /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their closing
+    /// piece in the file (3.8.1). A region that holds the entrance tile or a tile beyond the zoo
+    /// wall is the zoo grounds (the gate buildings join the exterior to the grounds), and the
+    /// tiles beyond the wall are marked [`EXTERIOR`] in it.
     pub(crate) fn new(world: &World) -> Exhibits {
         let mut found = Exhibits {
             region: vec![GROUNDS; world.zoo.tiles.len()],
@@ -568,12 +573,14 @@ impl Exhibits {
             grounds: rating::State::new(),
             ..Exhibits::default()
         };
-        // A loaded exhibit is filled from its tile on the line the file closes last (3.8).
-        for part in parts(world).into_iter().filter(|p| !p.grounds) {
-            let start =
-                closed_last(world, &part.tiles)
-                    .map(|l| l.0)
-                    .or(part.tiles.iter().copied().min());
+        // A loaded exhibit is filled from its tile on the line the file closes last (3.8) and
+        // listed in the order of those closing pieces (3.8.1).
+        let mut parts: Vec<_> = (parts(world).into_iter().filter(|p| !p.grounds))
+            .map(|p| (closing_line(world, &p.tiles), p))
+            .collect();
+        parts.sort_by_key(|(line, _)| line.map(|l| l.0));
+        for (line, part) in parts {
+            let start = (line.map(|l| l.1.0)).or(part.tiles.iter().copied().min());
             let size = part.tiles.len();
             let tiles = start.map_or(part.tiles, |s| fill(world, s));
             debug_assert_eq!(tiles.len(), size, "the fill finds the region");

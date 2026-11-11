@@ -1375,9 +1375,10 @@ fn a_corner_pinch_on_a_pair_outside_the_zoo_ends_the_walk_with_no_gate() {
     let mut world = World::new(z, shape);
     assert!(!world.in_zoo(3 * SIZE as usize + 5), "beyond the wall");
     assert!(world.in_zoo(3 * SIZE as usize + 4), "the ring");
-    assert_eq!(names(&world)[0].2, ring.len());
+    // The hole closes first in the file, so the ring is the second exhibit.
+    assert_eq!(names(&world)[1].2, ring.len());
     assert_eq!(world.take_events(), []);
-    assert_eq!(world.exhibits().get(1).unwrap().gate, None);
+    assert_eq!(world.exhibits().get(2).unwrap().gate, None);
 }
 
 /// The tiles of each part that is not the grounds, sorted, by first tile.
@@ -1436,4 +1437,17 @@ fn the_parts_found_from_a_line_are_those_of_the_whole_map() {
             });
         }
     }
+}
+
+#[test]
+fn a_loaded_zoo_lists_its_exhibits_by_their_closing_piece() {
+    // The lower exhibit is built first in the file, the upper one (first tile earlier) closes
+    // last: the list keeps the file order, not the order of the first tiles.
+    let mut pieces = square(2, 6, 3, 7);
+    pieces.extend(square(2, 2, 3, 3));
+    let world = loaded(&pieces);
+    let first = world.exhibits().list()[0].order[0];
+    assert!(first / SIZE as usize >= 6);
+    assert_eq!(region(&world, 2, 6), 1);
+    assert_eq!(region(&world, 2, 2), 2);
 }

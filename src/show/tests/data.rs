@@ -14,8 +14,8 @@ use crate::world::World;
 use crate::zoo::Zoo;
 
 /// The show tank of `scn28` and the plain tank linked to it.
-const SHOW: u32 = 3;
-const PLAIN: u32 = 2;
+const SHOW: u32 = 2;
+const PLAIN: u32 = 1;
 
 fn open_install() -> Vfs {
     let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
