@@ -10,6 +10,8 @@
 #   play     ci/check-playable.sh with ci/playable-full.txt on $ZT_DATA_DIR (the
 #            full game; about eight minutes); skipped when unset
 #   play-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
+#   dung     the first dung on maps/med_kids.zoo of $ZT_DATA_DIR (seed 1) comes between steps 600 and 650,
+#            where the original's two runs put it (612 and 616); skipped when unset
 #   scen     ci/check-scenarios.sh and ci/check-ends.sh on $ZT_DATA_DIR (every scenario and map plays a
 #            month, a scenario is won and one lost; about eight minutes); skipped when unset
 #   scen-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
@@ -70,6 +72,12 @@ play_step() { # play_step <game folder>
   ci/check-playable.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$1" ci/playable-full.txt
 }
 
+dung_step() { # the first `animal dung` line of the map, as `step N animal dung ...`
+  first=$("${CARGO_TARGET_DIR:-target}/release/rustyzoo" --data "$ZT_DATA_DIR" sim maps/med_kids.zoo --seed 1 --ticks 700 --log | awk '$3 == "animal" && $4 == "dung" { print $2; exit }')
+  echo "first dung at step ${first:-none}"
+  [ "${first:--1}" -ge 600 ] && [ "${first:--1}" -le 650 ]
+}
+
 scen_step() { # scen_step <game folder>...
   bin=${CARGO_TARGET_DIR:-target}/release/rustyzoo
   status=0
@@ -100,6 +108,7 @@ long=()
 if [ -n "${ZT_DATA_DIR:-}" ]; then long+=(play); else skip play "ZT_DATA_DIR is not set"; fi
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then long+=(play-fr); else skip play-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "${ZT_DATA_DIR:-}" ]; then long+=(scen); else skip scen "ZT_DATA_DIR is not set"; fi
+if [ -n "${ZT_DATA_DIR:-}" ]; then long+=(dung); else skip dung "ZT_DATA_DIR is not set"; fi
 if [ -n "${ZT_DATA_DIR_FR:-}" ]; then long+=(scen-fr); else skip scen-fr "ZT_DATA_DIR_FR is not set"; fi
 if [ -n "$trials" ]; then long+=(trials play-trials scen-trials); else
   skip trials "no trials dir given"
@@ -113,6 +122,7 @@ if [ ${#long[@]} != 0 ] && step build cargo build --release; then
     play-fr) run play-fr play_step "$ZT_DATA_DIR_FR" & ;;
     trials) run trials trials_step & ;;
     play-trials) run play-trials play_trials_step & ;;
+    dung) run dung dung_step & ;;
     scen) run scen scen_step "$ZT_DATA_DIR" & ;;
     scen-fr) run scen-fr scen_step "$ZT_DATA_DIR_FR" & ;;
     scen-trials) run scen-trials scen_step "$trials/base-trial" "$trials/expansion-trial" & ;;
