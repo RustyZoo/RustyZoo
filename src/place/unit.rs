@@ -143,6 +143,7 @@ pub(crate) fn pending(
         aim,
         price(t, october),
         form,
+        false,
     )
 }
 
@@ -190,6 +191,7 @@ pub(crate) fn carried(
             Some(crate::unit::Part::Animal(a)) if a.crated => Form::Crate,
             _ => Form::Plain,
         },
+        matches!(world.units.get(carry.id).map(|u| &u.part), Some(crate::unit::Part::Animal(a)) if a.rampaging),
     )
 }
 
@@ -211,6 +213,7 @@ fn pending_of(
     aim: Aim,
     price: f32,
     form: Form,
+    rampaging: bool,
 ) -> Option<Pending> {
     let t = cat.types.get(ty)?;
     let ground = (
@@ -244,7 +247,7 @@ fn pending_of(
         blocking: Vec::new(),
         wall: 0,
     };
-    check(&mut p, world, t, water, lifted.is_some(), form);
+    check(&mut p, world, t, water, lifted.is_some(), (form, rampaging));
     Some(p)
 }
 
@@ -358,7 +361,14 @@ fn lets_through(world: &World, object: usize) -> bool {
 /// The checks of 6.1 for an animal (6.2: a crate may stand on the zoo grounds), of 6.3 for a staff
 /// member or of 6.4 for a guest, in order. `tanked`: the tank point found a tank, so the unit is in
 /// tank mode.
-fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked: bool, form: Form) {
+fn check(
+    p: &mut Pending,
+    world: &World,
+    t: &EntityType,
+    water: &[bool],
+    tanked: bool,
+    (form, rampaging): (Form, bool),
+) {
     let crated = form == Form::Crate;
     let staff = staff::is_staff(t);
     let guest = t.class == "guests";
@@ -469,6 +479,28 @@ fn check(p: &mut Pending, world: &World, t: &EntityType, water: &[bool], tanked:
             fail(p, Some(super::IN_THE_WAY));
             if !p.blocking.contains(&i) {
                 p.blocking.push(i);
+            }
+        }
+        // Only a tall unit that is not rampaging is not let through by the transients (a sparkle,
+        // a ripple) of a list that holds a unit: it collects them too (6.1 point 5.3).
+        if flag("cTall") && !rampaging {
+            for (i, e) in world.zoo.entities.iter().enumerate() {
+                let (Some(c), Some(s)) = (e.common.as_ref(), world.shape(i)) else {
+                    continue;
+                };
+                let on = world.tile_index(c.x.div_euclid(64), c.y.div_euclid(64));
+                let taken = |t: usize| {
+                    units.iter().any(|u| {
+                        world.tile_index(u.1.div_euclid(64), u.2.div_euclid(64)) == Some(t)
+                    })
+                };
+                if s.kind == Kind::Sparkle
+                    && !s.walkable.1
+                    && on.is_some_and(|t| tiles.contains(&t) && taken(t))
+                    && !p.blocking.contains(&i)
+                {
+                    p.blocking.push(i);
+                }
             }
         }
     }
