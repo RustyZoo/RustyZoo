@@ -727,8 +727,8 @@ pub(crate) enum Read {
 /// of the tick so far and the generator.
 pub(crate) type Reader<'a> = &'a mut dyn FnMut(Read, &Animal, &Meal, &mut Env, &mut Rng);
 
-#[cfg(test)]
 /// [`run_with`] with the reads of the exhibit made by `read` where the checks need them.
+#[cfg(test)]
 pub(crate) fn run_read(
     a: &mut Animal,
     k: &Keys,
