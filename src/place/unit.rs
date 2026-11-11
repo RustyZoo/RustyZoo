@@ -335,7 +335,8 @@ pub(crate) fn units_on(world: &World, tiles: &[usize]) -> Vec<(usize, i32, i32, 
 }
 
 /// Placing 5.2 item 4: whether the unit at `i` lets an object of type `t` through: the
-/// helicopter, a tall unit when the type has `walkableByTall` 1, a rampaging animal when the type
+/// unit moving in the air (movement mode 1, whatever its class: the helicopter, a unit on a
+/// tank ladder), a tall unit when the type has `walkableByTall` 1, a rampaging animal when the type
 /// has `cRubbleable` 1 (the default), and an animal whose species has `cRampageChance` above 0
 /// when the object is rubble.
 pub(super) fn lets_through_object(world: &World, i: usize, t: &EntityType) -> bool {
@@ -343,7 +344,7 @@ pub(super) fn lets_through_object(world: &World, i: usize, t: &EntityType) -> bo
     let unit = (e.common.as_ref()).and_then(|c| world.units.get(c.id));
     let rampaging =
         unit.is_some_and(|u| matches!(&u.part, crate::unit::Part::Animal(a) if a.rampaging));
-    e.class == "helicopter"
+    e.common.as_ref().is_some_and(|c| c.movement_mode == 1)
         || unit.is_some_and(|u| u.mover.tall) && number(t, "walkableByTall") == Some(1.0)
         || rampaging && number(t, "cRubbleable").is_none_or(|n| n == 1.0)
         || t.class == "rubble" && unit.is_some_and(|u| u.mover.rampager)

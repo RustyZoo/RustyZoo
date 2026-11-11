@@ -1705,7 +1705,11 @@ fn a_walkable_type_ignores_units_but_a_refused_place_collects_every_unit_on_its_
 #[test]
 fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refused() {
     let cat = catalogue();
-    let heli = || vec![entity("helicopter", "heli", 3 * 64 + 20, 2 * 64 + 50, 0)];
+    let heli = || {
+        let mut h = entity("helicopter", "heli", 3 * 64 + 20, 2 * 64 + 50, 0);
+        h.common.as_mut().unwrap().movement_mode = 1;
+        vec![h]
+    };
     let kiosk = |w: &World| at(w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10).unwrap();
     let p = kiosk(&world((0, 0), heli(), |_| {}));
     assert_eq!(
@@ -1715,6 +1719,31 @@ fn the_helicopter_lets_objects_through_but_is_collected_when_the_place_is_refuse
     let p = kiosk(&world((0, 0), heli(), |t| t[2 * 8 + 3].shape = 0x50));
     assert_eq!((p.verdict, p.message), (Verdict::Invalid, Some(IN_THE_WAY)));
     assert_eq!(p.blocking, [0]);
+}
+
+#[test]
+fn a_unit_in_movement_mode_1_lets_objects_through_whatever_its_class() {
+    let cat = catalogue();
+    let kiosk = |mode: u32| {
+        let mut unit = entity("animals", "elephant", 3 * 64 + 20, 2 * 64 + 50, 0);
+        unit.common.as_mut().unwrap().movement_mode = mode;
+        let w = world((0, 0), vec![unit], |_| {});
+        at(&w, &cat, 15, 0, 3 * 64 + 10, 2 * 64 + 10)
+            .unwrap()
+            .verdict
+    };
+    let modes = [0, 1, 2, 3, u32::MAX];
+    let got = modes.map(kiosk);
+    assert_eq!(
+        got,
+        [
+            Verdict::Invalid,
+            Verdict::Valid,
+            Verdict::Invalid,
+            Verdict::Invalid,
+            Verdict::Invalid
+        ]
+    );
 }
 
 #[test]
