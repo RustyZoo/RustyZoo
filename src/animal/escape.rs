@@ -299,20 +299,17 @@ pub(crate) fn habitat_rampage(
     true
 }
 
-/// What a tick of the checks asks after its escape check (animals 11), in the order of animals
-/// 4.2: the status dates a loose animal's escape, a rampage that ended is cleared, an animal on
-/// water is sent off it, the predator dispatch (11.7, which reads `task`, the goal task from
-/// before the check), then the bored step (`bored`, which sees the dispatch's effects), then the
-/// water check's mode switch, then the fence test, which starts when the zap draw succeeded
-/// (11.10).
-pub(crate) fn after(
+/// What a tick of the checks asks right after its escape check (animals 11, 4.2): the status
+/// dates a loose animal's escape, a rampage that ended is cleared, an animal on water is sent off
+/// it, then the predator dispatch (11.7, which reads `task`, the goal task from before the
+/// check). The checks that follow, the bored check among them, read what it wrote (21.1 point 10).
+pub(crate) fn before(
     unit: &mut Unit,
     world: &mut World,
     ctx: &mut Ctx,
     at: usize,
     data: &dyn Data,
-    (out, k, task): (&Out, &Keys, u8),
-    bored: impl FnOnce(&mut Unit, &mut World, &mut Ctx),
+    (out, task): (&Out, u8),
 ) {
     world.units.loose |= out.loose;
     if out.calm {
@@ -325,7 +322,18 @@ pub(crate) fn after(
     if out.fired {
         dispatch::run(unit, world, ctx, at, data, task);
     }
-    bored(unit, world, ctx);
+}
+
+/// What a tick asks after its bored check: the water check's mode switch, then the fence test,
+/// which starts when the zap draw succeeded (11.10).
+pub(crate) fn finish(
+    unit: &mut Unit,
+    world: &mut World,
+    ctx: &mut Ctx,
+    at: usize,
+    data: &dyn Data,
+    (out, k): (&Out, &Keys),
+) {
     if let Some(change) = out.terrain {
         super::tank::switch(unit, world, ctx, at, data, change);
     }

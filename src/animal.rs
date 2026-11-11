@@ -727,6 +727,7 @@ pub(crate) enum Read {
 /// of the tick so far and the generator.
 pub(crate) type Reader<'a> = &'a mut dyn FnMut(Read, &Animal, &Meal, &mut Env, &mut Rng);
 
+#[cfg(test)]
 /// [`run_with`] with the reads of the exhibit made by `read` where the checks need them.
 pub(crate) fn run_read(
     a: &mut Animal,
@@ -737,6 +738,24 @@ pub(crate) fn run_read(
     birth: breed::Birth,
     read: Reader,
 ) -> Out {
+    let (mut out, go) = run_head(a, k, class, env, rng, birth, read);
+    if go {
+        run_tail(a, k, class, env, rng, &mut out, read);
+    }
+    out
+}
+
+/// The checks of a tick up to and with the escape check (animals 4.2); the flag says the tick goes
+/// on with [`run_tail`], after the predator dispatch that the escape check asks for.
+pub(crate) fn run_head(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &mut Env,
+    rng: &mut Rng,
+    birth: breed::Birth,
+    read: Reader,
+) -> (Out, bool) {
     let mut out = Out {
         meal: env.meal.clone(),
         ..Out::default()
@@ -747,7 +766,7 @@ pub(crate) fn run_read(
             life::health(a, k, class, env, rng, &mut out, read);
         }
         a.exhibit_bit(a.crated || env.grounds);
-        return out;
+        return (out, false);
     }
     if class.reset_interval > 0 {
         a.reset = a.reset.saturating_sub(1);
@@ -771,7 +790,7 @@ pub(crate) fn run_read(
     if a.dying {
         // Removed unless its death set still runs.
         out.remove |= !(env.sets.dying_now || out.sets.contains(&"bDie"));
-        return out;
+        return (out, false);
     }
     // The keeper's visit and the mourning, at most once each.
     if std::mem::take(&mut a.keeper_visited) {
@@ -785,23 +804,37 @@ pub(crate) fn run_read(
         a.fed = env.now;
     }
     escape::check(a, k, class, env, rng, &mut out);
+    (out, true)
+}
+
+/// The checks after the escape check and its dispatch (animals 4.2), the bored check among them
+/// with `env.sight` read after the dispatch (21.1 point 10).
+pub(crate) fn run_tail(
+    a: &mut Animal,
+    k: &Keys,
+    class: &Class,
+    env: &mut Env,
+    rng: &mut Rng,
+    out: &mut Out,
+    read: Reader,
+) {
     if a.eating {
-        food::bite(a, k, env, rng, &mut out, read);
+        food::bite(a, k, env, rng, out, read);
     }
-    food::hunger(a, k, class, env, rng, &mut out, read);
+    food::hunger(a, k, class, env, rng, out, read);
     tank::breath(a, k, class, env);
     tank::murky(a, k, class, env);
-    life::health(a, k, class, env, rng, &mut out, read);
-    life::sleep(a, k, class, env, &mut out);
-    captivity(a, k, class, env, rng, &mut out, read);
+    life::health(a, k, class, env, rng, out, read);
+    life::sleep(a, k, class, env, out);
+    captivity(a, k, class, env, rng, out, read);
     social(a, k, class, env, rng, &out.meal, read);
     fire(&mut a.counters[KEEPER], class.periods[KEEPER]);
     habitat(a, k, class, env, &mut out.messages);
-    bored(a, k, class, env, rng, &mut out);
+    bored(a, k, class, env, rng, out);
     out.terrain = tank::water(a, k, class, env, rng);
-    shelter(a, k, class, env, rng, &mut out);
+    shelter(a, k, class, env, rng, out);
     other(a, k, class, env);
-    zap(a, k, class, env, rng, &mut out);
+    zap(a, k, class, env, rng, out);
     if fire(&mut a.counters[MESSAGE], class.periods[MESSAGE]) && a.happiness < -60 {
         out.messages.push(NOT_HAPPY);
     }
@@ -810,5 +843,4 @@ pub(crate) fn run_read(
         true => a.exhibit_bit(true),
         false => a.unmark(NEEDS_EXHIBIT),
     }
-    out
 }

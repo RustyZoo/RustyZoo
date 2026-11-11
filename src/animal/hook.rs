@@ -334,6 +334,42 @@ fn bored_after(
     }
 }
 
+/// The reads of the exhibit the checks of a tick ask for (the world is shared with `birth`).
+fn reader<'a>(
+    shared: &'a std::cell::RefCell<&mut World>,
+    cat: &'a Catalogue,
+    (id, at): (u32, usize),
+    (k, class, key): (&'a Keys, &'a Class, &'a str),
+    (x, tx, ty_): (Option<u32>, i32, i32),
+) -> impl FnMut(Read, &Animal, &Meal, &mut Env, &mut Rng) + 'a {
+    move |r, a, meal, env, rng| {
+        let mut world = shared.borrow_mut();
+        match r {
+            Read::Pile => env.piled = dirt::put_down(&mut world, cat, rng, id, at, k),
+            Read::Trample => {
+                trample(&mut world, (tx, ty_), class.trample, id);
+            }
+            _ => {
+                if let Some(x) = x {
+                    read_exhibit(&mut world, cat, (r, x, at), (a, meal, key), env, rng);
+                }
+            }
+        }
+    }
+}
+
+/// Tells the log words of the checks so far, and the escape to the list of escapes.
+fn flush(world: &mut World, id: u32, out: &mut Out) {
+    for word in std::mem::take(&mut out.log) {
+        if word == "escape" {
+            world.units.escapes.retain(|&e| e != id);
+            world.units.escapes.push(id);
+            world.units.post(ESCAPED, id);
+        }
+        world.units.tell(format!("{word} {id}"));
+    }
+}
+
 /// The conditional checks of a status tick (animals 4.2).
 pub(crate) fn checks(
     unit: &mut Unit,
@@ -344,7 +380,6 @@ pub(crate) fn checks(
 ) {
     boxed::check(unit, world, ctx, at, data);
     let task = unit.goal.record.task;
-    let sight = sight(unit, world, ctx, at, data);
     let meal = food::meal(unit, world, ctx.cat, data, at);
     let sets = life::sets(unit, world, data, at);
     let cannot_act = !life::can_act(unit, world, ctx.cat, at);
@@ -378,7 +413,6 @@ pub(crate) fn checks(
         cannot_act,
         now: world.units.now,
         busy,
-        sight,
         tank_mode: unit.tank,
         food_task: matches!(task, 114 | 115),
         meal,
@@ -422,35 +456,40 @@ pub(crate) fn checks(
     }
     let id = unit.id;
     let cat = ctx.cat;
-    let shared = std::cell::RefCell::new(&mut *world);
-    let mut birth = |father: &mut Animal, rng: &mut Rng| {
-        let mut world = shared.borrow_mut();
-        breed::born(
-            father,
-            id,
-            (&mut **world, cat, data),
-            (at, k.baby_born_change),
-            rng,
-        )
-    };
-    let mut read = |r: Read, a: &Animal, meal: &Meal, env: &mut Env, rng: &mut Rng| {
-        let mut world = shared.borrow_mut();
-        match r {
-            Read::Pile => env.piled = dirt::put_down(&mut world, cat, rng, id, at, &k),
-            Read::Trample => {
-                trample(&mut world, (tx, ty_), class.trample, id);
-            }
-            _ => {
-                if let Some(x) = x {
-                    read_exhibit(&mut world, cat, (r, x, at), (a, meal, &key), env, rng);
-                }
-            }
-        }
-    };
     let breath = a.breath;
-    let mut out = run_read(a, &k, &class, &mut env, ctx.rng, &mut birth, &mut read);
-    if a.breath != breath {
-        world.units.tell(format!("breath {id} {}", a.breath));
+    let (mut out, go) = {
+        let shared = std::cell::RefCell::new(&mut *world);
+        let mut birth = |father: &mut Animal, rng: &mut Rng| {
+            let mut world = shared.borrow_mut();
+            breed::born(
+                father,
+                id,
+                (&mut **world, cat, data),
+                (at, k.baby_born_change),
+                rng,
+            )
+        };
+        let mut read = reader(&shared, cat, (id, at), (&k, &class, &key), (x, tx, ty_));
+        run_head(a, &k, &class, &mut env, ctx.rng, &mut birth, &mut read)
+    };
+    flush(world, id, &mut out);
+    escape::before(unit, world, ctx, at, data, (&out, task));
+    if go {
+        // The checks that follow see the dispatch's effects (animals 21.1 point 10).
+        env.sight = sight(unit, world, ctx, at, data);
+        let Part::Animal(a) = &mut unit.part else {
+            return;
+        };
+        {
+            let shared = std::cell::RefCell::new(&mut *world);
+            let mut read = reader(&shared, cat, (id, at), (&k, &class, &key), (x, tx, ty_));
+            run_tail(a, &k, &class, &mut env, ctx.rng, &mut out, &mut read);
+        }
+        if a.breath != breath {
+            world.units.tell(format!("breath {id} {}", a.breath));
+        }
+        flush(world, id, &mut out);
+        bored_after(unit, world, ctx, at, data, &out);
     }
     let meal = std::mem::take(&mut out.meal);
     if let Some(b) = out.shelter {
@@ -460,18 +499,7 @@ pub(crate) fn checks(
     if out.boost_used {
         world.units.cheat.breeding_boost = false;
     }
-    for word in &out.log {
-        if *word == "escape" {
-            world.units.escapes.retain(|&e| e != id);
-            world.units.escapes.push(id);
-            world.units.post(ESCAPED, id);
-        }
-        world.units.tell(format!("{word} {id}"));
-    }
-    let bored = |unit: &mut Unit, world: &mut World, ctx: &mut Ctx| {
-        bored_after(unit, world, ctx, at, data, &out);
-    };
-    escape::after(unit, world, ctx, at, data, (&out, &k, task), bored);
+    escape::finish(unit, world, ctx, at, data, (&out, &k));
     for m in out.messages {
         world.units.post(m, unit.id);
         world.units.tell(format!("message {m} {}", unit.id));

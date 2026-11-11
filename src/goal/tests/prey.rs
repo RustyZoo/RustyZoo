@@ -47,12 +47,20 @@ fn seeded<R>(w: &mut World, id: u32, seed: u32, f: impl FnOnce(&mut Cx) -> R) ->
 
 /// One status tick of unit `id` whose only due check is the bored check; the draws it made.
 fn bored(w: &mut World, id: u32) -> usize {
+    tick(w, id, false)
+}
+
+/// The same, with the escape check due too when `escape`.
+fn tick(w: &mut World, id: u32, escape: bool) -> usize {
     let (cat, data, mut rng) = (cat(), sets(), Rng::default());
     let mut u = w.units.get(id).unwrap().clone();
     let at = w.find(id).unwrap();
     if let Part::Animal(a) = &mut u.part {
         a.counters.fill(1000);
         a.counters[BORED] = 0;
+        if escape {
+            a.counters[crate::animal::ESCAPE] = 0;
+        }
         a.zap = 1000;
     }
     let (events, mut removals) = (Events::default(), Vec::new());
@@ -82,6 +90,19 @@ fn the_bored_check_frightens_an_animal_that_sees_a_threat_without_a_draw() {
     let mut w = zoo(&[(ALLO, "allo", (13, 10)), (VELO, "velocira", (10, 10))]);
     bored(&mut w, VELO);
     assert!(!unit_of(&w, VELO).frightened);
+}
+
+#[test]
+fn the_bored_check_reads_its_sight_after_the_dispatch_of_the_same_tick() {
+    // 21.1 point 10.7: the dispatch raises afraid on the threat, so the bored check, which
+    // skips its searches, goes on to its draw.
+    let mut w = zoo(&[(ALLO, "allo", (13, 10)), (VELO, "velocira", (10, 10))]);
+    loose(&mut w, ALLO);
+    let draws = tick(&mut w, VELO, true);
+    assert!(unit_of(&w, VELO).frightened);
+    let mut w = zoo(&[(ALLO, "allo", (13, 10)), (VELO, "velocira", (10, 10))]);
+    loose(&mut w, ALLO);
+    assert_eq!(tick(&mut w, VELO, false) + 1, draws, "one draw more");
 }
 
 #[test]
