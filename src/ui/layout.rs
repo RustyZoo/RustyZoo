@@ -37,6 +37,8 @@ pub(crate) const HIDDEN: u32 = 1;
 pub(crate) const DISABLED: u32 = 2;
 /// State flag: the pointer is over the element.
 pub const HIGHLIGHTED: u32 = 4;
+/// State flag: the scenario lock (3.5), kept apart from `DISABLED`; the ordinary enable skips it.
+pub(crate) const LOCKED: u32 = 524_288;
 /// State flag: a button is drawn pressed.
 pub const SELECTED: u32 = 8;
 /// State flag: not shown when its layout is shown.
