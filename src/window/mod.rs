@@ -74,6 +74,8 @@ pub struct Flags<'a> {
     pub fill: &'a crate::layout::Fill,
     /// `--bare`: the game shows the map view alone.
     pub bare: bool,
+    /// `--map`: the file opens as a bare map, with no research and no scenario resume.
+    pub map: bool,
     /// `--seed`: a test run, the generator seeded from this number.
     pub seed: Option<u32>,
 }
@@ -196,7 +198,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
-            app.continue_game(zoo, money, menu);
+            app.start_run(zoo, money, menu, flags.map);
             app
         }
         (None, Some(booted)) => {

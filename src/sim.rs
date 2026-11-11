@@ -313,9 +313,14 @@ impl Sim {
         self.hire_male = self.rng.rand() & 1 == 1;
     }
 
-    /// The AI clock held is 0, as in a process that has played nothing.
-    pub(crate) fn forget_ticks(&mut self) {
-        self.ai_ticks = 0;
+    /// The AI clock held is 0, as in a process that has played nothing; the clock it had.
+    pub(crate) fn forget_ticks(&mut self) -> u32 {
+        std::mem::take(&mut self.ai_ticks)
+    }
+
+    /// The AI clock as [`Sim::forget_ticks`] gave it.
+    pub(crate) fn set_ticks(&mut self, ticks: u32) {
+        self.ai_ticks = ticks;
     }
 
     /// A game on a map of `tiles` tiles that stores these clocks: the total time starts again, the

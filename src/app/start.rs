@@ -256,20 +256,27 @@ impl App<'_> {
 
     /// Opens the game that was read, or tells why it was not. Whether it opened.
     pub(super) fn open(&mut self, start: &Start, read: Result<(Zoo, Money), String>) -> bool {
-        // A saved game loads its research section; a start ignores it (research 7.4).
-        let saved = start.scenario.is_none();
-        let opened = read.and_then(|(zoo, money)| self.open_zoo(zoo, money, saved));
-        match opened {
-            Ok(()) => {
-                self.loaded_check();
-                self.begin(start);
-                true
-            }
+        match self.open_read(start, read) {
+            Ok(()) => true,
             Err(why) => {
                 self.say(&why);
                 false
             }
         }
+    }
+
+    /// [`App::open`] that leaves telling the failure to the caller.
+    fn open_read(
+        &mut self,
+        start: &Start,
+        read: Result<(Zoo, Money), String>,
+    ) -> Result<(), String> {
+        // A saved game loads its research section; a start ignores it (research 7.4).
+        let saved = start.scenario.is_none();
+        read.and_then(|(zoo, money)| self.open_zoo(zoo, money, saved))?;
+        self.loaded_check();
+        self.begin(start);
+        Ok(())
     }
 
     /// The first of the end of the start-up (main menu 3.5 points 1 to 3, 7, 8): the tutorial that
@@ -325,17 +332,32 @@ impl App<'_> {
 
     /// The file a run starts on, opened as Continue does (research, scenario resume, the load's
     /// checks), with the menu `music` fading as the game starts. The window and the headless run
-    /// share it. A file that does not load says why and the map as read stays. Whether it opened.
+    /// share it. A file that does not load (its scenario is not installed) is a warning: the map
+    /// as read stays, with its own money.
     pub fn continue_game(&mut self, zoo: Zoo, money: Money, music: Option<Music>) -> bool {
         // A process that has played nothing holds the AI clock at 0 (zoo format 6.4).
-        self.sim.forget_ticks();
+        let ticks = self.sim.forget_ticks();
         self.music = music;
-        let opened = self.open(&Start::load(""), Ok((zoo, money)));
-        if !opened {
+        let opened = self.open_read(&Start::load(""), Ok((zoo, money.clone())));
+        if let Err(why) = &opened {
+            eprintln!("rustyzoo: warning: {why}; the file opens as a map");
+            self.sim.set_ticks(ticks);
+            self.set_money(money);
             let music = self.music.take();
             self.start_game(music);
         }
-        opened
+        opened.is_ok()
+    }
+
+    /// The file a run starts on: [`App::continue_game`], or with `as_map` the map as read, with no
+    /// research and no scenario resume.
+    pub fn start_run(&mut self, zoo: Zoo, money: Money, music: Option<Music>, as_map: bool) {
+        if as_map {
+            self.set_money(money);
+            self.start_game(music);
+        } else {
+            self.continue_game(zoo, money, music);
+        }
     }
 
     /// `scenario FILE` of a script: the menu starts the scenario as its Play button does. Without a
@@ -373,8 +395,10 @@ impl App<'_> {
         if let (Some(ui), Some(menu)) = (&mut self.ui, &mut self.menu) {
             menu.hide(ui, start.forget_last);
         }
-        self.menu_events
-            .push(format!("game start {} {}", start.label, start.path));
+        if self.menu.is_some() {
+            self.menu_events
+                .push(format!("game start {} {}", start.label, start.path));
+        }
         if start.forget_last {
             self.sim.restart_calendar();
         }
