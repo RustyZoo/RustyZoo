@@ -3547,3 +3547,180 @@ fn a_ripple_of_the_flat_water_holds_no_quadrant() {
     let t = world.tile_index(0, 0).unwrap();
     assert!(world.is_empty(t) && (0..4).all(|q| world.quadrant(t, q).is_none()));
 }
+
+/// Windows of `size` at `zoom` whose top left or bottom right corner is the centre of the box of
+/// an idle picture of `staged`, so that the edge cuts it; the pictures that overlap another idle
+/// one first, `count` of them spread over the list.
+fn edge_windows(staged: &Staged, size: (u32, u32), zoom: i32, count: usize) -> Vec<(i32, i32)> {
+    let level = Zoom::from_value(zoom);
+    let boxes: Vec<[i64; 4]> = (staged.idle.iter())
+        .map(|&(i, _)| {
+            let (placed, b) = &staged.own[i];
+            placed.zoomed_box(b, placed.anchor(staged.rotation, zoom, level), level)
+        })
+        .collect();
+    let overlaps = |k: usize| {
+        (0..boxes.len()).any(|j| {
+            let (a, b) = (boxes[k], boxes[j]);
+            j != k && a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+        })
+    };
+    let mut order: Vec<usize> = (0..boxes.len()).filter(|&k| overlaps(k)).collect();
+    order.extend((0..boxes.len()).filter(|&k| !overlaps(k)));
+    let step = order.len().div_ceil(count).max(1);
+    (order.iter().step_by(step).enumerate())
+        .map(|(n, &k)| {
+            let (cx, cy) = (
+                (boxes[k][0] + boxes[k][2]) / 2,
+                (boxes[k][1] + boxes[k][3]) / 2,
+            );
+            let (dx, dy) = match n % 2 {
+                0 => (0, 0),
+                _ => (i64::from(size.0), i64::from(size.1)),
+            };
+            ((cx - dx) as i32, (cy - dy) as i32)
+        })
+        .collect()
+}
+
+/// Moves the idle frames of the map back and forth between two sets, window after window, and
+/// checks that reframing the staging and drawing again only what changed gives the window a fresh
+/// staging at those frames draws whole, at the four rotations, three zooms, grid on and off, for
+/// each of `sizes` and `count` windows cut by their edge. Returns how many windows were mended in
+/// parts and how many rectangles that took.
+fn reframe_equals_fresh(
+    renderer: &mut MapRenderer,
+    zoo: &Zoo,
+    sizes: &[(u32, u32)],
+    count: usize,
+) -> (usize, usize) {
+    let (mut mended, mut rectangles) = (0, 0);
+    for rotation in 0..4 {
+        // An object plays an idle animation once the clocks hold its id.
+        let all = Extra {
+            idle: Frames(
+                (zoo.entities.iter().filter_map(|e| e.common.as_ref()))
+                    .map(|c| (c.id, 0))
+                    .collect(),
+            ),
+            ..Extra::default()
+        };
+        let staged = renderer.stage_with(zoo, rotation, false, &all).unwrap();
+        let ids: Vec<u32> = staged.idle.iter().map(|&(_, id)| id).collect();
+        let extra = |set: u32| Extra {
+            idle: Frames(ids.iter().map(|&id| (id, set * (1 + id % 3))).collect()),
+            ..Extra::default()
+        };
+        let mut stage = |set| {
+            renderer
+                .stage_with(zoo, rotation, false, &extra(set))
+                .unwrap()
+        };
+        let fresh = [stage(0), stage(1)];
+        let mut staged = stage(0);
+        let mut at = 0;
+        for zoom in [-2, 0, 2] {
+            for grid in [false, true] {
+                for &size in sizes {
+                    for view in edge_windows(&fresh[1], size, zoom, count) {
+                        let to = 1 - at;
+                        let mut canvas = Framebuffer::new(size.0, size.1);
+                        fresh[at].draw(&mut canvas, view.0, view.1, zoom, grid);
+                        let rects = staged.reframe(&extra(to as u32).idle, size, view, zoom);
+                        match rects {
+                            Some(rects) => {
+                                staged.redraw(&mut canvas, view.0, view.1, zoom, grid, &rects);
+                                mended += 1;
+                                rectangles += rects.len();
+                            }
+                            None => staged.draw(&mut canvas, view.0, view.1, zoom, grid),
+                        }
+                        let mut want = Framebuffer::new(size.0, size.1);
+                        fresh[to].draw(&mut want, view.0, view.1, zoom, grid);
+                        assert!(
+                            canvas.pixels == want.pixels,
+                            "rotation {rotation} zoom {zoom} grid {grid} {size:?} at {view:?}"
+                        );
+                        at = to;
+                    }
+                }
+            }
+        }
+    }
+    (mended, rectangles)
+}
+
+#[test]
+fn a_reframed_window_equals_a_fresh_staging_drawn_whole() {
+    use crate::sprite::tests::{sized, sprite_file};
+    // Three overlapping objects of 24 by 24 pixels whose 3 idle frames are of other colours.
+    let frame = |n: u8| {
+        let mut f = Vec::new();
+        for field in [24u16, 24, 0, 0, 0] {
+            f.extend(field.to_le_bytes());
+        }
+        for _ in 0..24 {
+            f.extend([1, 0, 24]);
+            f.extend([n; 24]);
+        }
+        sized(&f)
+    };
+    let mut palette = 5u32.to_le_bytes().to_vec();
+    for c in [
+        [9u8, 9, 9],
+        [200, 0, 0],
+        [0, 200, 0],
+        [0, 0, 200],
+        [200, 200, 0],
+    ] {
+        palette.extend([c[0], c[1], c[2], 255]);
+    }
+    let ani = b"[animation]\ndir0 = a\ndir1 = idle\nanimation = N\n".to_vec();
+    let install = Install::new(
+        "render-reframe",
+        &[
+            (
+                "scenery.cfg",
+                b"[objects]\nother\n[other]\nwaterwv1 = wave.ai\n".to_vec(),
+            ),
+            ("wave.ai", b"[Animations]\nidle = idle\n".to_vec()),
+            ("objects/waterwv1/idle/idle.ani", ani),
+            ("animals/Lion/lion.pal", palette),
+            (
+                "a/idle/N",
+                sprite_file(None, 3, &[frame(1), frame(2), frame(3)]),
+            ),
+        ],
+    );
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut zoo = tile_with(&[("objects", "other", "waterwv1"); 3]);
+    for (n, e) in zoo.entities.iter_mut().enumerate() {
+        let c = e.common.as_mut().unwrap();
+        (c.id, c.x, c.y) = (1 + n as u32, 20 + 12 * n as i32, 32 + 6 * n as i32);
+    }
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let (mended, rectangles) = reframe_equals_fresh(&mut renderer, &zoo, &[(40, 30), (13, 7)], 3);
+    assert!(mended > 20 && rectangles > 20, "{mended} {rectangles}");
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn on_real_maps_a_reframed_window_equals_a_fresh_staging_drawn_whole() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    // 34 windows of each size, zoom and grid at each rotation: 1632 for a map.
+    for member in ["maps/lg_resrt.zoo", "maps/large.zoo", "maps/default.zoo"] {
+        let zoo = Zoo::parse_in(&vfs.read(member).unwrap(), &catalogue).unwrap();
+        let start = std::time::Instant::now();
+        let (mended, rectangles) =
+            reframe_equals_fresh(&mut renderer, &zoo, &[(1024, 768), (320, 240)], 34);
+        eprintln!(
+            "{member}: {mended} windows mended in parts, {rectangles} rectangles, {:?}",
+            start.elapsed()
+        );
+        assert!(mended > 0 && rectangles > 0, "{member}");
+    }
+}
