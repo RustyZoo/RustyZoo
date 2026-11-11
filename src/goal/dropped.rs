@@ -112,6 +112,27 @@ pub(crate) fn reset_unit(world: &mut World, cat: &Catalogue, id: u32) {
     });
 }
 
+/// The end of a crating (staff 7.11 point 2, unit placing 9.1 step 6), for every caller of the one
+/// routine: the crated animal `id` stops its chase, forced (a kept prey lets go), then the unit
+/// that holds it is made visible, and an animal among them lets go (caught prey and held flag
+/// down, its goal reset).
+pub(crate) fn crate_stop(world: &mut World, id: u32) {
+    let predator = world.units.get(id).map_or(0, |u| u.predator);
+    let cat = Catalogue::default();
+    run(world, &cat, &mut Rng::default(), &NoData, id, |cx| {
+        cx.stop_chase(true)
+    });
+    let Some(p) = world.units.get_mut(predator).filter(|_| predator != 0) else {
+        return;
+    };
+    p.hidden = false;
+    if let Part::Animal(a) = &mut p.part {
+        a.caught_prey = false;
+        p.held = false;
+        reset_unit(world, &cat, predator);
+    }
+}
+
 /// Unit placing 8.2 point 3: the unit picked up stops its goal (the reset of goals 12.1) and
 /// loses its fright (the clearing of the state variables, simulation 8.2).
 pub(crate) fn picked_up(

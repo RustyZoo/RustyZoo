@@ -40,8 +40,8 @@ pub(crate) fn snap(world: &mut World, at: usize) {
 }
 
 /// The crating of the animal `id` where it stands (unit placing 9.1, staff 7.11): crated, snapped
-/// with the crate footprint, stopped, no predator on it, and put on the map again, taking the
-/// terrain mode of its tile. The caller stops its chase first (a kept prey lets go).
+/// with the crate footprint, stopped, and put on the map again, taking the
+/// terrain mode of its tile; its chase stops, forced, and the animal that holds it lets go.
 pub(crate) fn crate_in_place(world: &mut World, id: u32, data: &dyn Data) {
     let Some(at) = world.find(id) else {
         return;
@@ -58,7 +58,7 @@ pub(crate) fn crate_in_place(world: &mut World, id: u32, data: &dyn Data) {
     };
     crate::goal::stop_all(unit);
     unit.animation = Animation::default();
-    unit.predator = 0;
+    crate::goal::crate_stop(world, id);
     swim::put(world, id, data);
     // The stop of the crating installs the crate's picture, whatever the add did (unit placing 9.1 step 5).
     crate::place::unit::show_idle(world, id, data);

@@ -543,3 +543,24 @@ fn the_dart_stops_the_chase_of_a_hunter_unless_it_holds_caught_prey() {
         (true, OTHER, true, 80)
     );
 }
+
+#[test]
+fn the_crated_prey_is_let_go_by_the_animal_holding_it() {
+    let cat = types("");
+    let mut w = zoo(&[(BEAST, "zebra", (11, 12)), (OTHER, "zebra", (3, 3))]);
+    animal(&mut w, BEAST).tranq = true;
+    w.units.get_mut(BEAST).unwrap().predator = OTHER;
+    let a = animal(&mut w, OTHER);
+    (a.caught_prey, a.prey) = (true, BEAST);
+    let holder = w.units.get_mut(OTHER).unwrap();
+    (holder.held, holder.hidden) = (true, true);
+    tick(&mut w, &cat);
+    assert!(animal(&mut w, BEAST).crated);
+    let holder = w.units.get(OTHER).unwrap();
+    let (held, hidden) = (holder.held, holder.hidden);
+    let b = animal(&mut w, OTHER);
+    assert_eq!(
+        (b.caught_prey, b.prey, held, hidden),
+        (false, 0, false, false)
+    );
+}

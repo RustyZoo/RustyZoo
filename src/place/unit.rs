@@ -756,10 +756,7 @@ pub(crate) fn refuse(
             }
             true
         }
-        Some(Part::Animal(a)) => {
-            (a.playing, a.caught_prey, a.prey) = (false, false, 0);
-            false
-        }
+        Some(Part::Animal(_)) => false,
         _ => return false,
     };
     if !egg {

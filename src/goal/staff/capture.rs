@@ -271,16 +271,12 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// Job 15 complete: the animal is crated by the one crating routine (staff 7.11): its chase
-    /// stops, forced, then it is snapped, stopped and released.
+    /// Job 15 complete: the animal is crated by the one crating routine (staff 7.11).
     pub(super) fn retrieve_complete(&mut self) {
         let id = self.record().job_target.id;
         if self.animal(id).is_none() {
             return self.set_job(0, 0, None);
         }
-        with_unit(self.world, self.ctx, self.data, id, |cx| {
-            cx.stop_chase(true)
-        });
         boxed::crate_in_place(self.world, id, self.data);
     }
 }
