@@ -130,22 +130,33 @@ impl App<'_> {
         let told = !game.world.set_salinity(id, salt);
         game.money.charge(CONSTRUCTION, price);
         let refused = game.world.fill(id);
+        game.world.note_water(id, None, false, price);
         game.panel.clock.force = true;
         if told {
             self.water_message(id, NOT_DRAINED, "");
         }
-        playing!(self, game);
         if let Some(object) = refused {
-            let cat = self.renderer.catalogue();
-            let world = &game.world;
-            let ty = world.find(object).and_then(|at| type_at(world, cat, at));
-            let name = ty.and_then(|t| (t.name_id != 0).then_some(t.name_id));
-            let name = name.map_or(String::new(), |n| {
-                self.ui.as_ref().map_or(String::new(), |u| u.string(n))
-            });
-            self.water_message(id, NOT_FILLED, &name);
+            self.not_filled(id, object);
         }
         self.exhibits_told();
+    }
+
+    /// Tells that tank `id` was not filled because of the entity `object` (10550 with its name).
+    pub(super) fn not_filled(&mut self, id: u32, object: u32) {
+        playing!(self, game);
+        let cat = self.renderer.catalogue();
+        let world = &game.world;
+        let ty = world.find(object).and_then(|at| type_at(world, cat, at));
+        let name = ty.and_then(|t| (t.name_id != 0).then_some(t.name_id));
+        let name = name.map_or(String::new(), |n| {
+            self.ui.as_ref().map_or(String::new(), |u| u.string(n))
+        });
+        self.water_message(id, NOT_FILLED, &name);
+    }
+
+    /// Tells that tank `id` was not drained (10551).
+    pub(super) fn not_drained(&mut self, id: u32) {
+        self.water_message(id, NOT_DRAINED, "");
     }
 
     /// The drain button (4.7): free; refused while an animal is in the tank (10551, with a gate).
@@ -154,10 +165,14 @@ impl App<'_> {
             return;
         };
         playing!(self, game);
+        let purity = game.world.tank(id).map(|t| t.purity);
         let drained = game.world.drain(id);
+        if game.world.tank(id).is_some_and(|t| !t.filled) {
+            game.world.note_water(id, purity, true, 0.0);
+        }
         game.panel.clock.force = true;
         if !drained {
-            self.water_message(id, NOT_DRAINED, "");
+            self.not_drained(id);
         }
         self.exhibits_told();
     }
