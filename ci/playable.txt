@@ -224,8 +224,9 @@
 233 up
 # run unpaused
 239 pause
+# save the game and load it back while both gazelles live (a dead animal is not saved): a gazelle's name
+# holds the apostrophe of its code page (issue 1564)
+15000 save @zoo@
+15010 load @zoo@
 # the thirteenth month has begun: open the zoo status window, whose first tab is the Finances table (the Z key)
 22200 char Z
-# save the game and load it back: a gazelle's name holds the apostrophe of its code page (issue 1564)
-22250 save @zoo@
-22260 load @zoo@
