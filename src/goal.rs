@@ -494,7 +494,9 @@ impl Cx<'_, '_> {
             return;
         }
         // Point 5: the guard, then the building step with 0.
-        if self.stands() || [ENTRANCE, DROWN, EXIT_TANK, LEAVE].contains(&task) || self.ladder_step()
+        if self.stands()
+            || [ENTRANCE, DROWN, EXIT_TANK, LEAVE].contains(&task)
+            || self.ladder_step()
         {
             return;
         }
