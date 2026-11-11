@@ -2194,6 +2194,11 @@ fn a_new_unit_is_alive_and_a_new_building_is_not_for_free() {
 /// A zero body of class `class` in version `v`, whose class fields before the unit block or after
 /// the base are `own` bytes.
 fn zero_body(v: u32, class: &str, own: usize) -> Vec<u8> {
+    body_with_mode(v, class, own, 2)
+}
+
+/// [`zero_body`] with the movement mode `mode` stored in the unit block.
+fn body_with_mode(v: u32, class: &str, own: usize, mode: u32) -> Vec<u8> {
     let mut w = W::default();
     let unit = is_unit_class(class);
     match class {
@@ -2204,7 +2209,7 @@ fn zero_body(v: u32, class: &str, own: usize) -> Vec<u8> {
     if unit {
         w.z(own);
         let mut o = Out(Vec::new(), 1033);
-        unit::write(&mut o, v, class == "guests", 2, &UnitBlock::default()).unwrap();
+        unit::write(&mut o, v, class == "guests", mode, &UnitBlock::default()).unwrap();
         w.bytes(&o.0);
     }
     base(&mut w, v, 6, 1, "x");
@@ -2212,6 +2217,32 @@ fn zero_body(v: u32, class: &str, own: usize) -> Vec<u8> {
         w.z(own);
     }
     w.0
+}
+
+#[test]
+fn a_helicopter_before_version_84_loads_free_and_other_staff_keep_the_stored_mode() {
+    let mode = |v: u32, class: &str, own: usize| {
+        let body = body_with_mode(v, class, own, 3);
+        let mut r = Reader::new(&body, v);
+        let c = body::decode(&mut r, class.as_bytes())
+            .unwrap_or_else(|e| panic!("{}", e.0))
+            .unwrap();
+        assert!(r.data.is_empty(), "{class} {v}");
+        c.movement_mode
+    };
+    // A file before version 84 stores no mode: the helicopter is free, the others on the ground.
+    assert_eq!(
+        [
+            mode(83, "helicopter", 28),
+            mode(75, "helicopter", 28),
+            mode(83, "keeper", 37),
+            mode(83, "maint", 20),
+            mode(83, "tour", 29),
+            mode(84, "helicopter", 28),
+            mode(106, "helicopter", 28),
+        ],
+        [1, 1, 2, 2, 2, 3, 3]
+    );
 }
 
 fn is_unit_class(class: &str) -> bool {

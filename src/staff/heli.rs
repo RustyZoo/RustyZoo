@@ -82,6 +82,7 @@ impl Heli {
     }
 
     /// The fade term of the sound (0 is full volume), when there is one.
+    #[cfg(test)]
     pub(crate) fn level(&self) -> Option<i32> {
         self.rotor.as_ref().map(Rotor::level)
     }

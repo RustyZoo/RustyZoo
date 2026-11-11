@@ -80,6 +80,7 @@ impl Rotor {
     }
 
     /// The fade term `F`.
+    #[cfg(test)]
     pub(crate) fn level(&self) -> i32 {
         self.fade
     }
