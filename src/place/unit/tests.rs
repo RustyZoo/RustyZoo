@@ -901,7 +901,10 @@ fn only_a_tall_unit_that_is_not_rampaging_collects_the_transients_of_a_taken_til
     let (cat, wet) = (catalogue(), [false, true]);
     let held = |ty, rampaging| {
         let p = pending_of(&w, &cat, &wet, ty, 0, 0, tank, 0.0, Form::Plain, rampaging).unwrap();
-        assert_eq!((p.tile, p.message), ((3, 2), Some(super::super::IN_THE_WAY)));
+        assert_eq!(
+            (p.tile, p.message),
+            ((3, 2), Some(super::super::IN_THE_WAY))
+        );
         p.blocking
     };
     // The guest is entity 0 and the sparkle of the taken tile is 1; the lone sparkle never is.
