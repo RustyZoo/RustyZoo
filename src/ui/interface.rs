@@ -21,7 +21,7 @@ use std::collections::{HashMap, VecDeque};
 pub use tooltip::Settings;
 
 use super::draw::{Painter, Rect4, Strings};
-use super::layout::{DIRTY, FOCUSED, HIDDEN, Kind, Picture, TIMED, Tree};
+use super::layout::{DIRTY, DISABLED, FOCUSED, HIDDEN, Kind, LOCKED, Picture, TIMED, Tree};
 use crate::Framebuffer;
 use crate::app::Key;
 
@@ -250,10 +250,14 @@ impl Interface {
         self.dirty = true;
     }
 
-    /// Sets or clears state flags of an element; a change makes the interface dirty.
+    /// Sets or clears state flags of an element; a change makes the interface dirty. Enabling a
+    /// locked element does nothing (scenarios 10.3 point 6.2).
     fn flag(&mut self, i: usize, flag: u32, on: bool) {
         let state = &mut self.tree.elements[i].state;
         let was = *state;
+        if flag == DISABLED && !on && was & LOCKED != 0 {
+            return;
+        }
         match on {
             true => *state |= flag,
             false => *state &= !flag,

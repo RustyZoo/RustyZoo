@@ -78,6 +78,8 @@ impl Popup {
 pub(crate) enum Op {
     Disable,
     Enable,
+    /// Entry `e` of trigger 16: clears the lock and the disabled bit of any element.
+    Release,
     Hide,
     Show,
 }
@@ -98,7 +100,7 @@ pub(crate) fn entries(cfg: &Config, block: i32) -> Vec<(i32, Op)> {
     let entry = |key: &[u8]| {
         let op = match s.get(key)?.first()? {
             b'd' => Op::Disable,
-            b'e' => Op::Enable,
+            b'e' => Op::Release,
             b'h' => Op::Hide,
             b's' => Op::Show,
             _ => return None,

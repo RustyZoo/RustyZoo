@@ -808,7 +808,7 @@ fn unlock(path: &Path) {
 
 #[cfg(unix)]
 #[test]
-fn a_file_the_system_will_not_open_is_an_error_not_a_fall_through() {
+fn a_file_the_system_will_not_open_is_an_error_and_a_folder_is_skipped() {
     let dir = TempDir::new("denied");
     dir.ini(".");
     dir.archive("a.ztd", &[("x.txt", "older copy")]);
@@ -837,14 +837,27 @@ fn a_file_the_system_will_not_open_is_an_error_not_a_fall_through() {
     unlock(&archive);
     dir.write("sub/f.txt", b"f");
     let sub = dir.0.join("sub");
+    // A folder the system refuses to list gives no files and no failure, at any depth.
+    dir.write("sub/deep/g.txt", b"g");
     if lock(&sub) {
-        let why = message(Vfs::open(&dir.0));
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert!(!vfs.contains("sub/f.txt"));
+        assert_eq!(text(&vfs, "x.txt"), "loose");
         assert!(
-            why.contains("sub") && why.contains("Permission denied"),
-            "{why}"
+            vfs.warnings()
+                .iter()
+                .any(|w| w.contains("sub") && w.contains("Permission denied")),
+            "{:?}",
+            vfs.warnings()
         );
     }
     unlock(&sub);
+    let deep = sub.join("deep");
+    if lock(&deep) {
+        let vfs = Vfs::open(&dir.0).unwrap();
+        assert!(vfs.contains("sub/f.txt") && !vfs.contains("sub/deep/g.txt"));
+    }
+    unlock(&deep);
     assert!(Vfs::open(&dir.0).is_ok());
 }
 

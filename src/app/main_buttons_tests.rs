@@ -72,6 +72,67 @@ fn the_zoom_buttons_zoom_by_2_and_grey_at_the_limits() {
 }
 
 #[test]
+fn a_locked_zoom_button_stays_grey_through_the_zoom_press_and_the_zoom_check() {
+    use crate::ui::layout::LOCKED;
+    with_menu("zoom-lock", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        let mut now = started(app);
+        game(app).camera.zoom = 0;
+        app.zoom_check();
+        // A tutorial locks zoom in; pressing zoom out enables its partner the ordinary way.
+        assert!(app.interface().unwrap().lock(ZOOM_IN));
+        now += 66;
+        assert_eq!(pressed(app, now, &press(ZOOM_OUT)), ["1023"]);
+        assert!(disabled(app, ZOOM_IN));
+        // The zoom check, after a resize or a switch of screen mode, leaves it too.
+        app.zoom_check();
+        assert!(disabled(app, ZOOM_IN));
+        let ui = app.interface().unwrap();
+        let at = ui.tree.find(ZOOM_IN).unwrap();
+        assert_eq!(ui.tree.elements[at].state & LOCKED, LOCKED);
+        // The scenario enable gives it back.
+        assert!(ui.unlock(ZOOM_IN, true));
+        assert!(!disabled(app, ZOOM_IN));
+    });
+}
+
+#[test]
+fn the_scenario_enable_needs_the_lock_the_release_and_the_clean_up_do_not() {
+    use crate::scenario::{Effect, Marks, Op};
+    with_menu("zoom-release", "[user]\nlastfile=saved.zoo\n", |app, _| {
+        started(app);
+        let mut marks = Marks::default();
+        let mut log = Vec::new();
+        let set = |app: &mut App, marks: &mut Marks, log: &mut Vec<String>, op| {
+            let effect = Effect::Set {
+                ops: vec![(ZOOM_IN, op)],
+                popup: None,
+                always: false,
+            };
+            let ui = app.ui.as_mut().unwrap();
+            marks.apply(effect, ui, app.renderer.vfs(), log);
+        };
+        // Only disabled by an ordinary caller: the scenario enable leaves it, the release clears it.
+        assert!(app.interface().unwrap().disable(ZOOM_IN, true));
+        set(app, &mut marks, &mut log, Op::Enable);
+        assert!(disabled(app, ZOOM_IN));
+        set(app, &mut marks, &mut log, Op::Release);
+        assert!(!disabled(app, ZOOM_IN));
+        // Locked: the scenario enable gives it back.
+        set(app, &mut marks, &mut log, Op::Disable);
+        assert!(disabled(app, ZOOM_IN));
+        set(app, &mut marks, &mut log, Op::Enable);
+        assert!(!disabled(app, ZOOM_IN));
+        // The scenario disable locks an element an ordinary caller disabled; the clean-up clears it.
+        assert!(app.interface().unwrap().disable(ZOOM_IN, true));
+        set(app, &mut marks, &mut log, Op::Disable);
+        assert!(!app.interface().unwrap().disable(ZOOM_IN, false));
+        marks.clean(app.ui.as_mut().unwrap());
+        assert!(!disabled(app, ZOOM_IN));
+        assert!(log.iter().any(|l| l == "scenario element 1007 enable"));
+    });
+}
+
+#[test]
 fn the_rotate_buttons_turn_a_quarter_and_are_never_greyed() {
     with_menu(
         "rotate-buttons",

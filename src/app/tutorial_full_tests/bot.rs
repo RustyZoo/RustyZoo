@@ -195,7 +195,8 @@ impl Play<'_, '_> {
     }
 
     /// One wall button on the tank that is nearest to the wanted height: `b` 1 wants it at least
-    /// `height`, 2 exactly (rule 16).
+    /// `height`, 2 exactly (rule 16). Of two tanks as near, the taller is lowered: a tutorial may keep the
+    /// wall-up button locked (scenarios 10.3 point 6).
     fn wall(&mut self, b: i32, height: i32) {
         let world = &self.app.game.as_ref().unwrap().world;
         let tanks = world.exhibits().list().iter();
@@ -203,7 +204,10 @@ impl Play<'_, '_> {
             .filter_map(|x| Some((x.id, world.tank(x.id)?.height as i32)))
             .filter(|&(_, h)| if b == 1 { h < height } else { h != height })
             .collect();
-        let Some(&(id, h)) = tanks.iter().min_by_key(|t| (t.1 - height).abs()) else {
+        let Some(&(id, h)) = tanks
+            .iter()
+            .min_by_key(|t| ((t.1 - height).abs(), t.1 < height))
+        else {
             return;
         };
         self.app.open_exhibit(id);
