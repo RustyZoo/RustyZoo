@@ -808,7 +808,7 @@ fn unlock(path: &Path) {
 
 #[cfg(unix)]
 #[test]
-fn a_file_the_system_will_not_open_is_an_error_not_a_fall_through() {
+fn a_file_the_system_will_not_open_is_an_error_and_a_folder_is_skipped() {
     let dir = TempDir::new("denied");
     dir.ini(".");
     dir.archive("a.ztd", &[("x.txt", "older copy")]);
