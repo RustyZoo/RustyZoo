@@ -1375,9 +1375,10 @@ fn a_corner_pinch_on_a_pair_outside_the_zoo_ends_the_walk_with_no_gate() {
     let mut world = World::new(z, shape);
     assert!(!world.in_zoo(3 * SIZE as usize + 5), "beyond the wall");
     assert!(world.in_zoo(3 * SIZE as usize + 4), "the ring");
-    assert_eq!(names(&world)[0].2, ring.len());
+    // The hole closes first in the file, so the ring is the second exhibit.
+    assert_eq!(names(&world)[1].2, ring.len());
     assert_eq!(world.take_events(), []);
-    assert_eq!(world.exhibits().get(1).unwrap().gate, None);
+    assert_eq!(world.exhibits().get(2).unwrap().gate, None);
 }
 
 /// The tiles of each part that is not the grounds, sorted, by first tile.
