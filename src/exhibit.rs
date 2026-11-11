@@ -562,9 +562,9 @@ pub(crate) fn assert_same_parts(world: &World, near: &[Part]) {
 
 impl Exhibits {
     /// Finds the regions of a world. The exhibits are numbered from 1 in the order of their closing
-    /// piece in the file (3.8.1). A region that holds the entrance tile or a tile beyond the zoo wall is the zoo
-    /// grounds (the gate buildings join the exterior to the grounds), and the tiles beyond the
-    /// wall are marked [`EXTERIOR`] in it.
+    /// piece in the file (3.8.1). A region that holds the entrance tile or a tile beyond the zoo
+    /// wall is the zoo grounds (the gate buildings join the exterior to the grounds), and the
+    /// tiles beyond the wall are marked [`EXTERIOR`] in it.
     pub(crate) fn new(world: &World) -> Exhibits {
         let mut found = Exhibits {
             region: vec![GROUNDS; world.zoo.tiles.len()],
