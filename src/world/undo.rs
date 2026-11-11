@@ -496,7 +496,12 @@ impl World {
         }
         if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
             match value {
-                TankValue::Purity(v) => tank.purity = v,
+                TankValue::Purity(v) => {
+                    let old = std::mem::replace(&mut tank.purity, v);
+                    if crate::exhibit::viewing::crosses(old, v) {
+                        self.exhibits.reobserve(id);
+                    }
+                }
                 TankValue::Salt(v) => tank.salt = v,
                 TankValue::Height(_) | TankValue::Level(_) | TankValue::Filled(_) => {}
             }

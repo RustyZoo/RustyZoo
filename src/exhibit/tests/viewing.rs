@@ -284,6 +284,7 @@ fn guests_press_on_an_animal_less_with_each_tile_of_distance() {
         tiles: vec![5, 6],
         id: 1,
         seen: Vec::new(),
+        marked: false,
     };
     let mut first = || 0;
     // Ten guests, the tile 2 away to the west of the animal: 10, 9, 8; west is neither of the

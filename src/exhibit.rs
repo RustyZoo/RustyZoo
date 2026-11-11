@@ -673,6 +673,14 @@ impl Exhibits {
         self.grounds_stats.enter_new_month();
     }
 
+    /// Marks every viewing area of exhibit `id` for a new observable area (habitat rating 10.4);
+    /// no other exhibit.
+    pub(crate) fn reobserve(&mut self, id: u32) {
+        if let Some(e) = self.get_mut(id) {
+            e.areas.iter_mut().for_each(|a| a.marked = true);
+        }
+    }
+
     /// Marks exhibit `id` to be rated again (habitat rating 4), and its amphibious and show
     /// neighbours with it, theirs in turn, up to those already marked; the zoo grounds have no
     /// rating.
