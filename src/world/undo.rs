@@ -457,17 +457,15 @@ impl World {
 
     /// A tank tool changed the water of tank `id` (exhibits and money 4.7, placing 8.2 point 1):
     /// the list is emptied and, only with a gate, the purity if told, then the filled state `filled`
-    /// is recorded at the gate's tile (the tank's first tile when the gate stands across), with the
-    /// price the tool paid.
+    /// is recorded at the gate piece's own tile, with the price the tool paid; the undo looks the tank
+    /// up there, so a grounds tile passes over and another tank's tile acts on that tank.
     pub(crate) fn note_water(&mut self, id: u32, purity: Option<u32>, filled: bool, price: f32) {
         self.undo.clear();
         self.fresh = false;
-        let Some(e) = self.exhibits.get(id).filter(|e| e.gate.is_some()) else {
+        if self.exhibits.get(id).is_none_or(|e| e.gate.is_none()) {
             return;
-        };
-        let at = self.gate_slot(id).map(|g| g.0);
-        let Some(tile) = (at.filter(|&t| self.tank_at(t) == Some(id))).or(e.order.first().copied())
-        else {
+        }
+        let Some((tile, _)) = self.gate_slot(id) else {
             return;
         };
         for (value, price) in purity

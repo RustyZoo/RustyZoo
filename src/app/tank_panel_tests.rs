@@ -406,3 +406,23 @@ fn the_water_tools_of_a_tank_without_a_gate_record_nothing_to_undo() {
         assert!(!s.app.game.as_ref().unwrap().world.can_undo());
     });
 }
+
+#[test]
+fn undo_of_a_gate_on_another_tank_acts_on_that_tank() {
+    with_game("tank-undo-other", "", |s| {
+        tank(s);
+        let other = s.fence(5, 30, 20, 0);
+        for side in [2, 4, 6] {
+            s.fence(5, 30, 20, side);
+        }
+        let world = &mut s.app.game.as_mut().unwrap().world;
+        assert!(world.tank(2).is_some_and(|t| t.filled));
+        world.exhibits_mut().get_mut(1).unwrap().gate = Some(other);
+        world.drain(1);
+        s.app.tank_fill(true);
+        s.app.undo();
+        let world = &s.app.game.as_ref().unwrap().world;
+        assert!(!world.tank(2).unwrap().filled && world.tank(1).unwrap().filled);
+        assert_eq!(s.cash(), 50_000.0);
+    });
+}
