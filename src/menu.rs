@@ -110,6 +110,22 @@ pub(crate) struct Start {
     pub scenario: Option<String>,
 }
 
+impl Start {
+    /// The opening of the saved game `path` as Continue does: `lastfile` stays, no scenario.
+    pub(crate) fn load(path: &str) -> Start {
+        Start {
+            path: path.to_string(),
+            label: "load".to_string(),
+            forget_last: false,
+            freeform: false,
+            cash: Default::default(),
+            reset: false,
+            reset_fences: false,
+            scenario: None,
+        }
+    }
+}
+
 /// What a button asks of the game.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Request {

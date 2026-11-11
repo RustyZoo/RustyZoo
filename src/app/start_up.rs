@@ -59,17 +59,7 @@ impl App<'_> {
         let Some(path) = path.filter(|p| !p.is_empty()) else {
             return Line::Idle;
         };
-        let start = Start {
-            path: path.to_string(),
-            label: "load".to_string(),
-            forget_last: false,
-            freeform: false,
-            cash: Default::default(),
-            reset: false,
-            reset_fences: false,
-            scenario: None,
-        };
-        match self.open_file(&start) {
+        match self.open_file(&Start::load(path)) {
             true => Line::Started,
             false => Line::Failed,
         }

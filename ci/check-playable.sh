@@ -108,16 +108,20 @@ fi
 [ -z "${PLAYABLE_SEED:-}" ] || words=$(echo "$words" | sed "s/--seed [0-9]*/--seed $PLAYABLE_SEED/")
 # shellcheck disable=SC2001 # a regex, not a plain substitution
 [ -z "${PLAYABLE_PROBE:-}" ] || words=$(echo "$words" | sed "s/--passes [0-9]*/--passes $PLAYABLE_PROBE/")
+# The file of the script is named to the game as its own system writes a path (the game is no msys program).
+zoodir=$tmp
+! command -v cygpath >/dev/null || zoodir=$(cygpath -m "$tmp")
 runs="a b"
 [ -z "${PLAYABLE_PROBE:-}" ] || runs=a # a probe plays the start once and checks only what was built
 for r in $runs; do
-  sed "s|@zoo@|$tmp/$r.zoo|g" "$script" >"$tmp/script-$r.txt"
+  sed "s|@zoo@|$zoodir/$r.zoo|g" "$script" >"$tmp/script-$r.txt"
   # shellcheck disable=SC2086 # the words are a list of flags
   (RUSTYZOO_USER_DIR=$tmp/user-$r "$bin" --data "$data" run $words --headless --script "$tmp/script-$r.txt" >"$tmp/$r.log" 2>"$tmp/$r.err"; echo $? >"$tmp/$r.status") &
 done
 wait
 for r in $runs; do
-  sed -i "s|$tmp/$r.zoo|@zoo@|g" "$tmp/$r.log" # the log names the file of its run
+  # the log names the file of its run (no `sed -i`: BSD and GNU sed spell it differently)
+  sed "s|$zoodir/$r.zoo|@zoo@|g" "$tmp/$r.log" >"$tmp/$r.log.new" && mv "$tmp/$r.log.new" "$tmp/$r.log"
   [ "$(cat "$tmp/$r.status")" = 0 ] || { fail "the run $r ended with status $(cat "$tmp/$r.status"): $(tail -n 3 "$tmp/$r.err")"; exit 1; }
 done
 tr -d '\r' <"$tmp/a.log" >"$tmp/log"
@@ -199,7 +203,7 @@ if [ -n "$saves" ]; then
     fail "saves: the script did not load the file back"
   elif [ -n "$(awk '$4 == "menu" && $5 == "message"' "$tmp/log")" ]; then
     fail "saves: $(awk '$4 == "menu" && $5 == "message"' "$tmp/log" | head -n 1)"
-  elif ! grep -aqF "$(printf "$saves")" "$tmp/a.zoo"; then
+  elif ! LC_ALL=C grep -aqF "$(printf "$saves")" "$tmp/a.zoo"; then
     fail "saves: the file lacks '$saves'"
   else
     ok "saves: $(wc -c <"$tmp/a.zoo" | tr -d ' ') bytes saved and loaded back, with '$saves'"

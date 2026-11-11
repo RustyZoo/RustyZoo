@@ -74,6 +74,8 @@ pub struct Flags<'a> {
     pub fill: &'a crate::layout::Fill,
     /// `--bare`: the game shows the map view alone.
     pub bare: bool,
+    /// `--map`: the file opens as a bare map, with no research and no scenario resume.
+    pub map: bool,
     /// `--seed`: a test run, the generator seeded from this number.
     pub seed: Option<u32>,
 }
@@ -180,7 +182,7 @@ fn make_app<'c>(
             let catalogue = catalogue.insert(owned);
             let mut app = App::new(
                 MapRenderer::new(vfs, catalogue),
-                zoo,
+                zoo.clone(),
                 Settings::from_config(ini),
                 timers,
                 size,
@@ -196,8 +198,7 @@ fn make_app<'c>(
             if let Some(seed) = flags.seed {
                 app.set_seed(seed);
             }
-            app.set_money(money);
-            app.start_game(menu);
+            app.start_run(zoo, money, menu, flags.map);
             app
         }
         (None, Some(booted)) => {

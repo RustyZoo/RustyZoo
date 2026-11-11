@@ -57,6 +57,8 @@ struct Flags {
     fill: crate::layout::Fill,
     /// `--bare`: the game shows the map view alone, without the main panel.
     bare: bool,
+    /// `--map`: the file opens as a bare map, with no research and no scenario resume.
+    map: bool,
     /// `--cash`: the cash the game starts with, instead of the one the map stores.
     cash: Option<f32>,
     /// `--seed`: a test run, the generator seeded from this number (main loop 12).
@@ -83,6 +85,10 @@ fn parse_flags(mut words: &[&str], loose: bool) -> Result<Flags, CliError> {
             }
             ("--bare", rest) => {
                 flags.bare = true;
+                rest
+            }
+            ("--map", rest) => {
+                flags.map = true;
                 rest
             }
             ("--log", [file, rest @ ..]) => {
@@ -380,6 +386,7 @@ fn window_flags<'a>(
         show: &flags.show,
         fill: &flags.fill,
         bare: flags.bare,
+        map: flags.map,
         seed: flags.seed,
     }
 }
@@ -521,7 +528,7 @@ pub fn run(
             menu_catalogue = catalogue;
             let mut app = App::new(
                 MapRenderer::new(vfs, &menu_catalogue),
-                zoo,
+                zoo.clone(),
                 Settings::from_config(&ini),
                 Timers::from_config(&ini),
                 size,
@@ -541,8 +548,7 @@ pub fn run(
             if !seeds.is_empty() {
                 app.set_seeds(seeds);
             }
-            app.set_money(money);
-            app.start_game(Music::from_config(&ini));
+            app.start_run(zoo, money, Music::from_config(&ini), flags.map);
             app
         }
         None => {
