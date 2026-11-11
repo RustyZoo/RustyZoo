@@ -227,9 +227,9 @@ impl Vfs {
     /// the search path and the members of their archives. Loose files are not read until
     /// requested.
     ///
-    /// Fails if the folder or its ini file is missing or unusable, if a directory of the search
-    /// path cannot be listed, or if the path names no directory that exists. Directories that do
-    /// not exist are skipped, and so are elements that cannot be resolved (with a warning).
+    /// Fails if the folder or its ini file is missing or unusable, or if the path names no
+    /// directory that exists. Directories that do not exist are skipped, and so are elements that
+    /// cannot be resolved and folders the system refuses to list (with a warning).
     /// Archives that are not acceptable ZIP files are ignored and reported by
     /// [`warnings`](Vfs::warnings); an archive that cannot be read for any other reason (the
     /// operating system refuses to open or read it) fails the open, naming the file.
@@ -295,7 +295,7 @@ impl Vfs {
 
         let mut kept = 0;
         for directory in &directories {
-            let files = index_directory(directory, &mut vfs.warnings)?;
+            let files = index_directory(directory, &mut vfs.warnings);
             // The archives are the files directly in the directory, last name first.
             let mut archives: Vec<(&String, &PathBuf)> = files
                 .iter()
@@ -805,39 +805,46 @@ fn file_name(name: &std::ffi::OsStr) -> String {
 /// Every file below `root`, at any depth: normalised path relative to `root` to the file.
 ///
 /// Symbolic links are not followed, neither to files nor to folders: a link could lead out of the
-/// install folder, or round in a circle. They are skipped with a warning.
-fn index_directory(
-    root: &Path,
-    warnings: &mut Vec<String>,
-) -> Result<HashMap<String, PathBuf>, VfsError> {
+/// install folder, or round in a circle. They are skipped with a warning. Never fails: what cannot
+/// be listed is left out with a warning.
+fn index_directory(root: &Path, warnings: &mut Vec<String>) -> HashMap<String, PathBuf> {
     let mut files: HashMap<String, PathBuf> = HashMap::new();
     let mut pending = vec![(root.to_path_buf(), String::new())];
     while let Some((directory, prefix)) = pending.pop() {
-        let cannot = |e: io::Error| {
-            VfsError(
-                format!("cannot read folder {}: {e}", directory.display()),
-                false,
-            )
-        };
-        // A folder or an entry that vanished meanwhile is skipped; any other error would
-        // silently hide files, so it fails.
+        // A folder the system refuses to list (no permission, a drive gone, `lost+found`) gives
+        // no files and the walk goes on, as in the original; the warning names it.
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(e) if e.kind() == io::ErrorKind::NotFound && directory != root => continue,
-            Err(e) => return Err(cannot(e)),
+            Err(e) => {
+                warnings.push(format!(
+                    "cannot read folder {}: {e}, skipped",
+                    directory.display()
+                ));
+                continue;
+            }
         };
         for entry in entries {
             let entry = match entry {
                 Ok(entry) => entry,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-                Err(e) => return Err(cannot(e)),
+                Err(e) => {
+                    warnings.push(format!(
+                        "cannot read folder {}: {e}, skipped",
+                        directory.display()
+                    ));
+                    break;
+                }
             };
             let path = entry.path();
             let name = format!("{prefix}{}", file_name(&entry.file_name()));
             let kind = match entry.file_type() {
                 Ok(kind) => kind,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-                Err(e) => return error(format!("cannot read {}: {e}", path.display())),
+                Err(e) => {
+                    if e.kind() != io::ErrorKind::NotFound {
+                        warnings.push(format!("cannot read {}: {e}, skipped", path.display()));
+                    }
+                    continue;
+                }
             };
             match kind {
                 kind if kind.is_symlink() => {
@@ -869,7 +876,7 @@ fn index_directory(
             }
         }
     }
-    Ok(files)
+    files
 }
 
 #[cfg(test)]

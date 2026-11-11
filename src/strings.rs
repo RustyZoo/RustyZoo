@@ -147,6 +147,15 @@ impl Library {
     }
 }
 
+/// Whether `warning` was not printed yet in this run. The original loads its libraries once, so a
+/// skipped library is reported once, however often the tables are opened again.
+fn first_time(warning: String) -> bool {
+    static SEEN: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
+    SEEN.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(warning)
+}
+
 /// The names of the files of the folder that match `<prefix>*.dll` (letter case ignored), the
 /// greatest first, comparing the names as stored: the order of lookup.
 pub(crate) fn library_names(install_dir: &Path, prefix: &str) -> Result<Vec<String>, StringsError> {
@@ -204,8 +213,11 @@ impl StringTables {
             match read_library(install_dir, name) {
                 Ok(library) => libraries.push(library),
                 Err(why) => {
-                    eprintln!("rustyzoo: warning: {name} is skipped: {why}");
-                    warnings.push(format!("{name} is skipped: {why}"));
+                    let line = format!("{name} is skipped: {why}");
+                    if first_time(format!("{}\0{line}", install_dir.display())) {
+                        eprintln!("rustyzoo: warning: {line}");
+                    }
+                    warnings.push(line);
                 }
             }
         }
@@ -599,6 +611,13 @@ mod tests {
         assert_eq!(tables.libraries().count(), 5);
         assert_eq!(tables.warnings().len(), 1, "{:?}", tables.warnings());
         assert!(tables.warnings()[0].contains("langbad.dll"));
+    }
+
+    #[test]
+    fn a_skipped_library_is_reported_once_per_run() {
+        assert!(first_time("once-test".to_string()));
+        assert!(!first_time("once-test".to_string()));
+        assert!(first_time("once-test-other".to_string()));
     }
 
     #[test]
