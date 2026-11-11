@@ -656,42 +656,6 @@ impl World {
         std::mem::take(&mut self.show_moves)
     }
 
-    /// Sets the escape check flag of the exhibit that tile `t` belongs to (habitat rating 5.8);
-    /// the zoo grounds have none.
-    pub(crate) fn escape_check(&mut self, t: usize) {
-        let x = self.exhibits.region(t);
-        if let Some(e) = x.and_then(|x| self.exhibits.get_mut(x)) {
-            e.rating.escape = true;
-        }
-    }
-
-    /// Marks the exhibit that tile `t` belongs to for a new rating (something on it changed);
-    /// the zoo grounds have none.
-    pub(crate) fn mark_rating(&mut self, t: usize) {
-        if let Some(r) = self.exhibits.region(t) {
-            self.exhibits.mark(r);
-        }
-    }
-
-    /// Sets the units left of the food entity at position `at`: its exhibit is rated again and the
-    /// picture is due (animals-needs 5.1).
-    pub(crate) fn set_food(&mut self, at: usize, left: i32) {
-        let Some(c) = self
-            .zoo
-            .entities
-            .get_mut(at)
-            .and_then(|e| e.common.as_mut())
-        else {
-            return;
-        };
-        c.food = left;
-        let (x, y) = (c.x.div_euclid(64), c.y.div_euclid(64));
-        self.tile_index(x, y)
-            .into_iter()
-            .for_each(|t| self.mark_rating(t));
-        self.dirty = true;
-    }
-
     /// Whether the unit `id` is held by the player: it is off the map, in no exhibit (unit placing
     /// 8.2), whatever position it stores.
     pub(crate) fn is_carried(&self, id: u32) -> bool {
