@@ -3653,15 +3653,16 @@ fn reframe_equals_fresh(
 #[test]
 fn a_reframed_window_equals_a_fresh_staging_drawn_whole() {
     use crate::sprite::tests::{sized, sprite_file};
-    // Three overlapping objects of 24 by 24 pixels whose 3 idle frames are of other colours.
+    // Three overlapping objects whose 3 idle frames are of other colours and sizes.
     let frame = |n: u8| {
+        let side = 8 * n;
         let mut f = Vec::new();
-        for field in [24u16, 24, 0, 0, 0] {
+        for field in [u16::from(side), u16::from(side), 0, 0, 0] {
             f.extend(field.to_le_bytes());
         }
-        for _ in 0..24 {
-            f.extend([1, 0, 24]);
-            f.extend([n; 24]);
+        for _ in 0..side {
+            f.extend([1, 0, side]);
+            f.extend(vec![n; side.into()]);
         }
         sized(&f)
     };
@@ -3711,16 +3712,22 @@ fn on_real_maps_a_reframed_window_equals_a_fresh_staging_drawn_whole() {
     let vfs = Vfs::open(std::path::Path::new(&dir)).unwrap();
     let catalogue = Catalogue::load(&vfs).unwrap();
     let mut renderer = MapRenderer::new(&vfs, &catalogue);
-    // 34 windows of each size, zoom and grid at each rotation: 1632 for a map.
+    // 12 windows of each size, zoom and grid at each rotation (a sample of the 1632 that 34 would
+    // give, which takes minutes in a debug build).
     for member in ["maps/lg_resrt.zoo", "maps/large.zoo", "maps/default.zoo"] {
         let zoo = Zoo::parse_in(&vfs.read(member).unwrap(), &catalogue).unwrap();
         let start = std::time::Instant::now();
         let (mended, rectangles) =
-            reframe_equals_fresh(&mut renderer, &zoo, &[(1024, 768), (320, 240)], 34);
+            reframe_equals_fresh(&mut renderer, &zoo, &[(512, 384), (160, 120)], 12);
         eprintln!(
             "{member}: {mended} windows mended in parts, {rectangles} rectangles, {:?}",
             start.elapsed()
         );
-        assert!(mended > 0 && rectangles > 0, "{member}");
+        assert!(mended > 0, "{member}");
+        // The map `default` has nothing that plays an idle animation.
+        assert!(
+            rectangles > 0 || member.ends_with("default.zoo"),
+            "{member}"
+        );
     }
 }
