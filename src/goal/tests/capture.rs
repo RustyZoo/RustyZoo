@@ -366,6 +366,32 @@ fn a_darted_animal_is_crated_where_it_stands_and_the_claim_and_the_task_go() {
 }
 
 #[test]
+fn the_keepers_crate_snaps_with_the_crate_footprint_and_lets_go_of_prey_and_predator() {
+    let cat = types("");
+    let mut w = zoo(&[(BEAST, "zebra", (11, 12)), (OTHER, "zebra", (3, 3))]);
+    let at = w.find(BEAST).unwrap();
+    let mut shape = w.shape(at).unwrap();
+    shape.forms = Some([(1, 2), (4, 2)]);
+    w.retype(at, "m", shape);
+    // Darted off the quarter centres, facing 2, holding the meal OTHER; a predator is on it.
+    let (x, y) = (11 * 64 + 41, 12 * 64 + 9);
+    w.place_unit(at, (x, y, 0), 2);
+    let a = animal(&mut w, BEAST);
+    (a.tranq, a.caught_prey, a.prey) = (true, true, OTHER);
+    w.units.get_mut(BEAST).unwrap().predator = KEEPER;
+    w.units.get_mut(OTHER).unwrap().predator = BEAST;
+    tick(&mut w, &cat);
+    let a = animal(&mut w, BEAST).clone();
+    assert!(a.crated && !a.escaped && !a.tranq && a.claim == 0);
+    assert!(!a.caught_prey && a.prey == 0);
+    let c = w.zoo.entities[at].common.as_ref().unwrap();
+    // The crate is 4 by 2 half tiles turned to 2 by 4: the snap is (32, 0) in the tile.
+    assert_eq!((c.x, c.y, c.rotation), (11 * 64 + 32, 12 * 64, 2));
+    assert_eq!(w.units.get(BEAST).unwrap().predator, 0);
+    assert_eq!(w.units.get(OTHER).unwrap().predator, 0);
+}
+
+#[test]
 fn a_far_darted_animal_is_walked_to_and_one_that_woke_is_chased_again() {
     let cat = types("");
     let mut w = zoo(&[(BEAST, "zebra", (13, 10))]);
