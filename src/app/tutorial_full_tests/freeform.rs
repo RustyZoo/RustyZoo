@@ -184,8 +184,8 @@ fn fifteen_awards_make_the_chain_of_the_best_zoo_give_cash_and_a_crated_panda_on
     }
 }
 
-/// One animal on the grounds and every animal's happiness at `happiness` (-100 to 100): the zoo
-/// status reads it at the start of the next step, so the animal rating is `(h + 100) / 2`.
+/// Every animal's happiness at `happiness` (-100 to 100): the zoo status reads it at the start of
+/// the next step, so the animal rating is `(happiness + 100) / 2`.
 fn mood(app: &mut App, happiness: i32) {
     let game = app.game.as_mut().unwrap();
     let ids: Vec<u32> = (game.world.zoo.entities.iter())
