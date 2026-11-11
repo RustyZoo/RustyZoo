@@ -408,3 +408,65 @@ fn a_modal_donation_popup_is_answered_before_the_award_popups_of_its_pass_show()
         ]
     );
 }
+
+#[test]
+fn the_month_command_makes_24_months_and_a_month_gated_award_comes_at_its_date_only() {
+    // The shape of awards 8 and 17: cash at least 1 from total month 6; sick animals below a
+    // value the file leaves out, from total month 11 (never true).
+    let rich = "rulea=1\nruleb=7\narga=6\ntype=0\nvalue=1";
+    let sick = "rulea=1\nruleb=5\narga=11\ntype=4";
+    // A first award gives the cash the gated one reads.
+    let sections = [
+        award("a", 7, "rulea=99\narga=1\ntype=0\nvalue=1", Some(100)),
+        award("b", 9, rich, Some(50)),
+        award("c", 17, sick, None),
+    ];
+    let goals = [
+        "a", "a_popup", "a_cash", "b", "b_popup", "b_cash", "c", "c_popup",
+    ];
+    let files = [("s/aw.scn", file(&goals, &sections))];
+    with_game("award-months", "", &files, None, |app, _| {
+        play(app, "s/aw.scn");
+        let date = |app: &App| {
+            let money = &app.game.as_ref().unwrap().money;
+            (money.month as i32, money.year as i32)
+        };
+        let mut now = 66;
+        let mut first = None;
+        let mut cash = Vec::new();
+        for skipped in 0..24 {
+            let (month, year) = date(app);
+            assert_eq!(month + 12 * year, skipped + 1, "one month for each skip");
+            now += 66;
+            app.pass(now, &[Command::Month]);
+            // The month changes in the step that follows, its work one step later; then a
+            // pass of the manager (every 23rd).
+            for _ in 0..30 {
+                now += 66;
+                app.pass(now, &[]);
+                let lines = app.log_lines(now / 66, now).into_iter();
+                cash.extend(lines.filter(|l| l.contains(" sim scenario cash ")));
+            }
+            let (month, year) = date(app);
+            let total = month + 12 * year;
+            assert_eq!(total, skipped + 2);
+            let awards = held(app);
+            assert!(
+                !awards.contains(&17),
+                "the award goal that cannot be won: {awards:?}"
+            );
+            // The gate: held from total month 6 on, not before.
+            assert_eq!(
+                awards.contains(&9),
+                total >= 6,
+                "total month {total}: {awards:?}"
+            );
+            if awards.contains(&9) && first.is_none() {
+                first = Some(total);
+            }
+        }
+        assert_eq!(first, Some(6));
+        assert_eq!(cash.len(), 2, "{cash:?}");
+        assert_eq!(date(app), (1, 2));
+    });
+}
