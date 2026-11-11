@@ -105,9 +105,15 @@ pub(super) fn decode(r: &mut Reader, class: &[u8]) -> R<Option<Common>> {
         }
         b"keeper" | b"maint" | b"tour" | b"helicopter" => {
             let record = super::staff::read(r, class)?;
+            let mut common = zoo_unit(r, false)?;
+            // A file before version 84 stores no movement mode; the helicopter's is always the
+            // free one (staff 7.11.1 point 3).
+            if class == b"helicopter" && r.v < 84 {
+                common.movement_mode = 1;
+            }
             Common {
                 staff: Some(Box::new(record)),
-                ..zoo_unit(r, false)?
+                ..common
             }
         }
         _ => return Ok(None),

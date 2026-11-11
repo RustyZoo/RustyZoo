@@ -17,7 +17,7 @@
 # The ray 25039 never eats (issue 1013, which the original has too): it gets the food task on the
 # tile next to the food while still swimming, and is carried past the food.
 #run maps/sm_aqua.zoo --cash 75000 --seed 33 --passes 12700 --clock 200
-#seeds 36 3 8 6 1 2 4 5 7
+#seeds 8 22 24 35 41 55 57 63 65 66 68 74 76 90 96 98 107 109 123 131 133 145 152 156 164 166 174 186 188
 #probe 333
 #exhibit 16,35,21,40
 #months 6
