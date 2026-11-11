@@ -436,6 +436,41 @@ fn the_hash_covers_the_movement_of_the_units() {
 }
 
 #[test]
+fn the_hash_of_a_helicopter_leaves_out_the_rotor_level() {
+    let mut w = world(&[("helicopter", 12)]);
+    use crate::staff::rotor::{Hearing, Rotor};
+    let started = Rotor::start(
+        Some(("r.wav".into(), 1200)),
+        (1280, 1280, 0),
+        &Hearing::default(),
+    );
+    let mut settled = started.clone();
+    settled.settle();
+    let base = w.units.hash();
+    // No sound, a sound fading in, a settled one and one fading out: the level differs, the hash not.
+    let mut landing = settled.clone();
+    landing.raise();
+    for rotor in [
+        None,
+        Some(Rotor::loaded_in_air()),
+        Some(started),
+        Some(settled),
+        Some(landing),
+    ] {
+        let Part::Staff(s) = &mut w.units.get_mut(12).unwrap().part else {
+            panic!("not staff")
+        };
+        s.heli.rotor = rotor;
+        assert_eq!(w.units.hash(), base);
+    }
+    let Part::Staff(s) = &mut w.units.get_mut(12).unwrap().part else {
+        panic!("not staff")
+    };
+    s.heli.flying = true;
+    assert_ne!(w.units.hash(), base);
+}
+
+#[test]
 fn the_hash_covers_the_needs_of_the_animals_and_nothing_else_of_them() {
     let base = world(&[("animals", 1), ("guests", 2)]).units.hash();
     let hash = |change: fn(&mut Animal)| {
