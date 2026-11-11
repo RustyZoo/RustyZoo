@@ -147,6 +147,15 @@ impl Library {
     }
 }
 
+/// Whether `warning` was not printed yet in this run. The original loads its libraries once, so a
+/// skipped library is reported once, however often the tables are opened again.
+fn first_time(warning: String) -> bool {
+    static SEEN: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
+    SEEN.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(warning)
+}
+
 /// The names of the files of the folder that match `<prefix>*.dll` (letter case ignored), the
 /// greatest first, comparing the names as stored: the order of lookup.
 pub(crate) fn library_names(install_dir: &Path, prefix: &str) -> Result<Vec<String>, StringsError> {
@@ -204,8 +213,11 @@ impl StringTables {
             match read_library(install_dir, name) {
                 Ok(library) => libraries.push(library),
                 Err(why) => {
-                    eprintln!("rustyzoo: warning: {name} is skipped: {why}");
-                    warnings.push(format!("{name} is skipped: {why}"));
+                    let line = format!("{name} is skipped: {why}");
+                    if first_time(format!("{}\0{line}", install_dir.display())) {
+                        eprintln!("rustyzoo: warning: {line}");
+                    }
+                    warnings.push(line);
                 }
             }
         }
@@ -599,6 +611,38 @@ mod tests {
         assert_eq!(tables.libraries().count(), 5);
         assert_eq!(tables.warnings().len(), 1, "{:?}", tables.warnings());
         assert!(tables.warnings()[0].contains("langbad.dll"));
+    }
+
+    /// Child half of the test below: opens the tables of the install named by the environment
+    /// twice; does nothing in a normal run.
+    #[test]
+    fn open_twice_for_the_parent_test() {
+        if let Some(dir) = std::env::var_os("ZT_TEST_OPEN_TWICE") {
+            StringTables::open(Path::new(&dir)).unwrap();
+            StringTables::open(Path::new(&dir)).unwrap();
+        }
+    }
+
+    #[test]
+    fn opening_the_tables_twice_prints_the_skipped_library_warning_once() {
+        let dir = mod_install("mod-once");
+        dir.write("langbad.dll", b"MZ");
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "strings::tests::open_twice_for_the_parent_test",
+                "--exact",
+                "--nocapture",
+            ])
+            .env("ZT_TEST_OPEN_TWICE", &dir.0)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{stderr}");
+        assert_eq!(
+            stderr.matches("langbad.dll is skipped").count(),
+            1,
+            "{stderr}"
+        );
     }
 
     #[test]
