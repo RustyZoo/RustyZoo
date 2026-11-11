@@ -316,9 +316,9 @@ fn after_tick(out: &Out, task: u8, live: u8, between: impl FnOnce(&mut Unit)) ->
         cat: &cat,
     };
     let data = crate::unit::testing::Walker::new("fWalk(0,0)");
-    let bored = |unit: &mut Unit, _: &mut World, _: &mut Ctx| between(unit);
-    let args = (out, &keys(), task);
-    crate::animal::escape::after(&mut unit, &mut w, &mut ctx, at, &data, args, bored);
+    crate::animal::escape::before(&mut unit, &mut w, &mut ctx, at, &data, (out, task));
+    between(&mut unit);
+    crate::animal::escape::finish(&mut unit, &mut w, &mut ctx, at, &data, (out, &keys()));
     (unit, w)
 }
 

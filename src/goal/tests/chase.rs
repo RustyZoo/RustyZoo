@@ -23,7 +23,7 @@ pub(super) fn cat() -> Catalogue {
     let mut cat = Catalogue::default();
     let keys = [
         "cPrey=5093\ncPrey=9503\ncPreattack=1\ncResetPreyPosition=1\ncEatsEggs=1",
-        "cPreattack=1",
+        "cPreattack=1\ncDrinkWaterChance=3",
         "cPrey=5418\ncIsManEater=1",
         "",
     ];
