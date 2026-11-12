@@ -327,6 +327,38 @@ impl World {
         (events, broke)
     }
 
+    /// The pieces the `$` key may pick (input 4.8), in entity list order: an exhibit fence piece
+    /// (habitat or tank fence) that is no zoo wall and no zoo gate, on a tile inside the zoo that is
+    /// not water, whose neighbour across its side is not water and holds no zoo wall piece in the
+    /// opposite slot.
+    pub(crate) fn dollar_candidates(&self) -> Vec<usize> {
+        (0..self.zoo.entities.len())
+            .filter(|&at| {
+                let fence = self.shapes[at].is_some_and(|s| s.fence && !s.wall && !s.gate);
+                let Some((t, d)) = self.slot_of(at).filter(|_| fence) else {
+                    return false;
+                };
+                let n = self.neighbour(t, d);
+                let beside = n.is_some_and(|n| self.is_water(n) || self.wall(n, (d + 4) % 8));
+                self.in_zoo(t) && !self.is_water(t) && !beside
+            })
+            .collect()
+    }
+
+    /// Halves the water purity of the tank of the tank wall at `at` under the `$` key (input 4.8):
+    /// the tank of its own tile only (none: nothing changes). Whether the piece is a tank wall.
+    pub(crate) fn halve_tank_water(&mut self, at: usize) -> bool {
+        let wall = self.shapes[at].is_some_and(|s| s.tank.wall);
+        let Some((t, _)) = self.slot_of(at).filter(|_| wall) else {
+            return false;
+        };
+        if let Some(tank) = self.tank_at(t) {
+            let purity = self.tank(tank).map_or(0, |k| i64::from(k.purity));
+            self.set_purity(tank, purity / 2);
+        }
+        true
+    }
+
     /// The end of a load breaks again the pieces with a life below 1 that can deteriorate (placing
     /// 7.4 "Breaking"), in entity list order: life and strength 0 (a stored -1 becomes 0) and the
     /// type's break sound, and the exhibits beside it are marked for the escape check. Returns the

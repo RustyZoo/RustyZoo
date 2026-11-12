@@ -5,7 +5,7 @@ use crate::animal::Class;
 use crate::entity::{Catalogue, EntityType};
 use crate::fixtures::TempDir;
 use crate::money::Money;
-use crate::unit::testing::{entity, world_with};
+use crate::unit::testing::{entity, tank_world, world_with};
 use crate::world::{Decay, World};
 
 /// A fence type `iron` that can deteriorate, with the given characteristics.
@@ -971,5 +971,61 @@ fn a_wear_step_that_does_not_break_draws_one_start_time() {
             copy == run.sim.rng
         });
         assert_eq!(drawn, Some(expected), "{sections:?}");
+    }
+}
+
+#[test]
+fn the_dollar_key_breaks_the_drawn_piece_with_one_draw_and_the_two_starts_of_the_cheat() {
+    let cat = types(WEARING);
+    let mut run = drawn(&["f"]);
+    let before = run.sim.rng.clone();
+    run.sim.dollar_break(&mut run.world, &cat);
+    assert_eq!(fence(&run).life, 0);
+    assert_eq!(
+        run.sim.rng.state(),
+        after(&before, 3).state(),
+        "1 + 2 draws"
+    );
+    // Broken already: the same single draw, nothing else.
+    let before = run.sim.rng.clone();
+    run.sim.dollar_break(&mut run.world, &cat);
+    assert_eq!(run.sim.rng.state(), after(&before, 1).state());
+    // A zoo wall is no candidate: no draw.
+    let mut run = run_of(entity("zoowall", "iron", 7, (96, 64), 0));
+    let before = run.sim.rng.clone();
+    run.sim.dollar_break(&mut run.world, &cat);
+    assert_eq!(run.sim.rng.state(), before.state());
+    assert_eq!(fence(&run).life, 3);
+}
+
+/// A run of one piece `e` with a condition (life 3).
+fn run_of(mut e: crate::zoo::Entity) -> Run {
+    e.common.as_mut().unwrap().fence = Some(crate::zoo::Fence {
+        strength: 300,
+        life: 3,
+        timers: [0; 2],
+        portal: false,
+        open: false,
+    });
+    let world = world_with((4, 4), |zoo| zoo.entities.push(e));
+    run(types(WEARING), world, 1)
+}
+
+#[test]
+fn the_dollar_key_halves_the_purity_of_the_tank_of_a_tank_wall_and_breaks_no_wall() {
+    let cat = types(WEARING);
+    let mut run = run(types(WEARING), tank_world(5, 4, &[]), 1);
+    let tank = run.world.tank_at(2 * 12 + 2).unwrap();
+    let purity = |run: &Run| run.world.tank(tank).unwrap().purity;
+    let full = purity(&run);
+    assert!(full > 1);
+    let before = run.sim.rng.clone();
+    run.sim.dollar_break(&mut run.world, &cat);
+    assert_eq!(purity(&run), full / 2);
+    assert_eq!(run.sim.rng.state(), after(&before, 1).state());
+    run.sim.dollar_break(&mut run.world, &cat);
+    assert_eq!(purity(&run), full / 4);
+    for e in &run.world.zoo.entities {
+        assert!(e.common.as_ref().unwrap().fence.is_none_or(|f| f.life != 0));
     }
 }
