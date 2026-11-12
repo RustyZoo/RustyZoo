@@ -280,9 +280,12 @@ fn the_duties_of_the_outer_tank_end_in_the_nested_one_that_needs_him() {
 #[test]
 fn job_22_swims_to_a_gate_in_the_water_at_the_surface() {
     let mut g = Game::new(30, 5);
-    g.until(|g| {
-        g.count("entertank") == 2 && g.record().job == 22 && g.record().job_target.pos.is_some()
-    });
+    g.until(|g| g.count("entertank") == 2);
+    // He is under the surface of X when he sets out.
+    let at = g.w.find(KEEPER).unwrap();
+    let c = g.w.zoo.entities[at].common.clone().unwrap();
+    g.w.place_unit(at, (c.x, c.y, 32), c.rotation);
+    g.until(|g| g.record().job == 22 && g.record().job_target.pos.is_some());
     // The tile outside Y's gate is in X, whose water is at level 4.
     assert_eq!(g.record().job_target.tile, Some(27));
     assert_eq!(g.record().job_target.pos.map(|p| p.2), Some(64));
