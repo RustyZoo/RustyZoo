@@ -204,11 +204,12 @@ fn nested_squares_are_two_exhibits() {
     let world = World::new(zoo(&pieces), shape);
     assert_eq!(
         sizes(&world),
-        [32, 4],
+        [4, 32],
         "the ring has no tile of the inner square"
     );
-    assert_eq!(region(&world, 1, 1), 1);
-    assert_eq!(region(&world, 3, 3), 2);
+    // The inner square is cut by the last piece of the file, on its own tile: it comes first.
+    assert_eq!(region(&world, 1, 1), 2);
+    assert_eq!(region(&world, 3, 3), 1);
     assert_eq!(region(&world, 0, 0), GROUNDS);
 }
 

@@ -366,9 +366,9 @@ fn the_wear_goes_to_the_exhibit_across_unless_its_slot_is_taken_or_it_is_the_gro
     let mut pieces = square(1, 1, 6, 6);
     pieces.extend(square(3, 3, 4, 4));
     let mut world = World::new(made("fences", zoo(&pieces)), shape);
-    // The ring is 1, the inner square 2. The outer fence has the grounds across.
+    // The inner square is 1 (its fence closes last), the ring 2. The outer fence has the grounds across.
     worn(&mut world, 3, 1, 0, 3);
-    assert_eq!(states(&world), [(1, Wear::Decayed), (2, Wear::Sound)]);
+    assert_eq!(states(&world), [(1, Wear::Sound), (2, Wear::Decayed)]);
     // The inner fence wears the inner square and the ring across it.
     worn(&mut world, 3, 3, 0, 0);
     assert_eq!(states(&world), [(1, Wear::Broken), (2, Wear::Broken)]);
@@ -378,7 +378,7 @@ fn the_wear_goes_to_the_exhibit_across_unless_its_slot_is_taken_or_it_is_the_gro
     pieces.push((3, 2, 4));
     let mut world = World::new(made("fences", zoo(&pieces)), shape);
     worn(&mut world, 3, 3, 0, 0);
-    assert_eq!(states(&world), [(1, Wear::Sound), (2, Wear::Broken)]);
+    assert_eq!(states(&world), [(1, Wear::Broken), (2, Wear::Sound)]);
 }
 
 #[test]

@@ -274,7 +274,7 @@ fn a_due_show_starts_with_an_item_state_for_each_animal_and_tells_everyone() {
     assert!(kinds(&events).starts_with(&[0x2713]));
     assert_eq!(
         w.units.take_messages(),
-        [(11491, 0, vec!["Exhibit 1".to_string()])]
+        [(11491, 0, vec!["Exhibit 2".to_string()])]
     );
     // The step after, each animal is called.
     events.clear();
@@ -476,7 +476,7 @@ fn when_every_animal_has_done_its_last_item_the_show_ends_with_its_figures() {
     assert_eq!(info.next, 182);
     assert_eq!(
         w.units.take_messages().last(),
-        Some(&(11492, 0, vec!["Exhibit 1".to_string()]))
+        Some(&(11492, 0, vec!["Exhibit 2".to_string()]))
     );
 }
 
@@ -565,7 +565,7 @@ fn an_abort_tells_the_abort_then_the_end_and_resets_the_show() {
     assert_eq!(info.next, 90);
     assert_eq!(
         w.units.take_messages().last(),
-        Some(&(11492, 0, vec!["Exhibit 1".to_string()]))
+        Some(&(11492, 0, vec!["Exhibit 2".to_string()]))
     );
     // The animals keep the show they were started in.
     assert_eq!(w.units.get(21).unwrap().show, 1001);
