@@ -10,10 +10,13 @@ use crate::world::World;
 
 /// The portal piece of exhibit `from` towards show neighbour `to`: the first boundary pair, in the
 /// order of the exhibit's boundary, whose wall piece on the side of `from` is a portal. Gives the
-/// piece, its tile and the tile across the wall. (An exhibit that is not a tank has no portal: its
-/// nested exhibits, shows 21.3, are not in the engine.)
+/// piece, its tile and the tile across the wall. An exhibit that is not a tank asks its amphibious
+/// neighbours in order and takes the first answer (shows 34.3).
 fn piece(world: &World, from: u32, to: u32) -> Option<(usize, usize, usize)> {
-    world.tank(from)?;
+    if world.tank(from).is_none() {
+        let near = world.exhibits().get(from)?.amphibious.clone();
+        return near.into_iter().find_map(|a| piece(world, a, to));
+    }
     for (a, b) in world.exhibits().boundary(world, from) {
         let Some(b) = b.filter(|&b| world.exhibits().region(b) == Some(to)) else {
             continue;

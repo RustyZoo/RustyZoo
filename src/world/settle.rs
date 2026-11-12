@@ -523,7 +523,7 @@ impl World {
                 self.note_decision();
             }
         }
-        self.relink();
+        self.relink(false);
     }
 
     /// The end of a split, after the gate of the new tank: the tanks `tanks` (the tank cut, then the

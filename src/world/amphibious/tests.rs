@@ -100,7 +100,7 @@ fn a_show_tank_does_not_link() {
         .as_mut()
         .unwrap()
         .show = true;
-    w.relink();
+    w.relink(false);
     assert_eq!(links(&w), (vec![], vec![]));
 }
 
@@ -166,7 +166,7 @@ mod show {
             let mut w = show_world(&[]);
             tank_mut(&mut w, t).show = show.0;
             tank_mut(&mut w, s).show = show.1;
-            w.relink();
+            w.relink(false);
             assert!(!linked(&w), "{show:?}");
         }
         // A tank that is not filled, on either side.
@@ -179,7 +179,7 @@ mod show {
         let mut w = show_world(&[]);
         tank_mut(&mut w, t).height = 3;
         tank_mut(&mut w, s).height = 3;
-        w.relink();
+        w.relink(false);
         assert!(!linked(&w), "3 high");
         // Wall tops at different levels.
         let mut w = show_world(&[]);

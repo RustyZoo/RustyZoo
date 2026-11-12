@@ -110,7 +110,10 @@ impl Cx<'_, '_> {
         let Some((t, across)) = portal(self.world, h, s) else {
             return false;
         };
-        let Some(level) = self.swim_level(h) else {
+        // The level is the one of the exhibit of the piece's tile: `h` is a land exhibit when the
+        // piece belongs to one of its amphibious neighbours (shows 34.3).
+        let there = crate::animal::food::exhibit_of(self.world, t);
+        let Some(level) = there.and_then(|x| self.swim_level(x)) else {
             return false;
         };
         if !self.path_to_level(t, false, Some(level)) || !self.start_walk(true, false, true) {

@@ -509,3 +509,30 @@ fn the_portal_reads_the_own_target_tile_and_not_the_goal_records() {
     crate::show::open_portals(&mut w, &cat(), s);
     assert!(open(&w));
 }
+
+#[test]
+fn an_animal_on_the_land_exhibit_swims_to_the_portal_of_the_tank_next_to_it() {
+    let mut w = staged_with(&[(1, "orca", (1, 3))], true);
+    w.units.get_mut(1).unwrap().called = true;
+    with_orca(&mut w, |cx| {
+        cx.set_task(GO_TO_SHOW, 1, 0, None);
+        cx.go_show_decide();
+    });
+    let u = unit(&w);
+    assert_eq!(u.own_tile, Some(tile(6, 3)));
+    assert_eq!(u.goal.record.target.tile, Some(tile(5, 3)));
+    assert!(u.called);
+}
+
+#[test]
+fn an_animal_on_the_land_exhibit_with_no_tank_linked_to_the_show_aborts_it() {
+    let mut w = staged_with(&[(1, "orca", (1, 3))], false);
+    w.units.get_mut(1).unwrap().called = true;
+    with_orca(&mut w, |cx| {
+        cx.set_task(GO_TO_SHOW, 1, 0, None);
+        cx.go_show_decide();
+    });
+    let said: Vec<i32> = w.units.take_messages().iter().map(|m| m.0).collect();
+    assert_eq!(said.first(), Some(&11004));
+    assert!(!unit(&w).called);
+}

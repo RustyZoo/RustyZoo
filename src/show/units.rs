@@ -24,8 +24,14 @@ pub(crate) enum Move {
         subtype: String,
         exhibit: Option<u32>,
     },
-    /// A show-neighbour link between a plain tank and a show tank was made (`on`) or dropped.
-    Link { plain: u32, show: u32, on: bool },
+    /// A show-neighbour link between a plain tank and a show tank was made (`on`) or dropped; `near`
+    /// is the plain tank's amphibious set at that point of the edit (shows 34.2 point 5).
+    Link {
+        plain: u32,
+        show: u32,
+        on: bool,
+        near: Vec<u32>,
+    },
     /// A show decision ended: the grandstands facing a show tank take its show id (shows 31.2).
     Associate,
     /// An exhibit that held a show info is gone: its show id and the tiles it held (shows 30.4).
@@ -64,11 +70,21 @@ pub(crate) fn settle(world: &mut World, cat: &Catalogue) {
             }
             Move::Associate => super::associate(world, cat),
             Move::Gone { show, tiles } => super::exhibit_gone(world, cat, show, &tiles),
-            Move::Link { plain, show, on } => {
+            Move::Link {
+                plain,
+                show,
+                on,
+                near,
+            } => {
                 let Some(n) = super::info_slot(world, show) else {
                     continue;
                 };
-                for (id, ty) in performers(world, cat, plain) {
+                let from = std::iter::once(plain).chain(near);
+                let mut animals = Vec::new();
+                for x in from {
+                    animals.extend(performers(world, cat, x));
+                }
+                for (id, ty) in animals {
                     match on {
                         true => add_unit(world, cat, n, show, id, ty),
                         false => remove_unit(world, n, id, ty),
@@ -117,8 +133,8 @@ fn performers<'a>(world: &World, cat: &'a Catalogue, x: u32) -> Vec<(u32, &'a En
 }
 
 /// `add_show_unit` and `remove_show_unit` (shows 20): the animal goes to the show info of exhibit
-/// `x`; an exhibit with none passes it on to its show neighbours. `seen` stops a walk that comes
-/// back to an exhibit.
+/// `x`; an exhibit with none passes it on to its show neighbours, and a land exhibit with none to
+/// its amphibious neighbours (shows 34.2). `seen` stops a walk that comes back to an exhibit.
 fn walk(
     world: &mut World,
     cat: &Catalogue,
@@ -139,8 +155,12 @@ fn walk(
         }
         return;
     }
-    let near = world.exhibits().get(x).map(|e| e.show_near.clone());
-    for y in near.unwrap_or_default() {
+    let Some(e) = world.exhibits().get(x) else {
+        return;
+    };
+    let land = e.tank.is_none() && e.show_near.is_empty();
+    let near = if land { &e.amphibious } else { &e.show_near };
+    for y in near.clone() {
         walk(world, cat, y, id, ty, add, seen);
     }
 }
