@@ -543,7 +543,9 @@ impl World {
     /// through the exhibits it makes or changes.
     pub(super) fn fence_updated(&mut self, slot: Option<(usize, usize)>) {
         let Some((a, d)) = slot else { return };
-        let Some(b) = self.neighbour(a, d) else { return };
+        let Some(b) = self.neighbour(a, d) else {
+            return;
+        };
         let across = self.side_to(b, a).and_then(|d| self.edge(b, d));
         let (x, y) = (self.exhibits.region(a), self.exhibits.region(b));
         let real = |r: Option<u32>| r.filter(|&r| r != GROUNDS && r != EXTERIOR);

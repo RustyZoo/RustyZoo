@@ -330,7 +330,9 @@ impl World {
         }
         self.edges_around(t);
         // A terrain change updates its exhibit, unless the game is paused (shows 34.4 point 7).
-        if !self.paused && let Some(x) = self.exhibits.region(t) {
+        if !self.paused
+            && let Some(x) = self.exhibits.region(t)
+        {
             self.reach(x);
         }
         self.changed(None);

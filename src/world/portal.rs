@@ -101,8 +101,11 @@ impl World {
         } else {
             reach
         };
-        let is_show =
-            |w: &World, x: u32| w.exhibits.get(x).is_some_and(|e| e.tank.is_some_and(|t| t.show));
+        let is_show = |w: &World, x: u32| {
+            w.exhibits
+                .get(x)
+                .is_some_and(|e| e.tank.is_some_and(|t| t.show))
+        };
         let mut shows: Vec<u32> = Vec::new();
         for x in from {
             let across = match is_show(self, x) {
@@ -137,7 +140,10 @@ impl World {
         // The set a plain tank's joins read (34.2 point 5).
         let near = |w: &World, n: u32| match before.and_then(|b| b.get(&n)) {
             Some(old) => old.clone(),
-            None => w.exhibits.get(n).map_or_else(Vec::new, |e| e.amphibious.clone()),
+            None => w
+                .exhibits
+                .get(n)
+                .map_or_else(Vec::new, |e| e.amphibious.clone()),
         };
         for n in old {
             if let Some(m) = self.exhibits.get_mut(n) {
@@ -162,7 +168,11 @@ impl World {
             let Some(y) = (self.exhibits.region(b)).filter(|&y| self.show_pair(s, y)) else {
                 continue;
             };
-            if let Some(e) = self.exhibits.get_mut(s).filter(|e| !e.show_near.contains(&y)) {
+            if let Some(e) = self
+                .exhibits
+                .get_mut(s)
+                .filter(|e| !e.show_near.contains(&y))
+            {
                 e.show_near.push(y);
                 if let Some(m) = self.exhibits.get_mut(y) {
                     m.show_near.push(s);
@@ -207,7 +217,10 @@ impl World {
     pub(super) fn drop_portals(&mut self, old: &Exhibits, id: u32) {
         let portals = old.list().iter().flat_map(|e| {
             let mine = e.id == id;
-            e.portals.iter().filter(move |p| mine || p.to == id).copied()
+            e.portals
+                .iter()
+                .filter(move |p| mine || p.to == id)
+                .copied()
         });
         for p in portals.collect::<Vec<_>>() {
             for piece in [p.mine, p.theirs] {

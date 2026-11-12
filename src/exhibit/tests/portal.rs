@@ -2,9 +2,9 @@
 //! flat synthetic ground: a plain tank on the left, a show tank built against its east side.
 
 use super::decision::{build, id_at};
-use crate::show::Move;
 use super::tank::{put_wall, ring, tank_shape, tanks};
 use super::*;
+use crate::show::Move;
 
 /// Plain tanks from column 1 (and from column 5 when `both`), then a show tank on columns 3 and 4,
 /// all on rows 2 to `last`, built against them: the shared lines hold the plain tank's wall and the
@@ -546,7 +546,11 @@ fn a_recompute_drops_and_makes_again_the_link_of_a_neighbour_that_stays() {
     // 34.5 points 1 and 3.2: the performers of N1 leave the show and join it again, behind the
     // show tank's own.
     let (mut world, _) = crossing();
-    let (n1, n2, far) = (id_at(&world, 1, 2), id_at(&world, 5, 2), id_at(&world, 1, 6));
+    let (n1, n2, far) = (
+        id_at(&world, 1, 2),
+        id_at(&world, 5, 2),
+        id_at(&world, 1, 6),
+    );
     let links = |world: &mut World, plain: u32| -> Vec<bool> {
         let moves = world.take_moves();
         let on = |m: &Move| match m {
@@ -576,4 +580,26 @@ fn a_terrain_edit_recomputes_only_when_the_game_is_not_paused() {
     world.set_paused(false);
     paint(&mut world);
     assert!(!is_open(&world, at) && shown(&world, id) == 0);
+}
+
+#[test]
+fn each_setter_of_the_neighbour_recomputes_the_show_tank_and_closes_its_portal() {
+    // 34.4 points 2 to 6: fill (filled already), drain, wall height, base level, salinity.
+    type Edit = fn(&mut World, u32);
+    let edits: [(&str, Edit); 5] = [
+        ("fill", |w, n| _ = w.fill(n)),
+        ("drain", |w, n| _ = w.drain(n)),
+        ("height", |w, n| w.set_height(n, 7)),
+        ("base", |w, n| w.flatten(n, 1, false)),
+        ("salinity", |w, n| {
+            let salt = w.tank(n).is_some_and(|t| t.salt);
+            w.set_salinity(n, !salt);
+        }),
+    ];
+    for (name, edit) in edits {
+        let (mut world, (at, id)) = crossing();
+        let n2 = id_at(&world, 5, 2);
+        edit(&mut world, n2);
+        assert!(!is_open(&world, at) && shown(&world, id) == 0, "{name}");
+    }
 }
