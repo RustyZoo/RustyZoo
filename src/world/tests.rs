@@ -108,6 +108,12 @@ fn shape(e: &Entity) -> Option<Shape> {
             wall: false,
             ..FENCE
         }),
+        // A zoo gate piece.
+        "zgate" => Some(Shape {
+            wall: false,
+            gate: true,
+            ..FENCE
+        }),
         "path" => Some(Shape {
             kind: Kind::Path,
             footprint: (2, 2),
@@ -1175,4 +1181,38 @@ fn set_install_takes_the_numbers_of_the_install_as_the_game_start_does() {
     assert_eq!(world.water, [false, true]);
     assert_eq!(world.units.class.reset_interval, 7);
     assert_eq!(world.decay, Decay { min: 5, max: 90 });
+}
+
+#[test]
+fn the_dollar_key_picks_only_exhibit_fence_pieces_inside_the_zoo_clear_of_water_and_the_zoo_wall() {
+    let mut zoo = zoo(8, 8, (1, 4));
+    zoo.entities.push(entity("gate", 96, 288, 6));
+    for row in 0..8 {
+        zoo.entities
+            .push(entity("zwall", 4 * 64 + 63, row * 64 + 32, 2));
+    }
+    // The pieces, with the tiles on water: 7 and 6 of row 6 and 7.
+    zoo.tiles[6 * 8 + 7].terrain = 1;
+    zoo.tiles[7 * 8 + 7].terrain = 1;
+    let first = zoo.entities.len();
+    let pieces = [
+        ("plain", 6 * 64 + 32, 64, 0, true),
+        ("zgate", 6 * 64 + 32, 2 * 64, 0, false),
+        ("zwall", 6 * 64 + 32, 3 * 64, 0, false),
+        ("plain", 64 + 32, 64, 0, false),
+        ("plain", 5 * 64, 5 * 64 + 32, 6, false),
+        ("plain", 6 * 64 + 63, 6 * 64 + 32, 2, false),
+        ("plain", 7 * 64 + 32, 7 * 64, 0, false),
+        ("plain", 5 * 64 + 32, 7 * 64, 0, true),
+    ];
+    for (class, x, y, d, _) in pieces {
+        zoo.entities.push(entity(class, x, y, d));
+    }
+    let mut world = World::new(zoo, shape);
+    world.set_water(vec![false, true]);
+    let wanted: Vec<usize> = (first..)
+        .zip(pieces)
+        .filter_map(|(at, p)| p.4.then_some(at))
+        .collect();
+    assert_eq!(world.dollar_candidates(), wanted);
 }

@@ -84,6 +84,27 @@ impl Sim {
         }
     }
 
+    /// The `$` key's second effect (input 4.8): one candidate piece is drawn (one draw, none when
+    /// there is no candidate); a tank wall halves its tank's purity, any other piece breaks like
+    /// the break cheat when it can.
+    pub(crate) fn dollar_break(&mut self, world: &mut World, cat: &Catalogue) {
+        let found = world.dollar_candidates();
+        if found.is_empty() {
+            return;
+        }
+        let at = found[self.rng.pick(found.len() as u32) as usize];
+        if world.halve_tank_water(at) {
+            return;
+        }
+        let mut events = Vec::new();
+        if world.break_piece(cat, at, &mut self.lines, &mut events) && world.loops(at) {
+            let id = world.zoo.entities[at].common.as_ref().map_or(0, |c| c.id);
+            let start = (0..2).map(|_| self.rng.pick(2000)).last().unwrap_or(0);
+            self.idles.start_next(id, start);
+        }
+        events.into_iter().for_each(|e| self.events.post(e));
+    }
+
     /// The repair cheat (placing 7.4): every fence piece that is broken or at or below its type's
     /// decayed life is made healthy, with no wear test.
     pub(crate) fn repair_fences(&mut self, world: &mut World, cat: &Catalogue) {
