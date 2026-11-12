@@ -1769,7 +1769,7 @@ fn the_writer_puts_names_thoughts_and_habitat_figures_over_the_file() {
         assert_eq!(back.thoughts(), zoo.thoughts(), "version {v}");
         assert_eq!(back.habitat_info[0], zoo.habitat_info[0], "version {v}");
         assert_eq!(back.habitat_info[1].stats, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-        assert_eq!(back.habitat_info[1].serviced, if v >= 83 { 55 } else { 0 });
+        assert_eq!(back.habitat_info[1].serviced, 55, "version {v}");
         assert_eq!(back.tanks, zoo.tanks, "version {v}");
         assert_eq!(back.id_counter, zoo.id_counter, "version {v}");
         assert_eq!(back.clocks, zoo.clocks, "version {v}");

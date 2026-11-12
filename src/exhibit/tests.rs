@@ -883,8 +883,8 @@ fn a_saved_exhibit_writes_its_live_statistics_and_service_time() {
     let [a, b, c, d, e, f] = bits([20.0, 10.0, 30.0, 50.0, 40.0, 60.0]);
     assert_eq!(zoo.habitat_info[0].stats, [a, b, c, d, e, f, 2, 1, 3]);
     assert_eq!(zoo.habitat_info[0].serviced, 99);
-    // A record whose tile is in no exhibit keeps what it stored, and the world is not touched.
-    assert_eq!(zoo.habitat_info[1].stats, [9; 9]);
+    // A record whose tile is in no exhibit is not saved, and the world is not touched.
+    assert_eq!(zoo.habitat_info.len(), 1);
     assert_eq!(world.zoo.habitat_info[0].stats[0], 1.0f32.to_bits());
 }
 
@@ -1138,6 +1138,7 @@ mod filter;
 mod neighbours;
 mod portal;
 mod rating;
+mod save;
 mod show;
 mod tank;
 mod viewing;
