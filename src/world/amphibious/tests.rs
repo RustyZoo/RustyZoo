@@ -100,6 +100,7 @@ fn a_show_tank_does_not_link() {
         .as_mut()
         .unwrap()
         .show = true;
+    w.reach_all();
     w.relink(false);
     assert_eq!(links(&w), (vec![], vec![]));
 }
@@ -161,13 +162,15 @@ mod show {
         let linked = |w: &World| !shows(w).0.is_empty();
         let (t, s, _) = ids(&show_world(&[]));
         assert!(linked(&show_world(&[])), "the world as built");
-        // Two show tanks, two plain tanks.
-        for show in [(true, true), (false, false)] {
+        // Two show tanks. Two plain tanks keep the link they had, until one is a show tank again
+        // (shows 31.5 point 3).
+        for (show, linked_after) in [((true, true), false), ((false, false), true)] {
             let mut w = show_world(&[]);
             tank_mut(&mut w, t).show = show.0;
             tank_mut(&mut w, s).show = show.1;
+            w.reach_all();
             w.relink(false);
-            assert!(!linked(&w), "{show:?}");
+            assert_eq!(linked(&w), linked_after, "{show:?}");
         }
         // A tank that is not filled, on either side.
         for id in [t, s] {
@@ -179,6 +182,7 @@ mod show {
         let mut w = show_world(&[]);
         tank_mut(&mut w, t).height = 3;
         tank_mut(&mut w, s).height = 3;
+        w.reach_all();
         w.relink(false);
         assert!(!linked(&w), "3 high");
         // Wall tops at different levels.

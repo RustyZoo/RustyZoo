@@ -21,6 +21,7 @@ impl World {
                 continue;
             }
             done.push(id);
+            self.reach(id);
             match self.tank(id).is_some_and(|t| t.show) {
                 true => {
                     self.make_show(id, self.units.ai_ticks);

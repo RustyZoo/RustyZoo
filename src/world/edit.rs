@@ -61,6 +61,11 @@ impl World {
             self.settle(slot, false);
             notes = self.changed_by(before, seen);
         }
+        // Every fence-class piece reaches the check, an exhibit fence or not (shows 34.4 point 12a).
+        if self.is_fence(self.zoo.entities.len() - 1) {
+            let slot = self.slot_of(self.zoo.entities.len() - 1);
+            self.fence_updated(slot);
+        }
         if rated {
             tiles.into_iter().for_each(|t| self.mark_rating(t));
         }
@@ -123,6 +128,7 @@ impl World {
         };
         let slot = self.slot_of(at);
         let fence = self.shapes[at].is_some_and(|s| s.fence);
+        let piece = self.is_fence(at);
         if fence {
             self.note_tank(at);
             self.note_opening(slot, false);
@@ -151,6 +157,9 @@ impl World {
         self.changed(Some(Shift::Removed(at)));
         if fence {
             self.settle(slot, false);
+        }
+        if piece {
+            self.fence_updated(slot);
         }
         rated.into_iter().for_each(|t| self.mark_rating(t));
         if undoable {
@@ -233,6 +242,11 @@ impl World {
         self.changed(None);
         if fence.0 || fence.1 {
             self.settle(slot, false);
+        }
+        // A fence that becomes an exhibit fence runs the placement check, one that stops being
+        // one the removal check (shows 34.4 point 11).
+        if fence.0 != fence.1 {
+            self.fence_updated(slot);
         }
         let rated = self.rated_tiles(at);
         rated.into_iter().for_each(|t| self.mark_rating(t));
@@ -327,6 +341,12 @@ impl World {
             self.reheight(t);
         }
         self.edges_around(t);
+        // A terrain change updates its exhibit, unless the game is paused (shows 34.4 point 7).
+        if !self.paused
+            && let Some(x) = self.exhibits.region(t)
+        {
+            self.reach(x);
+        }
         self.changed(None);
         self.mark_rating(t);
         self.escape_check(t);

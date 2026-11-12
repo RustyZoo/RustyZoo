@@ -2,13 +2,13 @@
 //! show tank shares with a plain tank, the first straight pair of its boundary becomes the
 //! portal, flag set on both pieces; the flags of the other pairs of the link are cleared.
 //!
-//! The original recomputes a show tank's links and portals at each edit (31.4); the world does
-//! it for every show tank after each edit. The flags of the old portals are cleared and the new
-//! ones set in one pass, so a portal that stays keeps its open byte (the original closes it, but
-//! only for the callers of shows 31.4; the world cannot tell them apart yet, issue 1168).
+//! The original recomputes the links and portals of the show tanks an edit reaches, and only at
+//! the edits of shows 34.4; each recompute closes every portal of the show tank (34.5). The
+//! world notes those edits with [`World::reach`].
 
 use super::World;
 use crate::exhibit::Exhibits;
+use std::collections::HashMap;
 
 /// A show tank's portal towards a show neighbour: the neighbour and the ids of the two wall
 /// pieces, the show tank's and the neighbour's.
@@ -70,71 +70,159 @@ impl World {
         (slots(a) == 1 && slots(b) == 1 && ok(p) && ok(q)).then_some((p, q))
     }
 
-    /// The portals of every show tank, made again (31.3 points 5 and 6, 31.5 point 2): the flags of
-    /// its old portals and of the pieces of every qualifying pair go to 0, then the first
-    /// straight pair of each link, in the tank's boundary order, becomes its portal.
-    pub(super) fn pair_portals(&mut self) {
-        let list = self.exhibits.list().iter();
-        let shows: Vec<u32> = list
-            .filter(|e| e.tank.is_some_and(|t| t.show))
-            .map(|e| e.id)
-            .collect();
+    /// Notes that exhibit `id` is updated by the edit in progress (shows 34.4): the next
+    /// [`World::update_shows`] recomputes the show tanks it reaches.
+    pub(super) fn reach(&mut self, id: u32) {
+        self.reach.push(id);
+    }
+
+    /// Every show tank is updated by the next recompute (a load).
+    pub(super) fn reach_all(&mut self) {
+        self.reach_all = true;
+    }
+
+    /// The show-link recompute of the exhibits noted by [`World::reach`] (shows 31.4, 34.5): each
+    /// show tank they reach has its links dropped and made again, in the order of its boundary,
+    /// and the flags of its portals go to 0 and to 1 again. A show tank not reached keeps all.
+    /// `before` is the amphibious sets from before the rebuild when the edit updates first (shows
+    /// 34.2 point 5).
+    pub(super) fn update_shows(&mut self, before: Option<&HashMap<u32, Vec<u32>>>) {
+        let ids: Vec<u32> = self.exhibits.list().iter().map(|e| e.id).collect();
+        // An exhibit that is gone is forgotten by its neighbours (31.5 point 1).
+        for &x in &ids {
+            if let Some(e) = self.exhibits.get_mut(x) {
+                e.show_near.retain(|n| ids.contains(n));
+                e.portals.retain(|p| ids.contains(&p.to));
+            }
+        }
+        let reach = std::mem::take(&mut self.reach);
+        let from = if std::mem::take(&mut self.reach_all) {
+            ids
+        } else {
+            reach
+        };
+        let is_show = |w: &World, x: u32| {
+            w.exhibits
+                .get(x)
+                .is_some_and(|e| e.tank.is_some_and(|t| t.show))
+        };
+        let mut shows: Vec<u32> = Vec::new();
+        for x in from {
+            let across = match is_show(self, x) {
+                true => vec![x],
+                false if self.exhibits.get(x).is_none() => continue,
+                false => (self.exhibits.boundary(self, x).into_iter())
+                    .filter_map(|(_, b)| self.exhibits.region(b?))
+                    .filter(|&y| is_show(self, y))
+                    .collect(),
+            };
+            for y in across {
+                if !shows.contains(&y) {
+                    shows.push(y);
+                }
+            }
+        }
         for s in shows {
-            let mut flags: Vec<(u32, bool)> = Vec::new();
-            let old = self
-                .exhibits
-                .get_mut(s)
-                .map(|e| std::mem::take(&mut e.portals));
-            for p in old.iter().flatten() {
-                flags.extend([(p.mine, false), (p.theirs, false)]);
-            }
-            let mut now: Vec<Portal> = Vec::new();
-            for (a, b) in self.exhibits.boundary(self, s) {
-                let Some(b) = b else { continue };
-                let Some(y) = (self.exhibits.region(b)).filter(|&y| self.show_pair(s, y)) else {
-                    continue;
-                };
-                let line = [
-                    self.side_to(a, b).and_then(|d| self.edge(a, d)),
-                    self.side_to(b, a).and_then(|d| self.edge(b, d)),
-                ];
-                flags.extend(
-                    line.into_iter()
-                        .flatten()
-                        .filter_map(|e| Some((self.piece_id(e)?, false))),
-                );
-                if now.iter().any(|p| p.to == y) {
-                    continue;
-                }
-                if let Some((p, q)) = self.straight(a, b)
-                    && let (Some(mine), Some(theirs)) = (self.piece_id(p), self.piece_id(q))
-                {
-                    flags.extend([(mine, true), (theirs, true)]);
-                    now.push(Portal {
-                        to: y,
-                        mine,
-                        theirs,
-                    });
-                }
-            }
-            // The last word on a piece wins; a piece that is gone from the map is skipped.
-            for (i, &(id, _)) in flags.iter().enumerate() {
-                let last = flags.iter().rposition(|f| f.0 == id) == Some(i);
-                if let (true, Some(at)) = (last, self.find(id)) {
-                    self.set_flag(at, flags[i].1);
-                }
-            }
-            if let Some(e) = self.exhibits.get_mut(s) {
-                e.portals = now;
-            }
+            self.update_show(s, before);
         }
     }
 
-    /// Exhibit `id` of `old` is gone (31.5 point 1): the flags of its portals go to 0 when the
-    /// pieces are still on the map.
+    /// `update` of show tank `s` (31.4 point 2, 34.5): all its links dropped, then `check` for
+    /// each pair of its boundary (31.3 points 4 to 6).
+    fn update_show(&mut self, s: u32, before: Option<&HashMap<u32, Vec<u32>>>) {
+        let Some(e) = self.exhibits.get_mut(s) else {
+            return;
+        };
+        let (old, portals) = (
+            std::mem::take(&mut e.show_near),
+            std::mem::take(&mut e.portals),
+        );
+        // The set a plain tank's joins read (34.2 point 5).
+        let near = |w: &World, n: u32| match before.and_then(|b| b.get(&n)) {
+            Some(old) => old.clone(),
+            None => w
+                .exhibits
+                .get(n)
+                .map_or_else(Vec::new, |e| e.amphibious.clone()),
+        };
+        for n in old {
+            if let Some(m) = self.exhibits.get_mut(n) {
+                m.show_near.retain(|&y| y != s);
+            }
+            let near = near(self, n);
+            self.show_moves.push(crate::show::Move::Link {
+                plain: n,
+                show: s,
+                on: false,
+                near,
+            });
+        }
+        for piece in portals.iter().flat_map(|p| [p.mine, p.theirs]) {
+            if let Some(at) = self.find(piece) {
+                self.set_flag(at, false);
+            }
+        }
+        let mut now: Vec<Portal> = Vec::new();
+        for (a, b) in self.exhibits.boundary(self, s) {
+            let Some(b) = b else { continue };
+            let Some(y) = (self.exhibits.region(b)).filter(|&y| self.show_pair(s, y)) else {
+                continue;
+            };
+            if let Some(e) = self
+                .exhibits
+                .get_mut(s)
+                .filter(|e| !e.show_near.contains(&y))
+            {
+                e.show_near.push(y);
+                if let Some(m) = self.exhibits.get_mut(y) {
+                    m.show_near.push(s);
+                }
+                let near = near(self, y);
+                self.show_moves.push(crate::show::Move::Link {
+                    plain: y,
+                    show: s,
+                    on: true,
+                    near,
+                });
+            }
+            let line = [
+                self.side_to(a, b).and_then(|d| self.edge(a, d)),
+                self.side_to(b, a).and_then(|d| self.edge(b, d)),
+            ];
+            for e in line.into_iter().flatten() {
+                self.set_flag(e, false);
+            }
+            if now.iter().any(|p| p.to == y) {
+                continue;
+            }
+            if let Some((p, q)) = self.straight(a, b)
+                && let (Some(mine), Some(theirs)) = (self.piece_id(p), self.piece_id(q))
+            {
+                self.set_flag(p, true);
+                self.set_flag(q, true);
+                now.push(Portal {
+                    to: y,
+                    mine,
+                    theirs,
+                });
+            }
+        }
+        if let Some(e) = self.exhibits.get_mut(s) {
+            e.portals = now;
+        }
+    }
+
+    /// Exhibit `id` of `old` is gone (31.5 point 1): the flags of its portals, and of the portals
+    /// the other exhibits hold towards it, go to 0 when the pieces are still on the map.
     pub(super) fn drop_portals(&mut self, old: &Exhibits, id: u32) {
-        let portals = old.get(id).map(|e| e.portals.clone()).unwrap_or_default();
-        for p in portals {
+        let portals = old.list().iter().flat_map(|e| {
+            let mine = e.id == id;
+            e.portals
+                .iter()
+                .filter(move |p| mine || p.to == id)
+                .copied()
+        });
+        for p in portals.collect::<Vec<_>>() {
             for piece in [p.mine, p.theirs] {
                 if let Some(at) = self.find(piece) {
                     self.set_flag(at, false);
