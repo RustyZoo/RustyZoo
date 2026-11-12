@@ -124,7 +124,8 @@ impl App<'_> {
             // The `$` key donates (input 4.8).
             (Command::Char(b'$'), Some(game)) if keys && !game.paused => {
                 game.money.refund(DONATIONS, DOLLAR_KEY);
-                self.sim.dollar_break(&mut game.world, self.renderer.catalogue());
+                self.sim
+                    .dollar_break(&mut game.world, self.renderer.catalogue());
             }
             (Command::Char(byte), _) => {
                 if let Some(ui) = &mut self.ui {

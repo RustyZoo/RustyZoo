@@ -981,7 +981,11 @@ fn the_dollar_key_breaks_the_drawn_piece_with_one_draw_and_the_two_starts_of_the
     let before = run.sim.rng.clone();
     run.sim.dollar_break(&mut run.world, &cat);
     assert_eq!(fence(&run).life, 0);
-    assert_eq!(run.sim.rng.state(), after(&before, 3).state(), "1 + 2 draws");
+    assert_eq!(
+        run.sim.rng.state(),
+        after(&before, 3).state(),
+        "1 + 2 draws"
+    );
     // Broken already: the same single draw, nothing else.
     let before = run.sim.rng.clone();
     run.sim.dollar_break(&mut run.world, &cat);
