@@ -26,7 +26,7 @@ pub(crate) fn stop_all(unit: &mut Unit) {
     crate::unit::movement::stop(unit);
     unit.destination = None;
     unit.runner = Default::default();
-    unit.mover.emergency = false;
+    (unit.mover.emergency, unit.mover.word) = (false, None);
     unit.wait = 0;
     if let Part::Animal(a) = &mut unit.part {
         (a.drinking, a.wants_food, a.thirsty, a.walk) = (false, false, false, None);

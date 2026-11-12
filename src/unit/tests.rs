@@ -396,7 +396,7 @@ fn the_hash_covers_the_movement_of_the_units() {
     let mut w = world(&[("animals", 1), ("guests", 2)]);
     let base = w.units.hash();
     assert_eq!(base, world(&[("animals", 1), ("guests", 2)]).units.hash());
-    let changes: [fn(&mut Unit); 18] = [
+    let changes: [fn(&mut Unit); 19] = [
         |u| u.speed = 3,
         |u| u.moving = true,
         |u| u.anim_speed = 99,
@@ -415,6 +415,7 @@ fn the_hash_covers_the_movement_of_the_units() {
         |u| u.tank = 4,
         |u| u.vertical = -1,
         |u| u.target = crate::behaviour::Target::Dive,
+        |u| u.mover.word = Some(3),
     ];
     for (i, change) in changes.iter().enumerate() {
         let mut other = world(&[("animals", 1), ("guests", 2)]);

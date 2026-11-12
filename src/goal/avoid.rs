@@ -63,6 +63,23 @@ impl Cx<'_, '_> {
         true
     }
 
+    /// Guest ladder point 3, last paragraph: a caught guest that is not avoiding, whatever its fright
+    /// (one in a building task keeps it until now), keeps the predator it has or takes the one in
+    /// sight, resets its goal and takes the avoid task, mode 3, on it (0 when none) with the
+    /// emergency cost. Whether it did.
+    pub(super) fn caught_ladder(&mut self, task: u8) -> bool {
+        if !self.unit.caught || task == AVOID {
+            return false;
+        }
+        if self.unit.predator == 0 {
+            self.unit.predator = self.predator(0);
+        }
+        self.reset();
+        self.set_task(AVOID, 3, self.unit.predator, None);
+        self.unit.mover.emergency = true;
+        true
+    }
+
     /// Staff 7.1 point 1: a frightened member who is not avoiding looks again and, seeing one,
     /// takes the avoid task, mode 3, on it with no goal reset and keeps it; a guide first lets its
     /// group go. The flag goes down either way. Whether the ladder ends here.

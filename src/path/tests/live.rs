@@ -279,11 +279,13 @@ fn a_guest_avoiding_a_predator_pays_the_emergency_cost_and_leaves_the_paths() {
     assert_eq!(terrain(&w, &guest, t((1, 2)), goal), MAX);
     let fleeing = Mover {
         avoiding: true,
+        emergency: true,
         ..guest.clone()
     };
     assert_eq!(terrain(&w, &fleeing, t((1, 2)), goal), 1);
     let slow = Mover {
         avoiding: false,
+        emergency: false,
         ..fleeing
     };
     assert_eq!(terrain(&w, &slow, t((1, 2)), None), 7);
@@ -294,6 +296,24 @@ fn a_guest_avoiding_a_predator_pays_the_emergency_cost_and_leaves_the_paths() {
         ..slow
     };
     assert_eq!(terrain(&w, &out, t((1, 2)), None), 1);
+}
+
+#[test]
+fn a_guest_pays_the_cost_word_it_holds_not_the_task() {
+    let w = world(|_, e| paths(e, &[(1, 1)]));
+    let guest = unit(Kind::Guest, (1, 1));
+    // Task 0x75 alone changes nothing; the emergency value comes with the field.
+    let avoiding = Mover {
+        avoiding: true,
+        ..guest.clone()
+    };
+    assert_eq!(terrain(&w, &avoiding, t((1, 2)), None), 7);
+    // A loaded word wins over the type's, the emergency flag over neither until a write.
+    let loaded = Mover {
+        word: Some(3),
+        ..avoiding
+    };
+    assert_eq!(terrain(&w, &loaded, t((1, 2)), None), 3);
 }
 
 #[test]

@@ -162,8 +162,7 @@ pub(crate) fn terrain(w: &World, m: &Mover, t: usize, goal: Option<usize>) -> u3
                 (true, _) => 1,
                 (_, true) => MAX,
                 _ if on_tank || wet(t) => 1,
-                _ if m.avoiding || m.emergency => m.emergency_cost,
-                _ => m.word.unwrap_or(m.non_path_cost),
+                _ => m.cost_word(),
             };
             let afraid = units(w, m, t).iter().any(|u| m.predators.contains(&u.0));
             if steep || afraid { base.max(16) } else { base }

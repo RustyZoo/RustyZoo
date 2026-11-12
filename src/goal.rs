@@ -482,6 +482,7 @@ impl Cx<'_, '_> {
             || self.exit_ladder()
             || self.leave_ladder()
             || self.fright_ladder(task)
+            || self.caught_ladder(task)
             || self.sick_ladder()
             || self.stand_ladder(task)
             || self.busy_ladder(task, done)

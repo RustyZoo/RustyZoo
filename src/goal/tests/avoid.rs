@@ -451,3 +451,36 @@ fn the_flee_ring_is_32_bit_arithmetic() {
     cat.predator_radius = Some(-5);
     assert_eq!(run(&cat, 13), Some(10 * 20 + 7));
 }
+
+#[test]
+fn a_caught_guest_in_a_building_task_avoids_with_the_emergency_cost_and_a_loaded_word_goes() {
+    let cat = cat("");
+    let mut w = zoo("lion", (13, 10), true, (10, 10));
+    let u = w.units.get_mut(GUEST).unwrap();
+    (u.caught, u.mover.word) = (true, Some(3));
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        cx.set_task(ENTER_BUILDING, 3, 0, None);
+        assert!(cx.caught_ladder(ENTER_BUILDING));
+        let r = cx.record().clone();
+        assert_eq!((r.task, r.mode, r.target.id), (AVOID, 3, BEAST));
+        assert_eq!(cx.unit.predator, BEAST);
+        assert!(cx.unit.mover.emergency && cx.unit.mover.word.is_none());
+        assert_eq!(cx.unit.mover.cost_word(), cx.unit.mover.emergency_cost);
+        // Already avoiding: nothing more.
+        assert!(!cx.caught_ladder(AVOID));
+    });
+    // Not caught: nothing.
+    let mut w = zoo("lion", (13, 10), true, (10, 10));
+    with(&mut w, &cat, GUEST, &[], |cx| {
+        assert!(!cx.caught_ladder(NONE))
+    });
+}
+
+#[test]
+fn stopping_everything_puts_back_the_cost_of_a_guest_over_a_loaded_word() {
+    let mut w = zoo("lion", (13, 10), false, (10, 10));
+    let u = w.units.get_mut(GUEST).unwrap();
+    (u.mover.word, u.mover.emergency) = (Some(3), true);
+    crate::goal::stop_all(u);
+    assert_eq!((u.mover.word, u.mover.emergency), (None, false));
+}
