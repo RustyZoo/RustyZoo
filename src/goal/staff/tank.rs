@@ -430,3 +430,6 @@ fn food_places(world: &World, x: u32, mover: Option<&path::Mover>) -> Vec<usize>
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod nested;
