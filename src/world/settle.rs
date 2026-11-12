@@ -537,8 +537,8 @@ impl World {
         self.relink(false);
     }
 
-    /// A fence piece placed or removed on side `d` of tile `a` (`slot`) that leaves an exhibit
-    /// fence across the line, between two different exhibits that are not the zoo grounds, updates
+    /// A fence-class piece (an exhibit fence or not) placed, removed or morphed on side `d` of tile
+    /// `a` (`slot`) that leaves an exhibit fence across the line, between two different exhibits that are not the zoo grounds, updates
     /// the exhibit of its tile (shows 34.4 points 9 and 10); every other edit of a piece updates
     /// through the exhibits it makes or changes.
     pub(super) fn fence_updated(&mut self, slot: Option<(usize, usize)>) {

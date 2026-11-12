@@ -67,9 +67,10 @@ impl World {
                 }
             }
         }
-        // The base level setter updates the tank at once (shows 34.4 point 5).
+        // The base level setter updates the tank first, then the amphibious rebuild (shows 34.2
+        // point 5, 34.4 point 5).
         self.reach(id);
-        self.relink(false);
+        self.relink(true);
     }
 
     /// Paints the tiles with the terrain type of a show tank or of a tank, free and recorded for
