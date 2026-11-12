@@ -113,6 +113,7 @@ impl Units {
                         .for_each(|i| h.word(i.map_or(u32::MAX, |i| i as u32)));
                     h.word(g.building);
                     h.word(u32::from(g.leave));
+                    h.word(u.mover.cost_word());
                 }
             }
             h.word(u.events.len() as u32);
