@@ -1478,3 +1478,93 @@ fn a_compost_that_earned_is_saved_with_its_stored_figures_and_date() {
     assert_eq!(b.upkeep.map(f32::from_bits), Some(75.0));
     assert_eq!(b.income.map(f32::from_bits), [16.0, 20.0, 36.0]);
 }
+
+/// The users a building draws itself (map drawing 9.5.1): a base with `cDrawUser`, and the
+/// types visible inside, for the last user of a slot in an entering, leaving or using task.
+#[test]
+fn the_last_user_of_a_slot_in_a_building_task_is_drawn_by_a_type_that_draws_its_users() {
+    use super::drawn::drawn_users;
+    const BASE: &str = "[Characteristics/Integers]\ncDrawUser=1\ncUserStaysOutside=1\n\
+        [slots]\nname=a\n[a]\nslotpos=0\nslotpos=0\ncapacity=2\n";
+    const VISIBLE: &str = "[Characteristics/Integers]\ncHideUser=0\ncUserStaysOutside=0\n\
+        [slots]\nname=a\n[a]\nslotpos=0\nslotpos=0\ncapacity=2\n";
+    const SEATS: &str = "[Characteristics/Integers]\ncDrawUser=1\n\
+        [slots]\nname=a\n[a]\ncapacity=2\ncHasDrawSlots=p\n[p]\np=0\np=0\np=0\n";
+    // Neither draws: users hidden, or staying outside, the default.
+    const HIDDEN: &str = "[Characteristics/Integers]\ncHideUser=1\ncUserStaysOutside=0\n\
+        [slots]\nname=a\n[a]\nslotpos=0\nslotpos=0\ncapacity=2\n";
+    const OUTSIDE: &str = "[slots]\nname=a\n[a]\nslotpos=0\nslotpos=0\ncapacity=2\n";
+    let mut cat = Catalogue::default();
+    let names = ["base", "visible", "seats", "hidden", "outside"];
+    for (name, text) in names.iter().zip([BASE, VISIBLE, SEATS, HIDDEN, OUTSIDE]) {
+        cat.push(named(name, text));
+    }
+    let mut w = world_with((12, 4), |zoo| {
+        for (i, name) in names.iter().enumerate() {
+            let at = centre((i as i32, 1));
+            zoo.entities
+                .push(entity("building", name, 10 + i as u32, at, 0));
+        }
+        for id in 1..=3 {
+            zoo.entities
+                .push(entity("guests", "man", id, centre((id as i32, 2)), 0));
+        }
+    });
+    // Each building lists the guests 1 and 2 in slot 0, the guest 2 last.
+    for i in 0..names.len() {
+        let record = crate::zoo::BuildingRecord {
+            users: vec![(1, 0), (2, 0)],
+            users_now: 2,
+            ..record(0, START)
+        };
+        w.zoo.entities[i].common.as_mut().unwrap().building = Some(record);
+    }
+    let task = |w: &mut World, id: u32, task: u8| {
+        w.units.get_mut(id).unwrap().goal.record.task = task;
+    };
+    let drawn = |w: &World| drawn_users(w, &cat);
+    // Not in a building task: not drawn.
+    task(&mut w, 2, crate::goal::NONE);
+    assert_eq!(drawn(&w), []);
+    // Entering, leaving or using: the last user, by the two types that draw, not the seats one.
+    for t in [
+        crate::goal::ENTER_BUILDING,
+        crate::goal::EXIT_BUILDING,
+        crate::goal::USE,
+    ] {
+        task(&mut w, 2, t);
+        assert_eq!(drawn(&w), [(10, 2), (11, 2)], "task {t}");
+    }
+    // Only the last user counts: a user before it, in a building task, is not drawn.
+    task(&mut w, 2, crate::goal::NONE);
+    task(&mut w, 1, crate::goal::USE);
+    assert_eq!(drawn(&w), []);
+    // A user that is not a unit is not drawn, and a slot without users draws nothing.
+    task(&mut w, 2, crate::goal::USE);
+    w.zoo.entities[0]
+        .common
+        .as_mut()
+        .unwrap()
+        .building
+        .as_mut()
+        .unwrap()
+        .users = vec![(99, 0)];
+    w.zoo.entities[1]
+        .common
+        .as_mut()
+        .unwrap()
+        .building
+        .as_mut()
+        .unwrap()
+        .users = vec![(2, 1)];
+    assert_eq!(drawn(&w), []);
+    // The live list of a guest building replaces the record.
+    w.units.buildings.insert(
+        11,
+        Live {
+            users: vec![(3, 0, 0), (2, 0, 0)],
+            ..Live::default()
+        },
+    );
+    assert_eq!(drawn(&w), [(11, 2)]);
+}
