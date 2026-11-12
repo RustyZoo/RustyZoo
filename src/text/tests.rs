@@ -524,11 +524,52 @@ fn colours(canvas: &Framebuffer, bg: [u8; 4]) -> Vec<[u8; 4]> {
 }
 
 #[test]
-fn bold_glyph_pixels_are_heavier_than_the_coverage() {
-    use super::draw::heavier;
-    assert_eq!((heavier(0), heavier(255)), (0, 255));
-    assert_eq!(heavier(64), 128);
-    assert!((1..250).all(|c| heavier(c) > c));
+fn smoothed_pixels_fade_in_between_a_quarter_and_63_percent() {
+    use super::draw::contrast;
+    assert_eq!((contrast(0), contrast(64), contrast(160), contrast(255)), (0, 0, 255, 255));
+    assert_eq!(contrast(112), 127);
+    assert!((0..255).all(|c| contrast(c) <= contrast(c + 1)));
+}
+
+/// White `text` in Arial Bold 9 (12 pixels per em) on black; the rows of the canvas as
+/// coverage levels: 2 for pure white, 1 for a grey, 0 for black.
+fn paused_rows(text: &[u8]) -> Vec<Vec<u8>> {
+    let style = Style {
+        color: [255, 255, 255],
+        justify: Justify::Left,
+        shadow: false,
+    };
+    let mut c = canvas(160, 20, [0, 0, 0]);
+    let mut font = Font::request("Arial Bold", "9");
+    draw(&mut c, &mut font, Rect::inset(160, 20, 2, 2), text, &style);
+    let level = |p: &[u8]| match p[0] {
+        255 => 2,
+        0 => 0,
+        _ => 1,
+    };
+    c.pixels
+        .chunks(160 * 4)
+        .map(|row| row.chunks(4).map(level).collect())
+        .collect()
+}
+
+#[test]
+fn the_paused_message_is_grid_fitted_like_windows_draws_it() {
+    // Text 6.5: the capture has 428 pure white pixels and about 90 grey ones, only on curves and
+    // diagonals; stems are 2 whole pixels, caps 9 rows, x-height 7 (the descender of g has 3 rows here, 2 there).
+    let rows = paused_rows(b"The game is paused.");
+    let count = |level| rows.iter().flatten().filter(|&&l| l == level).count();
+    assert!(count(2) >= 407, "{} white", count(2));
+    assert!(count(1) <= 100, "{} grey", count(1));
+    // Rows with ink of one letter, and the widths of its whole-colour runs.
+    let ink = |text: &[u8]| -> Vec<Vec<u8>> {
+        paused_rows(text).into_iter().filter(|r| r.iter().any(|&l| l > 0)).collect()
+    };
+    assert_eq!(ink(b"H").len(), 9, "caps");
+    assert_eq!(ink(b"x").len(), 7, "x-height");
+    let stem = ink(b"l");
+    assert!(stem.iter().all(|r| r.iter().filter(|&&l| l > 0).count() == 2));
+    assert!(stem.iter().flatten().all(|&l| l != 1), "no grey on a stem");
 }
 
 #[test]

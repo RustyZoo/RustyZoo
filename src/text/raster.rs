@@ -18,10 +18,11 @@ const ROWS: usize = 16;
 /// Segments per curve.
 const STEPS: usize = 8;
 
-/// The hinting of the shipped sizes: the font's own instructions, fully grid-fitted.
+/// The hinting of every size: stems, heights and side bearings fitted to whole pixels in both
+/// directions. The font's own instructions would leave the horizontal direction alone.
 pub(super) fn hinter(outlines: &OutlineGlyphCollection<'_>, ppem: u32) -> Option<HintingInstance> {
     let options = HintingOptions {
-        engine: Engine::Interpreter,
+        engine: Engine::Auto(None),
         target: Target::Mono,
     };
     HintingInstance::new(outlines, Size::new(ppem as f32), LocationRef::default(), options).ok()
@@ -151,3 +152,4 @@ impl OutlinePen for Path {
         }
     }
 }
+
