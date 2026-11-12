@@ -445,7 +445,7 @@ fn a_forced_start_cuts_at_the_first_run_so_the_cloud_shows_two_steps_after_the_c
             delay: 100,
         },
     );
-    let mut start = |rig: &mut Rig, name: &str, i: bool, force: bool| {
+    let start = |rig: &mut Rig, name: &str, i: bool, force: bool| {
         let env = Env {
             data: &rig.data,
             unit: &rig.unit,
