@@ -97,3 +97,25 @@ fn a_reload_keeps_the_names_and_the_first_tile_of_the_exhibits() {
     let id = reloaded.tank_at(2 * SIZE as usize + 2).unwrap();
     assert_eq!(reloaded.exhibits().get(id).unwrap().name, "Dolphins");
 }
+
+/// The first tile column of each exhibit of a save and a reload of `world`, in list order.
+fn firsts(world: &World) -> Vec<usize> {
+    let mut saved = world.saved(|_| true);
+    saved.locale = 1033;
+    let list = World::new(saved, tank_shape);
+    let min = |e: &Exhibit| e.order.iter().map(|t| t % SIZE as usize).min().unwrap();
+    list.exhibits().list().iter().map(min).collect()
+}
+
+#[test]
+fn a_reload_lists_the_half_on_the_cut_piece_first_whatever_the_record_order() {
+    for (piece, want) in [((3, 2, 2), vec![2, 4]), ((4, 2, 6), vec![4, 2])] {
+        let mut pieces = ring("tank", 2, 2, 5, 2);
+        let last = pieces.pop().unwrap();
+        let mut world = tanks(&pieces, &[], &[]);
+        world.begin();
+        put_wall(&mut world, last.0, last.1);
+        put_wall(&mut world, "tank", piece);
+        assert_eq!(firsts(&world), want, "cut {piece:?}");
+    }
+}

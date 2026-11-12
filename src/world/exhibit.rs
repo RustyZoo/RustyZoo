@@ -489,7 +489,7 @@ impl World {
     /// slot passes when it is a show wall or the line holds a second piece (not while `strict`,
     /// an undo); a line with a piece across only, when that is a show wall or stands on a tile
     /// of another tank.
-    pub(super) fn tank_test(
+    pub(crate) fn tank_test(
         &self,
         tiles: &[usize],
         other: &dyn Fn(usize) -> bool,
