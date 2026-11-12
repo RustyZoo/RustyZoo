@@ -193,8 +193,7 @@ pub(crate) fn claimed(world: &World) -> Vec<usize> {
 /// a land exhibit another one (point 1); in a tank the amphibious animals are the land keepers'
 /// (point 2, tank staff 5.2), no animal of a show tank is hungry for him, and water below
 /// `murkyWaterPurity` calls the marine keeper (point 4), as does a show that needs him (point 5).
-/// The amphibious neighbours and the nested
-/// tanks wait for their issues.
+/// The amphibious neighbours wait for their issue.
 pub(crate) fn needs(world: &mut World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
     let Some(exhibit) = world.exhibits().get(x) else {
         return false;
@@ -224,6 +223,62 @@ pub(crate) fn needs(world: &mut World, cat: &Catalogue, x: u32, who: &EntityType
     let now = world.units.ai_ticks;
     let due = serviced == 0 || now.wrapping_sub(serviced) > world.units.service_interval;
     !mine.is_empty() && due
+}
+
+/// The nested tank of tank `x` that the keeper has to go to (tank staff 5.4 points 1 to 5): `x`
+/// itself when it needs him and he does not stand in it (`here`), else the first tank across a
+/// boundary pair whose gate opens into `x` and that has a need in its own chain: the next tank of
+/// the chain, not the deeper one that needs him.
+pub(crate) fn nested(
+    world: &mut World,
+    cat: &Catalogue,
+    who: &EntityType,
+    x: u32,
+    here: Option<u32>,
+) -> Option<u32> {
+    nested_from(world, cat, who, (x, here), &mut Vec::new())
+}
+
+fn nested_from(
+    world: &mut World,
+    cat: &Catalogue,
+    who: &EntityType,
+    (x, here): (u32, Option<u32>),
+    seen: &mut Vec<u32>,
+) -> Option<u32> {
+    seen.push(x);
+    world.tank(x)?;
+    if Some(x) != here && needs(world, cat, x, who) {
+        return Some(x);
+    }
+    // A pair with no tile across (the map border) is skipped (tank staff O9).
+    for (a, b) in world.exhibits().boundary(world, x) {
+        let Some(y) = b.and_then(|b| world.exhibits().region(b)) else {
+            continue;
+        };
+        let opens = gate_tiles(world, y).is_some_and(|g| g.1 == a);
+        if opens && !seen.contains(&y) && nested_from(world, cat, who, (y, here), seen).is_some() {
+            return Some(y);
+        }
+    }
+    None
+}
+
+/// The outermost tank of the chain that starts at tank `x` (tank staff 5.4 point 6): the tank
+/// itself unless its gate opens into another tank. A tank of the chain with no gate ends it (the
+/// original calls through a missing exhibit there, tank staff O9).
+pub(crate) fn outermost(world: &World, mut x: u32) -> u32 {
+    let mut seen = vec![x];
+    while let Some((_, outside)) = gate_tiles(world, x) {
+        match world.exhibits().region(outside) {
+            Some(n) if world.tank(n).is_some() && !seen.contains(&n) => {
+                seen.push(n);
+                x = n;
+            }
+            _ => break,
+        }
+    }
+    x
 }
 
 /// The exhibit the keeper `me` serves next (7.3), `here` being the exhibit he stands in. His

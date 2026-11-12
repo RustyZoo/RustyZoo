@@ -3,7 +3,8 @@
 //! (22), climbing it (20), climbing down the inside ladder into the water (29), swimming to the
 //! inside ladder (23), climbing it (28), climbing down the outside one (21) and cleaning the
 //! water (24, 25). Food in the water is in [`super`]'s jobs 1 and 2. A tank inside a tank (tank
-//! staff 5.4) is not served: the keeper goes to the outer tank only.
+//! staff 5.4) is entered from the water of the outer one: job 22 swims to its gate and job 21 lifts
+//! him to the outer surface on the way out.
 
 use super::Cx;
 use crate::behaviour::Target;
@@ -47,6 +48,16 @@ impl Cx<'_, '_> {
     }
 
     // ---- 0x7e and 0x7f
+
+    /// 5.4 points 7 and 8: his own target tile becomes a random tile of the tank to enter (one
+    /// draw, through the setter).
+    pub(in crate::goal) fn enter_nested(&mut self, tank: u32) {
+        let tiles = self.world.tiles_of(tank);
+        if !tiles.is_empty() {
+            let tile = tiles[self.ctx.rng.pick(tiles.len() as u32) as usize];
+            self.keeper_target(Some(tile));
+        }
+    }
 
     /// 4.1 init: the exhibit of the keeper's target tile must be a tank; then job 22.
     pub(in crate::goal) fn enter_init(&mut self) -> bool {
@@ -219,11 +230,15 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// 4.1 job 22: the way to the tile outside the gate; with none a random walk and the job
-    /// stays.
+    /// 4.1 job 22: the way to the tile outside the gate, at the water surface when that tile is in
+    /// a tank; with none a random walk and the job stays.
     fn walk_to_outside_ladder(&mut self) {
         let outside = self.gate(self.target_tank()).map(|l| l.outside);
-        if outside.is_some_and(|o| self.go_job(o)) {
+        let surface = |cx: &Self, o: usize| {
+            let tank = cx.world.tank_at(o);
+            tank.map(|t| cx.world.zoo.tiles[o].elevation + cx.water(Some(t)))
+        };
+        if outside.is_some_and(|o| self.go_job_at(o, surface(self, o))) {
             return;
         }
         self.wander(true);
@@ -341,7 +356,25 @@ impl Cx<'_, '_> {
                 }
             }
             CLEAN_TANK => self.set_job(CLEANING_TANK, 0, None),
+            CLIMB_DOWN_OUTSIDE => {
+                self.lift_to_surface();
+                self.set_job(0, 0, None);
+            }
             _ => self.set_job(0, 0, None),
+        }
+    }
+
+    /// 4.2 job 21 point 4: a keeper who ends the climb below the water surface of the tank he
+    /// stands in (the gate opens into another tank) is lifted to it.
+    fn lift_to_surface(&mut self) {
+        let (Some(x), Some(t)) = (self.here_tank(), self.tile()) else {
+            return;
+        };
+        let surface = 16 * (self.world.zoo.tiles[t].elevation + self.water(Some(x)));
+        let c = self.world.zoo.entities[self.at].common.as_ref();
+        let below = c.map(|c| (c.z < surface, (c.x, c.y, surface), c.rotation));
+        if let Some((true, point, facing)) = below {
+            self.world.place_unit(self.at, point, facing);
         }
     }
 
@@ -397,3 +430,6 @@ fn food_places(world: &World, x: u32, mover: Option<&path::Mover>) -> Vec<usize>
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod nested;
