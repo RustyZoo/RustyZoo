@@ -346,14 +346,13 @@ impl World {
     }
 
     /// Halves the water purity of the tank of the tank wall at `at` under the `$` key (input 4.8):
-    /// the tank of its tile, else of the tile across. Whether the piece is a tank wall.
+    /// the tank of its own tile only (none: nothing changes). Whether the piece is a tank wall.
     pub(crate) fn halve_tank_water(&mut self, at: usize) -> bool {
         let wall = self.shapes[at].is_some_and(|s| s.tank.wall);
-        let Some((t, d)) = self.slot_of(at).filter(|_| wall) else {
+        let Some((t, _)) = self.slot_of(at).filter(|_| wall) else {
             return false;
         };
-        let across = self.neighbour(t, d).and_then(|n| self.tank_at(n));
-        if let Some(tank) = self.tank_at(t).or(across) {
+        if let Some(tank) = self.tank_at(t) {
             let purity = self.tank(tank).map_or(0, |k| i64::from(k.purity));
             self.set_purity(tank, purity / 2);
         }
