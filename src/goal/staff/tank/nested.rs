@@ -98,7 +98,7 @@ impl Game {
         Game::listed(y_purity, y_height, false)
     }
 
-    /// `new` with the inner tank first in the exhibit list when `inner_first`.
+    /// `new` with the inner tank first in the exhibit list when `inner_first`, outer first else.
     fn listed(y_purity: i64, y_height: u32, inner_first: bool) -> Game {
         let mut keeper = entity("keeper", "trainer", KEEPER, centre((1, 0)), 0);
         keeper.subtype = "m".into();
