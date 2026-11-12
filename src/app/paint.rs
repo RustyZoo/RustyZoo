@@ -66,6 +66,9 @@ impl App<'_> {
         // An edit may change what the place under the pointer is worth.
         if dirty {
             self.aim(false);
+        } else {
+            // A unit walking under a still pointer is caught too (unit placing 8.8 point 1).
+            self.hover_aim();
         }
         playing!(self, game);
         // The pending object and the terrain highlights are transient items: the picture is made
