@@ -17,7 +17,7 @@ nihav_core = { path = "vendor/nihav/nihav-core" }
 nihav_indeo = { path = "vendor/nihav/nihav-indeo" }
 png = { version = "0.18.1", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
-fontdue = { version = "0.9.4", default-features = false }
+skrifa = { version = "0.42.1", default-features = false, features = ["std"] }
 # The code pages of the double-byte `TEXT` entries (Japanese, Chinese, Korean).
 encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
 jpeg-encoder = { version = "0.7", default-features = false }
