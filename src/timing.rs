@@ -444,7 +444,7 @@ impl Date {
     }
 
     /// The file time of this date (zoo format 1); 0 before 1601.
-    pub(crate) fn to_file_time(&self) -> u64 {
+    pub(crate) fn to_file_time(self) -> u64 {
         let ms = self.millis() + DAYS_1601_TO_1970 * DAY_MS as i64;
         u64::try_from(ms).map_or(0, |ms| ms.saturating_mul(10_000))
     }
