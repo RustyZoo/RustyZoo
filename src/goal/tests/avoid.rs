@@ -98,6 +98,17 @@ fn with<R>(
     removed: &[u32],
     f: impl FnOnce(&mut Cx) -> R,
 ) -> R {
+    with_data(w, cat, id, removed, &sets(), f)
+}
+
+fn with_data<R>(
+    w: &mut World,
+    cat: &Catalogue,
+    id: u32,
+    removed: &[u32],
+    data: &Sets,
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
     let mut u = w.units.get(id).unwrap().clone();
     let at = w.find(id).unwrap();
     let (mut rng, events, mut removals) = (Rng::default(), Events::default(), removed.to_vec());
@@ -108,13 +119,12 @@ fn with<R>(
         step: 67,
         cat,
     };
-    let data = sets();
     let mut cx = Cx {
         unit: &mut u,
         world: w,
         ctx: &mut ctx,
         at,
-        data: &data,
+        data,
     };
     let r = f(&mut cx);
     *w.units.get_mut(id).unwrap() = u;
@@ -242,6 +252,46 @@ fn a_frightened_guest_avoids_its_predator_and_runs_away_from_it() {
     with(&mut w, &cat, GUEST, &[], |cx| {
         assert!(cx.fright_ladder(NONE));
         assert!(!cx.unit.frightened && cx.record().task == NONE);
+    });
+}
+
+#[test]
+fn a_frightened_guest_dropped_in_water_runs_with_the_water_set() {
+    let cat = cat("");
+    let mut w = zoo("lion", (13, 10), true, (10, 10));
+    w.set_water(vec![false, true]);
+    w.zoo.tiles[10 * 20 + 10].terrain = 1;
+    w.units.get_mut(GUEST).unwrap().frightened = true;
+    let data = Sets::new(&[
+        ("bWalk", &["fWalk(0,0)"]),
+        ("bRunFromPredator", &["fPlaySetTerrain(bLand,bWater)"]),
+        ("bLand", &["fPlay(walk)"]),
+        ("bWater", &["fPlay(a)"]),
+    ]);
+    with_data(&mut w, &cat, GUEST, &[], &data, |cx| {
+        assert!(!cx.unit.mover.swims && cx.unit.tank == 0);
+        assert!(
+            crate::unit::swim::wet(cx.world, cx.at) && cx.world.tank_at(10 * 20 + 10).is_none()
+        );
+        assert!(cx.fright_ladder(NONE));
+        cx.avoid_decide();
+        assert_eq!(cx.unit.runner.top(), Some("bRunFromPredator"));
+        // The unit's turn: the nesting call reads the tile, then the set runs.
+        crate::unit::swim::nesting(cx.unit, cx.world, cx.at);
+        let (unit, mut rng) = (&cx.world.zoo.entities[cx.at], Rng::default());
+        let mut env = crate::behaviour::Env {
+            data: cx.data,
+            unit,
+            rng: &mut rng,
+        };
+        for _ in 0..3 {
+            let timing = |n: &str| cx.data.timing(unit, n);
+            cx.unit.animation.advance(100, &timing);
+            cx.unit
+                .runner
+                .step(&mut cx.unit.animation, &mut env, Some(0));
+        }
+        assert_eq!(cx.unit.animation.name, "a");
     });
 }
 
