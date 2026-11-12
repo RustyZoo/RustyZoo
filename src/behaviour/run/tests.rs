@@ -432,6 +432,40 @@ fn the_dust_ball_is_done_when_the_player_took_it_and_the_prey_is_eaten_once_in_t
 }
 
 #[test]
+fn a_forced_start_cuts_at_the_first_run_so_the_cloud_shows_two_steps_after_the_catch() {
+    // A lion of `bIdle2` plays `a` (stand) with `b` (lie_down, long) queued behind it.
+    let mut rig = Rig::new(&[
+        ("bIdle2", &["fPlay(a)", "fPlay(b)"]),
+        ("bCaughtPrey", &["fDustBall()", "fPlay(d)"]),
+    ]);
+    rig.data.timings.insert(
+        "dustball".into(),
+        Timing {
+            count: 3,
+            delay: 100,
+        },
+    );
+    let mut start = |rig: &mut Rig, name: &str, i: bool, force: bool| {
+        let env = Env {
+            data: &rig.data,
+            unit: &rig.unit,
+            rng: &mut rig.rng,
+        };
+        rig.runner.start(&mut rig.anim, &env, name, i, force, true)
+    };
+    start(&mut rig, "bIdle2", true, false);
+    assert_eq!(rig.tick(100).0, "idle");
+    assert_eq!(rig.tick(100).0, "a");
+    // The catch: the stop raises the cut, then the forced start of `bCaughtPrey`.
+    rig.anim.cut();
+    assert!(start(&mut rig, "bCaughtPrey", false, true));
+    // One step: the cut ends `a`, the queued `b` shows for this step only.
+    assert_eq!(rig.tick(100).0, "b");
+    // Two steps after the catch the cut ends `b` and the cloud shows.
+    assert_eq!(rig.tick(100).0, "dustball");
+}
+
+#[test]
 fn a_routine_call_is_done_for_its_own_class_and_the_keepers_fails_for_others() {
     // (class, call, done, still running): the other classes' calls do nothing and stay.
     for (class, call, done, running) in [

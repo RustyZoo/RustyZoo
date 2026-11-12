@@ -425,7 +425,7 @@ impl Cx<'_, '_> {
                 let dest = self.unit.destination;
                 let world = &*self.world;
                 self.unit.goal.record.target.set_pos(world, dest);
-                self.start_set("bCaughtPrey", true);
+                self.start_with("bCaughtPrey", false, true);
                 self.mark(|a| a.caught_prey = true);
             }
         }
