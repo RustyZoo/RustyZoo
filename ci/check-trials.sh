@@ -1395,7 +1395,7 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
 }
 check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47864 31192 31194 37416"
 
-# Amphibious neighbours: scn28b's land exhibit 1 and tank 2 (the order of its records) are level with the wall between them,
+# Amphibious neighbours: scn28b's land exhibit 1 and tank 2 (a load lists a land half before a tank half) are level with the wall between them,
 # which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
 # land exhibit swims into the tank. The land exhibit counts the tank's water for the bears (habitat
 # rating 5.3), so its bear is content; every recomputation ends with the reachability test (5.8), which
