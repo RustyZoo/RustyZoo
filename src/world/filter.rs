@@ -221,8 +221,9 @@ impl World {
     }
 
     /// Sets the purity of tank `id` to `purity` cut to 0 and `initialWaterPurity` (tank staff 7.4):
-    /// the water too murky to see through is told once. The tank is not marked for a new rating
-    /// (habitat rating 4).
+    /// the water too murky to see through is told once, and the areas of the tank's exhibit see
+    /// again at their next read (habitat rating 10.4, in `edit_tank`). The tank is not marked for
+    /// a new rating (habitat rating 4).
     pub(crate) fn set_purity(&mut self, id: u32, purity: i64) {
         let Some(old) = self.tank(id).map(|t| t.purity) else {
             return;

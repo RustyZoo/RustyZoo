@@ -97,15 +97,20 @@ pub(crate) fn tour_exhibits(world: &World, cat: &Catalogue, assigned: &[u32]) ->
 
 /// Finds what the areas see again when the map changed since they did.
 fn refresh(world: &mut World, cat: &Catalogue) {
-    if world.units.views.edits == Some(world.edits) {
+    let all = world.units.views.edits != Some(world.edits);
+    let marked = |x: &crate::exhibit::Exhibit| x.areas.iter().any(|a| a.marked);
+    if !all && !world.exhibits().list().iter().any(marked) {
         return;
     }
     let ground = Ground::of(world, viewing::bodies(cat));
     let mut seen = Vec::new();
-    for x in world.exhibits().list() {
+    for x in world.exhibits().list().iter().filter(|x| all || marked(x)) {
         let plan = Plan::of(world, x.id);
         let mut areas = x.areas.clone();
-        areas.iter_mut().for_each(|a| a.observe(&plan, &ground));
+        for a in &mut areas {
+            a.observe(&plan, &ground);
+            a.marked = false;
+        }
         seen.push((x.id, areas));
     }
     for (id, areas) in seen {

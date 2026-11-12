@@ -1,7 +1,7 @@
 //! The purity of a tank's water over time and its filter (tank staff 7), and the points of its
 //! ladders (tank staff 3).
 
-use super::tank::tank;
+use super::tank::{tank, tank_shape};
 use super::water::new_tank;
 use super::*;
 use crate::config::Config;
@@ -912,5 +912,71 @@ fn clean_water_with_some_level_queues_the_ripple_setup_once_per_change() {
     assert!(
         queued(&mut world).is_empty(),
         "a level between two values above 0"
+    );
+}
+
+/// The tiles the areas of the only tank see, as the guests read them.
+fn sight(world: &mut World, cat: &Catalogue) -> usize {
+    let areas = crate::guest::view::viewing_areas(world, cat, 1);
+    areas.iter().map(Vec::len).sum()
+}
+
+#[test]
+fn a_tank_turning_extremely_murky_changes_what_its_areas_see_at_the_next_read() {
+    // A tank that does not sink, so that the wall top is above the eye of a guest on the path.
+    let mut pieces = super::tank::ring("tank", 2, 2, 3, 3);
+    let last = pieces.pop().unwrap();
+    let mut world = super::tank::tanks(&pieces, &[], &[]);
+    world.set_tank_config(crate::exhibit::TankConfig {
+        sink: [0, 0],
+        ..super::tank::CONFIG
+    });
+    super::tank::put_wall(&mut world, last.0, last.1);
+    let path = entity("path", 1, 2, 0);
+    let at = world.add(path.clone(), tank_shape(&path)).unwrap();
+    assert!(world.find(at).is_some());
+    let mut cat = Catalogue::default();
+    cat.push(EntityType {
+        class: "tank",
+        type_name: Vec::new(),
+        subtype: b"f".to_vec(),
+        file: None,
+        config: Some(Arc::new(
+            Config::parse(b"[Characteristics/Integers]\ncSeeThrough=1\ncHeight=3\n").unwrap(),
+        )),
+        name_id: 1,
+        footprint: [1, 1, 1],
+        height: 0,
+    });
+    let marked = |w: &World| {
+        w.exhibits()
+            .list()
+            .iter()
+            .all(|x| x.areas.iter().all(|a| a.marked))
+    };
+    let clear = sight(&mut world, &cat);
+    assert!(clear > 0, "a path beside a see-through tank sees it");
+    // Inside either range, and out of range: nothing is marked.
+    world.set_purity(1, 5);
+    world.set_purity(1, 5);
+    assert_eq!(sight(&mut world, &cat), clear);
+    world.set_purity(1, -3);
+    assert!(marked(&world), "entering marks every area of the exhibit");
+    assert_eq!(sight(&mut world, &cat), 0, "the walls hide the water now");
+    world.set_purity(1, 0);
+    assert_eq!(sight(&mut world, &cat), 0);
+    world.set_purity(1, 2);
+    assert_eq!(sight(&mut world, &cat), clear, "leaving shows it again");
+    // The water drained to level 0 is clean again: that crossing marks too.
+    (0..4).for_each(|_| _ = world.step_water());
+    world.set_purity(1, 0);
+    assert_eq!(sight(&mut world, &cat), 0);
+    world.drain(1);
+    while world.step_water() {}
+    assert_eq!(purity(&world), 90);
+    assert_eq!(
+        sight(&mut world, &cat),
+        clear,
+        "the reset to clean water shows it again"
     );
 }

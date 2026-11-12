@@ -101,6 +101,14 @@ pub struct Area {
     pub tiles: Vec<usize>,
     /// The exhibit tiles it sees (10.4), set by [`Area::observe`].
     pub seen: Vec<usize>,
+    /// Marked for a new [`Area::observe`] at the next read (10.4), not saved.
+    pub marked: bool,
+}
+
+/// Whether a purity change from `old` to `new` enters or leaves the extremely murky range (10.4
+/// point 2).
+pub(crate) fn crosses(old: u32, new: u32) -> bool {
+    (old <= MURKY) != (new <= MURKY)
 }
 
 /// The area each of the eight directions of a tile looks through, as (exhibit, area) numbers: a

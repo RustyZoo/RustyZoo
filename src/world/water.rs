@@ -4,7 +4,7 @@
 //! walls, a split and a merge.
 
 use super::World;
-use crate::exhibit::Tank;
+use crate::exhibit::{Tank, viewing};
 
 /// A draw owed at its place among the others (map drawing 9.7.8 point 3).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -58,6 +58,9 @@ impl World {
             tank.purity = config.purity;
         }
         let (now, changed) = (*tank, *tank != before);
+        if viewing::crosses(before.purity, now.purity) {
+            self.exhibits.reobserve(id);
+        }
         if changed {
             // Told only when the level or the purity differ from the last line of the tank (the
             // values before the first change when none was told): a change of the flag alone is not.
