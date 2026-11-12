@@ -193,8 +193,7 @@ pub(crate) fn claimed(world: &World) -> Vec<usize> {
 /// a land exhibit another one (point 1); in a tank the amphibious animals are the land keepers'
 /// (point 2, tank staff 5.2), no animal of a show tank is hungry for him, and water below
 /// `murkyWaterPurity` calls the marine keeper (point 4), as does a show that needs him (point 5).
-/// The amphibious neighbours and the nested
-/// tanks wait for their issues.
+/// The amphibious neighbours wait for their issue.
 pub(crate) fn needs(world: &mut World, cat: &Catalogue, x: u32, who: &EntityType) -> bool {
     let Some(exhibit) = world.exhibits().get(x) else {
         return false;
