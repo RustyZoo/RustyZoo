@@ -35,8 +35,8 @@ pub(crate) fn stop_all(unit: &mut Unit) {
 }
 
 /// A user is pushed out of its building (guest buildings 6.7, 11.1): its walk, its set and its goal
-/// stop and a guest forgets the building it came for; the ladder gives it a task at its next
-/// update.
+/// stop, its non-path cost goes back to the type's (pathfinding 6.5.1 point 3) and a guest forgets
+/// the building it came for; the ladder gives it a task at its next update.
 pub(crate) fn stop_use(unit: &mut Unit) {
     unit.goal.record = Record::default();
     (unit.goal.stale, unit.goal.sub_stale) = (true, true);
@@ -45,6 +45,7 @@ pub(crate) fn stop_use(unit: &mut Unit) {
     unit.destination = None;
     (unit.through_building, unit.aborted) = (false, false);
     unit.runner = Default::default();
+    (unit.mover.emergency, unit.mover.word) = (false, None);
     unit.use_set = None;
     unit.animation = Default::default();
     match &mut unit.part {

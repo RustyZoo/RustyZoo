@@ -484,3 +484,12 @@ fn stopping_everything_puts_back_the_cost_of_a_guest_over_a_loaded_word() {
     crate::goal::stop_all(u);
     assert_eq!((u.mover.word, u.mover.emergency), (None, false));
 }
+
+#[test]
+fn pushing_a_guest_out_of_its_building_puts_back_the_cost_over_a_loaded_word() {
+    let mut w = zoo("lion", (13, 10), false, (10, 10));
+    let u = w.units.get_mut(GUEST).unwrap();
+    (u.mover.word, u.mover.emergency) = (Some(3), true);
+    crate::goal::stop_use(u);
+    assert_eq!((u.mover.word, u.mover.emergency), (None, false));
+}
