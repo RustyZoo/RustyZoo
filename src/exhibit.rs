@@ -578,15 +578,15 @@ impl Exhibits {
         // piece that cut them: the replay lists the land half before the tank half, and of two
         // halves of one kind the one on the tile of that piece first (3.8.1 point 8).
         let mut parts: Vec<_> = (parts(world).into_iter().filter(|p| !p.grounds))
-            .map(|p| (closing_line(world, &p.tiles), p))
+            .map(|p| {
+                let line = closing_line(world, &p.tiles);
+                let tank = world.tank_test(&p.tiles, &|_| false, false).is_some();
+                let own = line.is_some_and(|l| p.tiles.contains(&l.1.2));
+                ((line.map(|l| l.0), tank, !own), line, p)
+            })
             .collect();
-        let key = |(line, p): &(Option<(usize, (usize, usize, usize))>, Part)| {
-            let tank = world.tank_test(&p.tiles, &|_| false, false).is_some();
-            let own = line.is_some_and(|l| p.tiles.contains(&l.1.2));
-            (line.map(|l| l.0), tank, !own)
-        };
-        parts.sort_by_cached_key(key);
-        for (line, part) in parts {
+        parts.sort_by_cached_key(|p| p.0);
+        for (_, line, part) in parts {
             let start = (line.map(|l| l.1.0)).or(part.tiles.iter().copied().min());
             let size = part.tiles.len();
             let tiles = start.map_or(part.tiles, |s| fill(world, s));
