@@ -603,3 +603,33 @@ fn each_setter_of_the_neighbour_recomputes_the_show_tank_and_closes_its_portal()
         assert!(!is_open(&world, at) && shown(&world, id) == 0, "{name}");
     }
 }
+
+/// The show tank between two plain tanks and a land exhibit below it, closed on three sides: the
+/// fourth is the show tank's south wall.
+fn land_below() -> (World, usize) {
+    let (mut world, portal) = crossing();
+    world.begin();
+    for (class, p) in ring("fences", 3, 5, 4, 6) {
+        if !(p.1 == 5 && p.2 == 0) {
+            put_wall(&mut world, class, p);
+        }
+    }
+    open_it(&mut world, portal.0, true);
+    run(&mut world, portal.0, 100, 6);
+    (world, portal.0)
+}
+
+#[test]
+fn a_fence_morphed_into_an_exhibit_fence_recomputes_the_show_tank() {
+    // 34.4 point 11: a plain fence becoming an exhibit fence runs the placement check.
+    let (mut world, at) = land_below();
+    let e = super::tank::wall("fences", (3, 5, 0));
+    let plain = crate::world::Shape {
+        fence: false,
+        ..tank_shape(&e).unwrap()
+    };
+    let id = world.add(e.clone(), Some(plain)).unwrap();
+    open_it(&mut world, at, true);
+    world.swap(id, e.clone(), tank_shape(&e)).unwrap();
+    assert!(!is_open(&world, at));
+}
