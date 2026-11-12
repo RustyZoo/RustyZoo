@@ -92,12 +92,17 @@ impl World {
             })
             .collect();
         zoo.set_thoughts(thoughts);
+        let width = self.zoo.width.max(1) as usize;
         let records = self.zoo.habitat_tiles.iter().zip(&mut zoo.habitat_info);
-        for (&(x, y), info) in records {
+        for ((&(x, y), info), stored) in records.zip(&mut zoo.habitat_tiles) {
             let exhibit = (self.tile_index(x, y))
                 .and_then(|t| self.exhibits.region(t))
                 .and_then(|id| self.exhibits.get(id));
             let Some(e) = exhibit else { continue };
+            // The save writes the first tile the exhibit has now (shows 31.8 point 2).
+            if let Some(&first) = e.order.first() {
+                *stored = ((first % width) as i32, (first / width) as i32);
+            }
             info.name.clone_from(&e.name);
             // Kept last month, this month, total; stored this month, last month, total.
             let order = |v: [u32; 3]| [v[1], v[0], v[2]];

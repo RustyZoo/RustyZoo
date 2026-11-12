@@ -41,6 +41,32 @@ impl World {
             .map(|(n, _)| n)
     }
 
+    /// The records that hold a show info, each with the exhibit of `old` that owns it.
+    pub(super) fn info_owners(&self, old: &Exhibits) -> Vec<(usize, u32)> {
+        let tiles = self.zoo.habitat_tiles.iter().enumerate();
+        let owner = |(n, &(x, y)): (usize, &(i32, i32))| {
+            let id = old.region(self.tile_index(x, y)?)?;
+            self.zoo.shows.info(n).and(old.get(id)).map(|e| (n, e.id))
+        };
+        tiles.filter_map(owner).collect()
+    }
+
+    /// The show info follows its exhibit (31.8 points 1 and 8): a record whose tile left the
+    /// exhibit that owns its info is moved to that exhibit's first tile.
+    pub(super) fn reanchor(&mut self, owners: Vec<(usize, u32)>) {
+        let width = self.zoo.width.max(1) as usize;
+        for (n, id) in owners {
+            let Some(first) = self.exhibits.get(id).and_then(|e| e.order.first().copied()) else {
+                continue;
+            };
+            let (x, y) = self.zoo.habitat_tiles[n];
+            let at = self.tile_index(x, y).and_then(|t| self.exhibits.region(t));
+            if at != Some(id) {
+                self.zoo.habitat_tiles[n] = ((first % width) as i32, (first / width) as i32);
+            }
+        }
+    }
+
     /// Make show, first part (31.1 point 2): an exhibit with no show info gets a new one, due 90
     /// after the AI clock `clock`. Its id is
     /// the show id counter plus 1 (modulo 65535), and the info is kept in the habitat record of the

@@ -314,3 +314,56 @@ fn the_tank_left_by_a_merge_keeps_one_show_info_or_none_and_notes_the_pass() {
     assert!(ids(&world).is_empty(), "no info is left");
     assert!(world.take_moves().contains(&Move::Associate), "show, plain");
 }
+
+/// The tile the save writes for the record that holds the show info of `world`.
+fn saved_tile(world: &World) -> (i32, i32) {
+    let zoo = world.saved(|_| true);
+    let n = (0..zoo.habitat_tiles.len()).find(|&n| zoo.shows.info(n).is_some());
+    zoo.habitat_tiles[n.unwrap()]
+}
+
+#[test]
+fn a_split_leaves_the_show_info_with_the_half_that_keeps_the_tank() {
+    // 31.8 points 3, 8 and 10: the info stays with the old tank, which here keeps the side away
+    // from the tile its record was made with.
+    let mut world = tanks(&[], &[], &[]);
+    build(&mut world, "show", (2, 2, 5, 2));
+    let old = id_at(&world, 2, 2);
+    put_wall(&mut world, "show", (3, 2, 2));
+    assert_eq!(id_at(&world, 5, 2), old, "the old tank keeps the far side");
+    assert_eq!(info_of(&world, old).unwrap().id, 1002);
+    let new = id_at(&world, 2, 2);
+    assert_ne!(info_of(&world, new).unwrap().id, 1002);
+    // The save writes a first tile of the tank that holds the info.
+    let (x, y) = saved_tile(&world);
+    assert_eq!(id_at(&world, x as usize, y as usize), old);
+}
+
+#[test]
+fn a_save_writes_the_current_first_tile_of_the_merged_tank() {
+    // 31.8 points 2 and 5: the survivor keeps its info; the record names the tank's first tile as
+    // it is when saved.
+    let mut world = tanks(&[], &[], &[]);
+    build(&mut world, "show", (2, 2, 5, 2));
+    put_wall(&mut world, "show", (3, 2, 2));
+    let a = world
+        .tile_index(3, 2)
+        .and_then(|t| world.edge(t, 2))
+        .unwrap();
+    let b = world
+        .tile_index(4, 2)
+        .and_then(|t| world.edge(t, 6))
+        .unwrap();
+    let (a, b) = (
+        world.zoo.entities[a].common.as_ref().unwrap().id,
+        world.zoo.entities[b].common.as_ref().unwrap().id,
+    );
+    world.begin();
+    world.remove(a);
+    world.remove(b);
+    assert_eq!(world.exhibits().list().len(), 1);
+    let tank = world.exhibits().list()[0].clone();
+    assert_eq!(ids(&world).len(), 1);
+    let (x, y) = saved_tile(&world);
+    assert_eq!((y as usize) * SIZE as usize + x as usize, tank.order[0]);
+}
