@@ -426,3 +426,24 @@ fn undo_of_a_gate_on_another_tank_acts_on_that_tank() {
         assert_eq!(s.cash(), 50_000.0);
     });
 }
+
+#[test]
+fn undoing_a_purity_change_into_extremely_murky_water_goes_through_the_setter() {
+    with_game("tank-undo-murky", "", |s| {
+        gated(s);
+        let game = s.app.game.as_mut().unwrap();
+        game.world.set_tank_config(TankConfig {
+            purity: 100,
+            ..config()
+        });
+        game.world.set_purity(1, 0);
+        game.world.note_water(1, Some(0), true, 0.0);
+        game.world.set_purity(1, 100);
+        game.world.units.take_messages();
+        s.app.undo();
+        let game = s.app.game.as_mut().unwrap();
+        assert_eq!(game.world.tank(1).map(|t| t.purity), Some(0));
+        let told = game.world.units.take_messages();
+        assert_eq!(told.iter().map(|m| m.0).collect::<Vec<_>>(), [10549]);
+    });
+}
