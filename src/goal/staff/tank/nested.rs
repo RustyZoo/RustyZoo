@@ -95,6 +95,11 @@ impl Game {
     /// The two tanks full to level 4, X clean and Y at purity `y_purity`; the marine keeper on the
     /// grounds at (1, 0).
     fn new(y_purity: i64, y_height: u32) -> Game {
+        Game::listed(y_purity, y_height, false)
+    }
+
+    /// `new` with the inner tank first in the exhibit list when `inner_first`.
+    fn listed(y_purity: i64, y_height: u32, inner_first: bool) -> Game {
         let mut keeper = entity("keeper", "trainer", KEEPER, centre((1, 0)), 0);
         keeper.subtype = "m".into();
         let mut more = ring();
@@ -105,9 +110,11 @@ impl Game {
             w.tank_at(3 * 12 + 3).unwrap(),
         );
         assert_ne!(x, y);
-        // A load lists the inner tank first (its fence closes last, 3.8.1); the keeper is to look at
-        // the outer tank first, as these tests have it.
-        w.exhibits_mut().list_mut().swap(0, 1);
+        // A load lists the inner tank first (its fence closes last, 3.8.1), and so does building
+        // it before the outer one.
+        if !inner_first {
+            w.exhibits_mut().list_mut().swap(0, 1);
+        }
         w.exhibits_mut().get_mut(y).unwrap().gate = Some(GATE_Y);
         for (id, purity, height) in [(x, 100, 5), (y, y_purity, y_height)] {
             let tank = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
@@ -337,4 +344,13 @@ fn a_nested_tank_whose_outer_tank_has_no_gate_is_told_blocked_and_the_keeper_wan
     assert!(g.said.contains(&11001), "{:?}", g.said);
     assert_eq!(g.count("entertank"), 0);
     assert!(g.count("random") > 0);
+}
+
+#[test]
+fn the_climb_down_ends_when_the_inner_tank_is_listed_first() {
+    // Y's walls (3) are below X's water (4), and Y comes first in the exhibit list.
+    let mut g = Game::listed(30, 3, true);
+    g.until(|g| g.count("habitatduties") == 3);
+    assert_eq!(g.z(), 64);
+    assert!(g.count("ClimbDownInsideLadder") < 10, "{:?}", g.round());
 }
