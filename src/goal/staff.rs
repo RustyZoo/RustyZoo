@@ -194,8 +194,10 @@ impl<'c> Cx<'_, 'c> {
         if there.is_none() || there != self.tile() {
             return;
         }
-        // A tank is served from the tile outside its gate (staff 7.4, check done).
-        let gate = service::gate_tiles(self.world, x).map(|g| g.1);
+        // A tank is served from the tile outside the gate of its outermost tank (staff 7.4, check
+        // done).
+        let outer = service::outermost(self.world, x);
+        let gate = service::gate_tiles(self.world, outer).map(|g| g.1);
         let at_gate = self.world.tank(x).is_some() && gate == self.tile();
         if self.exhibit() == Some(x) || at_gate {
             self.record().done = true;
@@ -221,15 +223,21 @@ impl<'c> Cx<'_, 'c> {
         let Some(x) = chosen else {
             return self.set_task(RANDOM, 1, 0, None);
         };
-        let gate = service::gate_tiles(self.world, x);
+        let mut gate = service::gate_tiles(self.world, x);
         let mover = movement::mover(self.unit, self.world, self.at, self.tile().unwrap_or(0));
-        // A tank is walked to at the tile outside its gate, a land exhibit at one beside its inside
-        // tile.
+        // A tank is walked to at the tile outside the gate of its outermost tank, a land exhibit at
+        // one beside its inside tile. A chain that ends in a tank with no gate has no way in: the
+        // failure of the entrance runs on no gate (tank staff 5.4, O9).
         let tank = self.world.tank(x).is_some();
-        let walk = gate.map(|(inside, outside)| match tank {
-            true => outside,
-            false => self.gate_side(x, inside, &mover),
-        });
+        let door = tank.then(|| service::outermost(self.world, x));
+        let door = door.map(|o| service::gate_tiles(self.world, o).map(|g| g.1));
+        let walk = match (door, gate) {
+            (Some(outside), _) => outside,
+            (None, g) => g.map(|(inside, _)| self.gate_side(x, inside, &mover)),
+        };
+        if tank && walk.is_none() {
+            gate = None;
+        }
         // A path, else one more in the relaxed mode that may stop short (pathfinding 6.2): a
         // path that ends anywhere but in the exhibit is a short one.
         self.unit.path.clear();
@@ -309,7 +317,12 @@ impl<'c> Cx<'_, 'c> {
     /// 7.4 complete: the duties, unless two keepers work there.
     pub(super) fn exhibit_complete(&mut self) {
         let tank = self.own().and_then(|t| food::exhibit_of(self.world, t));
-        if tank.is_some_and(|x| self.world.tank(x).is_some()) {
+        if let Some(x) = tank.filter(|&x| self.world.tank(x).is_some()) {
+            // A nested tank is entered through the outermost one (tank staff 5.4 point 7).
+            let outer = service::outermost(self.world, x);
+            if outer != x {
+                self.enter_nested(outer);
+            }
             return self.set_task(ENTER_TANK, 0, 0, None);
         }
         match self.exhibit() {
@@ -357,7 +370,8 @@ impl<'c> Cx<'_, 'c> {
         };
         let cat = self.ctx.cat;
         // The flag is the goal's own; the next check done turns it into the record's done.
-        if assign::block_service(self.world, cat, x, who, (false, true)) != 0 {
+        let blocked = assign::block_service(self.world, cat, x, who, (false, true)) != 0;
+        if blocked && service::nested(self.world, cat, who, x, Some(x)).is_none() {
             self.set_duties_done();
         }
         if self.staff().is_some_and(|s| s.duties_done) || self.record().job != 0 {
@@ -407,6 +421,13 @@ impl<'c> Cx<'_, 'c> {
             // On the platform any job first climbs down into the water (tank staff 5.2).
             Some(_) if self.unit.tank == 2 => self.set_job(CLIMB_DOWN_INSIDE, 0, None),
             Some((job, id)) => self.set_job(job, id, None),
+            // With nothing to do, a nested tank that needs him is reached from the water (tank
+            // staff 5.4 point 8): on the platform he first climbs down.
+            None if self.unit.tank == 2
+                && service::nested(self.world, cat, who, x, Some(x)).is_some() =>
+            {
+                self.set_job(CLIMB_DOWN_INSIDE, 0, None);
+            }
             None => self.set_duties_done(),
         }
     }
@@ -420,7 +441,8 @@ impl<'c> Cx<'_, 'c> {
     /// 7.5 complete: the exhibit is serviced, the lists emptied and the goal ends.
     pub(super) fn duties_complete(&mut self) {
         let now = u64::from(self.now());
-        if let Some(x) = self.exhibit() {
+        let here = self.exhibit();
+        if let Some(x) = here {
             self.world
                 .units
                 .staff_note(format!("done {} {x}", self.unit.id));
@@ -432,6 +454,15 @@ impl<'c> Cx<'_, 'c> {
             (s.lost_tiles, s.lost_animals) = (Vec::new(), Vec::new());
         }
         self.reset();
+        // A nested tank that needs him is the next one (tank staff 5.4 point 8).
+        let (cat, who) = (self.ctx.cat, self.who());
+        let next = here
+            .zip(who)
+            .and_then(|(x, w)| service::nested(self.world, cat, w, x, Some(x)));
+        if let Some(y) = next {
+            self.enter_nested(y);
+            self.set_task(ENTER_TANK, 0, 0, None);
+        }
     }
 
     // ---- the jobs
