@@ -122,6 +122,13 @@ impl Game {
             w.set_purity(id, purity);
         }
         crate::unit::testing::still_water(&mut w);
+        // The shipped waterOffset: a full tank has its water one level below its walls. (The helper
+        // above takes the offset of the first tank of the list, which would be Y's.)
+        let config = *w.tank_config();
+        w.set_tank_config(crate::exhibit::TankConfig {
+            offset: -1,
+            ..config
+        });
         let marine = "cUnderwater=1\ncCleanTankThreshold=100\ncCleanTankPct=10";
         let mut cat = Catalogue::default();
         cat.push(unit_ty("keeper", "trainer", "m", 9552, marine));
