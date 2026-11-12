@@ -67,6 +67,9 @@ impl World {
                 }
             }
         }
+        // The base level setter updates the tank at once (shows 34.4 point 5).
+        self.reach(id);
+        self.relink(false);
     }
 
     /// Paints the tiles with the terrain type of a show tank or of a tank, free and recorded for

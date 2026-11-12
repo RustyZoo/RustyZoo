@@ -231,6 +231,10 @@ pub struct World {
     added: Vec<u32>,
     /// A saved zoo is being read: a portal flag that changes keeps the open byte (shows 31.3 point 7).
     reading: bool,
+    /// The exhibits the edit in progress updates (shows 34.4), and whether it updates them all (a
+    /// load): the next show-link recompute takes them (not saved, not hashed).
+    reach: Vec<u32>,
+    reach_all: bool,
     /// The sprite players of the portal walls, by the id of the piece (shows 32.6; not saved).
     portal_players: std::collections::HashMap<u32, portal_anim::Player>,
 }
@@ -294,6 +298,8 @@ impl World {
             toys: Vec::new(),
             added: Vec::new(),
             reading: true,
+            reach: Vec::new(),
+            reach_all: false,
             portal_players: Default::default(),
         };
         world.mark_exterior();
@@ -305,6 +311,7 @@ impl World {
         world.load_infos();
         world.post_loaded_drains(drained);
         world.name_loaded();
+        world.reach_all();
         world.relink(false);
         // The loaded animals are placed in file order and join the show lists with the first step
         // (shows 26 point 3); the first rating of their exhibits then finds them listed.

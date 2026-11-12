@@ -525,7 +525,37 @@ impl World {
                 self.note_decision();
             }
         }
+        // The exhibits made, resized, split or kept by a merge are updated (shows 34.4 points 1
+        // and 10, 31.5 point 4).
+        let kept = lost.iter().map(|l| l.1);
+        let updated: Vec<u32> = (built.fresh.iter().chain(&built.resized))
+            .chain(split_kept)
+            .copied()
+            .chain(kept)
+            .collect();
+        updated.into_iter().for_each(|x| self.reach(x));
         self.relink(false);
+    }
+
+    /// A fence piece placed or removed on side `d` of tile `a` (`slot`) that leaves an exhibit
+    /// fence across the line, between two different exhibits that are not the zoo grounds, updates
+    /// the exhibit of its tile (shows 34.4 points 9 and 10); every other edit of a piece updates
+    /// through the exhibits it makes or changes.
+    pub(super) fn fence_updated(&mut self, slot: Option<(usize, usize)>) {
+        let Some((a, d)) = slot else { return };
+        let Some(b) = self.neighbour(a, d) else { return };
+        let across = self.side_to(b, a).and_then(|d| self.edge(b, d));
+        let (x, y) = (self.exhibits.region(a), self.exhibits.region(b));
+        let real = |r: Option<u32>| r.filter(|&r| r != GROUNDS && r != EXTERIOR);
+        if let (true, Some(x), Some(y)) = (
+            across.is_some_and(|e| self.shapes[e].is_some_and(|s| s.fence)),
+            real(x),
+            real(y),
+        ) && x != y
+        {
+            self.reach(x);
+            self.relink(false);
+        }
     }
 
     /// The end of a split, after the gate of the new tank: the tanks `tanks` (the tank cut, then the

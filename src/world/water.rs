@@ -40,15 +40,16 @@ impl World {
     }
 
     /// Changes the values of tank `id` and tells it when they differ. A level that comes back to 0
-    /// from above resets the purity to `initialWaterPurity`.
+    /// from above resets the purity to `initialWaterPurity`. Whether the show links were
+    /// recomputed (a new height or fill state, shows 34.4 points 2 to 4).
     pub(super) fn edit_tank(
         &mut self,
         id: u32,
         change: impl FnOnce(&mut Tank, &crate::exhibit::TankConfig),
-    ) {
+    ) -> bool {
         let config = self.tank_config;
         let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) else {
-            return;
+            return false;
         };
         let before = *tank;
         change(tank, &config);
@@ -58,6 +59,7 @@ impl World {
             tank.purity = config.purity;
         }
         let (now, changed) = (*tank, *tank != before);
+        let mut relinked = false;
         if viewing::crosses(before.purity, now.purity) {
             self.exhibits.reobserve(id);
         }
@@ -92,7 +94,9 @@ impl World {
             // exhibits and money 3.11). A new height sets the escape check flag;
             // a filled tank with a gate is rated again, and its animals react (habitat rating 4,
             // 5.8). The water level and the purity mark nothing.
-            if now.height != before.height || now.filled != before.filled {
+            relinked = now.height != before.height || now.filled != before.filled;
+            if relinked {
+                self.reach(id);
                 self.relink(true);
             }
             if now.height != before.height
@@ -105,6 +109,16 @@ impl World {
                     self.events.push(super::Event::Depth { id, from, to });
                 }
             }
+        }
+        relinked
+    }
+
+    /// An accepted fill or drain updates the tank's show links, filled or drained already or not
+    /// (shows 34.4 points 2 and 3); `relinked` tells the change did it.
+    fn update_after(&mut self, id: u32, relinked: bool) {
+        if !relinked {
+            self.reach(id);
+            self.relink(true);
         }
     }
 
@@ -329,12 +343,13 @@ impl World {
             return Some(object);
         }
         let paused = self.paused;
-        self.edit_tank(id, |t, config| {
+        let relinked = self.edit_tank(id, |t, config| {
             (t.filled, t.target) = (true, t.salt);
             if paused {
                 t.level = config.top(t.height);
             }
         });
+        self.update_after(id, relinked);
         None
     }
 
@@ -358,12 +373,13 @@ impl World {
             return false;
         }
         let paused = self.paused;
-        self.edit_tank(id, |t, _| {
+        let relinked = self.edit_tank(id, |t, _| {
             t.filled = false;
             if paused {
                 t.level = 0;
             }
         });
+        self.update_after(id, relinked);
         true
     }
 

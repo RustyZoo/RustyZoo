@@ -59,6 +59,7 @@ impl World {
             let seen = self.events.len();
             let before = self.keeping(slot);
             self.settle(slot, false);
+            self.fence_updated(slot);
             notes = self.changed_by(before, seen);
         }
         if rated {
@@ -151,6 +152,7 @@ impl World {
         self.changed(Some(Shift::Removed(at)));
         if fence {
             self.settle(slot, false);
+            self.fence_updated(slot);
         }
         rated.into_iter().for_each(|t| self.mark_rating(t));
         if undoable {
@@ -327,6 +329,10 @@ impl World {
             self.reheight(t);
         }
         self.edges_around(t);
+        // A terrain change updates its exhibit, unless the game is paused (shows 34.4 point 7).
+        if !self.paused && let Some(x) = self.exhibits.region(t) {
+            self.reach(x);
+        }
         self.changed(None);
         self.mark_rating(t);
         self.escape_check(t);

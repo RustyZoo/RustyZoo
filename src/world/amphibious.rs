@@ -93,7 +93,8 @@ impl World {
     }
 
     /// 12.2: the links of every exhibit and the connectors, made again; the neighbours of an
-    /// exhibit keep the order they became so in.
+    /// exhibit keep the order they became so in. The show links are made by
+    /// [`World::update_shows`], only for the exhibits an edit of shows 34.4 reached.
     ///
     /// `show_first`: the edit runs the show update before the rebuild (the wall height setter, shows
     /// 34.2 point 5), so the joins of a link made or dropped read the amphibious set from before it.
@@ -106,14 +107,9 @@ impl World {
         let mut connectors = Vec::new();
         let mut found = Vec::new();
         for &x in &ids {
-            let (mut mine, mut shows): (Vec<u32>, Vec<u32>) = (Vec::new(), Vec::new());
+            let mut mine: Vec<u32> = Vec::new();
             for (a, b) in self.exhibits.boundary(self, x) {
                 let Some(b) = b else { continue };
-                if let Some(y) = (self.exhibits.region(b)).filter(|&y| self.show_pair(x, y))
-                    && !shows.contains(&y)
-                {
-                    shows.push(y);
-                }
                 let Some((y, wall)) = self.link(x, a, b) else {
                     continue;
                 };
@@ -122,7 +118,7 @@ impl World {
                     mine.push(y);
                 }
             }
-            found.push((mine, shows));
+            found.push(mine);
         }
         connectors.sort_unstable();
         connectors.dedup();
@@ -134,41 +130,15 @@ impl World {
             next.extend(added);
             next
         };
-        for (&x, (mine, shows)) in ids.iter().zip(&found) {
+        let mut before = std::collections::HashMap::new();
+        for (&x, mine) in ids.iter().zip(&found) {
             let Some(e) = self.exhibits.get_mut(x) else {
                 continue;
             };
             let next = keep(&e.amphibious, mine);
-            let old = std::mem::replace(&mut e.amphibious, next);
-            let near = if show_first {
-                old
-            } else {
-                e.amphibious.clone()
-            };
-            let now = keep(&e.show_near, shows);
-            let before = std::mem::replace(&mut e.show_near, now.clone());
-            // The show lists hear of each link of a plain tank made or dropped (shows 20.1).
-            if e.tank.is_some_and(|t| t.show) {
-                continue;
-            }
-            let made = now
-                .iter()
-                .filter(|y| !before.contains(y))
-                .map(|&y| (y, true));
-            let dropped = before
-                .iter()
-                .filter(|y| !now.contains(y))
-                .map(|&y| (y, false));
-            for (show, on) in made.chain(dropped) {
-                self.show_moves.push(crate::show::Move::Link {
-                    plain: x,
-                    show,
-                    on,
-                    near: near.clone(),
-                });
-            }
+            before.insert(x, std::mem::replace(&mut e.amphibious, next));
         }
-        self.pair_portals();
+        self.update_shows(show_first.then_some(&before));
     }
 }
 
