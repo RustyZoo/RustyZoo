@@ -25,7 +25,13 @@ pub(super) fn hinter(outlines: &OutlineGlyphCollection<'_>, ppem: u32) -> Option
         engine: Engine::Auto(None),
         target: Target::Mono,
     };
-    HintingInstance::new(outlines, Size::new(ppem as f32), LocationRef::default(), options).ok()
+    HintingInstance::new(
+        outlines,
+        Size::new(ppem as f32),
+        LocationRef::default(),
+        options,
+    )
+    .ok()
 }
 
 /// The coverage of a glyph at the hinted size; an empty glyph when it has no outline.
@@ -69,10 +75,22 @@ impl Path {
                 .flat_map(|e| [e[i], e[i + 2]])
                 .fold(init, pick)
         };
-        let (x0, x1) = (bound(0, f32::min, f32::MAX).floor(), bound(0, f32::max, f32::MIN).ceil());
-        let (y0, y1) = (bound(1, f32::min, f32::MAX).floor(), bound(1, f32::max, f32::MIN).ceil());
+        let (x0, x1) = (
+            bound(0, f32::min, f32::MAX).floor(),
+            bound(0, f32::max, f32::MIN).ceil(),
+        );
+        let (y0, y1) = (
+            bound(1, f32::min, f32::MAX).floor(),
+            bound(1, f32::max, f32::MIN).ceil(),
+        );
         if self.edges.is_empty() || x1 <= x0 || y1 <= y0 {
-            return Glyph { width: 0, height: 0, left: 0, bottom: 0, coverage: vec![] };
+            return Glyph {
+                width: 0,
+                height: 0,
+                left: 0,
+                bottom: 0,
+                coverage: vec![],
+            };
         }
         let (width, height) = ((x1 - x0) as usize, (y1 - y0) as usize);
         let mut coverage = vec![0f32; width * height];
@@ -129,7 +147,10 @@ impl OutlinePen for Path {
         for i in 1..=STEPS {
             let t = i as f32 / STEPS as f32;
             let (u, a, b) = (1.0 - t, (1.0 - t) * (1.0 - t), t * t);
-            self.line(a * px + 2.0 * u * t * cx + b * x, a * py + 2.0 * u * t * cy + b * y);
+            self.line(
+                a * px + 2.0 * u * t * cx + b * x,
+                a * py + 2.0 * u * t * cy + b * y,
+            );
         }
     }
 
@@ -152,4 +173,3 @@ impl OutlinePen for Path {
         }
     }
 }
-

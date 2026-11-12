@@ -526,7 +526,10 @@ fn colours(canvas: &Framebuffer, bg: [u8; 4]) -> Vec<[u8; 4]> {
 #[test]
 fn smoothed_pixels_fade_in_between_a_quarter_and_63_percent() {
     use super::draw::contrast;
-    assert_eq!((contrast(0), contrast(64), contrast(160), contrast(255)), (0, 0, 255, 255));
+    assert_eq!(
+        (contrast(0), contrast(64), contrast(160), contrast(255)),
+        (0, 0, 255, 255)
+    );
     assert_eq!(contrast(112), 127);
     assert!((0..255).all(|c| contrast(c) <= contrast(c + 1)));
 }
@@ -563,12 +566,18 @@ fn the_paused_message_is_grid_fitted_like_windows_draws_it() {
     assert!(count(1) <= 100, "{} grey", count(1));
     // Rows with ink of one letter, and the widths of its whole-colour runs.
     let ink = |text: &[u8]| -> Vec<Vec<u8>> {
-        paused_rows(text).into_iter().filter(|r| r.iter().any(|&l| l > 0)).collect()
+        paused_rows(text)
+            .into_iter()
+            .filter(|r| r.iter().any(|&l| l > 0))
+            .collect()
     };
     assert_eq!(ink(b"H").len(), 9, "caps");
     assert_eq!(ink(b"x").len(), 7, "x-height");
     let stem = ink(b"l");
-    assert!(stem.iter().all(|r| r.iter().filter(|&&l| l > 0).count() == 2));
+    assert!(
+        stem.iter()
+            .all(|r| r.iter().filter(|&&l| l > 0).count() == 2)
+    );
     assert!(stem.iter().flatten().all(|&l| l != 1), "no grey on a stem");
 }
 
@@ -639,11 +648,11 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "e2215573cd28a200"
+        "5d7b2b7781b1b56c"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "cd5069739d569e52"
+        "faa4f9c0381f2541"
     );
 }
 

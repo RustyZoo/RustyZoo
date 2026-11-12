@@ -10,8 +10,8 @@
 //! `format`.
 //!
 //! The font files are embedded unmodified (see `fonts/README.md`), so the metrics and the
-//! pictures are the same on every system. Fonts are cached per (face, size) and glyphs per
-//! (font, character).
+//! pictures are the same on every system. Glyphs are fitted to the pixel grid and rasterised
+//! by `raster`. Fonts are cached per (face, size) and glyphs per (font, character).
 
 use skrifa::charmap::Charmap;
 use skrifa::instance::{LocationRef, Size};
@@ -106,7 +106,9 @@ impl Font {
     pub(crate) fn new(bold: bool, ppem: u32, bold_word: bool) -> Font {
         let face = face(bold);
         // Unscaled, one pixel is one font unit.
-        let metrics = face.font.glyph_metrics(Size::unscaled(), LocationRef::default());
+        let metrics = face
+            .font
+            .glyph_metrics(Size::unscaled(), LocationRef::default());
         let mut advances = [0; 256];
         for (byte, advance) in advances.iter_mut().enumerate() {
             let units = metrics.advance_width(face.id(byte as u8)).unwrap_or(0.0);
