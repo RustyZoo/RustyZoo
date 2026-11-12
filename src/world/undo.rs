@@ -494,17 +494,15 @@ impl World {
                 }
             }
         }
-        if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
-            match value {
-                TankValue::Purity(v) => {
-                    let old = std::mem::replace(&mut tank.purity, v);
-                    if crate::exhibit::viewing::crosses(old, v) {
-                        self.exhibits.reobserve(id);
-                    }
+        match value {
+            // The purity setter: the ripples, the areas and the murky message (tank staff 7.4).
+            TankValue::Purity(v) => self.set_purity(id, i64::from(v)),
+            TankValue::Salt(v) => {
+                if let Some(tank) = self.exhibits.get_mut(id).and_then(|e| e.tank.as_mut()) {
+                    tank.salt = v;
                 }
-                TankValue::Salt(v) => tank.salt = v,
-                TankValue::Height(_) | TankValue::Level(_) | TankValue::Filled(_) => {}
             }
+            TankValue::Height(_) | TankValue::Level(_) | TankValue::Filled(_) => {}
         }
         // The filled state goes through the fill or the drain, which makes the show links again;
         // the drain posts the abort event of the tank's show (shows 30.4 point 5).
