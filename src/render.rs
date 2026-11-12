@@ -206,6 +206,9 @@ pub(crate) struct Extra {
     pub looks: HashMap<u32, &'static str>,
     /// The tank walls (ids, ascending) that connect a tank to a land exhibit (tank fauna 12.1).
     pub connectors: Vec<u32>,
+    /// The users their building draws itself, as (building id, unit id): each is painted again
+    /// right after the building and wins the pick over it (map drawing 9.5.1).
+    pub pad: Vec<(u32, u32)>,
 }
 
 /// The key of the clock of the bubbles of the filter `id` in [`Extra::idle`]: the filter's own
