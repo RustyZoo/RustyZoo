@@ -439,7 +439,9 @@ impl World {
         let Plan {
             lost, split_kept, ..
         } = plan;
+        let owners = self.info_owners(old);
         self.exhibits = std::mem::take(&mut built.next);
+        self.reanchor(owners);
         self.reshaped = true;
         // A morph that makes a tank asks about its refused objects before it resizes the exhibit
         // beside it: that resize waits for the answer (10.1.1 point 5).
