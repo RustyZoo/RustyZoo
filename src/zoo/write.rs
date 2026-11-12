@@ -185,8 +185,9 @@ fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
             o.u32(t.height);
             o.u32(t.level);
             o.u8(t.filled.into());
-            o.u32(t.salt.into());
-            o.u32(t.target.into());
+            // The salinity of salt water is 100 in every file of the game.
+            o.u32(if t.salt { 100 } else { 0 });
+            o.u32(if t.target { 100 } else { 0 });
             o.u32(t.purity);
         }
     }

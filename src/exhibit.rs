@@ -574,11 +574,17 @@ impl Exhibits {
             ..Exhibits::default()
         };
         // A loaded exhibit is filled from its tile on the line the file closes last (3.8) and
-        // listed in the order of those closing pieces (3.8.1).
+        // listed in the order of those closing pieces (3.8.1). The two halves of a split share the
+        // piece that cut them, which the replay lists the kept half before the new one: the order
+        // of the records tells which is which.
         let mut parts: Vec<_> = (parts(world).into_iter().filter(|p| !p.grounds))
             .map(|p| (closing_line(world, &p.tiles), p))
             .collect();
-        parts.sort_by_key(|(line, _)| line.map(|l| l.0));
+        let record = |p: &Part| {
+            (world.zoo.habitat_tiles.iter())
+                .position(|&(x, y)| world.tile_index(x, y).is_some_and(|t| p.tiles.contains(&t)))
+        };
+        parts.sort_by_cached_key(|(line, p)| (line.map(|l| l.0), record(p)));
         for (line, part) in parts {
             let start = (line.map(|l| l.1.0)).or(part.tiles.iter().copied().min());
             let size = part.tiles.len();

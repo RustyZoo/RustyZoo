@@ -106,6 +106,8 @@ impl World {
         let region =
             |&(x, y): &(i32, i32)| self.tile_index(x, y).and_then(|t| self.exhibits.region(t));
         let (mut tiles, mut gates, mut infos, mut shows) = (vec![], vec![], vec![], vec![]);
+        let mut tanks = self.tank_records().into_iter();
+        let mut kept_tanks = Vec::new();
         for e in self.exhibits.list() {
             let rec = (self.zoo.habitat_tiles.iter()).rposition(|p| region(p) == Some(e.id));
             let old = rec.map(|n| (&self.zoo.habitat_gates[n], &self.zoo.habitat_info[n]));
@@ -126,7 +128,12 @@ impl World {
                     true => was,
                     false => d.to_file_time(),
                 });
-            tiles.push(at(e.first));
+            // The first tile of its list, the last one its last fill put in (3.8).
+            let first = at(e.order.first().copied().unwrap_or(e.first));
+            tiles.push(first);
+            if e.tank.is_some() {
+                kept_tanks.extend(tanks.next().map(|t| crate::zoo::Tank { tile: first, ..t }));
+            }
             gates.push(gate);
             infos.push(HabitatInfo {
                 name: e.name.clone(),
@@ -139,7 +146,7 @@ impl World {
             shows.push(slot.and_then(|n| self.zoo.shows.info(n)).cloned());
         }
         (zoo.habitat_tiles, zoo.habitat_gates, zoo.habitat_info) = (tiles, gates, infos);
-        zoo.tanks = self.tank_records();
+        zoo.tanks = kept_tanks;
         zoo.shows.infos = shows;
     }
 
