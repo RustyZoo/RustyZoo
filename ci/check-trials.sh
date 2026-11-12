@@ -1395,24 +1395,24 @@ tank_murky() { # tank_murky <map> <x,y> <new animal's id> <filter> <filter> <fil
 }
 check expansion-trial yes "any_seed tank_murky maps/scn28.zoo 28,47 47864 31192 31194 37416"
 
-# Amphibious neighbours: scn28b's tank 1 and land exhibit 2 are level with the wall between them,
+# Amphibious neighbours: scn28b's land exhibit 1 and tank 2 (a load lists a land half before a tank half) are level with the wall between them,
 # which is a connector. The polar bear of the tank goes ashore and comes back, and the bear of the
 # land exhibit swims into the tank. The land exhibit counts the tank's water for the bears (habitat
 # rating 5.3), so its bear is content; every recomputation ends with the reachability test (5.8), which
 # draws. Prints the exhibits each bear entered and when (steps of 67 ms). The tank bear goes ashore at
-# step 226 and is home at step 374 on most seeds, and the land bear swims back ashore on most (not on
-# seeds 6 and 16 within 14000 steps): yes when for one of the seeds 1 to 24 the tank bear enters the land
-# exhibit (2) and then the tank (1), and the land bear enters the tank and then the land exhibit again.
+# step 206 and is home at step 394 on most seeds, and the land bear swims back ashore on most (not on
+# seed 4 within 14000 steps): yes when for one of the seeds 1 to 24 the tank bear enters the land
+# exhibit (1) and then the tank (2), and the land bear enters the tank and then the land exhibit again.
 # Prints that, a space, and the entries of the land bear.
 tank_cross() { # tank_cross <map> <tank bear> <land bear>: reads $seed
   rz sim "$1" --ticks 14000 --seed "$seed" --log 2>/dev/null | awk -v a="$2" -v b="$3" '
     / unit enter /{ if ($5 == a) x=x (x ? "," : "") $6 "@" $2; if ($5 == b) y=y (y ? "," : "") $6 "@" $2 }
-    END{ ax = x; sub(/^2@[0-9]*,1@.*/, "ok", ax); by = y; sub(/^1@[0-9]*,2@.*/, "ok", by)
+    END{ ax = x; sub(/^1@[0-9]*,2@.*/, "ok", ax); by = y; sub(/^2@[0-9]*,1@.*/, "ok", by)
          printf "%s %s:%s\n", (ax == "ok" && by == "ok" ? "yes" : "no:" x ";" y), b, y }'
 }
 check expansion-trial yes "first=2 any_seed tank_cross maps/scn28b.zoo 93962 97902"
 # Sentinel: the step the land bear first swims into the tank (seed 2, the run of the property).
-check expansion-trial '97902:1@1095' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
+check expansion-trial '97902:2@1002' 'seed=2 once tank_cross maps/scn28b.zoo 93962 97902 | sed "s/.* //; s/,.*//"'
 
 # The water mode (tank fauna 5, 6.1): on scn19 a walk of animal 51758 ends on land (`bWalk`), then
 # the water check gives it the water mode and sends it to a water tile of its exhibit; in the water

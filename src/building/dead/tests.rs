@@ -500,6 +500,8 @@ fn a_loaded_tank_stirs_no_guest() {
             level: 6,
             salt: false,
             purity: 90,
+            filled: true,
+            target: false,
         }];
     });
     assert_eq!(

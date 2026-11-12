@@ -105,6 +105,9 @@ impl Game {
             w.tank_at(3 * 12 + 3).unwrap(),
         );
         assert_ne!(x, y);
+        // A load lists the inner tank first (its fence closes last, 3.8.1); the keeper is to look at
+        // the outer tank first, as these tests have it.
+        w.exhibits_mut().list_mut().swap(0, 1);
         w.exhibits_mut().get_mut(y).unwrap().gate = Some(GATE_Y);
         for (id, purity, height) in [(x, 100, 5), (y, y_purity, y_height)] {
             let tank = w.exhibits_mut().get_mut(id).unwrap().tank.as_mut().unwrap();
@@ -210,8 +213,8 @@ fn steps(g: &Game) -> Vec<&str> {
     v
 }
 
-const X: u32 = 1;
-const Y: u32 = 2;
+const X: u32 = 2;
+const Y: u32 = 1;
 const ENTER: u8 = crate::goal::ENTER_TANK;
 
 #[test]

@@ -74,7 +74,7 @@ impl Zoo {
             return Err(format!("version {v} cannot be upgraded yet (70 and later)"));
         }
         let kept = &self.kept;
-        if kept.habitats.is_empty() || kept.finances.is_empty() {
+        if kept.finances.is_empty() {
             return Err("the zoo was not read from a file".into());
         }
         let mut o = Out(b"TZFB".to_vec(), self.locale);
@@ -85,7 +85,7 @@ impl Zoo {
         o.u32(self.height);
         o.u32(self.entrance.0);
         o.u32(self.entrance.1);
-        o.bytes(&upgrade::habitats(v, &habitats(self)?)?);
+        o.bytes(&habitats(self)?);
         o.bytes(&upgrade::shows(v, self.locale, &self.shows)?);
         o.u32(self.id_counter);
         if self.tiles.len() as u64 != u64::from(self.width) * u64::from(self.height) {
@@ -147,56 +147,52 @@ impl Zoo {
     }
 }
 
-/// The habitat section as read, with the names, the statistics and the last service of each
-/// habitat written over it.
+/// The habitat section in the form of version 106 (zoo format 4.1): the count, one record per entry
+/// of the habitat list in its order (the tank records follow the same order), then the name counter.
+/// A show info is written from the model; below 97 a file that holds one cannot be written.
 fn habitats(zoo: &Zoo) -> Result<Vec<u8>, String> {
-    let mut b = zoo.kept.habitats.clone();
-    for (&at, info) in zoo.kept.stats_at.iter().zip(&zoo.habitat_info) {
-        // The statistics, the creation date and the viewing time (two dates), then the last service
-        // (from 83).
-        let service = at + 36 + 16;
-        let mut put = |at: usize, n: u32| {
-            if let Some(to) = b.get_mut(at..at + 4) {
-                to.copy_from_slice(&n.to_le_bytes());
-            }
-        };
-        for (i, &n) in info.stats.iter().enumerate() {
-            put(at + 4 * i, n);
-        }
-        put(at + 44, info.viewing as u32);
-        put(at + 48, (info.viewing >> 32) as u32);
-        if zoo.version >= 83 {
-            put(service, info.serviced);
-        }
+    let shows = zoo.shows.infos.iter().flatten().count();
+    if (90..97).contains(&zoo.version) && shows > 0 {
+        return Err("habitats: a show cannot be written yet".into());
     }
-    // The names and the show infos last, from the end, so that the places of the earlier ones stay
-    // right. A show info is written from the model in the form of 106 (the upgrade reads it so);
-    // below 97 the upgrade refuses the file.
-    let mut parts: Vec<(usize, usize, Out)> = Vec::new();
-    for (&(from, to), info) in zoo.kept.names_at.iter().zip(&zoo.habitat_info) {
-        let mut name = Out(Vec::new(), zoo.locale);
-        name.string(&info.name)?;
-        parts.push((from, to, name));
-    }
-    for (n, at) in zoo.kept.show_at.iter().enumerate() {
-        let (Some(&(from, to)), true) = (at.as_ref(), zoo.version >= 97) else {
-            continue;
-        };
-        let mut show = Out(Vec::new(), zoo.locale);
+    let (tiles, gates, infos) = (&zoo.habitat_tiles, &zoo.habitat_gates, &zoo.habitat_info);
+    let mut o = Out(Vec::new(), zoo.locale);
+    o.u32(tiles.len() as u32);
+    let mut tanks = zoo.tanks.iter().peekable();
+    for (n, ((tile, gate), info)) in tiles.iter().zip(gates).zip(infos).enumerate() {
+        o.i32(tile.0);
+        o.i32(tile.1);
+        o.string(&info.name)?;
+        o.i32((gate.0).0);
+        o.i32((gate.0).1);
+        o.i32(gate.1);
+        info.stats.iter().for_each(|&w| o.u32(w));
+        for date in [info.created, info.viewing] {
+            o.u32(date as u32);
+            o.u32((date >> 32) as u32);
+        }
+        o.u32(info.serviced);
+        let tank = tanks.next_if(|t| t.tile == *tile);
+        o.u8(tank.is_some().into());
         match zoo.shows.info(n) {
             Some(info) => {
-                show.u8(1);
-                info.write(&mut show);
+                o.u8(1);
+                info.write(&mut o);
             }
-            None => show.u8(0),
+            None => o.u8(0),
         }
-        parts.push((from, to, show));
+        if let Some(t) = tank {
+            o.u32(t.height);
+            o.u32(t.level);
+            o.u8(t.filled.into());
+            // The salinity of salt water is 100 in every file of the game.
+            o.u32(if t.salt { 100 } else { 0 });
+            o.u32(if t.target { 100 } else { 0 });
+            o.u32(t.purity);
+        }
     }
-    parts.sort_by_key(|p| std::cmp::Reverse(p.0));
-    for (from, to, bytes) in parts {
-        b.splice(from..to, bytes.0);
-    }
-    Ok(b)
+    o.u32(zoo.kept.name_counter);
+    Ok(o.0)
 }
 
 /// The game block as read, with the modelled values written over it (the play time, the word after

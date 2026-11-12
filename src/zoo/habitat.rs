@@ -1,5 +1,5 @@
 //! The habitat record of a zoo file: the gate and side, the statistics, and the
-//! tank and show a habitat may carry.
+//! tank and show a habitat may carry, read and written (zoo format 4.1).
 
 use super::{HabitatInfo, R, Reader, ShowInfo, Tank};
 
@@ -11,22 +11,16 @@ pub(super) type Habitat = (
     ((i32, i32), i32),
     Option<Tank>,
     HabitatInfo,
-    usize,
-    (usize, usize),
-    (Option<ShowInfo>, Option<(usize, usize)>),
+    Option<ShowInfo>,
 );
 
-/// Reads a habitat record; `size` is the length of the bytes the section started with, and the last
-/// values are where the record's statistics and its name start and end in them.
-pub(super) fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
+/// Reads a habitat record.
+pub(super) fn habitat(r: &mut Reader) -> R<Habitat> {
     let v = r.v;
     let tile = (r.i32()?, r.i32()?);
-    let name_at = size - r.data.len();
     let name = r.text()?;
-    let name_to = size - r.data.len();
     let gate = (r.i32()?, r.i32()?);
     let side = r.i32()?;
-    let at = size - r.data.len();
     let mut stats = [0; 9];
     for s in &mut stats {
         *s = r.u32()?;
@@ -42,38 +36,28 @@ pub(super) fn habitat(r: &mut Reader, size: usize) -> R<Habitat> {
         serviced,
     };
     let is_tank = v >= 85 && r.u8()? != 0;
-    let show_from = size - r.data.len();
     let has_show = v >= 90 && r.u8()? != 0;
     let show = has_show.then(|| ShowInfo::read(r)).transpose()?;
-    let show_at = (v >= 90).then_some((show_from, size - r.data.len()));
-    let show = (show, show_at);
     if !is_tank {
-        return Ok((tile, (gate, side), None, info, at, (name_at, name_to), show));
+        return Ok((tile, (gate, side), None, info, show));
     }
     let (height, level) = (r.u32()?, r.u32()?);
-    if v >= 88 {
-        r.skip(1)?;
-    }
-    let (mut salt, mut purity) = (100, 100);
+    let filled = v < 88 || r.u8()? != 0;
+    let (mut salt, mut target, mut purity) = (100, 100, 100);
     if v >= 100 {
         salt = r.u32()?;
-        r.skip(4)?;
+        target = r.u32()?;
         purity = r.u32()?;
     }
-    Ok((
+    let tank = Tank {
         tile,
-        (gate, side),
-        Some(Tank {
-            tile,
-            gate,
-            height,
-            level,
-            salt: salt != 0,
-            purity,
-        }),
-        info,
-        at,
-        (name_at, name_to),
-        show,
-    ))
+        gate,
+        height,
+        level,
+        salt: salt != 0,
+        purity,
+        filled,
+        target: target != 0,
+    };
+    Ok((tile, (gate, side), Some(tank), info, show))
 }

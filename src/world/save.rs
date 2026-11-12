@@ -1,5 +1,5 @@
 //! The state a saved game takes from the live world and gives back (save games 7, 9): the
-//! thoughts, and the statistics and last service of each exhibit.
+//! thoughts and the habitat record of each exhibit.
 
 use super::{Shape, World};
 use crate::building::Kind;
@@ -9,8 +9,9 @@ use crate::exhibit::{EXTERIOR, GROUNDS};
 use crate::goal;
 use crate::guest::thought::Thought;
 use crate::render::tank_kind;
+use crate::timing::Date;
 use crate::unit::{Part, Unit};
-use crate::zoo::{Common, Entity, Target, Zoo, animal_new, fresh};
+use crate::zoo::{Common, Entity, HabitatInfo, Target, Zoo, animal_new, fresh};
 use crate::{animal, guest};
 use std::collections::HashSet;
 
@@ -67,9 +68,8 @@ impl World {
     }
 
     /// The zoo as a file stores it: without the entities `known` does not find (the original never
-    /// makes them, so it never saves them or their thoughts), with the live thoughts and the live
-    /// names, statistics and last service of the exhibits. An exhibit is matched with the record that
-    /// names its tile; a record whose tile is in no exhibit keeps what it stored.
+    /// makes them, so it never saves them or their thoughts), with the live thoughts and one habitat
+    /// record per live exhibit ([`World::save_habitats`]).
     pub(crate) fn saved(&self, known: impl Fn(&Entity) -> bool) -> Zoo {
         let mut zoo = self.zoo.clone();
         zoo.drop_unknown(known);
@@ -92,28 +92,62 @@ impl World {
             })
             .collect();
         zoo.set_thoughts(thoughts);
+        self.save_habitats(&mut zoo);
+        zoo
+    }
+
+    /// The habitat records of a save: one per exhibit in list order, from the live exhibit (zoo
+    /// format 4.1.1). What the model of an exhibit lacks (the side of a gone gate, the show info)
+    /// is taken from the record that names the exhibit's tile, the later one if two do; an exhibit
+    /// with none has the values its creation gave it.
+    fn save_habitats(&self, zoo: &mut Zoo) {
         let width = self.zoo.width.max(1) as usize;
-        let records = self.zoo.habitat_tiles.iter().zip(&mut zoo.habitat_info);
-        for ((&(x, y), info), stored) in records.zip(&mut zoo.habitat_tiles) {
-            let exhibit = (self.tile_index(x, y))
-                .and_then(|t| self.exhibits.region(t))
-                .and_then(|id| self.exhibits.get(id));
-            let Some(e) = exhibit else { continue };
-            // The save writes the first tile the exhibit has now (shows 31.8 point 2).
-            if let Some(&first) = e.order.first() {
-                *stored = ((first % width) as i32, (first / width) as i32);
-            }
-            info.name.clone_from(&e.name);
+        let at = |t: usize| ((t % width) as i32, (t / width) as i32);
+        let region =
+            |&(x, y): &(i32, i32)| self.tile_index(x, y).and_then(|t| self.exhibits.region(t));
+        let (mut tiles, mut gates, mut infos, mut shows) = (vec![], vec![], vec![], vec![]);
+        let mut tanks = self.tank_records().into_iter();
+        let mut kept_tanks = Vec::new();
+        for e in self.exhibits.list() {
+            let rec = (self.zoo.habitat_tiles.iter()).rposition(|p| region(p) == Some(e.id));
+            let old = rec.map(|n| (&self.zoo.habitat_gates[n], &self.zoo.habitat_info[n]));
+            let gate = match self.gate_slot(e.id) {
+                Some((t, d)) => (at(t), d as i32),
+                None => ((-1, -1), old.map_or(-1, |(g, _)| g.1)),
+            };
             // Kept last month, this month, total; stored this month, last month, total.
             let order = |v: [u32; 3]| [v[1], v[0], v[2]];
             let (d, u) = (e.stats.donations, e.stats.upkeep);
             let bits = |v: [f32; 3]| order(v.map(f32::to_bits));
-            let words = [bits(d), bits(u), order(e.stats.count)];
-            info.stats = words.concat().try_into().unwrap_or(info.stats);
-            info.viewing = e.stats.viewing;
-            info.serviced = e.rating.serviced as u32;
+            let words = [bits(d), bits(u), order(e.stats.count)].concat();
+            let was = old.map_or(0, |(_, i)| i.created);
+            let created = e
+                .stats
+                .created
+                .map_or(0, |d| match Date::from_file_time(was) == d {
+                    true => was,
+                    false => d.to_file_time(),
+                });
+            // The first tile of its list, the last one its last fill put in (3.8).
+            let first = at(e.order.first().copied().unwrap_or(e.first));
+            tiles.push(first);
+            if e.tank.is_some() {
+                kept_tanks.extend(tanks.next().map(|t| crate::zoo::Tank { tile: first, ..t }));
+            }
+            gates.push(gate);
+            infos.push(HabitatInfo {
+                name: e.name.clone(),
+                stats: words.try_into().unwrap_or([0; 9]),
+                created,
+                viewing: e.stats.viewing,
+                serviced: e.rating.serviced as u32,
+            });
+            let slot = self.info_slot_in(&self.exhibits, e.id);
+            shows.push(slot.and_then(|n| self.zoo.shows.info(n)).cloned());
         }
-        zoo
+        (zoo.habitat_tiles, zoo.habitat_gates, zoo.habitat_info) = (tiles, gates, infos);
+        zoo.tanks = kept_tanks;
+        zoo.shows.infos = shows;
     }
 
     /// The place in the list [`World::saved`] makes that the position `at` of the entity list

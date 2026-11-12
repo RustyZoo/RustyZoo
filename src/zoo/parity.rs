@@ -455,3 +455,69 @@ fn a_stepped_scn28_save_holds_the_record_that_the_specialists_need_test_made() {
     };
     assert_eq!(rest(new), rest(old));
 }
+
+/// The records of a file as the game would list them again: the first tile, the gate, the figures
+/// and the water of each, and whether it holds a show (the names only in the language of the install).
+fn records(zoo: &Zoo, named: bool) -> Vec<String> {
+    let mut tanks = zoo.tanks.iter().peekable();
+    let mut out = Vec::new();
+    for (n, ((tile, gate), info)) in (zoo.habitat_tiles.iter().zip(&zoo.habitat_gates))
+        .zip(&zoo.habitat_info)
+        .enumerate()
+    {
+        let tank = tanks
+            .next_if(|t| t.tile == *tile)
+            .map(|t| (t.height, t.level, t.salt, t.purity));
+        let name = if named { info.name.as_str() } else { "" };
+        let (stats, dates) = (info.stats, (info.created, info.viewing, info.serviced));
+        let show = zoo.shows.info(n).is_some();
+        out.push(format!(
+            "{tile:?} {gate:?} {name} {stats:?} {dates:?} {tank:?} {show}"
+        ));
+    }
+    out
+}
+
+#[test]
+#[ignore = "needs the game: set ZT_DATA_DIR to the install folder"]
+fn every_shipped_file_that_loads_is_saved_back_with_its_habitat_records() {
+    let dir = std::env::var_os("ZT_DATA_DIR").expect("ZT_DATA_DIR is not set");
+    let vfs = crate::vfs::Vfs::open(std::path::Path::new(&dir)).unwrap();
+    let language = crate::strings::Language::of(vfs.root()).number;
+    let members: Vec<_> = vfs
+        .list(None)
+        .into_iter()
+        .filter(|m| m.ends_with(".zoo"))
+        .collect();
+    let (mut failed, mut checked) = (Vec::new(), 0);
+    for group in members.chunks(4) {
+        let done: Vec<_> = std::thread::scope(|s| {
+            let jobs: Vec<_> = group
+                .iter()
+                .map(|m| {
+                    s.spawn(|| {
+                        let old = vfs.read(m).unwrap();
+                        let cat = Catalogue::load(&vfs).unwrap();
+                        let new = resaved(&vfs, Catalogue::load(&vfs).unwrap(), m).ok()?;
+                        let (a, b) = (
+                            Zoo::parse_in(&old, &cat).ok()?,
+                            Zoo::parse_in(&new, &cat).ok()?,
+                        );
+                        let named = a.locale == language;
+                        let same = records(&a, named) == records(&b, named);
+                        Some((m.clone(), same))
+                    })
+                })
+                .collect();
+            jobs.into_iter().map(|j| j.join().unwrap()).collect()
+        });
+        for (member, same) in done.into_iter().flatten() {
+            checked += 1;
+            if !same {
+                failed.push(member);
+            }
+        }
+    }
+    println!("{checked} files that load");
+    assert!(failed.is_empty(), "the records differ: {failed:?}");
+}

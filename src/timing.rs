@@ -443,6 +443,12 @@ impl Date {
         if ok { self.millis() - start } else { 0 }
     }
 
+    /// The file time of this date (zoo format 1); 0 before 1601.
+    pub(crate) fn to_file_time(self) -> u64 {
+        let ms = self.millis() + DAYS_1601_TO_1970 * DAY_MS as i64;
+        u64::try_from(ms).map_or(0, |ms| ms.saturating_mul(10_000))
+    }
+
     /// The date of a file time: 100 ns steps since 1 January 1601 (zoo format 1).
     pub(crate) fn from_file_time(t: u64) -> Date {
         let ms = t / 10_000;

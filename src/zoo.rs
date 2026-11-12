@@ -235,21 +235,14 @@ impl Raw {
 /// unchanged. The offsets tell where the modelled values lie in `finances`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Kept {
-    /// From the habitat count to the end of the habitat records.
-    habitats: Vec<u8>,
-    /// Where the has-show byte of each habitat record starts and where its show info ends in
-    /// `habitats` (from version 90).
-    show_at: Vec<Option<(usize, usize)>>,
+    /// The word after the habitat records (the counter of default names, from version 64).
+    name_counter: u32,
     /// The cheats (from version 104).
     cheats: Vec<u8>,
     /// The scenario block: its size and content.
     scenario: Vec<u8>,
     /// The game block, from the zoo status to the cash and the word after it.
     finances: Vec<u8>,
-    /// Where the statistics of each habitat start in `habitats`.
-    stats_at: Vec<usize>,
-    /// Where the name of each habitat is in `habitats`, its length word included.
-    names_at: Vec<(usize, usize)>,
     /// The thoughts as stored: text id, thinker, object, tile x and y (save games 9).
     thoughts: Vec<[u32; 5]>,
     /// The research records (from version 40).
@@ -362,6 +355,10 @@ pub struct Tank {
     /// Not 0 in the file: salt water. Maps before version 100 hold salt water of purity 100.
     pub salt: bool,
     pub purity: u32,
+    /// The filled flag (not 0 in the file) and the target salinity (not 0: salt); the same as `salt`
+    /// in a file before version 100.
+    pub filled: bool,
+    pub target: bool,
 }
 
 /// One entity record.
