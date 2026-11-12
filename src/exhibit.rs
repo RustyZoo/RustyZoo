@@ -583,6 +583,7 @@ impl Exhibits {
         let record = |p: &Part| {
             (world.zoo.habitat_tiles.iter())
                 .position(|&(x, y)| world.tile_index(x, y).is_some_and(|t| p.tiles.contains(&t)))
+                .unwrap_or(usize::MAX)
         };
         parts.sort_by_cached_key(|(line, p)| (line.map(|l| l.0), record(p)));
         for (line, part) in parts {
