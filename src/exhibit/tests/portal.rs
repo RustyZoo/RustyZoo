@@ -2,6 +2,7 @@
 //! flat synthetic ground: a plain tank on the left, a show tank built against its east side.
 
 use super::decision::{build, id_at};
+use crate::show::Move;
 use super::tank::{put_wall, ring, tank_shape, tanks};
 use super::*;
 
@@ -40,8 +41,16 @@ fn west_line(world: &World, rows: i32) -> Vec<(bool, bool)> {
         .collect()
 }
 
-/// The links are made again after an edit that touches none: a piece far from the tanks.
+/// The links of the show tank are made again by an edit that is a trigger of shows 34.4: the plain
+/// tank at column 1 is filled, filled already.
 fn touch(world: &mut World) {
+    world.begin();
+    let plain = id_at(world, 1, 2);
+    world.fill(plain);
+}
+
+/// An edit that is no trigger: a piece far from the tanks.
+fn far(world: &mut World) {
     world.begin();
     put_wall(world, "fences", (7, 0, 0));
 }
@@ -116,10 +125,13 @@ fn the_flag_setter_closes_the_portal_when_it_changes_in_play_and_not_when_a_zoo_
         c.and_then(|c| c.fence).is_some_and(|f| f.open)
     };
     open(&mut world, 3, 3, 6);
-    // The same pair again: the flag does not change, the open byte stays (the original closes
-    // it for the callers of 31.4 only; issue 1168).
-    touch(&mut world);
+    // A far edit recomputes nothing: the byte stays. A trigger makes the same pair again: the flag
+    // goes 0 then 1 and the byte is 0 (34.5 point 3).
+    far(&mut world);
     assert!(is_open(&world, 3, 3, 6));
+    touch(&mut world);
+    assert!(flag(&world, 3, 3, 6) && !is_open(&world, 3, 3, 6));
+    open(&mut world, 3, 3, 6);
     // A flag set by hand on the line goes at the recompute, and the byte of that piece with it
     // in play; a zoo read keeps it.
     let at = piece(&world, 3, 4, 6);
@@ -403,7 +415,7 @@ fn an_unrelated_edit_leaves_a_staying_portal_open() {
     let (at, id) = portal_piece(&world);
     open_it(&mut world, at, true);
     run(&mut world, at, 100, 6);
-    touch(&mut world);
+    far(&mut world);
     let fence = world.zoo.entities[at]
         .common
         .as_ref()
@@ -496,4 +508,72 @@ fn the_drains_of_a_load_post_the_id_the_tank_holds_then_before_version_97_and_no
         assert_eq!(load_posts(&world, 97, keep).1, [], "kept {keep}");
         assert_eq!(load_posts(&world, 106, keep).1, [], "kept {keep}");
     }
+}
+
+/// The show tank between two plain tanks and a far plain tank, a crossing at the west portal
+/// (open, frame 3): the piece's position and id.
+fn crossing() -> (World, (usize, u32)) {
+    let mut world = trio(4, true);
+    build(&mut world, "tank", (1, 6, 2, 7));
+    let portal = portal_piece(&world);
+    open_it(&mut world, portal.0, true);
+    run(&mut world, portal.0, 100, 6);
+    (world, portal)
+}
+
+fn is_open(world: &World, at: usize) -> bool {
+    let fence = world.zoo.entities[at].common.as_ref().and_then(|c| c.fence);
+    fence.is_some_and(|f| f.open)
+}
+
+#[test]
+fn a_drain_far_from_the_show_tank_leaves_its_portal_open_and_a_neighbours_closes_it() {
+    // 34.4 points 2, 3 and 13, 34.5 points 3 and 5.
+    let (mut world, (at, id)) = crossing();
+    let far = id_at(&world, 1, 6);
+    let n2 = id_at(&world, 5, 2);
+    world.drain(far);
+    assert!(is_open(&world, at) && shown(&world, id) == 3);
+    world.fill(far);
+    assert!(is_open(&world, at) && shown(&world, id) == 3);
+    world.drain(n2);
+    assert!(flag(&world, 3, 3, 6));
+    assert!(!is_open(&world, at) && shown(&world, id) == 0);
+}
+
+#[test]
+fn a_recompute_drops_and_makes_again_the_link_of_a_neighbour_that_stays() {
+    // 34.5 points 1 and 3.2: the performers of N1 leave the show and join it again, behind the
+    // show tank's own.
+    let (mut world, _) = crossing();
+    let (n1, n2, far) = (id_at(&world, 1, 2), id_at(&world, 5, 2), id_at(&world, 1, 6));
+    let links = |world: &mut World, plain: u32| -> Vec<bool> {
+        let moves = world.take_moves();
+        let on = |m: &Move| match m {
+            Move::Link { plain: p, on, .. } if *p == plain => Some(*on),
+            _ => None,
+        };
+        moves.iter().filter_map(on).collect()
+    };
+    world.take_moves();
+    world.drain(far);
+    assert_eq!(links(&mut world, n1), []);
+    world.drain(n2);
+    assert_eq!(links(&mut world, n1), [false, true]);
+}
+
+#[test]
+fn a_terrain_edit_recomputes_only_when_the_game_is_not_paused() {
+    // 34.4 point 7: a tile of a plain tank repainted.
+    let (mut world, (at, id)) = crossing();
+    let tile = world.zoo.tiles[world.tile_index(1, 3).unwrap()];
+    let paint = |w: &mut World| {
+        w.set_tile(1, 3, tile.elevation, tile.shape, tile.terrain ^ 1);
+    };
+    world.set_paused(true);
+    paint(&mut world);
+    assert!(is_open(&world, at) && shown(&world, id) == 3);
+    world.set_paused(false);
+    paint(&mut world);
+    assert!(!is_open(&world, at) && shown(&world, id) == 0);
 }

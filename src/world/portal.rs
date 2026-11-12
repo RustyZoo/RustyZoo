@@ -92,6 +92,7 @@ impl World {
         for &x in &ids {
             if let Some(e) = self.exhibits.get_mut(x) {
                 e.show_near.retain(|n| ids.contains(n));
+                e.portals.retain(|p| ids.contains(&p.to));
             }
         }
         let reach = std::mem::take(&mut self.reach);
@@ -201,11 +202,14 @@ impl World {
         }
     }
 
-    /// Exhibit `id` of `old` is gone (31.5 point 1): the flags of its portals go to 0 when the
-    /// pieces are still on the map.
+    /// Exhibit `id` of `old` is gone (31.5 point 1): the flags of its portals, and of the portals
+    /// the other exhibits hold towards it, go to 0 when the pieces are still on the map.
     pub(super) fn drop_portals(&mut self, old: &Exhibits, id: u32) {
-        let portals = old.get(id).map(|e| e.portals.clone()).unwrap_or_default();
-        for p in portals {
+        let portals = old.list().iter().flat_map(|e| {
+            let mine = e.id == id;
+            e.portals.iter().filter(move |p| mine || p.to == id).copied()
+        });
+        for p in portals.collect::<Vec<_>>() {
             for piece in [p.mine, p.theirs] {
                 if let Some(at) = self.find(piece) {
                     self.set_flag(at, false);
