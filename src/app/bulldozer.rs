@@ -83,7 +83,8 @@ impl Game {
     }
 
     /// The transient items of the bulldozer: what it would remove, tinted, and the outline of
-    /// the rectangle of a drag.
+    /// the rectangle of a drag; with no tool, the selectable entity under the pointer in the
+    /// highlight colour.
     pub(super) fn dozer_extra(&self, extra: &mut Extra) {
         let hovered = self.placing.hovered.filter(|h| h.1);
         extra.tinted.extend(
@@ -116,7 +117,8 @@ impl App<'_> {
     /// Works out what the bulldozer would remove from the pointer (and the press, if one is
     /// held), tells it when it changed (`tool bulldoze none`, `tool bulldoze CLASS/TYPE/SUBTYPE
     /// id N refund R name=NAME`, `tool bulldoze area X,Y X,Y objects N refund R`) and has the
-    /// first hovered object's name shown as a tooltip.
+    /// first hovered object's name shown as a tooltip. With no tool the hover of unit placing 8.8
+    /// takes its place ([`App::hover_aim`]).
     pub(super) fn dozer_aim(&mut self) {
         self.dozer_tool();
         self.hover_aim();

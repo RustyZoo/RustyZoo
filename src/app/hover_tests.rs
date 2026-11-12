@@ -61,7 +61,10 @@ fn a_selectable_entity_is_tinted_and_shows_its_own_name() {
         let (tinted, tip) = hover(s, 21, 20, 32);
         assert_eq!((tinted, tip), (vec![want(s, keeper)], Some(label)));
         let (tinted, tip) = hover(s, 23, 20, 32);
-        assert_eq!((tinted, tip), (vec![want(s, statue)], Some(name(s, statue))));
+        assert_eq!(
+            (tinted, tip),
+            (vec![want(s, statue)], Some(name(s, statue)))
+        );
         let tint = s.app.game.as_ref().unwrap().placing.tints.highlight;
         assert_eq!(tint, [225, 225, 0]);
     });

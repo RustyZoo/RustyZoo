@@ -738,8 +738,6 @@ mod avail_tests;
 #[cfg(test)]
 mod carry_tests;
 #[cfg(test)]
-mod hover_tests;
-#[cfg(test)]
 mod cheat_guest_tests;
 #[cfg(test)]
 mod cheat_season_tests;
@@ -747,6 +745,8 @@ mod cheat_season_tests;
 mod cheat_tests;
 #[cfg(test)]
 mod colour_tab_tests;
+#[cfg(test)]
+mod hover_tests;
 #[cfg(test)]
 mod random_use_tests;
 #[cfg(test)]
