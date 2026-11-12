@@ -268,31 +268,21 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
     *section = "habitats";
     let (width, height) = (r.u32()?, r.u32()?);
     let entrance = (r.u32()?, r.u32()?);
-    let from = r.data;
     let habitat_count = r.count(HABITAT_MIN)?;
     let mut tanks = Vec::new();
     let mut habitat_tiles = Vec::new();
     let mut habitat_gates = Vec::new();
     let mut habitat_info = Vec::new();
-    let mut stats_at = Vec::new();
-    let mut names_at = Vec::new();
     let mut shows = Shows::default();
-    let mut show_at = Vec::new();
     for _ in 0..habitat_count {
-        let (tile, gate, tank, info, at, name, show) = habitat(r, from.len())?;
-        stats_at.push(at);
-        names_at.push(name);
-        shows.infos.push(show.0);
-        show_at.push(show.1);
+        let (tile, gate, tank, info, show) = habitat(r)?;
+        shows.infos.push(show);
         habitat_tiles.push(tile);
         habitat_gates.push(gate);
         habitat_info.push(info);
         tanks.extend(tank);
     }
-    if v >= 64 {
-        r.skip(4)?;
-    }
-    let habitats = taken(from, r);
+    let name_counter = if v >= 64 { r.u32()? } else { 1 };
     r.mark("habitats");
     if v >= 97 {
         *section = "shows";
@@ -341,10 +331,7 @@ pub(super) fn read(r: &mut Reader, section: &mut &'static str, money: &mut Money
     *section = "later sections";
     let mut awards = Vec::new();
     let (view, clocks, names, mut kept) = after_entities(r, money, &mut awards, &mut shows)?;
-    kept.habitats = habitats;
-    kept.show_at = show_at;
-    kept.stats_at = stats_at;
-    kept.names_at = names_at;
+    kept.name_counter = name_counter;
     Ok(Zoo {
         version: v,
         locale,

@@ -396,6 +396,8 @@ pub(super) fn loaded(height: u32, level: u32, things: &[(&str, i32, i32)]) -> Wo
         level,
         salt: true,
         purity: 90,
+        filled: true,
+        target: false,
     }];
     let mut world = World::new(z, tank_shape);
     world.set_tank_config(CONFIG);

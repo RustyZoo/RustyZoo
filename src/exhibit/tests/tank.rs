@@ -142,6 +142,8 @@ fn the_tank_records_of_a_file_give_the_tanks_their_water() {
         level: 6,
         salt: false,
         purity: 80,
+        filled: true,
+        target: false,
     }];
     let mut world = World::new(z, shape);
     let t = tank(&world, 3, 3).unwrap();
@@ -1106,6 +1108,8 @@ fn removing_a_wall_of_a_tank_records_its_values_and_the_undo_gives_them_back() {
         level: 0,
         salt: false,
         purity: 80,
+        filled: true,
+        target: false,
     }];
     let mut world = World::new(z, tank_shape);
     world.set_tank_config(CONFIG);

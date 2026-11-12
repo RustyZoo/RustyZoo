@@ -577,10 +577,19 @@ impl World {
 
     /// The tank records of the zoo, which the picture reads, from the tank exhibits.
     pub(super) fn sync_tanks(&mut self) {
+        let tanks = self.tank_records();
+        self.drop_gone_sparkles();
+        if self.zoo.tanks != tanks {
+            self.zoo.tanks = tanks;
+            self.dirty = true;
+        }
+    }
+
+    /// The tank record of every tank exhibit, in the order of the exhibit list.
+    pub(super) fn tank_records(&self) -> Vec<crate::zoo::Tank> {
         let width = self.zoo.width as usize;
         let at = |t: usize| ((t % width) as i32, (t / width) as i32);
-        let tanks = self
-            .exhibits
+        self.exhibits
             .list()
             .iter()
             .filter_map(|e| {
@@ -599,14 +608,11 @@ impl World {
                     level: k.level,
                     salt: k.salt,
                     purity: k.purity,
+                    filled: k.filled,
+                    target: k.target,
                 })
             })
-            .collect();
-        self.drop_gone_sparkles();
-        if self.zoo.tanks != tanks {
-            self.zoo.tanks = tanks;
-            self.dirty = true;
-        }
+            .collect()
     }
 
     /// The tank state of the exhibits a loaded zoo stores a tank record for (3.10 load): height
