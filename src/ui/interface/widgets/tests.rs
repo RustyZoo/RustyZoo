@@ -328,7 +328,7 @@ fn the_wheel_scrolls_two_rows_a_notch_when_there_is_more_than_shown() {
 #[test]
 fn the_wheel_scrolls_a_text_by_its_bar_and_ignores_other_elements() {
     let mut ui = interface("textwheel");
-    // Four lines of a text 24 wide and 14 high (one line of 12 shows).
+    // Four lines of a text 24 wide and 14 high (one line of 14 shows).
     ui.set_text(50, b"a\nb\nc\nd");
     at(&mut ui, 62, 70);
     ui.take_events();
