@@ -3731,3 +3731,83 @@ fn on_real_maps_a_reframed_window_equals_a_fresh_staging_drawn_whole() {
         );
     }
 }
+
+/// A tile with the post (id 2) and the small guest (id 3) at the same point.
+fn post_and_guest() -> Zoo {
+    let mut zoo = tile_with(&[("building", "building", "post"), ("guests", "small", "")]);
+    for (e, id) in zoo.entities.iter_mut().zip([2, 3]) {
+        e.common.as_mut().unwrap().id = id;
+    }
+    // Lowered by 6, the building's pixel falls on the guest's.
+    zoo.entities[0].common.as_mut().unwrap().z = -6;
+    zoo
+}
+
+#[test]
+fn a_user_a_building_draws_is_painted_again_right_after_it_and_wins_the_pick() {
+    let install = marker_install("render-pad", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = post_and_guest();
+    let ids = |pad: Vec<(u32, u32)>| {
+        let extra = Extra {
+            pad,
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        let order: Vec<u32> = staged.hits.iter().flatten().map(|h| h.id).collect();
+        // A pick over the one pixel both pictures cover: the last one drawn.
+        let guest = staged
+            .hits
+            .iter()
+            .position(|h| h.is_some_and(|h| h.id == 3));
+        let point = guest.map(|i| (staged.own[i].1[0], staged.own[i].1[1]));
+        (order, point.and_then(|p| staged.pick(p, 1, |_| true)))
+    };
+    // The building stands over the guest of its tile.
+    assert_eq!(ids(vec![]), (vec![3, 2], Some(2)));
+    // Drawn by the building, the guest comes again right after it: it is the last, so it is
+    // the one a pick finds.
+    assert_eq!(ids(vec![(2, 3)]), (vec![3, 2, 3], Some(3)));
+    // A pair that names an entity that is not drawn changes nothing.
+    assert_eq!(ids(vec![(2, 9), (9, 3)]), (vec![3, 2], Some(2)));
+}
+
+#[test]
+fn a_building_paints_its_pad_users_right_after_itself_and_nothing_else_moves() {
+    // One tile: a unit higher up the screen than a building in the left quadrant, so the unit is
+    // painted first; a second unit that is not a user of the building.
+    let building = Object {
+        kind: Kind::Fixed,
+        x: 16,
+        y: 16,
+        footprint: (1, 1),
+        ..unit(0, 0)
+    };
+    let pad = unit(48, 0);
+    let other = unit(48, 8);
+    let mut scene = Scene::new(1, 1, 0, &flat_map(1, 1), vec![building, pad, other]);
+    let plain = paint_order(&scene);
+    assert_eq!(
+        plain,
+        [
+            Item::Terrain(0),
+            Item::Object(1),
+            Item::Object(2),
+            Item::Object(0)
+        ]
+    );
+    scene.add_pad_user(0, 1);
+    assert_eq!(
+        paint_order(&scene),
+        [
+            Item::Terrain(0),
+            Item::Object(1),
+            Item::Object(2),
+            Item::Object(0),
+            Item::Object(1)
+        ]
+    );
+}

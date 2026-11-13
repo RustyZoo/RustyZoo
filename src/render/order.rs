@@ -161,6 +161,8 @@ pub(crate) struct Scene {
     big: Vec<Option<usize>>,
     /// Per object, whether it stands on the map at all.
     placed: Vec<bool>,
+    /// Per building, the units it draws itself right after its own picture (map drawing 9.5.1).
+    pad: HashMap<usize, Vec<usize>>,
     /// The tank exhibits, and per tile the exhibit it belongs to.
     pub tanks: Vec<TankSpec>,
     tank: Vec<Option<usize>>,
@@ -532,7 +534,11 @@ impl Painter<'_> {
         self.paint_edge(i, UPPER_LEFT);
         self.paint_edge(i, UPPER_RIGHT);
         let list = self.tile_entries(i, &|_| true);
-        self.out.extend(list.into_iter().map(|e| Item::Object(e.4)));
+        for e in list {
+            self.out.push(Item::Object(e.4));
+            let users = self.scene.pad.get(&e.4).into_iter().flatten();
+            self.out.extend(users.map(|&u| Item::Object(u)));
+        }
         self.overlays(i, true, true);
     }
 }
