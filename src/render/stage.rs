@@ -21,6 +21,7 @@ struct Placing {
     items: Vec<Entry>,
     own: Vec<Boxed>,
     hits: Vec<Option<pick::Hit>>,
+    unseen: Vec<usize>,
     idle: Vec<(usize, u32)>,
 }
 
@@ -103,6 +104,7 @@ impl<'a> MapRenderer<'a> {
             items,
             own,
             hits,
+            unseen,
             idle,
         } = self.place_items(&scene, &objects, &grounds, &looks, extra, &mut summary);
         summary.objects_skipped += (0..objects.metas.len())
@@ -116,6 +118,7 @@ impl<'a> MapRenderer<'a> {
             items,
             own,
             hits,
+            unseen,
             idle,
             tile_bounds,
             bounds: tile_bounds,
@@ -374,6 +377,7 @@ impl<'a> MapRenderer<'a> {
         let mut items = Vec::with_capacity(order.len());
         let mut own = Vec::new();
         let mut hits: Vec<Option<pick::Hit>> = Vec::new();
+        let mut unseen: Vec<usize> = Vec::new();
         // The pictures that play an idle animation, with their entity.
         let mut idle: Vec<(usize, u32)> = Vec::new();
         // The pictures of the item at hand.
@@ -427,10 +431,17 @@ impl<'a> MapRenderer<'a> {
                     }
                 }
             }
+            // A building without its picture keeps it for the pick only (9.5.1 point 3).
+            let bare = owner.is_some_and(|h| extra.bare.contains(&h.id));
             for (k, p) in fresh.drain(..).enumerate() {
                 if let Some(b) = p.bounds() {
-                    items.push(Entry::Own(own.len()));
-                    if let (true, 0, Some(id)) = (animated, k, owner.map(|h| h.id).or(clock)) {
+                    match bare && k < owned {
+                        true => unseen.push(own.len()),
+                        false => items.push(Entry::Own(own.len())),
+                    }
+                    if let (true, 0, Some(id), false) =
+                        (animated, k, owner.map(|h| h.id).or(clock), bare)
+                    {
                         idle.push((own.len(), id));
                     }
                     own.push((p, b));
@@ -442,6 +453,7 @@ impl<'a> MapRenderer<'a> {
             items,
             own,
             hits,
+            unseen,
             idle,
         }
     }

@@ -107,7 +107,22 @@ impl App<'_> {
         want.faces.clone_from(&game.world.units.reactions);
         want.filters = game.world.filter_looks();
         want.connectors = game.world.connector_ids();
-        want.pad = crate::building::drawn::drawn_users(&game.world, self.renderer.catalogue());
+        // Drawing a building takes out the top user it finds in another task (9.5.1 point 4.3):
+        // the buildings in the view, whose frame this is.
+        let drawn = crate::building::drawn::drawn_users(
+            &game.world,
+            self.renderer.catalogue(),
+            game.view.hide,
+        );
+        let target = self.ui.as_ref().map_or(&self.frame, |_| &self.map);
+        let size = (target.width, target.height);
+        let (scroll, zoom) = (game.camera.scroll, game.camera.zoom);
+        for &(building, unit) in &drawn.leave {
+            if game.staged.in_view(building, size, scroll, zoom) {
+                crate::building::top::take_out(&mut game.world, building, unit);
+            }
+        }
+        (want.pad, want.bare) = (drawn.pad, drawn.bare);
         want.idle = Frames(self.sim.idle_frames());
         want.looks = self.sim.idle_looks();
         want.marks.extend(game.selection);

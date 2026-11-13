@@ -76,7 +76,7 @@ pub(crate) fn can_add(
     if live.is_some_and(|l| l.dead) {
         return false;
     }
-    let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
+    let users = live.map_or(0, |l| l.users_now() as usize);
     let Some(s) = kind.slots.get(slot) else {
         return false;
     };

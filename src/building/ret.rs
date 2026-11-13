@@ -92,7 +92,7 @@ pub(crate) fn may_enter(
         let member = live.is_some_and(|l| l.members.contains(&w.unit));
         return name == kind.name_id && (!kind.ret.tracker || member);
     }
-    let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
+    let users = live.map_or(0, |l| l.users_now() as usize);
     let water = match live.map_or(0, |l| l.water) {
         0 => (e.common.as_ref())
             .and_then(|c| world.find(c.id))
