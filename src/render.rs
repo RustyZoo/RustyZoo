@@ -638,12 +638,14 @@ impl<'a> MapRenderer<'a> {
         rotation: u8,
         options: &Options,
     ) -> Result<(Framebuffer, Summary), RenderError> {
+        let (shown, drawn) = match options.loaded && !options.no_units {
+            true => self.loaded_units(zoo),
+            false => Default::default(),
+        };
         let extra = Extra {
-            shown: if options.loaded && !options.no_units {
-                self.loaded_units(zoo)
-            } else {
-                Vec::new()
-            },
+            shown,
+            pad: drawn.pad,
+            bare: drawn.bare,
             ..Extra::default()
         };
         let staged = self.stage_with(zoo, rotation, options.no_units, &extra)?;
