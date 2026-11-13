@@ -14,7 +14,10 @@ impl App<'_> {
         let modal = self.modal();
         let listing = self.listing_open();
         match (command, &mut self.game) {
-            (Command::Pointer(at), _) => self.pointer = at,
+            (Command::Pointer(at), _) => {
+                self.pointer = at;
+                self.active = at.is_some();
+            }
             // A press of an element by its id: what a click on it does, while nothing modal is open.
             (Command::Press(id), _) if !modal => {
                 if let Some(ui) = &mut self.ui {

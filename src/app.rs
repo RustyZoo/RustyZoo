@@ -228,6 +228,8 @@ pub struct App<'a> {
     /// The paused message (string 400) is on the message line (input 4.5).
     pause_said: bool,
     pointer: Option<(i32, i32)>,
+    /// The window is active (no `Pointer(None)` since the last `Pointer(Some)`).
+    active: bool,
     /// Whether the pointer is over the map view after the last pass (see [`App::cursor`]).
     on_map: bool,
     /// Whether it is over an editable text field.
@@ -420,6 +422,7 @@ impl<'a> App<'a> {
             quit: false,
             pause_said: false,
             pointer: None,
+            active: true,
             on_map: true,
             on_text: false,
             busy: false,
@@ -573,6 +576,10 @@ impl<'a> App<'a> {
                 ui.animate(now, paused);
             }
             self.drew = self.paint();
+            // After the picture, as the original does: the tint shows from the next draw.
+            if self.active {
+                self.hover_aim();
+            }
         }
         if let Some(period) = self.fired.interface {
             self.scroll_view(now);

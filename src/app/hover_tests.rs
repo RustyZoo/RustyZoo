@@ -2,10 +2,15 @@
 //! bulldozer tests.
 
 use super::bulldozer_tests::{Session, catalogue, ty, with_game_of};
+use crate::app::{Command, Mouse};
 
 const STATUE: usize = 20;
 
 fn with_hover(name: &str, body: impl FnOnce(&mut Session)) {
+    with_root(name, super::bulldozer_tests::ROOT, body);
+}
+
+fn with_root(name: &str, root: &str, body: impl FnOnce(&mut Session)) {
     let mut cat = catalogue();
     cat.push(ty(
         "objects",
@@ -14,7 +19,7 @@ fn with_hover(name: &str, body: impl FnOnce(&mut Session)) {
         "[Characteristics/Integers]\ncSelectable=1\n",
         [1, 1, 1],
     ));
-    with_game_of(name, "", (cat, super::bulldozer_tests::ROOT, &[]), |s| {
+    with_game_of(name, "", (cat, root, &[]), |s| {
         // The label stays due for the test to read.
         let ui = s.app.interface().unwrap();
         ui.set_settings(crate::ui::interface::Settings {
@@ -111,5 +116,63 @@ fn nothing_is_hovered_with_a_tool_and_the_label_goes_with_the_entity() {
         assert_eq!(hover(s, 21, 20, 32).0.len(), 1, "the bulldozer's own tint");
         assert!(s.app.game.as_ref().unwrap().placing.hovered.is_none());
         assert_eq!(s.app.game.as_ref().unwrap().dozer.at.len(), 1);
+    });
+}
+
+#[test]
+fn leaving_an_entity_for_a_button_keeps_the_button_tooltip() {
+    let root = super::bulldozer_tests::ROOT.replace("id=1028\n", "id=1028\nhelpid=1065\n");
+    with_root("hover-button", &root, |s| {
+        let statue = s.add(STATUE, 21 * 64 + 32, 20 * 64 + 32, 0);
+        named(s, statue, "Venus");
+        assert_eq!(hover(s, 21, 20, 32).1.as_deref(), Some("Venus"));
+        s.pass(&[Command::Mouse(Mouse::Move(303, 223))]);
+        s.pass(&[]);
+        let tip = s.app.interface().unwrap().tip_due();
+        assert_eq!(tip.as_deref(), Some("foliage shown"));
+    });
+}
+
+#[test]
+fn an_inactive_window_changes_no_hover() {
+    with_hover("hover-inactive", |s| {
+        let a = s.add(STATUE, 21 * 64 + 32, 20 * 64 + 32, 0);
+        let b = s.add(STATUE, 23 * 64 + 32, 20 * 64 + 32, 0);
+        named(s, a, "Venus");
+        named(s, b, "Mars");
+        s.pass(&[Command::Pointer(Some((100, 100))), s.at(21, 20, 32, 32)]);
+        s.pass(&[]);
+        s.pass(&[Command::Pointer(None), s.at(23, 20, 32, 32)]);
+        s.pass(&[]);
+        let game = s.app.game.as_ref().unwrap();
+        let tinted: Vec<usize> = game.extra.tinted.iter().map(|t| t.0).collect();
+        let venus = game.world.find(a).unwrap();
+        let tip = s.app.interface().unwrap().tip_due();
+        assert_eq!((tinted, tip.as_deref()), (vec![venus], Some("Venus")));
+    });
+}
+
+#[test]
+fn the_tint_shows_from_the_next_draw() {
+    with_hover("hover-next", |s| {
+        s.add(STATUE, 21 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.pass(&[s.at(21, 20, 32, 32)]);
+        let tinted = |s: &Session| s.app.game.as_ref().unwrap().extra.tinted.len();
+        assert_eq!(tinted(s), 0, "the draw that finds the entity");
+        s.pass(&[]);
+        assert_eq!(tinted(s), 1, "the next draw");
+    });
+}
+
+#[test]
+fn the_bulldozer_tooltip_is_the_entity_own_name() {
+    with_hover("hover-dozer-name", |s| {
+        let statue = s.add(STATUE, 21 * 64 + 32, 20 * 64 + 32, 0);
+        named(s, statue, "Shop 3");
+        s.pass(&[super::bulldozer_tests::DELETE]);
+        s.pass(&[s.at(21, 20, 32, 32)]);
+        let tip = s.app.interface().unwrap().tip_due();
+        assert_eq!(tip.as_deref(), Some("Shop 3"));
     });
 }

@@ -117,15 +117,9 @@ impl App<'_> {
     /// Works out what the bulldozer would remove from the pointer (and the press, if one is
     /// held), tells it when it changed (`tool bulldoze none`, `tool bulldoze CLASS/TYPE/SUBTYPE
     /// id N refund R name=NAME`, `tool bulldoze area X,Y X,Y objects N refund R`) and has the
-    /// first hovered object's name shown as a tooltip. With no tool the hover of unit placing 8.8
-    /// takes its place ([`App::hover_aim`]).
+    /// first hovered object's own name shown as a tooltip. With no tool the hover of unit
+    /// placing 8.8 ([`App::hover_aim`]) runs once per draw instead.
     pub(super) fn dozer_aim(&mut self) {
-        self.dozer_tool();
-        self.hover_aim();
-    }
-
-    /// The bulldozer part of [`App::dozer_aim`].
-    fn dozer_tool(&mut self) {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
         let before = std::mem::take(&mut game.dozer);
@@ -184,7 +178,10 @@ impl App<'_> {
         let single = d.head.as_ref().filter(|_| d.rect.is_none());
         let entity = single.map(|&e| &game.world.zoo.entities[e]);
         let ty = entity.and_then(|e| crate::entity::type_of(cat, e));
-        ui.help_tip(ty.map_or(0, |t| t.name_id));
+        match entity.and_then(|e| e.common.as_ref()).map(|c| &c.name) {
+            Some(name) if !name.is_empty() => ui.text_tip(name),
+            _ => ui.help_tip(ty.map_or(0, |t| t.name_id)),
+        }
         let line = match (d.rect, entity) {
             (Some((a, b)), _) => format!(
                 "bulldoze area {},{} {},{} objects {} refund {whole}",
@@ -208,8 +205,11 @@ impl App<'_> {
         ui.touch();
     }
 
-    /// The hover with no tool (unit placing 8.8): the selectable entity under the pointer is
-    /// tinted (see [`Game::dozer_extra`]) and its own name is the tooltip, once per entity.
+    /// The hover with no tool (unit placing 8.8), run once per draw after the picture is made, only
+    /// while the window is active: the selectable entity under the pointer is tinted from the
+    /// next draw (see [`Game::dozer_extra`]) and its own name is the tooltip, once per entity.
+    /// While the map is not the hover element, or a tool or dialog has the pointer, the label is
+    /// left alone.
     pub(super) fn hover_aim(&mut self) {
         let assigning = self.assigning().is_some();
         playing!(self, game, ui);
@@ -221,19 +221,20 @@ impl App<'_> {
             && build.tool().is_none()
             && game.carry.is_none()
             && game.placing.run.is_empty();
-        let picked = free
-            .then(|| {
-                game.staged
-                    .pick(game.camera.view_point(ui.pointer()), 0, |id| {
-                        world.find(id).is_some()
-                    })
+        if !free {
+            game.placing.hovered = None;
+            return;
+        }
+        let picked = game
+            .staged
+            .pick(game.camera.view_point(ui.pointer()), 0, |id| {
+                world.find(id).is_some()
             })
-            .flatten()
             .and_then(|id| world.find(id));
         let id = picked.and_then(|at| world.zoo.entities[at].common.as_ref().map(|c| c.id));
         let tinted = picked.is_some_and(|at| selectable(world, cat, at));
         let before = std::mem::replace(&mut game.placing.hovered, id.map(|i| (i, tinted)));
-        if before.map(|b| b.0) == id || (id.is_none() && build.bulldozing()) {
+        if before.map(|b| b.0) == id {
             return;
         }
         let Some(at) = picked else {
