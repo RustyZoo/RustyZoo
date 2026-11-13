@@ -17,6 +17,8 @@ pub struct Staged {
     pub(super) own: Vec<Boxed>,
     /// For each picture of `own`, the entity of the zoo it was placed for (picking).
     pub(super) hits: Vec<Option<pick::Hit>>,
+    /// The pictures of `own` that are picked but not drawn (a building without its picture).
+    pub(super) unseen: Vec<usize>,
     /// The pictures of `own` that play an idle animation, with the entity whose clock gives
     /// their frame.
     pub(super) idle: Vec<(usize, u32)>,
@@ -68,6 +70,37 @@ impl Staged {
             .fold(tiles, |all, (placed, b)| {
                 let anchor = placed.anchor(self.rotation, zoom, level);
                 union(all, placed.zoomed_box(b, anchor, level))
+            })
+    }
+
+    /// Whether a picture of the entity `id`, drawn or not, meets the window of `size` pixels whose
+    /// top left is the view point `view` at `zoom`, enlarged as the tiles' visibility test is (map
+    /// drawing 9.3): by 50 pixels (25 zoomed in, 100 out) and at the top by 275 more (500 out,
+    /// none in).
+    pub(crate) fn in_view(
+        &self,
+        id: u32,
+        (width, height): (u32, u32),
+        view: (i32, i32),
+        zoom: i32,
+    ) -> bool {
+        let level = Zoom::from_value(zoom);
+        let (side, top) = match level {
+            Zoom::In => (25, 0),
+            Zoom::Normal => (50, 275),
+            Zoom::Out => (100, 500),
+        };
+        let (left, up) = (i64::from(view.0) - side, i64::from(view.1) - side - top);
+        let (right, down) = (
+            i64::from(view.0) + i64::from(width) + side,
+            i64::from(view.1) + i64::from(height) + side,
+        );
+        let ours = self.own.iter().zip(&self.hits);
+        ours.filter(|(_, hit)| hit.is_some_and(|h| h.id == id))
+            .any(|((placed, b), _)| {
+                let anchor = placed.anchor(self.rotation, zoom, level);
+                let b = placed.zoomed_box(b, anchor, level);
+                b[0] < right && b[2] > left && b[1] < down && b[3] > up
             })
     }
 
@@ -151,6 +184,8 @@ impl Staged {
         // The pictures of each side that are on the other one too.
         let (mut kept_before, mut kept_after) =
             (vec![false; old.own.len()], vec![false; self.own.len()]);
+        old.unseen.iter().for_each(|&i| kept_before[i] = true);
+        self.unseen.iter().for_each(|&i| kept_after[i] = true);
         let (mut i, mut j) = (0, 0);
         while i < sorted_before.len() && j < sorted_after.len() {
             let (b, a) = (&sorted_before[i], &sorted_after[j]);

@@ -167,7 +167,7 @@ impl Cx<'_, '_> {
             return false;
         };
         let live = self.world.units.buildings.get(&id);
-        let users = live.map_or(0, |l| l.users.len() + l.extra as usize);
+        let users = live.map_or(0, |l| l.users_now() as usize);
         !kind.slots.is_empty() && users >= kind.capacity.max(0) as usize
     }
 
@@ -487,6 +487,7 @@ impl Cx<'_, '_> {
         let (unit, now) = (self.unit.id, self.now());
         let live = (self.world.units.buildings.entry(id)).or_insert_with(|| Live::new(&kind));
         live.users.push((unit, slot, now));
+        live.tops.insert(slot, unit);
         // A returning guest is not counted, thinks nothing and buys nothing (12.2 point 14).
         let guest = matches!(self.unit.part, Part::Guest(_));
         let returning = matches!(&self.unit.part, Part::Guest(g) if g.returning.is_some());
@@ -709,13 +710,10 @@ impl Cx<'_, '_> {
         let Some((e, kind)) = self.building(id) else {
             return self.show();
         };
-        let Some(live) = self.world.units.buildings.get_mut(&id) else {
+        let me = Some((unit, self.record().task));
+        let Some(slot) = building::top::yank(self.world, id, unit, me) else {
             return self.show();
         };
-        let Some(i) = live.users.iter().position(|u| u.0 == unit) else {
-            return self.show();
-        };
-        let (_, slot, _) = live.users.remove(i);
         let (world, cat, at) = (&mut *self.world, self.ctx.cat, self.at);
         building::leave::pay(world, cat, at, self.unit, id, &kind);
         match kind.uses_exit {
