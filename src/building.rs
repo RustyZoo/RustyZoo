@@ -34,6 +34,7 @@ pub mod items;
 pub mod leave;
 pub mod random_use;
 pub mod ret;
+pub mod top;
 pub mod upgrade;
 pub mod users;
 
@@ -125,6 +126,9 @@ pub(crate) struct Slot {
     /// positions relative to the building, as the slot's, and their heights, `p / 2` of them;
     /// `None` for a slot without the flag.
     pub places: Option<Vec<(i32, i32, i32)>>,
+    /// The four order lists of the draw places (`order` keys of the same section, in file order;
+    /// map drawing 9.5.1 point 4.1): the places a building draws its users by.
+    pub orders: [Vec<i32>; 4],
 }
 
 /// The type id and subtype of a guest or an animal, which the slots of a building test (guest
@@ -208,6 +212,26 @@ fn draw_places(
     Some(places)
 }
 
+/// The order lists of a slot's draw places (map drawing 9.5.1 point 4.1): the `o` values of the
+/// section each `order` key names, in file order; a list that is missing is empty.
+fn draw_orders(
+    config: Option<&crate::config::Config>,
+    slot: &crate::config::Section,
+) -> [Vec<i32>; 4] {
+    let mut orders: [Vec<i32>; 4] = Default::default();
+    let section = (slot.get("cHasDrawSlots")).and_then(|n| config?.section(n));
+    for (list, name) in orders
+        .iter_mut()
+        .zip(section.iter().flat_map(|s| s.get_all("order")))
+    {
+        let values = config.and_then(|c| c.section(name)).map(|s| s.get_all("o"));
+        *list = (values.unwrap_or_default().iter())
+            .map(|v| to_int(v).unwrap_or(0))
+            .collect();
+    }
+    orders
+}
+
 /// What a building type declares (guest buildings 3.1).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Kind {
@@ -229,6 +253,8 @@ pub(crate) struct Kind {
     pub change: [i32; 6],
     pub hide: bool,
     pub outside: bool,
+    /// The building draws no picture while it has a user (`cHideBuilding`, map drawing 9.5.1).
+    pub hide_building: bool,
     /// The building draws its users itself (`cDrawUser`, map drawing 9.5.1).
     pub draw_user: bool,
     /// An outside user turns towards the building (`cSetUserFacing`).
@@ -306,6 +332,7 @@ impl Kind {
                 return_slot: flag("isreturnslot", false),
                 birth: number("birthUser"),
                 places: draw_places(config, s),
+                orders: draw_orders(config, s),
             }
         })
         .collect();
@@ -331,6 +358,7 @@ impl Kind {
             .map(|k| int(k, 0)),
             hide: flag("cHideUser", false),
             outside: flag("cUserStaysOutside", true),
+            hide_building: flag("cHideBuilding", false),
             draw_user: flag("cDrawUser", false),
             faces_user: flag("cSetUserFacing", true),
             teleports: flag("cUserTeleportsInside", false),
@@ -420,6 +448,12 @@ pub(crate) struct Live {
     /// Users counted against the capacity that are not in the list: a loaded building keeps its
     /// stored count when a listed unit is gone (guest buildings 4.2).
     pub extra: u32,
+    /// Users now is one below the list: a unit that is no user was taken out (map drawing 9.5.1
+    /// point 8.3). Not saved.
+    pub short: bool,
+    /// The top user of each slot (map drawing 9.5.1 point 8); not saved. A slot without an entry
+    /// has its last listed user.
+    pub tops: std::collections::BTreeMap<usize, u32>,
     pub price: f32,
     /// The pieces of litter a trash can holds (guest buildings 8).
     pub fill: u32,
@@ -456,7 +490,16 @@ pub(crate) struct Seat {
 impl Live {
     /// The users now (guest buildings 4.2).
     pub(crate) fn users_now(&self) -> u32 {
-        (self.users.len() as u32).saturating_add(self.extra)
+        (self.users.len() as u32)
+            .saturating_add(self.extra)
+            .saturating_sub(u32::from(self.short))
+    }
+
+    /// The top user of slot `slot` (map drawing 9.5.1 point 8): the unit the last add or the
+    /// removal rule left, which may no longer be listed.
+    pub(crate) fn top(&self, slot: usize) -> Option<u32> {
+        (self.tops.get(&slot).copied())
+            .or_else(|| self.users.iter().rev().find(|u| u.1 == slot).map(|u| u.0))
     }
 
     pub(crate) fn new(kind: &Kind) -> Live {
@@ -473,7 +516,7 @@ impl Live {
         let users: Vec<(u32, u32)> = (self.users.iter())
             .map(|&(u, s, _)| (u, s as u32))
             .collect();
-        base.users_now = (users.len() as u32).saturating_add(self.extra);
+        base.users_now = self.users_now();
         base.users = users;
         base.guests = self.guests;
         base.income = self.income.map(f32::to_bits);

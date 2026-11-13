@@ -1,7 +1,8 @@
 //! The units of a map as the game shows them once loaded, for the static picture.
 
-use super::{MapRenderer, Shown};
+use super::{Hide, MapRenderer, Shown};
 use crate::behaviour::{Library, Timings};
+use crate::building::drawn::{Drawn, drawn_users};
 use crate::sim::Sim;
 use crate::world::World;
 use crate::zoo::Zoo;
@@ -9,7 +10,8 @@ use crate::zoo::Zoo;
 impl MapRenderer<'_> {
     /// The animation each unit of `zoo` shows right after the game loads it (behaviours 5.10.1
     /// point 3): the zoo is loaded as a game does, with no step.
-    pub(super) fn loaded_units(&self, zoo: &Zoo) -> Vec<Shown> {
+    /// The users the buildings draw themselves come with them (map drawing 9.5.1).
+    pub(super) fn loaded_units(&self, zoo: &Zoo) -> (Vec<Shown>, Drawn) {
         let (vfs, cat) = (self.vfs, self.catalogue);
         let language = crate::strings::Language::of(vfs.root());
         let mut world = World::with_language(zoo.clone(), |e| self.shape(e), language);
@@ -26,13 +28,15 @@ impl MapRenderer<'_> {
             timings: &timings,
         };
         crate::unit::resume::settle(&mut world, &data);
-        (world.units.iter())
+        let drawn = drawn_users(&world, cat, Hide::default());
+        let shown = (world.units.iter())
             .filter(|u| !u.animation.name.is_empty())
             .map(|u| Shown {
                 id: u.id,
                 animation: u.animation.name.clone(),
                 frame: u.animation.shown(),
             })
-            .collect()
+            .collect();
+        (shown, drawn)
     }
 }

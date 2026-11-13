@@ -3811,3 +3811,60 @@ fn a_building_paints_its_pad_users_right_after_itself_and_nothing_else_moves() {
         ]
     );
 }
+
+#[test]
+fn a_building_without_its_picture_is_not_drawn_but_still_picked_through_it() {
+    let install = marker_install("render-bare", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let zoo = post_and_guest();
+    let stage = |bare: Vec<u32>, pad: Vec<(u32, u32)>| {
+        let extra = Extra {
+            bare,
+            pad,
+            ..Extra::default()
+        };
+        let staged = MapRenderer::new(&vfs, &catalogue)
+            .stage_with(&zoo, 0, false, &extra)
+            .unwrap();
+        let guest = staged
+            .hits
+            .iter()
+            .position(|h| h.is_some_and(|h| h.id == 3));
+        let point = guest.map(|i| (staged.own[i].1[0], staged.own[i].1[1]));
+        let picked = point.and_then(|p| staged.pick(p, 1, |_| true));
+        (staged.pictures().count(), staged.unseen.len(), picked)
+    };
+    let (all, ..) = stage(vec![], vec![]);
+    // Not drawn: one picture less, and the pick finds the building over the guest as before.
+    assert_eq!(stage(vec![2], vec![]), (all - 1, 1, Some(2)));
+    // The user the building draws comes after it and wins the pick.
+    assert_eq!(stage(vec![2], vec![(2, 3)]), (all, 1, Some(3)));
+    // A building that is not named is drawn.
+    assert_eq!(stage(vec![9], vec![]), (all, 0, Some(2)));
+}
+
+#[test]
+fn a_building_is_in_view_when_a_picture_of_it_meets_the_enlarged_window() {
+    let install = marker_install("render-view", 1);
+    let vfs = Vfs::open(&install.0).unwrap();
+    let catalogue = Catalogue::load(&vfs).unwrap();
+    let staged = MapRenderer::new(&vfs, &catalogue)
+        .stage_with(&post_and_guest(), 0, false, &Extra::default())
+        .unwrap();
+    let i = staged
+        .hits
+        .iter()
+        .position(|h| h.is_some_and(|h| h.id == 2));
+    let b = staged.own[i.unwrap()].1;
+    let (x, y) = (b[0] as i32, b[1] as i32);
+    assert!(staged.in_view(2, (4, 4), (x, y), 0));
+    // The margin: 50 pixels around, 275 more above the window (a building above it is in view).
+    assert!(staged.in_view(2, (4, 4), (x + 4 + 40, y), 0));
+    assert!(!staged.in_view(2, (4, 4), (x + 4 + 200, y), 0));
+    assert!(staged.in_view(2, (4, 4), (x, y + 300), 0));
+    assert!(!staged.in_view(2, (4, 4), (x, y + 1000), 0));
+    assert!(!staged.in_view(2, (4, 4), (x, y - 300), 0));
+    // Another entity, or none: never.
+    assert!(!staged.in_view(9, (4, 4), (x, y), 0));
+}

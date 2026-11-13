@@ -173,7 +173,8 @@ pub(crate) fn push_out(world: &mut World, cat: &Catalogue, id: u32) {
         (b.users, b.users_now) = (Vec::new(), 0);
     }
     if let Some(l) = world.units.buildings.get_mut(&id) {
-        l.extra = 0;
+        (l.extra, l.short) = (0, false);
+        l.tops.clear();
     }
     for (unit, slot, _) in users {
         let Some(at) = world.find(unit) else {
@@ -226,10 +227,7 @@ pub(crate) fn pick_up(world: &mut World, cat: &Catalogue, id: u32) {
     let Some(kind) = kind_of(cat, &e, world.units.prices.default) else {
         return;
     };
-    let listed = (world.units.buildings.get_mut(&building)).and_then(|l| {
-        let i = l.users.iter().position(|u| u.0 == id)?;
-        Some(l.users.remove(i).1)
-    });
+    let listed = super::top::yank(world, building, id, None);
     let Some(entry) = world.units.get_mut(id) else {
         return;
     };
