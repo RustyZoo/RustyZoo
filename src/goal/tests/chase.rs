@@ -78,7 +78,7 @@ fn sets_without(skip: Option<&str>) -> Sets {
     let hold: &[&str] = &["fKeepControl()", "fKeepControl()"];
     let walk: &[&str] = &["fWalk(0,0)"];
     Sets::new(
-        &[
+        [
             ("bWalk", walk),
             ("bRunFromPredator", walk),
             ("bChasePrey", walk),
