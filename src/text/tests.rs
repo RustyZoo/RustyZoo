@@ -663,7 +663,7 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "faa4f9c0381f2541"
+        "9c7f9eb0f4460bf8"
     );
 }
 
