@@ -81,6 +81,17 @@ impl<'a> MapRenderer<'a> {
         let list = std::mem::take(&mut objects.list);
         let mut scene = Scene::new(width, height, rotation, &tiles, list);
         set_tanks(&mut scene, zoo, &objects.metas);
+        let at = |id| {
+            objects
+                .owners
+                .iter()
+                .position(|h| h.is_some_and(|h| h.id == id))
+        };
+        for &(building, user) in &extra.pad {
+            if let (Some(b), Some(u)) = (at(building), at(user)) {
+                scene.add_pad_user(b, u);
+            }
+        }
         let looks: Vec<_> = zoo
             .tanks
             .iter()

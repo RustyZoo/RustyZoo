@@ -875,17 +875,13 @@ fn sounds(run: &mut Run) -> Vec<String> {
 }
 
 #[test]
-fn a_loaded_piece_with_life_below_1_is_normalised_and_plays_its_break_sound() {
+fn a_loaded_piece_with_life_below_1_is_normalised_and_stays_silent() {
     let key = "[HabitatFence]\n";
     for life in [-1, i32::MIN, 0] {
         let mut run = loaded_run(key, life);
         assert_eq!((fence(&run).life, fence(&run).strength), (0, 0), "{life}");
-        assert_eq!(
-            sounds(&mut run),
-            ["unit sound 7 sounds/brokfenc.wav"],
-            "{life}"
-        );
-        assert!(sounds(&mut run).is_empty());
+        // The original plays no break sound for a break applied at load.
+        assert!(sounds(&mut run).is_empty(), "{life}");
     }
     // A life of 1 and a huge life are left alone and silent.
     for life in [1, i32::MAX] {

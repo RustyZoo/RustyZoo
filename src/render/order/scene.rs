@@ -35,6 +35,7 @@ impl Scene {
             path: vec![None; n],
             big: vec![None; n],
             placed: vec![false; objects.len()],
+            pad: HashMap::new(),
             tanks: Vec::new(),
             tank: vec![None; n],
             scum: Vec::new(),
@@ -54,6 +55,12 @@ impl Scene {
         self.covers.push(0);
         self.placed.push(false);
         self.place(self.objects.len() - 1);
+    }
+
+    /// Building `building` draws the unit `user` right after itself (map drawing 9.5.1). The unit
+    /// stays on its tile's list and is painted there too.
+    pub(crate) fn add_pad_user(&mut self, building: usize, user: usize) {
+        self.pad.entry(building).or_default().push(user);
     }
 
     /// The tile index under a world point, if it is on the map.

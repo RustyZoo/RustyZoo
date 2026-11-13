@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 
 pub mod birth;
 pub mod dead;
+pub mod drawn;
 pub mod items;
 pub mod leave;
 pub mod random_use;
@@ -228,6 +229,8 @@ pub(crate) struct Kind {
     pub change: [i32; 6],
     pub hide: bool,
     pub outside: bool,
+    /// The building draws its users itself (`cDrawUser`, map drawing 9.5.1).
+    pub draw_user: bool,
     /// An outside user turns towards the building (`cSetUserFacing`).
     pub faces_user: bool,
     /// A user is put inside without a walk (`cUserTeleportsInside`).
@@ -328,6 +331,7 @@ impl Kind {
             .map(|k| int(k, 0)),
             hide: flag("cHideUser", false),
             outside: flag("cUserStaysOutside", true),
+            draw_user: flag("cDrawUser", false),
             faces_user: flag("cSetUserFacing", true),
             teleports: flag("cUserTeleportsInside", false),
             uses_exit: flag("cUserUsesExit", false),
