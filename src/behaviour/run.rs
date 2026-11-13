@@ -348,9 +348,8 @@ impl Runner {
         if !keep {
             anim.reset();
         }
-        if force {
-            anim.cut();
-        }
+        // A forced start only marks the set: its first run cuts (behaviours 4.2 point 4).
+        self.chain[0].forced = force;
         anim.notes.push(Note::Set(name.to_string()));
         self.chain[0].loaded
     }
