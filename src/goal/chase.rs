@@ -407,12 +407,12 @@ impl Cx<'_, '_> {
             Kind::Guest => self.catch_guest(id),
             _ if egg => {
                 with_unit(self.world, self.ctx, self.data, id, |cx| {
-                    cx.start_set("bEatenEgg", true);
+                    cx.start_with("bEatenEgg", false, true);
                     if let Part::Animal(a) = &mut cx.unit.part {
                         a.dying = true;
                     }
                 });
-                self.start_set("bCaughtEgg", true);
+                self.start_with("bCaughtEgg", false, true);
                 self.mark(|a| a.caught_prey = true);
             }
             _ => {
@@ -452,7 +452,7 @@ impl Cx<'_, '_> {
             cx.was_caught(me);
         });
         self.mark(|a| a.prey = 0);
-        self.start_set("bCaughtGuest", true);
+        self.start_with("bCaughtGuest", false, true);
         if self.flag(me_at, "cResetPreyPosition") {
             let here = self.world.zoo.entities[me_at].common.as_ref();
             let spot = here.map(|c| ((c.x, c.y, c.z), c.rotation));
@@ -491,7 +491,7 @@ impl Cx<'_, '_> {
         } else {
             "bCaughtBylionm"
         };
-        if self.start_set("bCaughtBy", true) || self.start_set(lion, true) {
+        if self.start_with("bCaughtBy", false, true) || self.start_with(lion, false, true) {
             self.unit.caught = true;
         }
     }

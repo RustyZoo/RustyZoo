@@ -70,25 +70,49 @@ pub(super) fn loose(w: &mut World, id: u32) {
 }
 
 pub(super) fn sets() -> Sets {
+    sets_without(None)
+}
+
+/// The same sets, `skip` left out, and the two lion ones of the caught reaction.
+fn sets_without(skip: Option<&str>) -> Sets {
     let hold: &[&str] = &["fKeepControl()", "fKeepControl()"];
     let walk: &[&str] = &["fWalk(0,0)"];
-    Sets::new(&[
-        ("bWalk", walk),
-        ("bRunFromPredator", walk),
-        ("bChasePrey", walk),
-        ("bPreattack", hold),
-        ("bDefense", hold),
-        ("bCaughtPrey", hold),
-        ("bCaughtGuest", hold),
-        ("bCaughtEgg", hold),
-        ("bEatenEgg", hold),
-        ("bCaughtBy", hold),
-    ])
+    Sets::new(
+        [
+            ("bWalk", walk),
+            ("bRunFromPredator", walk),
+            ("bChasePrey", walk),
+            ("bPreattack", hold),
+            ("bDefense", hold),
+            ("bCaughtPrey", hold),
+            ("bCaughtGuest", hold),
+            ("bCaughtEgg", hold),
+            ("bEatenEgg", hold),
+            ("bCaughtBy", hold),
+            ("bCaughtBylionf", hold),
+            ("bCaughtBylionm", hold),
+        ]
+        .into_iter()
+        .filter(|(name, _)| Some(*name) != skip)
+        .collect::<Vec<_>>()
+        .as_slice(),
+    )
 }
 
 /// Runs `f` on the goal context of unit `id`, whose state is put back; `removed` asked to go.
 pub(super) fn on<R>(w: &mut World, id: u32, removed: &[u32], f: impl FnOnce(&mut Cx) -> R) -> R {
-    let (cat, data, mut rng) = (cat(), sets(), Rng::default());
+    on_with(sets(), w, id, removed, f)
+}
+
+/// The same with the sets `data`.
+fn on_with<R>(
+    data: Sets,
+    w: &mut World,
+    id: u32,
+    removed: &[u32],
+    f: impl FnOnce(&mut Cx) -> R,
+) -> R {
+    let (cat, mut rng) = (cat(), Rng::default());
     let mut u = w.units.get(id).unwrap().clone();
     let at = w.find(id).unwrap();
     let (events, mut removals) = (Events::default(), removed.to_vec());
@@ -325,6 +349,9 @@ fn a_hunter_eats_an_egg_and_catches_a_guest() {
     w.units.get_mut(ALLO).unwrap().goal.record.target.id = VELO;
     on(&mut w, ALLO, &[], |cx| cx.hunt_complete());
     assert_eq!(unit_of(&w, VELO).runner.top(), Some("bEatenEgg"));
+    // 20.3 point 5: forced, not interruptible (the egg set and the hunter's).
+    assert_eq!(unit_of(&w, VELO).runner.start_flags(), (false, true));
+    assert_eq!(unit_of(&w, ALLO).runner.start_flags(), (false, true));
     assert!(animal(&mut w, VELO).dying);
     assert_eq!(unit_of(&w, ALLO).runner.top(), Some("bCaughtEgg"));
     assert!(animal(&mut w, ALLO).caught_prey);
@@ -340,10 +367,30 @@ fn a_hunter_eats_an_egg_and_catches_a_guest() {
     let a = animal(&mut w, ALLO).clone();
     assert!(a.caught_prey && unit_of(&w, ALLO).held && a.prey == 0);
     assert_eq!(unit_of(&w, ALLO).runner.top(), Some("bCaughtGuest"));
+    assert_eq!(unit_of(&w, ALLO).runner.start_flags(), (false, true));
+    assert_eq!(unit_of(&w, GUEST).runner.start_flags(), (false, true));
     // Taken to the hunter's place, and no prey for another hunter any more.
     let at = w.find(GUEST).unwrap();
     assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().x, 10 * 64 + 32);
     assert!(matches!(&w.units.get(GUEST).unwrap().part, Part::Guest(g) if g.seized));
+}
+
+#[test]
+fn a_caught_guest_without_the_plain_set_plays_the_lion_set_of_the_hunter_forced() {
+    // 20.3 point 6: `bCaughtBylionf` for a female hunter, `bCaughtBylionm` for any other.
+    for (subtype, set) in [("f", "bCaughtBylionf"), ("m", "bCaughtBylionm")] {
+        let mut w = zoo(&[(ALLO, "allo", (10, 10))]);
+        let at = w.find(ALLO).unwrap();
+        w.zoo.entities[at].subtype = subtype.into();
+        w.units.get_mut(ALLO).unwrap().goal.record.target.id = GUEST;
+        animal(&mut w, ALLO).prey = GUEST;
+        let data = sets_without(Some("bCaughtBy"));
+        on_with(data, &mut w, ALLO, &[], |cx| cx.hunt_complete());
+        let g = unit_of(&w, GUEST);
+        assert_eq!(g.runner.top(), Some(set));
+        assert_eq!(g.runner.start_flags(), (false, true));
+        assert!(g.caught);
+    }
 }
 
 #[test]

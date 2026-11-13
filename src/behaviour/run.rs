@@ -211,6 +211,15 @@ impl Runner {
         self.chain.first().is_some_and(|l| l.running)
     }
 
+    /// How the top set was started and not yet run: interruptible, forced.
+    #[cfg(test)]
+    pub(crate) fn start_flags(&self) -> (bool, bool) {
+        (
+            self.interruptible,
+            self.chain.first().is_some_and(|l| l.forced),
+        )
+    }
+
     /// The name of the top set, if the unit has started one.
     pub(crate) fn top(&self) -> Option<&str> {
         self.chain.first().map(|l| l.name.as_str())
