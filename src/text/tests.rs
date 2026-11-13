@@ -57,7 +57,12 @@ fn caps_x_height_descender_and_ascender_rows_are_arials() {
         let what = format!("bold {bold} ppem {ppem}");
         assert_eq!(rows(b'H'), (0, caps), "{what} caps");
         assert_eq!(rows(b'E'), (0, caps), "{what} E");
+        assert_eq!(rows(b'B'), (0, caps), "{what} B");
+        assert_eq!(rows(b'0'), (0, caps), "{what} 0");
+        assert_eq!(rows(b'O'), (0, caps), "{what} O");
         assert_eq!(rows(b'x'), (0, x), "{what} x-height");
+        assert_eq!(rows(b'o'), (0, x), "{what} o");
+        assert_eq!(rows(b'e'), (0, x), "{what} e");
         assert_eq!(rows(b'b').1, asc, "{what} ascender");
         assert_eq!(rows(b'd').1, asc, "{what} d");
         assert_eq!(rows(b'p').0, -desc, "{what} descender");
