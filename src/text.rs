@@ -140,34 +140,36 @@ impl Font {
         self.ppem
     }
 
-    /// The part of the line height above the baseline (text 4.1's rounding rule; the baseline
-    /// the letters sit on is [`Font::baseline`]).
-    pub(crate) fn ascent(&self) -> i32 {
-        div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32
-    }
-
-    /// Pixels from the top of a line to the baseline the letters sit on: Arial's value on
-    /// Windows at the six shipped sizes (text 6.6 point 3), the rounding rule elsewhere.
-    pub(crate) fn baseline(&self) -> i32 {
+    /// Arial's ascent and descent on Windows at the six shipped sizes, from its per-size table
+    /// (text 6.6 points 3 and 4); `None` elsewhere.
+    fn windows_rows(&self) -> Option<(i32, i32)> {
         match self.ppem {
-            11 => 11,
-            12 => 12,
-            13 => 13,
-            15 => 14,
-            16 => 15,
-            19 => 18,
-            _ => self.ascent(),
+            11 => Some((11, 3)),
+            12 => Some((12, 3)),
+            13 => Some((13, 3)),
+            15 => Some((14, 4)),
+            16 => Some((15, 4)),
+            19 => Some((18, 4)),
+            _ => None,
         }
     }
 
-    /// Pixels from the baseline to the bottom of a line.
-    pub(crate) fn descent(&self) -> i32 {
-        div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32
+    /// Pixels from the top of a line to the baseline the letters sit on: Windows' value at the
+    /// shipped sizes, the rounding rule of text 4.1 elsewhere.
+    pub(crate) fn baseline(&self) -> i32 {
+        self.windows_rows()
+            .map_or(div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32, |r| r.0)
     }
 
-    /// The height of a line: ascent plus descent, the distance between wrapped lines.
+    /// Pixels from the baseline to the bottom of a line, chosen as [`Font::baseline`] is.
+    pub(crate) fn descent(&self) -> i32 {
+        self.windows_rows()
+            .map_or(div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32, |r| r.1)
+    }
+
+    /// The height of a line: baseline plus descent, the distance between wrapped lines.
     pub fn line_height(&self) -> i32 {
-        self.ascent() + self.descent()
+        self.baseline() + self.descent()
     }
 
     /// The advance of one character in whole pixels.
