@@ -140,9 +140,24 @@ impl Font {
         self.ppem
     }
 
-    /// Pixels from the top of a line to its baseline.
+    /// The part of the line height above the baseline (text 4.1's rounding rule; the baseline
+    /// the letters sit on is [`Font::baseline`]).
     pub(crate) fn ascent(&self) -> i32 {
         div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32
+    }
+
+    /// Pixels from the top of a line to the baseline the letters sit on: Arial's value on
+    /// Windows at the six shipped sizes (text 6.6 point 3), the rounding rule elsewhere.
+    pub(crate) fn baseline(&self) -> i32 {
+        match self.ppem {
+            11 => 11,
+            12 => 12,
+            13 => 13,
+            15 => 14,
+            16 => 15,
+            19 => 18,
+            _ => self.ascent(),
+        }
     }
 
     /// Pixels from the baseline to the bottom of a line.
@@ -167,11 +182,12 @@ impl Font {
 
     /// The glyph of a character, drawn at the first use.
     pub(crate) fn glyph(&mut self, byte: u8) -> &Glyph {
-        let (face, hinter, ppem) = (self.face, self.hinter.as_ref(), self.ppem);
+        let (face, hinter) = (self.face, self.hinter.as_ref());
+        let (bold, ppem) = (self.bold, self.ppem);
         let advance = i32::from(self.advances[usize::from(byte)]);
-        self.glyphs
-            .entry(byte)
-            .or_insert_with(|| raster::glyph(&face.outlines, hinter, face.id(byte), ppem, advance))
+        self.glyphs.entry(byte).or_insert_with(|| {
+            raster::glyph(&face.outlines, hinter, face.id(byte), (bold, ppem), advance)
+        })
     }
 }
 

@@ -32,6 +32,52 @@ fn line_height_baseline_and_advances_of_the_six_sizes() {
     }
 }
 
+/// Arial's rows (text 6.6 point 2) for the nine shipped fonts: bold, pixel size, caps, x-height,
+/// descender, ascender, baseline.
+const ROWS: [(bool, u32, i32, i32, i32, i32, i32); 9] = [
+    (false, 11, 8, 6, 2, 8, 11),
+    (false, 12, 9, 7, 2, 9, 12),
+    (false, 13, 10, 7, 3, 10, 13),
+    (true, 11, 8, 6, 2, 8, 11),
+    (true, 12, 9, 7, 2, 9, 12),
+    (true, 13, 10, 7, 3, 10, 13),
+    (true, 15, 11, 8, 3, 11, 14),
+    (true, 16, 12, 9, 3, 12, 15),
+    (true, 19, 14, 11, 4, 14, 18),
+];
+
+#[test]
+fn caps_x_height_descender_and_ascender_rows_are_arials() {
+    for (bold, ppem, caps, x, desc, asc, _) in ROWS {
+        let mut font = Font::new(bold, ppem, bold);
+        let mut rows = |c: u8| {
+            let g = font.glyph(c);
+            (g.bottom, g.bottom + g.height as i32)
+        };
+        let what = format!("bold {bold} ppem {ppem}");
+        assert_eq!(rows(b'H'), (0, caps), "{what} caps");
+        assert_eq!(rows(b'E'), (0, caps), "{what} E");
+        assert_eq!(rows(b'x'), (0, x), "{what} x-height");
+        assert_eq!(rows(b'b').1, asc, "{what} ascender");
+        assert_eq!(rows(b'd').1, asc, "{what} d");
+        assert_eq!(rows(b'p').0, -desc, "{what} descender");
+        assert_eq!(rows(b'g').0, -desc, "{what} g");
+    }
+}
+
+#[test]
+fn the_baseline_is_arials_and_the_line_height_stays() {
+    for (bold, ppem, .., baseline) in ROWS {
+        let font = Font::new(bold, ppem, bold);
+        assert_eq!(font.baseline(), baseline, "bold {bold} ppem {ppem}");
+    }
+    // Any other size keeps the rounding rule (text 4.1); the line height is not changed here.
+    let font = Font::new(false, 14, false);
+    assert_eq!(font.baseline(), font.ascent());
+    let font = Font::new(true, 19, true);
+    assert_eq!(font.line_height(), 21);
+}
+
 #[test]
 fn width_is_the_sum_of_whole_advances() {
     let font = Font::request("Arial Bold", "11");
@@ -659,11 +705,11 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "b0857ea468d4ca6b"
+        "e0e36205edb61841"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "9c7f9eb0f4460bf8"
+        "16e436105651a65d"
     );
 }
 

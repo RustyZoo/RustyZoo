@@ -65,7 +65,7 @@ fn pass(
         right: rect.right.min(target.width as i32),
         bottom: rect.bottom.min(target.height as i32),
     };
-    let (line_height, ascent) = (font.line_height(), font.ascent());
+    let (line_height, ascent) = (font.line_height(), font.baseline());
     // Which sizes are bilevel follows the weight, as the original's fonts do: bold at 9 and 10
     // pixels per em, regular at 9 to 17; everything else is smoothed.
     let bold = font.is_bold();
