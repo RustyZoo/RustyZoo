@@ -10,9 +10,13 @@
 //! `format`.
 //!
 //! The font files are embedded unmodified (see `fonts/README.md`), so the metrics and the
-//! pictures are the same on every system. Fonts are cached per (face, size) and glyphs per
-//! (font, character).
+//! pictures are the same on every system. Glyphs are fitted to the pixel grid and rasterised
+//! by `raster`. Fonts are cached per (face, size) and glyphs per (font, character).
 
+use skrifa::charmap::Charmap;
+use skrifa::instance::{LocationRef, Size};
+use skrifa::outline::{HintingInstance, OutlineGlyphCollection};
+use skrifa::{FontRef, GlyphId, MetadataProvider};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -43,7 +47,8 @@ pub(crate) struct Glyph {
 
 /// One font at one pixel size.
 pub struct Font {
-    face: &'static fontdue::Font,
+    face: &'static Face,
+    hinter: Option<HintingInstance>,
     bold: bool,
     /// Whether the face string holds the word " Bold" (the small-font test of text 5.5).
     bold_word: bool,
@@ -52,13 +57,31 @@ pub struct Font {
     glyphs: HashMap<u8, Glyph>,
 }
 
-fn face(bold: bool) -> &'static fontdue::Font {
-    static FACES: [OnceLock<fontdue::Font>; 2] = [OnceLock::new(), OnceLock::new()];
+/// The parsed font file of one weight.
+struct Face {
+    outlines: OutlineGlyphCollection<'static>,
+    charmap: Charmap<'static>,
+    font: FontRef<'static>,
+}
+
+impl Face {
+    fn id(&self, byte: u8) -> GlyphId {
+        let id = self.charmap.map(from_cp1252(byte));
+        id.unwrap_or(GlyphId::NOTDEF)
+    }
+}
+
+fn face(bold: bool) -> &'static Face {
+    static FACES: [OnceLock<Face>; 2] = [OnceLock::new(), OnceLock::new()];
     FACES[usize::from(bold)].get_or_init(|| {
         let bytes = if bold { BOLD } else { REGULAR };
         // The embedded files are fixed and valid.
-        fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
-            .expect("embedded font parses")
+        let font = FontRef::new(bytes).expect("embedded font parses");
+        Face {
+            outlines: font.outline_glyphs(),
+            charmap: font.charmap(),
+            font,
+        }
     })
 }
 
@@ -82,17 +105,19 @@ impl Font {
     /// string holds " Bold".
     pub(crate) fn new(bold: bool, ppem: u32, bold_word: bool) -> Font {
         let face = face(bold);
-        // At 2048 pixels per em one pixel is one font unit.
+        // Unscaled, one pixel is one font unit.
+        let metrics = face
+            .font
+            .glyph_metrics(Size::unscaled(), LocationRef::default());
         let mut advances = [0; 256];
         for (byte, advance) in advances.iter_mut().enumerate() {
-            let units = face
-                .metrics(from_cp1252(byte as u8), UNITS as f32)
-                .advance_width;
+            let units = metrics.advance_width(face.id(byte as u8)).unwrap_or(0.0);
             let px = div_round(units.round() as i64 * i64::from(ppem), UNITS);
             *advance = px.clamp(0, i64::from(u16::MAX)) as u16;
         }
         Font {
             face,
+            hinter: raster::hinter(&face.outlines, ppem),
             bold,
             bold_word,
             ppem,
@@ -142,17 +167,11 @@ impl Font {
 
     /// The glyph of a character, drawn at the first use.
     pub(crate) fn glyph(&mut self, byte: u8) -> &Glyph {
-        let (face, ppem) = (self.face, self.ppem);
-        self.glyphs.entry(byte).or_insert_with(|| {
-            let (m, coverage) = face.rasterize(from_cp1252(byte), ppem as f32);
-            Glyph {
-                width: m.width,
-                height: m.height,
-                left: m.xmin,
-                bottom: m.ymin,
-                coverage,
-            }
-        })
+        let (face, hinter, ppem) = (self.face, self.hinter.as_ref(), self.ppem);
+        let advance = i32::from(self.advances[usize::from(byte)]);
+        self.glyphs
+            .entry(byte)
+            .or_insert_with(|| raster::glyph(&face.outlines, hinter, face.id(byte), ppem, advance))
     }
 }
 
@@ -247,6 +266,7 @@ pub fn to_cp1252(text: &str) -> Vec<u8> {
 mod draw;
 pub mod format;
 mod layout;
+mod raster;
 
 pub use draw::{Style, draw, fill_color, text_color};
 pub use layout::{Justify, Line, Rect, layout, measure, tooltip_size};
