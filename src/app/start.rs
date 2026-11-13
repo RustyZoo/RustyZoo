@@ -145,6 +145,7 @@ impl App<'_> {
                 gate_over: None,
                 run: Vec::new(),
                 hover: false,
+                hovered: None,
                 tints: Tints::load(self.renderer.vfs()),
             },
             water,

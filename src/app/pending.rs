@@ -22,6 +22,9 @@ pub(super) struct Placing {
     /// The pieces of the path or fence drag in progress, the start first (empty without a drag).
     pub(super) run: Vec<Pending>,
     pub(super) hover: bool,
+    /// The entity under the pointer with no tool (unit placing 8.8): its id, and whether it is
+    /// tinted. Its id is the remembered pair of the name label.
+    pub(super) hovered: Option<(u32, bool)>,
     pub(super) tints: Tints,
 }
 

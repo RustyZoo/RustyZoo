@@ -197,12 +197,24 @@ impl Interface {
     /// or due goes away and, if string `help` has a text, it is due after the delay. The string
     /// is shown as it is: the game asks for the short text whatever `helpType` says.
     pub(crate) fn help_tip(&mut self, help: i32) {
-        self.hide_tip();
         let text = match help {
-            1.. => crate::text::to_cp1252(&self.strings.string(help)),
-            _ => Vec::new(),
+            1.. => self.strings.string(help),
+            _ => String::new(),
         };
-        self.arm(text);
+        self.text_tip(&text);
+    }
+
+    /// The same with a text of the game's own (the name of an entity).
+    pub(crate) fn text_tip(&mut self, text: &str) {
+        self.hide_tip();
+        self.arm(crate::text::to_cp1252(text));
+    }
+
+    /// The text the tooltip is due to show, when one is due.
+    #[cfg(test)]
+    pub(crate) fn tip_due(&self) -> Option<String> {
+        let text = self.tip.left.map(|_| &self.tip.text)?;
+        Some(text.iter().map(|&b| char::from(b)).collect())
     }
 
     /// Hides the tooltip shown, and forgets the one due.
