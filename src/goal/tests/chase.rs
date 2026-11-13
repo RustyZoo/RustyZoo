@@ -325,6 +325,9 @@ fn a_hunter_eats_an_egg_and_catches_a_guest() {
     w.units.get_mut(ALLO).unwrap().goal.record.target.id = VELO;
     on(&mut w, ALLO, &[], |cx| cx.hunt_complete());
     assert_eq!(unit_of(&w, VELO).runner.top(), Some("bEatenEgg"));
+    // 20.3 point 5: forced, not interruptible (the egg set and the hunter's).
+    assert_eq!(unit_of(&w, VELO).runner.start_flags(), (false, true));
+    assert_eq!(unit_of(&w, ALLO).runner.start_flags(), (false, true));
     assert!(animal(&mut w, VELO).dying);
     assert_eq!(unit_of(&w, ALLO).runner.top(), Some("bCaughtEgg"));
     assert!(animal(&mut w, ALLO).caught_prey);
@@ -340,6 +343,7 @@ fn a_hunter_eats_an_egg_and_catches_a_guest() {
     let a = animal(&mut w, ALLO).clone();
     assert!(a.caught_prey && unit_of(&w, ALLO).held && a.prey == 0);
     assert_eq!(unit_of(&w, ALLO).runner.top(), Some("bCaughtGuest"));
+    assert_eq!(unit_of(&w, ALLO).runner.start_flags(), (false, true));
     // Taken to the hunter's place, and no prey for another hunter any more.
     let at = w.find(GUEST).unwrap();
     assert_eq!(w.zoo.entities[at].common.as_ref().unwrap().x, 10 * 64 + 32);
