@@ -79,6 +79,32 @@ fn the_baseline_is_arials_and_the_line_height_stays() {
 }
 
 #[test]
+fn drawn_letters_end_on_the_row_above_the_baseline() {
+    // Text 6.6 point 2: letters end on the row `top + baseline - 1`, descenders go below it.
+    let style = Style {
+        color: [255, 255, 255],
+        justify: Justify::Left,
+        shadow: false,
+    };
+    for (bold, ppem, caps, _, desc, _, baseline) in ROWS {
+        let mut font = Font::new(bold, ppem, bold);
+        for (text, top, bottom) in [
+            (b"H", baseline - caps, baseline),
+            (b"p", 0, baseline + desc),
+        ] {
+            let mut c = canvas(40, 40, [0, 0, 0]);
+            draw(&mut c, &mut font, Rect::inset(40, 40, 5, 5), text, &style);
+            let ys: Vec<i32> = ink(&c, [0, 0, 0, 255]).iter().map(|p| p.1 - 5).collect();
+            let what = format!("bold {bold} ppem {ppem} {}", text[0] as char);
+            assert_eq!(*ys.iter().max().unwrap() + 1, bottom, "{what} bottom");
+            if top > 0 {
+                assert_eq!(*ys.iter().min().unwrap(), top, "{what} top");
+            }
+        }
+    }
+}
+
+#[test]
 fn width_is_the_sum_of_whole_advances() {
     let font = Font::request("Arial Bold", "11");
     let sum: i32 = b"Sample text 12".iter().map(|&b| font.advance(b)).sum();
