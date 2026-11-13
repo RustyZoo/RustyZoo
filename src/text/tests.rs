@@ -582,6 +582,14 @@ fn a_message_is_grid_fitted_like_windows_draws_it() {
             .all(|r| r.iter().filter(|&&l| l > 0).count() == 2)
     );
     assert!(stem.iter().flatten().all(|&l| l != 1), "no grey on a stem");
+    // The T of the paused message: a 6 pixel bar over a 2 pixel stem in its middle, and a black
+    // column between the bar and the h (the bar used to be 7 wide and touch it).
+    let th = ink(b"Th");
+    let at = th[0].iter().position(|&l| l == 2).unwrap();
+    assert_eq!(&th[0][at..at + 8], [2, 2, 2, 2, 2, 2, 0, 2], "bar, gap, h");
+    for row in &th[1..] {
+        assert_eq!(&row[at..at + 7], [0, 0, 2, 2, 0, 0, 0], "stem");
+    }
 }
 
 #[test]
@@ -651,7 +659,7 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "5d7b2b7781b1b56c"
+        "b0857ea468d4ca6b"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),

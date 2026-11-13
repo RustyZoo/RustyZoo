@@ -34,21 +34,38 @@ pub(super) fn hinter(outlines: &OutlineGlyphCollection<'_>, ppem: u32) -> Option
     .ok()
 }
 
-/// The coverage of a glyph at the hinted size; an empty glyph when it has no outline.
+/// The coverage of a glyph at the hinted size; an empty glyph when it has no outline. A glyph that
+/// hangs a whole pixel or more out of its `advance` (the bar of `T`, text 6.5 point 2) takes its
+/// horizontal fit from the size one pixel smaller, which keeps it inside its cell.
 pub(super) fn glyph(
     outlines: &OutlineGlyphCollection<'_>,
     hinter: Option<&HintingInstance>,
     id: GlyphId,
     ppem: u32,
+    advance: i32,
 ) -> Glyph {
-    let mut path = Path::default();
-    if let Some(outline) = outlines.get(id) {
+    let Some(outline) = outlines.get(id) else {
+        return Path::default().fill();
+    };
+    let draw = |hinter: Option<&HintingInstance>, ppem: u32| {
         let settings = match hinter {
             Some(h) => DrawSettings::hinted(h, false),
             None => DrawSettings::unhinted(Size::new(ppem as f32), LocationRef::default()),
         };
+        let mut path = Path::default();
         // A glyph that fails to draw stays empty.
         let _ = outline.draw(settings, &mut path);
+        path
+    };
+    let mut path = draw(hinter, ppem);
+    if hinter.is_some() && path.right() >= advance as f32 + 1.0 {
+        let narrow = draw(self::hinter(outlines, ppem - 1).as_ref(), ppem - 1);
+        if narrow.edges.len() == path.edges.len() {
+            for (edge, n) in path.edges.iter_mut().zip(&narrow.edges) {
+                edge[0] = n[0];
+                edge[2] = n[2];
+            }
+        }
     }
     path.fill()
 }
@@ -65,6 +82,14 @@ impl Path {
     fn line(&mut self, x: f32, y: f32) {
         self.edges.push([self.at.0, self.at.1, x, y]);
         self.at = (x, y);
+    }
+
+    /// The rightmost x of the outline.
+    fn right(&self) -> f32 {
+        self.edges
+            .iter()
+            .flat_map(|e| [e[0], e[2]])
+            .fold(f32::MIN, f32::max)
     }
 
     /// Coverage of the pixels the edges cross, with non-zero winding.

@@ -168,9 +168,10 @@ impl Font {
     /// The glyph of a character, drawn at the first use.
     pub(crate) fn glyph(&mut self, byte: u8) -> &Glyph {
         let (face, hinter, ppem) = (self.face, self.hinter.as_ref(), self.ppem);
-        self.glyphs
-            .entry(byte)
-            .or_insert_with(|| raster::glyph(&face.outlines, hinter, face.id(byte), ppem))
+        let advance = i32::from(self.advances[usize::from(byte)]);
+        self.glyphs.entry(byte).or_insert_with(|| {
+            raster::glyph(&face.outlines, hinter, face.id(byte), ppem, advance)
+        })
     }
 }
 
