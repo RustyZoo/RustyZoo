@@ -524,11 +524,72 @@ fn colours(canvas: &Framebuffer, bg: [u8; 4]) -> Vec<[u8; 4]> {
 }
 
 #[test]
-fn bold_glyph_pixels_are_heavier_than_the_coverage() {
-    use super::draw::heavier;
-    assert_eq!((heavier(0), heavier(255)), (0, 255));
-    assert_eq!(heavier(64), 128);
-    assert!((1..250).all(|c| heavier(c) > c));
+fn smoothed_pixels_fade_in_between_a_quarter_and_63_percent() {
+    use super::draw::contrast;
+    assert_eq!(
+        (contrast(0), contrast(64), contrast(160), contrast(255)),
+        (0, 0, 255, 255)
+    );
+    assert_eq!(contrast(112), 127);
+    assert!((0..255).all(|c| contrast(c) <= contrast(c + 1)));
+}
+
+/// White `text` in Arial Bold 9 (12 pixels per em) on black; the rows of the canvas as
+/// coverage levels: 2 for pure white, 1 for a grey, 0 for black.
+fn message_rows(text: &[u8]) -> Vec<Vec<u8>> {
+    let style = Style {
+        color: [255, 255, 255],
+        justify: Justify::Left,
+        shadow: false,
+    };
+    let mut c = canvas(160, 20, [0, 0, 0]);
+    let mut font = Font::request("Arial Bold", "9");
+    draw(&mut c, &mut font, Rect::inset(160, 20, 2, 2), text, &style);
+    let level = |p: &[u8]| match p[0] {
+        255 => 2,
+        0 => 0,
+        _ => 1,
+    };
+    c.pixels
+        .chunks(160 * 4)
+        .map(|row| row.chunks(4).map(level).collect())
+        .collect()
+}
+
+#[test]
+fn a_message_is_grid_fitted_like_windows_draws_it() {
+    // Text 6.5: the capture has 428 pure white pixels and about 90 grey ones, only on curves and
+    // diagonals; stems are 2 whole pixels, caps 9 rows, x-height 7 (the descender of g has 3 rows here, 2 there).
+    // The capture: 428 white and 90 grey of 518 inked pixels; 95% of the white ones is 78.5% of
+    // the ink. The sample is another sentence of the same length.
+    let rows = message_rows(b"The bag is packed up.");
+    let count = |level| rows.iter().flatten().filter(|&&l| l == level).count();
+    let ink = count(1) + count(2);
+    assert!(count(2) * 1000 >= ink * 785, "{} white of {ink}", count(2));
+    assert!(count(1) * 100 <= ink * 20, "{} grey of {ink}", count(1));
+    // Rows with ink of one letter, and the widths of its whole-colour runs.
+    let ink = |text: &[u8]| -> Vec<Vec<u8>> {
+        message_rows(text)
+            .into_iter()
+            .filter(|r| r.iter().any(|&l| l > 0))
+            .collect()
+    };
+    assert_eq!(ink(b"H").len(), 9, "caps");
+    assert_eq!(ink(b"x").len(), 7, "x-height");
+    let stem = ink(b"l");
+    assert!(
+        stem.iter()
+            .all(|r| r.iter().filter(|&&l| l > 0).count() == 2)
+    );
+    assert!(stem.iter().flatten().all(|&l| l != 1), "no grey on a stem");
+    // The T of the paused message: a 6 pixel bar over a 2 pixel stem in its middle, and a black
+    // column between the bar and the h (the bar used to be 7 wide and touch it).
+    let th = ink(b"Th");
+    let at = th[0].iter().position(|&l| l == 2).unwrap();
+    assert_eq!(&th[0][at..at + 8], [2, 2, 2, 2, 2, 2, 0, 2], "bar, gap, h");
+    for row in &th[1..] {
+        assert_eq!(&row[at..at + 7], [0, 0, 2, 2, 0, 0, 0], "stem");
+    }
 }
 
 #[test]
@@ -598,11 +659,11 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "e2215573cd28a200"
+        "b0857ea468d4ca6b"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "cd5069739d569e52"
+        "9c7f9eb0f4460bf8"
     );
 }
 

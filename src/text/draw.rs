@@ -85,17 +85,22 @@ fn pass(
                 pen.saturating_add(glyph.left),
                 top + ascent - glyph.bottom - glyph.height as i32,
             );
-            put(target, &clip, glyph, (x, y), color, bilevel, bold);
+            put(target, &clip, glyph, (x, y), color, bilevel);
             pen = pen.saturating_add(advance);
         }
     }
 }
 
-/// The coverage of a bold glyph pixel made heavier: the original's hinted bold stems are whole
-/// pixels wide, which unhinted coverage cannot match; a square root of the coverage has the same
-/// amount of ink.
-pub(super) fn heavier(coverage: u32) -> u32 {
-    (255.0 * (coverage as f32 / 255.0).sqrt()).round() as u32
+/// Coverage below this (a quarter) is not drawn and from `FULL` up (about 63%) a pixel is the
+/// full text colour; between, the grey grows linearly. GDI's smoothing of the hinted glyphs
+/// leaves 428 full pixels and about 90 grey ones in the paused message (text 6.5), which plain
+/// area coverage of the same outlines misses by a third.
+const FAINT: u32 = 64;
+const FULL: u32 = 160;
+
+/// The coverage of a smoothed pixel after GDI's contrast: 0 up to `FAINT`, 255 from `FULL`.
+pub(super) fn contrast(coverage: u32) -> u32 {
+    (coverage.clamp(FAINT, FULL) - FAINT) * 255 / (FULL - FAINT)
 }
 
 /// Writes the coverage of `glyph` with its top left corner at `at`.
@@ -106,7 +111,6 @@ fn put(
     at: (i32, i32),
     color: [u8; 3],
     bilevel: bool,
-    bold: bool,
 ) {
     let width = target.width as usize;
     for row in 0..glyph.height {
@@ -120,14 +124,13 @@ fn put(
             if x < clip.left || x >= clip.right || coverage == 0 {
                 continue;
             }
-            if bold {
-                coverage = heavier(coverage);
-            }
-            if bilevel {
-                if coverage < 128 {
-                    continue;
-                }
-                coverage = 255;
+            coverage = if bilevel {
+                if coverage < 128 { 0 } else { 255 }
+            } else {
+                contrast(coverage)
+            };
+            if coverage == 0 {
+                continue;
             }
             let at = (y as usize * width + x as usize) * 4;
             let pixel = &mut target.pixels[at..at + 4];
