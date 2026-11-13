@@ -36,7 +36,7 @@ fn interface(name: &str) -> Interface {
     };
     let panel = format!(
         "[LayoutInfo]\nid=10\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\n{}{}{}{}\
-         [c]\ntype=UIListBox\nid=30\nx=0\ny=20\ndx=40\ndy=36\n\
+         [c]\ntype=UIListBox\nid=30\nx=0\ny=20\ndx=40\ndy=42\n\
          [d]\ntype=UIText\nid=7003\nlayer=10\nx=0\ny=0\ndx=1\ndy=1\nborder=1\ntimed=1\n\
          timerDuration=100\nshowborder=1\ntransparent=0\nstate=1025\n",
         button(20, 0, "helpid=5\n"),
@@ -280,7 +280,7 @@ fn a_list_passes_the_help_of_its_hovered_row() {
     ui.update(500);
     assert!(!tip_shown(&ui));
     // The third row has it again, a text longer than the row.
-    ui.mouse(Mouse::Move(5, 46));
+    ui.mouse(Mouse::Move(5, 50));
     ui.update(600);
     assert!(tip_shown(&ui));
 }

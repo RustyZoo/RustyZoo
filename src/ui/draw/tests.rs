@@ -538,7 +538,7 @@ fn show_all(tree: &mut Tree) {
 fn a_list_draws_its_rows_from_the_first_shown_with_the_selection_and_the_hover() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\
-         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=36\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=42\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
          selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\n\
          highlightbordercolor=0\nhighlightbordercolor=255\nhighlightbordercolor=0\n"
     );
@@ -556,22 +556,22 @@ fn a_list_draws_its_rows_from_the_first_shown_with_the_selection_and_the_hover()
     list.rows.hover = Some(2);
     let (mut painter, texts) = (Painter::default(), Texts::default());
     let frame = paint(&mut tree, &mut painter, &texts);
-    // Rows of 12 pixels (the font's line): the selected one is filled, the hovered one framed.
+    // Rows of 14 pixels (the font's line): the selected one is filled, the hovered one framed.
     assert_eq!(at(&frame, 4, 4), [0, 0, 255], "the background");
     assert_eq!(
-        at(&frame, 43, 16),
+        at(&frame, 43, 18),
         [255, 0, 0],
         "the selected row's fill, its right end"
     );
-    assert_eq!(at(&frame, 43, 27), [255, 0, 0], "to its last pixel row");
+    assert_eq!(at(&frame, 43, 31), [255, 0, 0], "to its last pixel row");
     assert_eq!(
-        at(&frame, 4, 28),
+        at(&frame, 4, 32),
         [0, 255, 0],
         "the hovered row's frame, its top left"
     );
-    assert_eq!(at(&frame, 43, 39), [0, 255, 0], "its bottom right");
-    assert_eq!(at(&frame, 43, 33), [0, 255, 0]);
-    assert_eq!(at(&frame, 20, 34), [0, 0, 255], "inside the frame");
+    assert_eq!(at(&frame, 43, 45), [0, 255, 0], "its bottom right");
+    assert_eq!(at(&frame, 43, 39), [0, 255, 0]);
+    assert_eq!(at(&frame, 20, 40), [0, 0, 255], "inside the frame");
     // Scrolled by one row: the selected row is first.
     let Kind::ListBox(list) = &mut tree.elements[1].kind else {
         unreachable!();
@@ -581,7 +581,7 @@ fn a_list_draws_its_rows_from_the_first_shown_with_the_selection_and_the_hover()
     let frame = paint(&mut tree, &mut painter, &texts);
     assert_eq!(at(&frame, 43, 4), [255, 0, 0]);
     assert_eq!(
-        at(&frame, 4, 16),
+        at(&frame, 4, 18),
         [0, 255, 0],
         "the hovered row moved up too"
     );
@@ -659,9 +659,9 @@ fn a_focused_field_shows_a_caret_or_its_selection_in_inverse_colours() {
     f.caret = Caret { at: 2, anchor: 2 };
     let frame = paint(&mut tree, &mut painter, &texts);
     let x = 4 + width(&mut painter, 2) as u32;
-    assert_eq!((at(&frame, x, 4), at(&frame, x, 15)), (fill, fill));
-    assert_eq!(at(&frame, x, 16), [0, 0, 0]);
-    assert_eq!(count(&frame, fill), 12);
+    assert_eq!((at(&frame, x, 4), at(&frame, x, 17)), (fill, fill));
+    assert_eq!(at(&frame, x, 18), [0, 0, 0]);
+    assert_eq!(count(&frame, fill), 14);
     // The middle letter selected: its rectangle in the text colour, the letter in the background.
     let Kind::EditableText(f) = &mut tree.elements[1].kind else {
         unreachable!();
@@ -671,7 +671,7 @@ fn a_focused_field_shows_a_caret_or_its_selection_in_inverse_colours() {
     let frame = paint(&mut tree, &mut painter, &texts);
     let (x0, x1) = (width(&mut painter, 1) as u32, width(&mut painter, 2) as u32);
     assert_eq!(at(&frame, 4 + x0, 4), fill);
-    assert_eq!(at(&frame, 4 + x1 - 1, 15), fill);
+    assert_eq!(at(&frame, 4 + x1 - 1, 17), fill);
     assert_eq!(at(&frame, 4 + x1, 4), [0, 0, 0]);
 }
 
@@ -679,7 +679,7 @@ fn a_focused_field_shows_a_caret_or_its_selection_in_inverse_colours() {
 fn a_list_draws_whole_rows_only_inside_its_borders() {
     let root = format!(
         "[LayoutInfo]\nid=1\n{FULL}\
-         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=33\nborder=3\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
+         [a]\ntype=UIListBox\nid=2\nx=4\ny=4\ndx=40\ndy=38\nborder=3\nbackcolor=0\nbackcolor=0\nbackcolor=255\n\
          selectbackcolor=255\nselectbackcolor=0\nselectbackcolor=0\n"
     );
     let mut tree = tree("listfit", &root, &[]);
@@ -693,7 +693,7 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
             ..Row::default()
         })
         .collect();
-    // The third row would reach the bottom border (33 - 3 = 30 pixels hold two rows of 12).
+    // The third row would reach the bottom border (38 - 6 = 32 pixels hold two rows of 14).
     list.rows.selected = Some(2);
     let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
     assert_eq!(
@@ -707,9 +707,9 @@ fn a_list_draws_whole_rows_only_inside_its_borders() {
     list.rows.selected = Some(1);
     tree.elements[1].state |= DIRTY;
     let frame = paint(&mut tree, &mut Painter::default(), &Texts::default());
-    // The second row: 3 + 12 to 3 + 24 pixels down, from the left of the list.
-    assert_eq!(at(&frame, 43, 4 + 15), [255, 0, 0]);
-    assert_eq!(at(&frame, 43, 4 + 27), [0, 0, 255], "under it, the border");
+    // The second row: 3 + 14 to 3 + 28 pixels down, from the left of the list.
+    assert_eq!(at(&frame, 43, 4 + 17), [255, 0, 0]);
+    assert_eq!(at(&frame, 43, 4 + 31), [0, 0, 255], "under it, the border");
 }
 
 #[test]
