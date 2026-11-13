@@ -1560,7 +1560,7 @@ fn the_last_user_of_a_slot_in_a_building_task_is_drawn_by_a_type_that_draws_its_
     assert_eq!(drawn(&w), []);
     // The live list of a guest building replaces the record.
     w.units.buildings.insert(
-        11,
+        10,
         Live {
             users: vec![(3, 0, 0), (2, 0, 0)],
             ..Live::default()
