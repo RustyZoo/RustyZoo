@@ -190,10 +190,10 @@ check expansion-trial 1013,86,0,3,224,0 "rz check-layouts --expansions 1 2>/dev/
 # centred, and the first button of the menu.
 rects() { rz dump-layout --size "$1" 2>/dev/null | awk -F'\t' '$1==3||$1==1036||$1==7100||$1==7111{printf "%s:%s,%s,%s,%s;", $1,$5,$6,$7,$8}'; echo; }
 check base-trial 902 "rz dump-layout 2>/dev/null | wc -l"
-check base-trial '3:17,6,179,440;1036:293,733,54,35;7100:112,84,800,600;7111:337,359,350,25;' 'rects 1024x768'
-check base-trial '3:17,6,179,440;1036:235,565,58,35;7100:0,0,800,600;7111:225,275,350,25;' 'rects 800x600'
-check expansion-trial '3:17,6,179,440;1036:304,733,43,35;7100:112,84,800,600;7111:337,344,350,25;' 'rects 1024x768'
-check expansion-trial '3:17,6,179,440;1036:235,565,69,35;7100:0,0,800,600;7111:225,260,350,25;' 'rects 800x600'
+check base-trial '3:17,6,179,440;1036:293,733,54,35;7100:112,84,800,600;7111:337,359,350,26;' 'rects 1024x768'
+check base-trial '3:17,6,179,440;1036:235,565,58,35;7100:0,0,800,600;7111:225,275,350,26;' 'rects 800x600'
+check expansion-trial '3:17,6,179,440;1036:304,733,43,35;7100:112,84,800,600;7111:337,344,350,26;' 'rects 1024x768'
+check expansion-trial '3:17,6,179,440;1036:235,565,69,35;7100:0,0,800,600;7111:225,260,350,26;' 'rects 800x600'
 
 # The interface painted headless: the main menu with a hovered button, the size of the picture, and
 # the exit status for a layout that does not exist (1) and a size of 0 (2, a usage error).
@@ -213,8 +213,8 @@ menu_click() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527428;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/default.zoo"
-check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537628;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/scn19.zoo"
+check base-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239527432;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/default.zoo"
+check expansion-trial 'uihover7111;uisounduiclick;uipress7111;uitooltip51239537632;uirelease7111inside;uiselect7111;uishow32;uihover50004;' "menu_click maps/scn19.zoo"
 
 # Start up to the main menu, headless, without a map: the picture drawn (resource number and
 # corner), the loading steps (also written to [UI] progresscalls of the user folder), Continue
@@ -229,8 +229,8 @@ startup() {
     awk '/^startup picture/{p=$3"@"$5} /^startup steps/{s=$3} /menu continue/{c=$6} /menu version/{v=$6} / draw [0-9a-f]{16}/{if(!h)h=$5} /menu exit/{e=$2} END{print p","s","c","v","h",exit@"e}'
   sed -n 's/^progresscalls=//p' "$tmp/user/zoo.ini"
 }
-check base-trial '502@112,84,131,disabled,10.10.00.0004,35459c2cedc3d47b,exit@3,131' 'startup 620 | paste -sd, -'
-check expansion-trial '505@112,84,253,disabled,12.05.00.0004,55485dffe965a503,exit@3,253' 'startup 600 | paste -sd, -'
+check base-trial '502@112,84,131,disabled,10.10.00.0004,4c6a812783809d78,exit@3,131' 'startup 620 | paste -sd, -'
+check expansion-trial '505@112,84,253,disabled,12.05.00.0004,0ae3d11ba6ffcd11,exit@3,253' 'startup 600 | paste -sd, -'
 # Continue is enabled by a last file that exists (named in the tooltip); a name that is gone
 # disables it and is written back empty; the settings of the game itself are never written.
 last() {
@@ -550,7 +550,7 @@ list_use() {
   echo
   rm -rf "${d:?}"
 }
-list='scroll115059;scroll115058;scroll115056;focus11504;row115047;select115047;row115048;select115048;'
+list='scroll1150511;scroll1150510;scroll115058;focus11504;row115049;select115049;row1150410;select1150410;'
 check base-trial "$list" "list_use maps/default.zoo"
 check expansion-trial "$list" "list_use maps/scn19.zoo"
 
@@ -586,8 +586,8 @@ question_use() {
   echo
   rm -rf "${d:?}"
 }
-check base-trial '1tooltip51239527428;56hide7003;' "tooltip_use maps/default.zoo"
-check expansion-trial '1tooltip51239537628;31hide7003;' "tooltip_use maps/scn19.zoo"
+check base-trial '1tooltip51239527432;56hide7003;' "tooltip_use maps/default.zoo"
+check expansion-trial '1tooltip51239537632;31hide7003;' "tooltip_use maps/scn19.zoo"
 
 # A question opened over the map: the game stands still until it is answered, by a click on a
 # button, by a key, and not by a click outside it.
@@ -672,8 +672,8 @@ check base-trial musicgain0.999 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo 
 
 # Text drawn without game data: a wrapped, centred, shadowed message (smoothed bold glyphs) and a
 # smoothed bold one with a 2 pixel shadow have the same pixels, so the same hash, on every system.
-check base-trial 286x34,8b3f3dd89d48dd02 "rz draw-text $tmp/t.png --font 'Arial Bold' --size 11 --width 286 --justify center --shadow --fore 83 219 83 --back 68 36 20 'Sample message with words enough to fill one whole line and then some more' | tr ' ' ,"
-check base-trial 300x21,ac373e83776b0d93 "rz draw-text $tmp/t.png --font 'Arial Bold' --size 14 --width 300 --shadow --fore 255 186 16 --back 20 20 20 'Sample item & more text here' | tr ' ' ,"
+check base-trial 286x36,4007c6214cabdfea "rz draw-text $tmp/t.png --font 'Arial Bold' --size 11 --width 286 --justify center --shadow --fore 83 219 83 --back 68 36 20 'Sample message with words enough to fill one whole line and then some more' | tr ' ' ,"
+check base-trial 300x22,9de61d70842925da "rz draw-text $tmp/t.png --font 'Arial Bold' --size 14 --width 300 --shadow --fore 255 186 16 --back 20 20 20 'Sample item & more text here' | tr ' ' ,"
 # A width of 0, a negative one, a huge one and none at all are refused (exit 1), a word is a usage
 # error (exit 2).
 for width in "--width 0" "--width -4" "--width 99999999999" ""; do
@@ -724,8 +724,8 @@ paint_text() { # paint_text <map> <script>
   rm -rf "$d"
 }
 paint='1 mouse 16 26\n2 down\n3 up\n5 mouse 180 195\n6 down\n7 up\n9 mouse 80 222\n10 down\n11 up\n13 mouse 975 420\n15 mouse 980 425\n'
-check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;cf50dfb978999437" "paint_text maps/default.zoo '$paint'"
-check expansion-trial "brush3,40,51;amount-270;tooltips3;3c5bc7d3c889c4e7" "paint_text maps/scn19.zoo '$paint'"
+check base-trial "brush2,21,51;amount-120;brush2,21,52;tooltips3;af882f34948298cd" "paint_text maps/default.zoo '$paint'"
+check expansion-trial "brush3,40,51;amount-270;tooltips3;db59a509bdbf6a65" "paint_text maps/scn19.zoo '$paint'"
 
 # A fence drag: the second item of the first row of the construction panel's fence tab, a press on
 # the map (the side of the tile it is nearest to is kept for the whole run), a move along the first
@@ -738,8 +738,8 @@ fence_drag() { # fence_drag <map> <last move>
     awk '/ world (add|retype) /{n++} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print n "," c "," h}'
   rm -rf "$d"
 }
-check base-trial "6,49100,221e125f24ad3b96" "fence_drag maps/default.zoo '878 332'"
-check expansion-trial 6,49250,81a7a59dbd3a3b8b "fence_drag maps/scn19.zoo '878 332'"
+check base-trial "6,49100,98f76ee19e3e4eb7" "fence_drag maps/default.zoo '878 332'"
+check expansion-trial 6,49250,07ab0b2b8a3a2dfa "fence_drag maps/scn19.zoo '878 332'"
 
 # The drag of the original's reference pictures of placing a fence, here on the trial (its fence
 # list and scroll differ from the full game's, which the reference pictures show): a press, three
@@ -752,7 +752,7 @@ reference_drag() { # reference_drag <map>
     awk '/ world add /{printf "%s,%s,%s;", $7, $8, $9} / money cash /{c=$6} / draw [0-9a-f]/{h=$5} END{print c "," h}'
   rm -rf "$d"
 }
-check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,3d3e53ee4c2de2f6" "reference_drag maps/default.zoo"
+check base-trial "21,45,side,0;22,45,side,0;23,45,side,0;23,45,side,2;23,46,side,2;23,47,side,2;23,48,side,2;48950,1c4829a6ba6cd32f" "reference_drag maps/default.zoo"
 
 # Closes a square of fences with four drags (the first item of the fence list, one side each), types
 # a name into the dialog the new exhibit asks for and answers it with Enter. Prints the `exhibit`
