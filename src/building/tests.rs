@@ -1526,14 +1526,14 @@ fn the_last_user_of_a_slot_in_a_building_task_is_drawn_by_a_type_that_draws_its_
     // Not in a building task: not drawn.
     task(&mut w, 2, crate::goal::NONE);
     assert_eq!(drawn(&w), []);
-    // Entering, leaving or using: the last user, by the two types that draw, not the seats one.
+    // Entering, leaving or using: the last user, by the type that draws, not the seats one.
     for t in [
         crate::goal::ENTER_BUILDING,
         crate::goal::EXIT_BUILDING,
         crate::goal::USE,
     ] {
         task(&mut w, 2, t);
-        assert_eq!(drawn(&w), [(10, 2), (11, 2)], "task {t}");
+        assert_eq!(drawn(&w), [(10, 2)], "task {t}");
     }
     // Only the last user counts: a user before it, in a building task, is not drawn.
     task(&mut w, 2, crate::goal::NONE);
@@ -1566,5 +1566,5 @@ fn the_last_user_of_a_slot_in_a_building_task_is_drawn_by_a_type_that_draws_its_
             ..Live::default()
         },
     );
-    assert_eq!(drawn(&w), [(11, 2)]);
+    assert_eq!(drawn(&w), [(10, 2)]);
 }
