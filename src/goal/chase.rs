@@ -491,7 +491,7 @@ impl Cx<'_, '_> {
         } else {
             "bCaughtBylionm"
         };
-        if self.start_set("bCaughtBy", true) || self.start_set(lion, true) {
+        if self.start_with("bCaughtBy", false, true) || self.start_with(lion, false, true) {
             self.unit.caught = true;
         }
     }
