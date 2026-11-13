@@ -3,7 +3,8 @@
 //! The original draws Arial through GDI, which runs the font's instructions in both directions:
 //! stems, heights and side bearings sit on whole pixels and only curves and diagonals are grey
 //! (text 6.5). The outline is fitted to the grid by the font's hinting, then the exact
-//! coverage of each pixel is computed (16 sub-rows, exact horizontally).
+//! coverage of each pixel is computed (16 sub-rows, exact horizontally). The heights are then
+//! moved onto the rows Arial has at that size (text 6.6).
 
 use super::Glyph;
 use skrifa::GlyphId;
@@ -34,6 +35,68 @@ pub(super) fn hinter(outlines: &OutlineGlyphCollection<'_>, ppem: u32) -> Option
     .ok()
 }
 
+/// The reference rows of the vertical fit (text 6.6 point 7): Liberation row and Arial row, in
+/// pixels above the baseline, from the lowest up. Other sizes are not moved.
+fn fit_rows(bold: bool, ppem: u32) -> &'static [(f32, f32)] {
+    match (bold, ppem) {
+        (_, 12) => &[(-3.0, -2.0), (0.0, 0.0), (7.0, 7.0), (9.0, 9.0)],
+        (_, 13) => &[(-3.0, -3.0), (0.0, 0.0), (7.0, 7.0), (9.0, 10.0)],
+        (_, 15) => &[
+            (-3.0, -3.0),
+            (0.0, 0.0),
+            (8.0, 8.0),
+            (10.0, 11.0),
+            (11.0, 11.0),
+        ],
+        (true, 19) => &[(-4.0, -4.0), (0.0, 0.0), (10.0, 11.0), (13.0, 14.0)],
+        (false, 19) => &[(-4.0, -4.0), (0.0, 0.0), (10.0, 10.0), (13.0, 14.0)],
+        _ => &[],
+    }
+}
+
+/// An outline pen that moves every point vertically by the shift of the reference row nearest to
+/// it (ties go to the upper row); a point beyond the first or last row takes that row's shift.
+struct Fit<'a> {
+    rows: &'static [(f32, f32)],
+    path: &'a mut Path,
+}
+
+impl Fit<'_> {
+    fn y(&self, y: f32) -> f32 {
+        let mut best: Option<&(f32, f32)> = None;
+        for row in self.rows {
+            // Rows run from the lowest up, so `<=` leaves the upper one on a tie.
+            if best.is_none_or(|b| (row.0 - y).abs() <= (b.0 - y).abs()) {
+                best = Some(row);
+            }
+        }
+        best.map_or(y, |r| y + r.1 - r.0)
+    }
+}
+
+impl OutlinePen for Fit<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to(x, self.y(y));
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to(x, self.y(y));
+    }
+
+    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+        self.path.quad_to(cx, self.y(cy), x, self.y(y));
+    }
+
+    fn curve_to(&mut self, c0x: f32, c0y: f32, c1x: f32, c1y: f32, x: f32, y: f32) {
+        let (c0y, c1y, y) = (self.y(c0y), self.y(c1y), self.y(y));
+        self.path.curve_to(c0x, c0y, c1x, c1y, x, y);
+    }
+
+    fn close(&mut self) {
+        self.path.close();
+    }
+}
+
 /// The coverage of a glyph at the hinted size; an empty glyph when it has no outline. A glyph that
 /// hangs a whole pixel or more out of its `advance` (the bar of `T`, text 6.5 point 2) takes its
 /// horizontal fit from the size one pixel smaller, which keeps it inside its cell.
@@ -41,7 +104,7 @@ pub(super) fn glyph(
     outlines: &OutlineGlyphCollection<'_>,
     hinter: Option<&HintingInstance>,
     id: GlyphId,
-    ppem: u32,
+    (bold, ppem): (bool, u32),
     advance: i32,
 ) -> Glyph {
     let Some(outline) = outlines.get(id) else {
@@ -53,8 +116,16 @@ pub(super) fn glyph(
             None => DrawSettings::unhinted(Size::new(ppem as f32), LocationRef::default()),
         };
         let mut path = Path::default();
+        let mut fit = Fit {
+            rows: if hinter.is_some() {
+                fit_rows(bold, ppem)
+            } else {
+                &[]
+            },
+            path: &mut path,
+        };
         // A glyph that fails to draw stays empty.
-        let _ = outline.draw(settings, &mut path);
+        let _ = outline.draw(settings, &mut fit);
         path
     };
     let mut path = draw(hinter, ppem);

@@ -1,25 +1,25 @@
 use super::*;
 use crate::Framebuffer;
 
-/// The six sizes the shipped layouts use, with the pixel size, ascent and line height, and the
-/// advances of a digit and of a space.
+/// The six sizes the shipped layouts use, with the pixel size, baseline and line height (text
+/// 6.6 point 2), and the advances of a digit and of a space.
 const SIZES: [(&str, u32, i32, i32, i32, i32); 6] = [
-    ("8", 11, 10, 12, 6, 3),
-    ("9", 12, 11, 14, 7, 3),
-    ("10", 13, 12, 15, 7, 4),
-    ("11", 15, 14, 17, 8, 4),
-    ("12", 16, 14, 17, 9, 4),
-    ("14", 19, 17, 21, 11, 5),
+    ("8", 11, 11, 14, 6, 3),
+    ("9", 12, 12, 15, 7, 3),
+    ("10", 13, 13, 16, 7, 4),
+    ("11", 15, 14, 18, 8, 4),
+    ("12", 16, 15, 19, 9, 4),
+    ("14", 19, 18, 22, 11, 5),
 ];
 
 #[test]
 fn line_height_baseline_and_advances_of_the_six_sizes() {
     for face in ["Arial", "Arial Bold"] {
-        for (size, ppem, ascent, line, digit, space) in SIZES {
+        for (size, ppem, baseline, line, digit, space) in SIZES {
             let font = Font::request(face, size);
             let what = format!("{face} {size}");
             assert_eq!(font.ppem(), ppem, "{what}");
-            assert_eq!(font.ascent(), ascent, "{what}");
+            assert_eq!(font.baseline(), baseline, "{what}");
             assert_eq!(font.line_height(), line, "{what}");
             assert_eq!(font.is_bold(), face.contains("Bold"));
             for d in b'0'..=b'9' {
@@ -29,6 +29,107 @@ fn line_height_baseline_and_advances_of_the_six_sizes() {
             assert_eq!(font.advance(b','), space, "{what} comma");
             assert_eq!(font.advance(b'.'), space, "{what} full stop");
         }
+    }
+}
+
+/// Arial's rows (text 6.6 point 2) for the nine shipped fonts: bold, pixel size, caps, x-height,
+/// descender, ascender, baseline.
+const ROWS: [(bool, u32, i32, i32, i32, i32, i32); 9] = [
+    (false, 11, 8, 6, 2, 8, 11),
+    (false, 12, 9, 7, 2, 9, 12),
+    (false, 13, 10, 7, 3, 10, 13),
+    (true, 11, 8, 6, 2, 8, 11),
+    (true, 12, 9, 7, 2, 9, 12),
+    (true, 13, 10, 7, 3, 10, 13),
+    (true, 15, 11, 8, 3, 11, 14),
+    (true, 16, 12, 9, 3, 12, 15),
+    (true, 19, 14, 11, 4, 14, 18),
+];
+
+#[test]
+fn caps_x_height_descender_and_ascender_rows_are_arials() {
+    for (bold, ppem, caps, x, desc, asc, _) in ROWS {
+        let mut font = Font::new(bold, ppem, bold);
+        let mut rows = |c: u8| {
+            let g = font.glyph(c);
+            (g.bottom, g.bottom + g.height as i32)
+        };
+        let what = format!("bold {bold} ppem {ppem}");
+        assert_eq!(rows(b'H'), (0, caps), "{what} caps");
+        assert_eq!(rows(b'E'), (0, caps), "{what} E");
+        assert_eq!(rows(b'B'), (0, caps), "{what} B");
+        assert_eq!(rows(b'0'), (0, caps), "{what} 0");
+        assert_eq!(rows(b'O'), (0, caps), "{what} O");
+        assert_eq!(rows(b'x'), (0, x), "{what} x-height");
+        assert_eq!(rows(b'o'), (0, x), "{what} o");
+        assert_eq!(rows(b'e'), (0, x), "{what} e");
+        assert_eq!(rows(b'b').1, asc, "{what} ascender");
+        assert_eq!(rows(b'd').1, asc, "{what} d");
+        assert_eq!(rows(b'p').0, -desc, "{what} descender");
+        assert_eq!(rows(b'g').0, -desc, "{what} g");
+    }
+}
+
+#[test]
+fn baseline_and_line_height_are_windows_at_shipped_sizes_only() {
+    for (bold, ppem, .., baseline) in ROWS {
+        let font = Font::new(bold, ppem, bold);
+        let what = format!("bold {bold} ppem {ppem}");
+        assert_eq!(font.baseline(), baseline, "{what}");
+        assert_eq!(font.descent(), if ppem < 15 { 3 } else { 4 }, "{what}");
+    }
+    // Any other size keeps the rounding rule (text 4.1): 13 + 3 at ppem 14.
+    let font = Font::new(false, 14, false);
+    assert_eq!((font.baseline(), font.line_height()), (13, 16));
+}
+
+#[test]
+fn drawn_letters_end_on_the_row_above_the_baseline() {
+    // Text 6.6 point 2: letters end on the row `top + baseline - 1`, descenders go below it.
+    let style = Style {
+        color: [255, 255, 255],
+        justify: Justify::Left,
+        shadow: false,
+    };
+    for (bold, ppem, caps, _, desc, _, baseline) in ROWS {
+        let mut font = Font::new(bold, ppem, bold);
+        for (text, top, bottom) in [
+            (b"H", baseline - caps, baseline),
+            (b"p", 0, baseline + desc),
+        ] {
+            let mut c = canvas(40, 40, [0, 0, 0]);
+            draw(&mut c, &mut font, Rect::inset(40, 40, 5, 5), text, &style);
+            let ys: Vec<i32> = ink(&c, [0, 0, 0, 255]).iter().map(|p| p.1 - 5).collect();
+            let what = format!("bold {bold} ppem {ppem} {}", text[0] as char);
+            assert_eq!(*ys.iter().max().unwrap() + 1, bottom, "{what} bottom");
+            if top > 0 {
+                assert_eq!(*ys.iter().min().unwrap(), top, "{what} top");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_line_high_rectangle_keeps_the_whole_descender() {
+    // Text 6.6 point 4: the line ends `tmDescent` rows below the baseline, so a `fitfont`
+    // element one line high draws the descender's last row.
+    let style = Style {
+        color: [255, 255, 255],
+        justify: Justify::Left,
+        shadow: false,
+    };
+    for (bold, ppem, _, _, desc, _, baseline) in ROWS {
+        let mut font = Font::new(bold, ppem, bold);
+        let rect = Rect {
+            left: 0,
+            top: 0,
+            right: 40,
+            bottom: font.line_height(),
+        };
+        let mut c = canvas(40, 40, [0, 0, 0]);
+        draw(&mut c, &mut font, rect, b"p", &style);
+        let bottom = ink(&c, [0, 0, 0, 255]).iter().map(|p| p.1).max().unwrap();
+        assert_eq!(bottom + 1, baseline + desc, "bold {bold} ppem {ppem}");
     }
 }
 
@@ -166,7 +267,7 @@ fn a_message_wraps_at_the_space_before_the_word_that_does_not_fit() {
     assert!(wrapped[0].width + font.width(b" fill") > 286);
     assert_eq!(
         measure(&font, text.as_bytes(), 286),
-        (wrapped[0].width, 2 * 17)
+        (wrapped[0].width, 2 * 18)
     );
     // A wide enough rectangle takes it on one line.
     assert_eq!(lines(&font, text, 1000), [text]);
@@ -421,19 +522,19 @@ fn drawing_is_clipped_to_the_rectangle() {
 
 #[test]
 fn a_button_centres_one_line() {
-    let font = Font::request("Arial Bold", "10"); // line height 15
+    let font = Font::request("Arial Bold", "10"); // line height 16
     let r = |top, bottom| Rect {
         left: 3,
         top,
         right: 50,
         bottom,
     };
-    assert_eq!(r(100, 130).centred_line(&font), r(107, 123));
-    assert_eq!(r(100, 131).centred_line(&font), r(108, 123));
+    assert_eq!(r(100, 131).centred_line(&font), r(107, 124));
+    assert_eq!(r(100, 132).centred_line(&font), r(108, 124));
     // The rectangle is shorter than the line: it grows by the same on both sides.
-    assert_eq!(r(100, 110).centred_line(&font), r(98, 112));
+    assert_eq!(r(100, 110).centred_line(&font), r(97, 113));
     assert_eq!(r(100, 109).centred_line(&font), r(97, 112));
-    assert_eq!(r(100, 115).centred_line(&font), r(100, 115));
+    assert_eq!(r(100, 116).centred_line(&font), r(100, 116));
     assert_eq!(
         Rect::inset(108, 21, 2, 2),
         Rect {
@@ -467,16 +568,16 @@ fn a_tooltip_is_sized_to_its_text() {
     let w = regular.width(text);
     assert_eq!(
         tooltip_size(&regular, text, false, 200, 2, 3),
-        (w + 4, 12 + 6)
+        (w + 4, 14 + 6)
     );
     // Small font with an alignment other than left: 2 more pixels.
     assert_eq!(
         tooltip_size(&regular, text, true, 200, 2, 3),
-        (w + 2 + 4, 12 + 6)
+        (w + 2 + 4, 14 + 6)
     );
     assert_eq!(
         tooltip_size(&big, text, true, 200, 0, 0),
-        (big.width(text), 15)
+        (big.width(text), 16)
     );
     // Too wide: three fifths of the width (at most the maximum), wrapped again.
     let long = b"Sample tooltip text that is long enough to be wrapped into several lines of text";
@@ -485,12 +586,12 @@ fn a_tooltip_is_sized_to_its_text() {
     let wrapped = measure(&big, long, (w * 3 / 5).min(200));
     assert!(w > 200);
     assert_eq!((tw, th), (wrapped.0 + 2, wrapped.1 + 2));
-    assert!(wrapped.1 > 15 && wrapped.0 <= 200);
+    assert!(wrapped.1 > 16 && wrapped.0 <= 200);
     // The whole text is one line, one line high, even with a line break in it.
     let two = b"one\ntwo";
     assert_eq!(
         tooltip_size(&big, two, false, 400, 0, 0),
-        (big.width(two), 15)
+        (big.width(two), 16)
     );
     // No maximum at all: every word is cut; nothing panics.
     for max in [0, -1] {
@@ -659,11 +760,11 @@ fn drawn_pictures_have_the_same_hash_on_every_system() {
     // Bold smoothed and heavier (ppem 15), regular smoothed (ppem 19). The values are pinned by CI on three systems.
     assert_eq!(
         format!("{:016x}", sample("Arial Bold", "11", Justify::Center)),
-        "b0857ea468d4ca6b"
+        "83f335b13cbfd6a1"
     );
     assert_eq!(
         format!("{:016x}", sample("Arial", "14", Justify::Right)),
-        "9c7f9eb0f4460bf8"
+        "5914885438a865dd"
     );
 }
 

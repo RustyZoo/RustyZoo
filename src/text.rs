@@ -140,19 +140,40 @@ impl Font {
         self.ppem
     }
 
-    /// Pixels from the top of a line to its baseline.
-    pub(crate) fn ascent(&self) -> i32 {
-        div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32
+    /// Arial's ascent and descent on Windows at the six shipped sizes, from its per-size table
+    /// (text 6.6 points 3 and 4); `None` elsewhere.
+    fn windows_rows(&self) -> Option<(i32, i32)> {
+        match self.ppem {
+            11 => Some((11, 3)),
+            12 => Some((12, 3)),
+            13 => Some((13, 3)),
+            15 => Some((14, 4)),
+            16 => Some((15, 4)),
+            19 => Some((18, 4)),
+            _ => None,
+        }
     }
 
-    /// Pixels from the baseline to the bottom of a line.
+    /// Pixels from the top of a line to the baseline the letters sit on: Windows' value at the
+    /// shipped sizes, the rounding rule of text 4.1 elsewhere.
+    pub(crate) fn baseline(&self) -> i32 {
+        self.windows_rows().map_or(
+            div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32,
+            |r| r.0,
+        )
+    }
+
+    /// Pixels from the baseline to the bottom of a line, chosen as [`Font::baseline`] is.
     pub(crate) fn descent(&self) -> i32 {
-        div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32
+        self.windows_rows().map_or(
+            div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32,
+            |r| r.1,
+        )
     }
 
-    /// The height of a line: ascent plus descent, the distance between wrapped lines.
+    /// The height of a line: baseline plus descent, the distance between wrapped lines.
     pub fn line_height(&self) -> i32 {
-        self.ascent() + self.descent()
+        self.baseline() + self.descent()
     }
 
     /// The advance of one character in whole pixels.
@@ -167,11 +188,12 @@ impl Font {
 
     /// The glyph of a character, drawn at the first use.
     pub(crate) fn glyph(&mut self, byte: u8) -> &Glyph {
-        let (face, hinter, ppem) = (self.face, self.hinter.as_ref(), self.ppem);
+        let (face, hinter) = (self.face, self.hinter.as_ref());
+        let (bold, ppem) = (self.bold, self.ppem);
         let advance = i32::from(self.advances[usize::from(byte)]);
-        self.glyphs
-            .entry(byte)
-            .or_insert_with(|| raster::glyph(&face.outlines, hinter, face.id(byte), ppem, advance))
+        self.glyphs.entry(byte).or_insert_with(|| {
+            raster::glyph(&face.outlines, hinter, face.id(byte), (bold, ppem), advance)
+        })
     }
 }
 

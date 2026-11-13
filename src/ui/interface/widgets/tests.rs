@@ -33,8 +33,8 @@ fn solid(w: u16, h: u16, rgb: [u8; 3]) -> Vec<u8> {
 const BAR: &str = "type=UIScrollBar\ndx=8\nupArrow=ui/up.tga\ndownArrow=ui/down.tga\n\
                    thumb=ui/thumb.tga\n";
 
-/// A window of 100 x 80 pixels. Layout 10 holds a list 20 (40 x 36, three rows of 12 pixels)
-/// with its bar 21 (arrows and thumb of 8 pixels, so the thumb travels 12 pixels of the 36), a
+/// A window of 100 x 80 pixels. Layout 10 holds a list 20 (40 x 42, three rows of 14 pixels)
+/// with its bar 21 (arrows and thumb of 8 pixels, so the thumb travels 18 pixels of the 42), a
 /// text field 30 (at most 5 characters), a digits-only field 31, a read-only list 22 with the
 /// bar 23, a bar 40 with no owner, and a text 50 of three lines with its bar 51.
 fn interface(name: &str) -> Interface {
@@ -43,7 +43,7 @@ fn interface(name: &str) -> Interface {
         [b]\ntype=UILayout\nlayout=ui/panel.lyt\n";
     let panel = format!(
         "[LayoutInfo]\nid=10\nlayer=1\nx=0\ny=0\ndx=whole\ndy=whole\n\
-         [a]\ntype=UIListBox\nid=20\nx=0\ny=0\ndx=40\ndy=36\nscrollbar=21\n\
+         [a]\ntype=UIListBox\nid=20\nx=0\ny=0\ndx=40\ndy=42\nscrollbar=21\n\
          [b]\nid=21\nx=77\ny=77\n{BAR}\
          [c]\ntype=UIEditableText\nid=30\nx=50\ny=0\ndx=40\ndy=14\ncharlimit=5\ntransparent=0\n\
          [d]\ntype=UIEditableText\nid=31\nx=50\ny=20\ndx=40\ndy=14\nnumeric=1\ntransparent=0\n\
@@ -138,7 +138,7 @@ fn a_bar_is_placed_by_its_owner_whatever_its_own_position_says() {
     let ui = interface("placed");
     let rect = |id| ui.tree.rect(ui.tree.find(id).unwrap());
     // Right of the list, as long as it.
-    assert_eq!(rect(21), (40, 0, 8, 36));
+    assert_eq!(rect(21), (40, 0, 8, 42));
     assert_eq!(rect(23), (70, 40, 8, 24));
     // A bar with no owner keeps its place.
     assert_eq!(rect(40), (0, 40, 8, 0));
@@ -203,8 +203,8 @@ fn the_arrows_step_by_one_and_repeat_while_held_on_the_same_part() {
     let mut ui = interface("arrows");
     let mut now = 0u64;
     ui.set_rows(20, rows(10));
-    // The down arrow is the last 8 pixels of the bar (x 40 to 47, y 28 to 35).
-    let events = press(&mut ui, 44, 30);
+    // The down arrow is the last 8 pixels of the bar (x 40 to 47, y 34 to 41).
+    let events = press(&mut ui, 44, 36);
     assert_eq!(events, ["scroll 21 1"]);
     assert_eq!((position(&ui, 21), top(&ui, 20)), (1, 1));
     assert_eq!(ui.take_actions(), [Action::Scroll(21, 1)]);
@@ -223,7 +223,7 @@ fn the_arrows_step_by_one_and_repeat_while_held_on_the_same_part() {
     tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 3);
     // Back on it: the steps go on. Released: they stop.
-    at(&mut ui, 44, 30);
+    at(&mut ui, 44, 36);
     tick(&mut ui, &mut now);
     assert_eq!(position(&ui, 21), 4);
     release(&mut ui);
@@ -253,7 +253,7 @@ fn a_press_on_the_track_moves_a_page_toward_the_pointer_until_the_thumb_is_there
     ui.set_rows(20, rows(10));
     // The thumb starts under the up arrow (y 8 to 15); a press below it pages down by two.
     assert_eq!(press(&mut ui, 44, 25), ["scroll 21 2"]);
-    // The thumb has moved to y 8 + 12 * 2 / 7 = 11, to 18. Held there, the track below keeps
+    // The thumb has moved to y 8 + 18 * 2 / 7 = 13, to 20. Held there, the track below keeps
     // paging; the pointer at y 14 is now over the thumb, so the paging stops.
     at(&mut ui, 44, 14);
     for _ in 0..40 {
@@ -269,13 +269,13 @@ fn a_press_on_the_track_moves_a_page_toward_the_pointer_until_the_thumb_is_there
 fn the_thumb_follows_the_pointer_where_it_was_grabbed() {
     let mut ui = interface("thumb");
     ui.set_rows(20, rows(10));
-    // Grab the thumb 4 pixels from its start (y 8) and pull down by 6 pixels: it starts at 14,
-    // 6 of 12 pixels of travel, 3.5 of 7 rows, rounded down.
+    // Grab the thumb 4 pixels from its start (y 8) and pull down by 9 pixels: it starts at 17,
+    // 9 of 18 pixels of travel, 3.5 of 7 rows, rounded down.
     assert!(
         press(&mut ui, 44, 12).is_empty(),
         "a press on the thumb moves nothing"
     );
-    at(&mut ui, 44, 18);
+    at(&mut ui, 44, 21);
     assert_eq!(ui.take_events(), ["scroll 21 3"]);
     assert_eq!(top(&ui, 20), 3);
     // Further than the bar: the end; the pointer may leave the bar sideways.
@@ -328,7 +328,7 @@ fn the_wheel_scrolls_two_rows_a_notch_when_there_is_more_than_shown() {
 #[test]
 fn the_wheel_scrolls_a_text_by_its_bar_and_ignores_other_elements() {
     let mut ui = interface("textwheel");
-    // Four lines of a text 24 wide and 14 high (one line of 12 shows).
+    // Four lines of a text 24 wide and 14 high (one line of 14 shows).
     ui.set_text(50, b"a\nb\nc\nd");
     at(&mut ui, 62, 70);
     ui.take_events();
@@ -351,7 +351,7 @@ fn pressing_a_row_selects_it_and_releasing_runs_the_select_action() {
     // The selection follows the pointer while held; the action runs at the release.
     press(&mut ui, 10, 3);
     at(&mut ui, 10, 30);
-    at(&mut ui, 10, 25);
+    at(&mut ui, 10, 35);
     assert_eq!(ui.take_events(), ["row 20 2"]);
     assert_eq!(release(&mut ui), ["select 20 2"]);
     // Below the last row: none, and the action says -1. Rows scrolled out of sight count.
@@ -466,14 +466,14 @@ fn the_hovered_part_of_a_bar_and_row_of_a_list_are_tracked() {
     assert_eq!(parts(&ui).0, Some(Part::Thumb));
     at(&mut ui, 44, 20);
     assert_eq!(parts(&ui).0, Some(Part::Track));
-    press(&mut ui, 44, 30);
+    press(&mut ui, 44, 36);
     assert_eq!(parts(&ui), (Some(Part::Down), Some(Part::Down)));
     release(&mut ui);
     assert_eq!(parts(&ui).1, None);
     at(&mut ui, 95, 70);
     assert_eq!(parts(&ui).0, None, "the pointer left the bar");
     // The press on the down arrow scrolled by one row.
-    at(&mut ui, 10, 27);
+    at(&mut ui, 10, 30);
     assert_eq!(row(&ui), Some(3));
     ui.mouse(Mouse::Wheel(-1));
     at(&mut ui, 10, 35);
@@ -720,7 +720,7 @@ fn the_wheel_scrolls_a_list_only_when_it_has_a_bar_and_the_dragged_thumb_snaps_o
         "under the pointer, 6 further than the first place"
     );
     at(&mut ui, 44, 500);
-    assert_eq!(dragged(&ui), Some(20), "kept to the travel");
+    assert_eq!(dragged(&ui), Some(26), "kept to the travel");
     release(&mut ui);
     assert_eq!(dragged(&ui), None);
 }
@@ -729,7 +729,7 @@ fn the_wheel_scrolls_a_list_only_when_it_has_a_bar_and_the_dragged_thumb_snaps_o
 fn a_list_draws_whole_rows_inside_its_borders_and_finds_rows_under_them() {
     let mut ui = interface("rowsfit");
     let i = ui.tree.find(20).unwrap();
-    // A border of 3 pixels: 36 - 6 = 30 pixels hold two rows of 12.
+    // A border of 3 pixels: 42 - 6 = 36 pixels hold two rows of 14.
     ui.tree.elements[i].y_border = 3;
     ui.set_rows(20, rows(10));
     let max_top = match &ui.tree.elements[ui.tree.find(21).unwrap()].kind {
@@ -737,10 +737,10 @@ fn a_list_draws_whole_rows_inside_its_borders_and_finds_rows_under_them() {
         _ => unreachable!(),
     };
     assert_eq!(max_top, 8, "two rows shown, eight beyond");
-    // The first row is 3 to 15 pixels down.
+    // The first row is 3 to 17 pixels down.
     assert_eq!(press(&mut ui, 10, 4), ["focus 20", "row 20 0"]);
     release(&mut ui);
-    assert_eq!(press(&mut ui, 10, 16), ["row 20 1"]);
+    assert_eq!(press(&mut ui, 10, 18), ["row 20 1"]);
 }
 
 #[test]
