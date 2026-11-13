@@ -157,14 +157,18 @@ impl Font {
     /// Pixels from the top of a line to the baseline the letters sit on: Windows' value at the
     /// shipped sizes, the rounding rule of text 4.1 elsewhere.
     pub(crate) fn baseline(&self) -> i32 {
-        self.windows_rows()
-            .map_or(div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32, |r| r.0)
+        self.windows_rows().map_or(
+            div_round(WIN_ASCENT * i64::from(self.ppem), UNITS) as i32,
+            |r| r.0,
+        )
     }
 
     /// Pixels from the baseline to the bottom of a line, chosen as [`Font::baseline`] is.
     pub(crate) fn descent(&self) -> i32 {
-        self.windows_rows()
-            .map_or(div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32, |r| r.1)
+        self.windows_rows().map_or(
+            div_round(WIN_DESCENT * i64::from(self.ppem), UNITS) as i32,
+            |r| r.1,
+        )
     }
 
     /// The height of a line: baseline plus descent, the distance between wrapped lines.
