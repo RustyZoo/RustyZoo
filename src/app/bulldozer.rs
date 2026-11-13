@@ -6,6 +6,7 @@
 use super::*;
 use crate::entity::Catalogue;
 use crate::place::bulldozer::{self, Check, Question};
+use crate::render::order::Kind;
 use crate::staff;
 use crate::text::format::{self, Arg, expand, whole_units};
 use std::collections::VecDeque;
@@ -22,6 +23,8 @@ const DRAIN: i32 = 160;
 /// The message of a click on a tank wall between a show tank and another tank.
 const NOT_MERGED: i32 = 10571;
 const EXHIBIT: i32 = 6208;
+/// The type text of the car scenery, which never gets the hover label (unit placing 8.8 point 8).
+const CAR: i32 = 6138;
 
 /// What the bulldozer would remove now: the entities (positions in `zoo.entities`, valid while
 /// the world stands still), their refunds, and the rectangle an area drag outlines.
@@ -80,8 +83,15 @@ impl Game {
     }
 
     /// The transient items of the bulldozer: what it would remove, tinted, and the outline of
-    /// the rectangle of a drag.
+    /// the rectangle of a drag; with no tool, the selectable entity under the pointer in the
+    /// highlight colour.
     pub(super) fn dozer_extra(&self, extra: &mut Extra) {
+        let hovered = self.placing.hovered.filter(|h| h.1);
+        extra.tinted.extend(
+            hovered
+                .and_then(|(id, _)| self.world.find(id))
+                .map(|e| (e, self.placing.tints.highlight)),
+        );
         extra.tinted.extend(
             self.dozer
                 .at
@@ -107,7 +117,8 @@ impl App<'_> {
     /// Works out what the bulldozer would remove from the pointer (and the press, if one is
     /// held), tells it when it changed (`tool bulldoze none`, `tool bulldoze CLASS/TYPE/SUBTYPE
     /// id N refund R name=NAME`, `tool bulldoze area X,Y X,Y objects N refund R`) and has the
-    /// first hovered object's name shown as a tooltip.
+    /// first hovered object's own name shown as a tooltip. With no tool the hover of unit
+    /// placing 8.8 ([`App::hover_aim`]) runs once per draw instead.
     pub(super) fn dozer_aim(&mut self) {
         playing!(self, game, ui);
         let cat = self.renderer.catalogue();
@@ -167,7 +178,10 @@ impl App<'_> {
         let single = d.head.as_ref().filter(|_| d.rect.is_none());
         let entity = single.map(|&e| &game.world.zoo.entities[e]);
         let ty = entity.and_then(|e| crate::entity::type_of(cat, e));
-        ui.help_tip(ty.map_or(0, |t| t.name_id));
+        match entity.and_then(|e| e.common.as_ref()).map(|c| &c.name) {
+            Some(name) if !name.is_empty() => ui.text_tip(name),
+            _ => ui.help_tip(ty.map_or(0, |t| t.name_id)),
+        }
         let line = match (d.rect, entity) {
             (Some((a, b)), _) => format!(
                 "bulldoze area {},{} {},{} objects {} refund {whole}",
@@ -189,6 +203,58 @@ impl App<'_> {
         };
         self.lines.tool.push(format!("tool {line}"));
         ui.touch();
+    }
+
+    /// The hover with no tool (unit placing 8.8), run once per draw after the picture is made, only
+    /// while the window is active: the selectable entity under the pointer is tinted from the
+    /// next draw (see [`Game::dozer_extra`]) and its own name is the tooltip, once per entity.
+    /// While the map is not the hover element, or a tool or dialog has the pointer, the label is
+    /// left alone.
+    pub(super) fn hover_aim(&mut self) {
+        let assigning = self.assigning().is_some();
+        playing!(self, game, ui);
+        let cat = self.renderer.catalogue();
+        let (world, build) = (&game.world, &game.build);
+        let free = game.placing.hover
+            && !(assigning || ui.modal_open() || game.terrain.cursor().is_some())
+            && !(build.bulldozing() || build.gating() || build.dragging())
+            && build.tool().is_none()
+            && game.carry.is_none()
+            && game.placing.run.is_empty();
+        if !free {
+            game.placing.hovered = None;
+            return;
+        }
+        let picked = game
+            .staged
+            .pick(game.camera.view_point(ui.pointer()), 0, |id| {
+                world.find(id).is_some()
+            })
+            .and_then(|id| world.find(id));
+        let id = picked.and_then(|at| world.zoo.entities[at].common.as_ref().map(|c| c.id));
+        let tinted = picked.is_some_and(|at| selectable(world, cat, at));
+        let before = std::mem::replace(&mut game.placing.hovered, id.map(|i| (i, tinted)));
+        if before.map(|b| b.0) == id {
+            return;
+        }
+        let Some(at) = picked else {
+            return ui.help_tip(0);
+        };
+        let entity = &world.zoo.entities[at];
+        let ty = crate::entity::type_of(cat, entity);
+        // A fence piece has a label only as a gate, a path none; the car type is skipped.
+        let named = match Kind::of_class(&entity.class) {
+            Kind::Edge | Kind::Wall => world.is_door(at),
+            Kind::Path => false,
+            _ => true,
+        };
+        if ty.is_some_and(|t| t.name_id == CAR) {
+            return;
+        }
+        match (named, entity.common.as_ref()) {
+            (true, Some(c)) => ui.text_tip(&c.name),
+            _ => ui.help_tip(0),
+        }
     }
 
     /// The release of a bulldozer press on the map: the hovered object, or the objects of the
@@ -466,6 +532,24 @@ pub(super) fn question_text(
         Question::Escape(x) => {
             let tank = world.exhibits().get(x).is_some_and(|e| e.tank.is_some());
             template(if tank { DRAIN } else { ESCAPE })
+        }
+    }
+}
+
+/// Whether the entity at position `e` can be selected (unit placing 8.1 point 3): every unit but a
+/// dying animal, and an object whose type has `cSelectable` 1 (default 0).
+fn selectable(world: &World, cat: &Catalogue, e: usize) -> bool {
+    let entity = &world.zoo.entities[e];
+    let id = entity.common.as_ref().map(|c| c.id);
+    match Kind::of_class(&entity.class) {
+        Kind::Unit => !matches!(
+            id.and_then(|id| world.units.get(id)).map(|u| &u.part),
+            Some(crate::unit::Part::Animal(a)) if a.dying
+        ),
+        Kind::Flight | Kind::Overlay | Kind::Sparkle => false,
+        _ => {
+            crate::entity::type_of(cat, entity).and_then(|t| crate::build::number(t, "cSelectable"))
+                == Some(1.0)
         }
     }
 }

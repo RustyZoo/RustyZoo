@@ -145,6 +145,9 @@ fn seat(world: &mut World, id: u32, kind: &Kind, unit: u32, slot: usize, now: u3
     if let Some(Live { users, .. }) = world.units.buildings.get_mut(&id) {
         users.push((unit, slot, entered));
     }
+    if let Some(live) = world.units.buildings.get_mut(&id) {
+        live.tops.insert(slot, unit);
+    }
 }
 
 /// Seats the users restored for a type whose users sit visible on draw places (shows 4.3), in
