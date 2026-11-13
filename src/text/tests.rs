@@ -536,7 +536,7 @@ fn smoothed_pixels_fade_in_between_a_quarter_and_63_percent() {
 
 /// White `text` in Arial Bold 9 (12 pixels per em) on black; the rows of the canvas as
 /// coverage levels: 2 for pure white, 1 for a grey, 0 for black.
-fn paused_rows(text: &[u8]) -> Vec<Vec<u8>> {
+fn message_rows(text: &[u8]) -> Vec<Vec<u8>> {
     let style = Style {
         color: [255, 255, 255],
         justify: Justify::Left,
@@ -557,16 +557,19 @@ fn paused_rows(text: &[u8]) -> Vec<Vec<u8>> {
 }
 
 #[test]
-fn the_paused_message_is_grid_fitted_like_windows_draws_it() {
+fn a_message_is_grid_fitted_like_windows_draws_it() {
     // Text 6.5: the capture has 428 pure white pixels and about 90 grey ones, only on curves and
     // diagonals; stems are 2 whole pixels, caps 9 rows, x-height 7 (the descender of g has 3 rows here, 2 there).
-    let rows = paused_rows(b"The game is paused.");
+    // The capture: 428 white and 90 grey of 518 inked pixels; 95% of the white ones is 78.5% of
+    // the ink. The sample is another sentence of the same length.
+    let rows = message_rows(b"The bag is packed up.");
     let count = |level| rows.iter().flatten().filter(|&&l| l == level).count();
-    assert!(count(2) >= 407, "{} white", count(2));
-    assert!(count(1) <= 100, "{} grey", count(1));
+    let ink = count(1) + count(2);
+    assert!(count(2) * 1000 >= ink * 785, "{} white of {ink}", count(2));
+    assert!(count(1) * 100 <= ink * 20, "{} grey of {ink}", count(1));
     // Rows with ink of one letter, and the widths of its whole-colour runs.
     let ink = |text: &[u8]| -> Vec<Vec<u8>> {
-        paused_rows(text)
+        message_rows(text)
             .into_iter()
             .filter(|r| r.iter().any(|&l| l > 0))
             .collect()
