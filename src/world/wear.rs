@@ -361,14 +361,14 @@ impl World {
 
     /// The end of a load breaks again the pieces with a life below 1 that can deteriorate (placing
     /// 7.4 "Breaking"), in entity list order: life and strength 0 (a stored -1 becomes 0) and the
-    /// type's break sound, and the exhibits beside it are marked for the escape check. Returns the
+    /// exhibits beside it are marked for the escape check; no sound. Returns the
     /// ids of those that start an animation; they draw two start times (sprite drawing 3.6 item 4).
     pub(crate) fn break_loaded(&mut self, cat: &Catalogue) -> Vec<u32> {
         let mut ids = Vec::new();
         for at in 0..self.zoo.entities.len() {
-            let Some(ty) = self.breakable(cat, at) else {
+            if self.breakable(cat, at).is_none() {
                 continue;
-            };
+            }
             let Some(c) = self.zoo.entities[at].common.as_mut() else {
                 continue;
             };
@@ -379,10 +379,8 @@ impl World {
                 continue;
             }
             (f.life, f.strength) = (0, 0);
-            let voice = format!("{id}/cBreakSound");
-            let heard = crate::unit::gate::heard_of(ty, "cBreakSound", "cBreakSoundAtten", &voice);
-            self.units.push_sound(id, heard);
-            // The whole break routine runs at load: the exhibits beside it get the escape check.
+            // Silent at load (placing 7.4 "The break sound" 4); the exhibits beside the piece get
+            // the escape check.
             self.fence_changed(at, true);
             if self.loops(at) {
                 ids.push(id);
