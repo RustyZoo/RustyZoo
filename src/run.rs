@@ -65,6 +65,18 @@ struct Flags {
     seed: Option<u32>,
 }
 
+impl Flags {
+    /// A player's plain window: no headless run, log, picture, script or seed, which keep the
+    /// embedded font so that they draw and replay the same on every system.
+    fn interactive(&self) -> bool {
+        !self.headless
+            && self.log.is_none()
+            && self.shot.is_none()
+            && self.script.is_none()
+            && self.seed.is_none()
+    }
+}
+
 #[cfg(test)]
 fn flags(words: &[&str]) -> Result<Flags, CliError> {
     parse_flags(words, false)
@@ -487,6 +499,7 @@ pub fn run(
         Some(member) => Some(load_game(vfs, member, flags.cash)?),
         None => None,
     };
+    rustyzoo::text::use_system_fonts(flags.interactive());
     if !flags.headless {
         return crate::window::run(
             vfs,

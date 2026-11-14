@@ -10,7 +10,9 @@
 //! `format`.
 //!
 //! The font files are embedded unmodified (see `fonts/README.md`), so the metrics and the
-//! pictures are the same on every system. Glyphs are fitted to the pixel grid and rasterised
+//! pictures are the same on every system. An interactive run draws with the system's Arial
+//! instead when it finds one (`use_system_fonts`, `system`); the line heights, descents and
+//! advances do not change. Glyphs are fitted to the pixel grid and rasterised
 //! by `raster`. Fonts are cached per (face, size) and glyphs per (font, character).
 
 use skrifa::charmap::Charmap;
@@ -18,7 +20,9 @@ use skrifa::instance::{LocationRef, Size};
 use skrifa::outline::{HintingInstance, OutlineGlyphCollection};
 use skrifa::{FontRef, GlyphId, MetadataProvider};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const REGULAR: &[u8] = include_bytes!("../fonts/LiberationSans-Regular.ttf");
 const BOLD: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
@@ -59,6 +63,8 @@ pub struct Font {
 
 /// The parsed font file of one weight.
 struct Face {
+    /// Whether it is the system's Arial, whose heights need no fit to Arial's rows.
+    system: bool,
     outlines: OutlineGlyphCollection<'static>,
     charmap: Charmap<'static>,
     font: FontRef<'static>,
@@ -71,18 +77,65 @@ impl Face {
     }
 }
 
+/// Whether faces made from now on may come from the system.
+static SYSTEM: AtomicBool = AtomicBool::new(false);
+
+/// Lets the faces not yet made be the system's Arial when `interactive` (a player's plain window
+/// calls it before it draws). Any other run, and `ZT_EMBEDDED_FONT` set to anything, keeps the
+/// embedded font.
+pub fn use_system_fonts(interactive: bool) {
+    let forced = std::env::var_os("ZT_EMBEDDED_FONT").is_some();
+    SYSTEM.store(system::wanted(!interactive, forced), Ordering::Relaxed);
+}
+
 fn face(bold: bool) -> &'static Face {
     static FACES: [OnceLock<Face>; 2] = [OnceLock::new(), OnceLock::new()];
     FACES[usize::from(bold)].get_or_init(|| {
+        let dirs = match SYSTEM.load(Ordering::Relaxed) {
+            true => system::dirs(std::env::consts::OS, |name| std::env::var_os(name)),
+            false => Vec::new(),
+        };
+        load(bold, &dirs)
+    })
+}
+
+/// The face of one weight: Arial from the first of `dirs` that holds a usable one, else the
+/// embedded Liberation Sans.
+fn load(bold: bool, dirs: &[PathBuf]) -> Face {
+    let from_system = system::read(dirs, bold).find_map(|bytes| {
+        let bytes: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+        FontRef::new(bytes)
+            .ok()
+            .filter(usable)
+            .map(|f| make(f, true))
+    });
+    from_system.unwrap_or_else(|| {
         let bytes = if bold { BOLD } else { REGULAR };
         // The embedded files are fixed and valid.
-        let font = FontRef::new(bytes).expect("embedded font parses");
-        Face {
-            outlines: font.outline_glyphs(),
-            charmap: font.charmap(),
-            font,
-        }
+        make(FontRef::new(bytes).expect("embedded font parses"), false)
     })
+}
+
+fn make(font: FontRef<'static>, system: bool) -> Face {
+    Face {
+        system,
+        outlines: font.outline_glyphs(),
+        charmap: font.charmap(),
+        font,
+    }
+}
+
+/// Whether a font has the units per em the metrics assume and an `A` that draws some ink once
+/// hinted (zeroed or cut glyph data draws none).
+fn usable(font: &FontRef<'static>) -> bool {
+    let metrics = font.metrics(Size::unscaled(), LocationRef::default());
+    let face = make(font.clone(), true);
+    metrics.units_per_em == UNITS as u16
+        && font.charmap().map('A').is_some_and(|id| {
+            let hinter = raster::hinter(&face.outlines, 16);
+            let glyph = raster::glyph(&face.outlines, hinter.as_ref(), id, (false, 16, false), 11);
+            glyph.coverage.iter().any(|&c| c > 0)
+        })
 }
 
 /// Rounds `a / b` half up, for non-negative `a`.
@@ -192,7 +245,14 @@ impl Font {
         let (bold, ppem) = (self.bold, self.ppem);
         let advance = i32::from(self.advances[usize::from(byte)]);
         self.glyphs.entry(byte).or_insert_with(|| {
-            raster::glyph(&face.outlines, hinter, face.id(byte), (bold, ppem), advance)
+            let fit = !face.system;
+            raster::glyph(
+                &face.outlines,
+                hinter,
+                face.id(byte),
+                (bold, ppem, fit),
+                advance,
+            )
         })
     }
 }
@@ -289,6 +349,7 @@ mod draw;
 pub mod format;
 mod layout;
 mod raster;
+mod system;
 
 pub use draw::{Style, draw, fill_color, text_color};
 pub use layout::{Justify, Line, Rect, layout, measure, tooltip_size};
