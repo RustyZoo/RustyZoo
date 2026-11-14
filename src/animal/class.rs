@@ -277,7 +277,7 @@ impl Keys {
 /// The keys of the species read so far, by definition file and subtype, with the class keys
 /// they were read with: [`Keys::of`] reads some eighty keys, and every needs check asks for them.
 #[derive(Debug, Default)]
-pub(crate) struct KeysRead(std::cell::RefCell<Read>);
+pub(crate) struct KeysRead(pub(super) std::cell::RefCell<Read>);
 
 type Read = (Option<Class>, HashMap<usize, (Arc<Config>, Vec<(Vec<u8>, Keys)>)>);
 

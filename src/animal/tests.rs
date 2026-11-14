@@ -421,6 +421,41 @@ fn the_keys_come_from_the_subtype_then_the_default_then_the_plain_section_and_th
     assert_eq!(Class::default().periods[WATER], 30);
 }
 
+#[test]
+fn the_keys_of_a_type_are_read_once_and_follow_the_class_and_the_subtype() {
+    let file = Arc::new(config(
+        "[f/Characteristics/Integers]\ncCrowd=9\n[Characteristics/Integers]\ncCrowd=3\n",
+    ));
+    let ty = |subtype: &[u8]| EntityType {
+        class: "animals",
+        type_name: b"zebra".to_vec(),
+        subtype: subtype.to_vec(),
+        file: None,
+        config: Some(file.clone()),
+        name_id: 0,
+        footprint: [1, 1, 1],
+        height: 0,
+    };
+    let (f, m) = (ty(b"f"), ty(b"m"));
+    let read = KeysRead::default();
+    let class = Class::default();
+    for _ in 0..2 {
+        assert_eq!(read.of(&f, &class), Keys::of(&f, &class));
+        assert_eq!(read.of(&m, &class).crowd, 3);
+    }
+    assert_eq!(read.of(&f, &class).crowd, 9);
+    let types = |r: &KeysRead| r.0.borrow().1.values().map(|t| t.1.len()).sum::<usize>();
+    assert_eq!(types(&read), 2, "one entry for each subtype");
+    let other = Class {
+        death_chance: 7,
+        ..Class::default()
+    };
+    assert_eq!(read.of(&f, &other).death_chance, 7);
+    assert_eq!(types(&read), 1, "a new class reads the keys again");
+    let none = EntityType { config: None, ..ty(b"f") };
+    assert_eq!(read.of(&none, &class), Keys::of(&none, &class));
+}
+
 // Four zebras in two pens of 3 by 3 tiles: the ground of the first is grass, which the species
 // likes, the ground of the other is of terrain type 2.
 const SIZE: i32 = 8;
