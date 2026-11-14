@@ -144,7 +144,7 @@ mod tests {
             }
         }
         // At 150% an 800x600 game is 1067x800 points, 1601x1200 pixels or 1600x1200.
-        assert_eq!(plan((800, 600), 1.5, 1.5, (0, 0)).1, (1067, 400 * 2));
+        assert_eq!(plan((800, 600), 1.5, 1.5, (0, 0)).1, (1067, 800));
         // A huge game does not overflow.
         assert_eq!(plan((u32::MAX, 1), 3.0, 1.0, (0, 0)).0, 3);
     }

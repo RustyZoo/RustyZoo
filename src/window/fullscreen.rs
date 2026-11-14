@@ -78,10 +78,7 @@ mod tests {
         // A 3456x2234 Retina panel is 1728x1117 points: a 1152x744 game fits once in points but
         // three times in pixels, and fills the display with a row of black above and below.
         assert_eq!(whole((3456, 2234), (1152, 744)), 3);
-        assert_eq!(
-            fit((3456, 2234), (1152, 744)),
-            (0.0, 1.0, 3456.0, 2232.0)
-        );
+        assert_eq!(fit((3456, 2234), (1152, 744)), (0.0, 1.0, 3456.0, 2232.0));
         assert_eq!(fit((3456, 2234), (1024, 768)).2, 2048.0);
         assert_eq!(whole((1920, 1080), (640, 360)), 3);
         assert_eq!(whole((2560, 1600), (1280, 800)), 2);
