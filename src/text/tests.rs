@@ -851,7 +851,7 @@ fn a_usable_system_arial_is_read_and_anything_else_falls_back() {
 #[test]
 fn the_search_folders_follow_the_system() {
     let env = |name: &str| match name {
-        "HOME" => Some("/home/u".into()),
+        "HOME" => Some("/u".into()),
         "WINDIR" => Some(r"D:\Win".into()),
         _ => None,
     };
@@ -861,10 +861,10 @@ fn the_search_folders_follow_the_system() {
     );
     let mac = system::dirs("macos", env);
     assert!(mac.contains(&PathBuf::from("/System/Library/Fonts/Supplemental")));
-    assert!(mac.contains(&PathBuf::from("/home/u/Library/Fonts")));
+    assert!(mac.contains(&PathBuf::from("/u/Library/Fonts")));
     let linux = system::dirs("linux", env);
     assert!(linux.contains(&PathBuf::from("/usr/share/fonts/truetype/msttcorefonts")));
-    assert!(linux.contains(&PathBuf::from("/home/u/.local/share/fonts")));
+    assert!(linux.contains(&PathBuf::from("/u/.local/share/fonts")));
     // No home and no Windows folder variable: the fixed folders only.
     assert_eq!(
         system::dirs("windows", |_| None),
