@@ -733,12 +733,19 @@ impl Units {
         if !self.follow(entities) {
             self.rebuild(entities);
         }
-        // A thought about a scenery object or a building that is gone goes with it.
-        if self.thoughts.has_objects() {
-            let ids: std::collections::HashSet<u32> = (entities.iter())
-                .filter_map(|e| e.common.as_ref().map(|c| c.id))
-                .collect();
-            self.thoughts.keep_objects(|o| ids.contains(&o));
+        // A thought about a scenery object or a building that is gone goes with it: the few
+        // objects of the thoughts are looked for in the entities.
+        let mut about: Vec<u32> = self.thoughts.iter().filter_map(|t| t.object).collect();
+        about.sort_unstable();
+        about.dedup();
+        let mut found = vec![false; about.len()];
+        for c in entities.iter().filter_map(|e| e.common.as_ref()) {
+            if let Ok(k) = about.binary_search(&c.id) {
+                found[k] = true;
+            }
+        }
+        if found.contains(&false) {
+            (self.thoughts).keep_objects(|o| about.binary_search(&o).is_ok_and(|k| found[k]));
         }
         // A removed unit is no user of a building.
         for live in self.buildings.values_mut() {
