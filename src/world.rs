@@ -702,17 +702,24 @@ impl World {
     /// Every question about where a piece stands goes through here and the slot lookup
     /// ([`World::edge`]), not through the piece's own position.
     pub(crate) fn slot(&self, e: usize) -> Option<(usize, usize)> {
-        let o = self.owner.iter().position(|&owner| owner == e)?;
+        let o = self.owner.binary_search(&e).ok()?;
         let obj = &self.scene.objects[o];
         let t = self.scene.tile_at(obj.x, obj.y)?;
         let d = obj.facing as usize;
         (self.scene.edge_object(t, d) == Some(o)).then_some((t, d))
     }
 
+    /// The own tile of the object at position `e` of the entity list: [`World::footprint`]
+    /// without the footprint tiles.
+    pub(crate) fn own_tile(&self, e: usize) -> Option<usize> {
+        let obj = &self.scene.objects[self.owner.binary_search(&e).ok()?];
+        self.scene.tile_at(obj.x, obj.y)
+    }
+
     /// The own tile and the footprint tiles of the object at position `e` of the entity list
     /// (guest buildings 11.1.1); `None` for an entity the map index does not hold.
     pub(crate) fn footprint(&self, e: usize) -> Option<(Option<usize>, Vec<usize>)> {
-        let o = self.owner.iter().position(|&owner| owner == e)?;
+        let o = self.owner.binary_search(&e).ok()?;
         let obj = &self.scene.objects[o];
         Some((
             self.scene.tile_at(obj.x, obj.y),
