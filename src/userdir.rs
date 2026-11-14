@@ -22,7 +22,7 @@ pub fn dir() -> Option<PathBuf> {
 }
 
 /// [`dir`] for the operating system `os` and the environment `env`.
-fn dir_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+pub(crate) fn dir_of(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     folder(os, env, "XDG_CONFIG_HOME", ".config")
 }
 
@@ -83,6 +83,13 @@ fn folder(
 pub fn apply(vfs: &mut Vfs, dir: &Path) -> Result<(), String> {
     let over = read(dir)?;
     vfs.overlay_ini(&over).map_err(|e| e.to_string())
+}
+
+/// The value of `key` in `section` of the settings file of the folder `dir`, if it has one.
+pub(crate) fn setting(dir: &Path, section: &str, key: &str) -> Option<String> {
+    let config = read(dir).ok()?;
+    let value = config.section(section)?.get(key)?;
+    Some(String::from_utf8_lossy(value).into_owned())
 }
 
 /// The settings file of the folder `dir`; empty if it does not exist.

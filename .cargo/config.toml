@@ -8,3 +8,4 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [env]
 CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc = { value = ".cargo/static-crt.cmake", relative = true }
 CMAKE_TOOLCHAIN_FILE_i686_pc_windows_msvc = { value = ".cargo/static-crt.cmake", relative = true }
+CMAKE_TOOLCHAIN_FILE_aarch64_pc_windows_msvc = { value = ".cargo/static-crt.cmake", relative = true }

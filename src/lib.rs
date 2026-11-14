@@ -22,6 +22,7 @@ pub mod framelog;
 pub mod goal;
 pub mod ground;
 pub mod guest;
+pub mod install;
 pub mod intro;
 pub mod lists;
 pub mod marketing;
