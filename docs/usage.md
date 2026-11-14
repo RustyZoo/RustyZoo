@@ -2,7 +2,7 @@
 
 This is the full reference: every command, option, setting and test tool of RustyZoo.
 
-Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`) with `--data`, or with the `ZT_DATA_DIR` environment variable. Without either, it uses the folder remembered in `[RustyZoo] data` of the settings of the user folder, then looks in the usual places: `Microsoft Games`, Steam and GOG folders under Program Files and the registry on Windows; Wine (`$WINEPREFIX`, `~/.wine`) and Proton prefixes and the Steam and `~/GOG Games` folders on Linux; the same plus CrossOver bottles on macOS. A folder counts only if it holds `zoo.ini` or `zoodemo.ini`. When nothing is found, a windowed `run` (not `--headless`, and no other command) opens a folder picker and remembers the folder picked:
+Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`) with `--data`, or with the `ZT_DATA_DIR` environment variable. Without either, it uses the folder remembered in `[RustyZoo] data` of the settings of the user folder, then looks in the usual places: `Microsoft Games`, Steam and GOG folders under Program Files and the registry on Windows; Wine (`$WINEPREFIX`, `~/.wine`) and Proton prefixes and the Steam and `~/GOG Games` folders on Linux; the same plus CrossOver bottles on macOS. A folder counts only if it holds `zoo.ini` or `zoodemo.ini`. When nothing is found, a windowed `run` (not `--headless`, and no other command; no command at all counts as `run`) opens a folder picker and remembers the folder picked:
 
 ```
 rustyzoo --data "/path/to/Zoo Tycoon" ls 'animals/lion*'   # list files, sorted; * matches any text
@@ -52,6 +52,7 @@ rustyzoo run maps/default.zoo --headless --passes 100 --clock 67 --seed 1   # a 
 rustyzoo run --headless --passes 2000 --clock 200 --seed 5 --script freeform.txt   # a test run started from the main menu (a script that presses the freeform button and Play)
 rustyzoo run --headless --passes 5 --clock 20 --script ui.txt   # no map: start up to the main menu (the start-up picture, the loading steps, then the menu), and play the script on it; `[user] lastfile` decides whether Continue is enabled, and the settings written go to the user folder (set `RUSTYZOO_USER_DIR` to keep a test away from the real one)
 rustyzoo run                                       # the same in a window
+rustyzoo                                           # no command (a double-click): the same as `rustyzoo run`, and an error that ends it is also shown in a message box; on Windows no console window opens, and a command typed in a terminal writes there (in `cmd`, `start /wait rustyzoo ...` waits for it and keeps its exit status)
 rustyzoo run maps/default.zoo                      # play a map in a window
 rustyzoo "C:\My zoos\a.zoo"                        # a saved game as the first word (what a file association passes; the words after it that are not flags of `run` are ignored): it opens before the menu is shown, so the menu's Continue check does not run and `lastfile` stays; a file that does not load shows the loader's message over the menu, a path that does not open shows nothing
 rustyzoo check-render                             # draw every map in memory, print the summary per map and in total; exit 1 only if a map cannot be drawn
