@@ -730,42 +730,8 @@ impl Units {
     /// Makes the table follow the entity list: units that stand in it keep their state, new ones
     /// start, those that left are dropped. An entity whose id an earlier one has is not a unit.
     pub(crate) fn sync(&mut self, entities: &[Entity]) {
-        let before: Vec<u32> = self.list.iter().map(|u| u.id).collect();
-        let mut old: HashMap<u32, Unit> = std::mem::take(&mut self.list)
-            .into_iter()
-            .map(|u| (u.id, u))
-            .collect();
-        self.index.clear();
-        for e in entities {
-            let (Some(kind), Some(c)) = (Kind::of_class(&e.class), e.common.as_ref()) else {
-                continue;
-            };
-            if self.index.contains_key(&c.id) {
-                continue;
-            }
-            let unit = old
-                .remove(&c.id)
-                .filter(|u| u.kind == kind)
-                .unwrap_or_else(|| {
-                    self.lines.push(format!(
-                        "add {} {} {},{}",
-                        c.id,
-                        kind.name(),
-                        c.x.div_euclid(64),
-                        c.y.div_euclid(64)
-                    ));
-                    let mut unit = Unit::new(c.id, kind);
-                    unit.status_timer = first_timer(c.id, self.period);
-                    unit
-                });
-            self.index.insert(c.id, self.list.len());
-            self.list.push(unit);
-        }
-        for id in before {
-            if !self.index.contains_key(&id) {
-                self.lines.push(format!("remove {id}"));
-                self.thoughts.forget(id);
-            }
+        if !self.follow(entities) {
+            self.rebuild(entities);
         }
         // A thought about a scenery object or a building that is gone goes with it.
         if self.thoughts.has_objects() {
@@ -785,6 +751,91 @@ impl Units {
                 .collect();
             self.buildings.retain(|id, _| ids.contains(id));
             self.upgrade_index.retain(|id, _| ids.contains(id));
+        }
+    }
+
+    /// The table [`Units::rebuild`] makes, followed in place when the units of `entities` are
+    /// those of the table with one more at the end or one less (a unit arriving or leaving);
+    /// false, changing nothing, for any other change.
+    fn follow(&mut self, entities: &[Entity]) -> bool {
+        let mut live = (entities.iter())
+            .filter_map(|e| Some((e.common.as_ref()?, Kind::of_class(&e.class)?)));
+        let mut units = self.list.iter().enumerate();
+        let (first, now) = loop {
+            match (units.next(), live.next()) {
+                (Some((_, u)), Some((c, kind))) if (u.id, u.kind) == (c.id, kind) => {}
+                (u, l) => break (u.map(|(at, u)| (at, u.id)), l),
+            }
+        };
+        match (first, now) {
+            (None, None) => {}
+            (None, Some((c, kind))) => {
+                if live.next().is_some() || self.index.contains_key(&c.id) {
+                    return false;
+                }
+                self.index.insert(c.id, self.list.len());
+                let unit = self.start(c, kind);
+                self.list.push(unit);
+            }
+            (Some((at, id)), now) => {
+                let rest = now.into_iter().chain(live).map(|(c, kind)| (c.id, kind));
+                if !rest.eq(units.map(|(_, u)| (u.id, u.kind))) {
+                    return false;
+                }
+                self.list.remove(at);
+                self.index.remove(&id);
+                for (k, u) in self.list.iter().enumerate().skip(at) {
+                    self.index.insert(u.id, k);
+                }
+                self.lines.push(format!("remove {id}"));
+                self.thoughts.forget(id);
+            }
+        }
+        true
+    }
+
+    /// A new unit, logged.
+    fn start(&mut self, c: &crate::zoo::Common, kind: Kind) -> Unit {
+        self.lines.push(format!(
+            "add {} {} {},{}",
+            c.id,
+            kind.name(),
+            c.x.div_euclid(64),
+            c.y.div_euclid(64)
+        ));
+        let mut unit = Unit::new(c.id, kind);
+        unit.status_timer = first_timer(c.id, self.period);
+        unit
+    }
+
+    /// Builds the table from the entities: units that stand in it keep their state, new ones
+    /// start, those that left are dropped.
+    fn rebuild(&mut self, entities: &[Entity]) {
+        let before: Vec<u32> = self.list.iter().map(|u| u.id).collect();
+        let mut old: HashMap<u32, Unit> = std::mem::take(&mut self.list)
+            .into_iter()
+            .map(|u| (u.id, u))
+            .collect();
+        self.index.clear();
+        for e in entities {
+            let (Some(kind), Some(c)) = (Kind::of_class(&e.class), e.common.as_ref()) else {
+                continue;
+            };
+            if self.index.contains_key(&c.id) {
+                continue;
+            }
+            let unit = old
+                .remove(&c.id)
+                .filter(|u| u.kind == kind)
+                .unwrap_or_else(|| self.start(c, kind));
+            self.index.insert(c.id, self.list.len());
+            self.list.push(unit);
+        }
+        for id in before {
+            if !self.index.contains_key(&id) {
+                self.lines.push(format!("remove {id}"));
+                self.thoughts.forget(id);
+            }
         }
     }
 }
