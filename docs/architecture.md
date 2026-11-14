@@ -27,7 +27,7 @@ SDL3 is used only there, built from source and linked statically.
 
 - `sprite`, `bitmap`, `tga`, `ground`: sprite files and palettes; root bitmaps; terrain textures; one ground tile.
 - `anim`: animation sets and the choice of a picture.
-- `text`: embedded font with Arial's metrics (the system's Arial in a window); wrapping, drawing, number, money and date formats.
+- `text`: embedded font with Arial's metrics (the system's Arial in a plain window); wrapping, drawing, number, money and date formats.
 - `cursor`: the mouse cursors read from the resource DLLs.
 - `audio`, `music`, `soundscape`: sound playback on SDL3; menu music; the ambient one-shots of a game.
 - `movie`, `intro`, `startup`: AVI and Indeo 5 decoding; which intro movies play; the start-up picture.

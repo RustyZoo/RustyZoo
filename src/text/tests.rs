@@ -889,6 +889,9 @@ fn a_font_whose_glyph_data_draws_nothing_falls_back() {
     let cut = REGULAR[..off + len / 2].to_vec();
     for (name, bytes) in [("zeroed", zeroed), ("cut", cut)] {
         let dir = fonts_dir(name, &[("arial.ttf", &bytes)]);
-        assert!(!load(false, &[dir]).system, "{name} glyph data is not usable");
+        assert!(
+            !load(false, &[dir]).system,
+            "{name} glyph data is not usable"
+        );
     }
 }

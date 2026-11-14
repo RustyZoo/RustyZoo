@@ -1,4 +1,4 @@
-//! The system's Arial, read at run time and never shipped (text 9). Only the interactive run asks
+//! The system's Arial, read at run time and never shipped (text 9). Only a player's plain window asks
 //! for it; every other run, test and CI keeps the embedded Liberation Sans, so the pictures are
 //! the same on every system.
 
