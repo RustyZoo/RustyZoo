@@ -48,7 +48,7 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
             words.push(arg.into_string().map_err(|_| CliError::Usage)?);
         }
     }
-    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let words = command(&words);
     if data_dir.is_none() && pick::wanted(&words) {
         data_dir = game_folder(None)
             .ok()
@@ -145,6 +145,14 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
     }
 }
 
+/// The words of the command; none (a program opened from the file manager) starts the game.
+fn command(words: &[String]) -> Vec<&str> {
+    if words.is_empty() {
+        return vec!["run"];
+    }
+    words.iter().map(String::as_str).collect()
+}
+
 /// The first words of the commands above.
 const COMMANDS: &[&str] = &[
     "help",
@@ -238,5 +246,18 @@ impl Report {
     pub fn finish(mut self) -> Result<(), CliError> {
         let flushed = self.out.flush();
         ignore_closed_pipe(self.written.and(flushed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{command, pick};
+
+    #[test]
+    fn no_words_start_the_game() {
+        assert_eq!(command(&[]), ["run"]);
+        assert!(pick::wanted(&command(&[])));
+        assert_eq!(command(&["ls".into()]), ["ls"]);
+        assert_eq!(command(&["--help".into()]), ["--help"]);
     }
 }
