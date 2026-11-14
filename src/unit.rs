@@ -765,8 +765,8 @@ impl Units {
     /// those of the table with one more at the end or one less (a unit arriving or leaving);
     /// false, changing nothing, for any other change.
     fn follow(&mut self, entities: &[Entity]) -> bool {
-        let mut live = (entities.iter())
-            .filter_map(|e| Some((e.common.as_ref()?, Kind::of_class(&e.class)?)));
+        let mut live =
+            (entities.iter()).filter_map(|e| Some((e.common.as_ref()?, Kind::of_class(&e.class)?)));
         let mut units = self.list.iter().enumerate();
         let (first, now) = loop {
             match (units.next(), live.next()) {

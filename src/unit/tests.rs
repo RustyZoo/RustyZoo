@@ -868,7 +868,11 @@ fn the_table_followed_in_place_is_the_one_a_rebuild_gives() {
             a.rebuild(e);
         }
         b.rebuild(e);
-        assert_eq!((&a.list, &a.index, &a.lines), (&b.list, &b.index, &b.lines), "{what}");
+        assert_eq!(
+            (&a.list, &a.index, &a.lines),
+            (&b.list, &b.index, &b.lines),
+            "{what}"
+        );
         assert_eq!(a.thoughts, b.thoughts, "{what}");
     };
     step(&mut ab, &e, false, "first build");
