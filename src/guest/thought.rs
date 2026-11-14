@@ -81,11 +81,6 @@ impl Thoughts {
         self.0.retain(|t| t.object.is_none_or(&exists));
     }
 
-    /// Whether any thought is about an entity.
-    pub(crate) fn has_objects(&self) -> bool {
-        self.0.iter().any(|t| t.object.is_some())
-    }
-
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.0.len()

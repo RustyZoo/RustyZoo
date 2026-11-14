@@ -854,3 +854,52 @@ fn colours_are_drawn_per_group_modulo_its_palettes_and_always_the_same_number_of
 }
 
 mod live_set;
+
+#[test]
+fn the_table_followed_in_place_is_the_one_a_rebuild_gives() {
+    // `a` follows the entities in place where it can, `b` is always built again.
+    let mut ab = [Units::default(), Units::default()];
+    let mut e: Vec<Entity> = [("guests", 1), ("objects", 2), ("animals", 3), ("guests", 4)]
+        .map(|(class, id)| entity(class, id, (64 * id as i32, 0)))
+        .into();
+    let step = |[a, b]: &mut [Units; 2], e: &[Entity], in_place: bool, what: &str| {
+        assert_eq!(a.follow(e), in_place, "{what}");
+        if !in_place {
+            a.rebuild(e);
+        }
+        b.rebuild(e);
+        assert_eq!(
+            (&a.list, &a.index, &a.lines),
+            (&b.list, &b.index, &b.lines),
+            "{what}"
+        );
+        assert_eq!(a.thoughts, b.thoughts, "{what}");
+    };
+    step(&mut ab, &e, false, "first build");
+    for u in &mut ab {
+        u.list[0].status_timer = 99;
+        u.think(4, 10, Some(3), None);
+    }
+    e.push(entity("guests", 5, (0, 64)));
+    step(&mut ab, &e, true, "a guest arrives");
+    e.push(entity("building", 6, (64, 64)));
+    step(&mut ab, &e, true, "a building is put at the end");
+    e.remove(2);
+    step(&mut ab, &e, true, "an animal leaves");
+    e.remove(0);
+    step(&mut ab, &e, true, "the first unit leaves");
+    e.remove(3);
+    step(&mut ab, &e, true, "a building goes");
+    e.remove(2);
+    step(&mut ab, &e, true, "the last unit leaves");
+    e.insert(1, entity("guests", 7, (0, 0)));
+    step(&mut ab, &e, false, "a unit put in the middle");
+    e.push(entity("guests", 4, (0, 0)));
+    step(&mut ab, &e, false, "an id twice");
+    e.pop();
+    e[1].class = "animals".into();
+    step(&mut ab, &e, false, "a unit of another kind");
+    e.extend([8, 9].map(|id| entity("guests", id, (0, 0))));
+    step(&mut ab, &e, false, "two units arrive");
+    assert!(ab[0].lines.contains(&"remove 3".into()) && ab[0].thoughts.iter().next().is_none());
+}

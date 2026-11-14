@@ -730,6 +730,94 @@ impl Units {
     /// Makes the table follow the entity list: units that stand in it keep their state, new ones
     /// start, those that left are dropped. An entity whose id an earlier one has is not a unit.
     pub(crate) fn sync(&mut self, entities: &[Entity]) {
+        if !self.follow(entities) {
+            self.rebuild(entities);
+        }
+        // A thought about a scenery object or a building that is gone goes with it: the few
+        // objects of the thoughts are looked for in the entities.
+        let mut about: Vec<u32> = self.thoughts.iter().filter_map(|t| t.object).collect();
+        about.sort_unstable();
+        about.dedup();
+        let mut found = vec![false; about.len()];
+        for c in entities.iter().filter_map(|e| e.common.as_ref()) {
+            if let Ok(k) = about.binary_search(&c.id) {
+                found[k] = true;
+            }
+        }
+        if found.contains(&false) {
+            (self.thoughts).keep_objects(|o| about.binary_search(&o).is_ok_and(|k| found[k]));
+        }
+        // A removed unit is no user of a building.
+        for live in self.buildings.values_mut() {
+            live.users.retain(|u| self.index.contains_key(&u.0));
+        }
+        if !self.buildings.is_empty() || !self.upgrade_index.is_empty() {
+            let ids: std::collections::HashSet<u32> = (entities.iter())
+                .filter(|e| matches!(e.class.as_str(), "building" | "objects"))
+                .filter_map(|e| e.common.as_ref().map(|c| c.id))
+                .collect();
+            self.buildings.retain(|id, _| ids.contains(id));
+            self.upgrade_index.retain(|id, _| ids.contains(id));
+        }
+    }
+
+    /// The table [`Units::rebuild`] makes, followed in place when the units of `entities` are
+    /// those of the table with one more at the end or one less (a unit arriving or leaving);
+    /// false, changing nothing, for any other change.
+    fn follow(&mut self, entities: &[Entity]) -> bool {
+        let mut live =
+            (entities.iter()).filter_map(|e| Some((e.common.as_ref()?, Kind::of_class(&e.class)?)));
+        let mut units = self.list.iter().enumerate();
+        let (first, now) = loop {
+            match (units.next(), live.next()) {
+                (Some((_, u)), Some((c, kind))) if (u.id, u.kind) == (c.id, kind) => {}
+                (u, l) => break (u.map(|(at, u)| (at, u.id)), l),
+            }
+        };
+        match (first, now) {
+            (None, None) => {}
+            (None, Some((c, kind))) => {
+                if live.next().is_some() || self.index.contains_key(&c.id) {
+                    return false;
+                }
+                self.index.insert(c.id, self.list.len());
+                let unit = self.start(c, kind);
+                self.list.push(unit);
+            }
+            (Some((at, id)), now) => {
+                let rest = now.into_iter().chain(live).map(|(c, kind)| (c.id, kind));
+                if !rest.eq(units.map(|(_, u)| (u.id, u.kind))) {
+                    return false;
+                }
+                self.list.remove(at);
+                self.index.remove(&id);
+                for (k, u) in self.list.iter().enumerate().skip(at) {
+                    self.index.insert(u.id, k);
+                }
+                self.lines.push(format!("remove {id}"));
+                self.thoughts.forget(id);
+            }
+        }
+        true
+    }
+
+    /// A new unit, logged.
+    fn start(&mut self, c: &crate::zoo::Common, kind: Kind) -> Unit {
+        self.lines.push(format!(
+            "add {} {} {},{}",
+            c.id,
+            kind.name(),
+            c.x.div_euclid(64),
+            c.y.div_euclid(64)
+        ));
+        let mut unit = Unit::new(c.id, kind);
+        unit.status_timer = first_timer(c.id, self.period);
+        unit
+    }
+
+    /// Builds the table from the entities: units that stand in it keep their state, new ones
+    /// start, those that left are dropped.
+    fn rebuild(&mut self, entities: &[Entity]) {
         let before: Vec<u32> = self.list.iter().map(|u| u.id).collect();
         let mut old: HashMap<u32, Unit> = std::mem::take(&mut self.list)
             .into_iter()
@@ -746,18 +834,7 @@ impl Units {
             let unit = old
                 .remove(&c.id)
                 .filter(|u| u.kind == kind)
-                .unwrap_or_else(|| {
-                    self.lines.push(format!(
-                        "add {} {} {},{}",
-                        c.id,
-                        kind.name(),
-                        c.x.div_euclid(64),
-                        c.y.div_euclid(64)
-                    ));
-                    let mut unit = Unit::new(c.id, kind);
-                    unit.status_timer = first_timer(c.id, self.period);
-                    unit
-                });
+                .unwrap_or_else(|| self.start(c, kind));
             self.index.insert(c.id, self.list.len());
             self.list.push(unit);
         }
@@ -766,25 +843,6 @@ impl Units {
                 self.lines.push(format!("remove {id}"));
                 self.thoughts.forget(id);
             }
-        }
-        // A thought about a scenery object or a building that is gone goes with it.
-        if self.thoughts.has_objects() {
-            let ids: std::collections::HashSet<u32> = (entities.iter())
-                .filter_map(|e| e.common.as_ref().map(|c| c.id))
-                .collect();
-            self.thoughts.keep_objects(|o| ids.contains(&o));
-        }
-        // A removed unit is no user of a building.
-        for live in self.buildings.values_mut() {
-            live.users.retain(|u| self.index.contains_key(&u.0));
-        }
-        if !self.buildings.is_empty() || !self.upgrade_index.is_empty() {
-            let ids: std::collections::HashSet<u32> = (entities.iter())
-                .filter(|e| matches!(e.class.as_str(), "building" | "objects"))
-                .filter_map(|e| e.common.as_ref().map(|c| c.id))
-                .collect();
-            self.buildings.retain(|id, _| ids.contains(id));
-            self.upgrade_index.retain(|id, _| ids.contains(id));
         }
     }
 }
