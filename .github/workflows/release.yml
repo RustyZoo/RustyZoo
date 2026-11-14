@@ -5,6 +5,7 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: [release-workflow-1649]
   workflow_dispatch:
 
 permissions:
