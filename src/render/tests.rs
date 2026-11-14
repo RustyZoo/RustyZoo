@@ -79,6 +79,41 @@ fn tiles_are_sorted_by_row_then_position() {
 }
 
 #[test]
+fn the_kept_tile_order_is_made_again_when_the_map_size_or_rotation_changes() {
+    let scene = |w: usize, h: usize, r| {
+        let objects = (0..w * h).map(|t| unit_on((t % w) as i32, (t / w) as i32));
+        Scene::new(w, h, r, &flat_map(w, h), objects.collect())
+    };
+    let mut cache = None;
+    // The same size and rotation keep it; a rotation, a height, a width (same tile count) or a
+    // shape seen before make it again.
+    for (w, h, r) in [
+        (3, 3, 0),
+        (3, 3, 0),
+        (3, 3, 1),
+        (3, 4, 1),
+        (4, 3, 1),
+        (2, 6, 1),
+        (3, 3, 0),
+    ] {
+        let scene = scene(w, h, r);
+        let kept = TileOrder::cached(&mut cache, &scene);
+        assert_eq!(*kept, TileOrder::new(&scene), "{w}x{h} rotation {r}");
+        assert_eq!(paint_order_with(&scene, kept), paint_order(&scene));
+    }
+    // The order of another rotation or shape of as many tiles paints wrong.
+    for (old, new) in [
+        (scene(3, 3, 0), scene(3, 3, 1)),
+        (scene(3, 4, 1), scene(4, 3, 1)),
+    ] {
+        assert_ne!(
+            paint_order_with(&new, &TileOrder::new(&old)),
+            paint_order(&new)
+        );
+    }
+}
+
+#[test]
 fn a_map_without_steps_paints_all_ground_then_the_objects_row_by_row() {
     for r in 0..4u8 {
         let objects: Vec<Object> = (0..9).map(|t| unit_on(t % 3, t / 3)).collect();

@@ -373,7 +373,7 @@ impl<'a> MapRenderer<'a> {
             transient,
             ..
         } = objects;
-        let order = paint_order(scene);
+        let order = paint_order_with(scene, TileOrder::cached(&mut self.tile_order, scene));
         let mut items = Vec::with_capacity(order.len());
         let mut own = Vec::new();
         let mut hits: Vec<Option<pick::Hit>> = Vec::new();
