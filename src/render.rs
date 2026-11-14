@@ -406,7 +406,7 @@ pub struct MapRenderer<'a> {
     /// The pictures of the tiles of the last staging, for the next one.
     grounds: Option<Rc<Grounds>>,
     /// The tile order of the last staging, for the next one.
-    tile_order: Option<order::TileOrder>,
+    tile_order: Option<TileOrder>,
 }
 
 /// The pictures of every tile of a staging and what they were made from: the next staging

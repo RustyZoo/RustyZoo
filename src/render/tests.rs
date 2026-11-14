@@ -87,15 +87,29 @@ fn the_kept_tile_order_is_made_again_when_the_map_size_or_rotation_changes() {
     let mut cache = None;
     // The same size and rotation keep it; a rotation, a height, a width (same tile count) or a
     // shape seen before make it again.
-    for (w, h, r) in [(3, 3, 0), (3, 3, 0), (3, 3, 1), (3, 4, 1), (4, 3, 1), (2, 6, 1), (3, 3, 0)] {
+    for (w, h, r) in [
+        (3, 3, 0),
+        (3, 3, 0),
+        (3, 3, 1),
+        (3, 4, 1),
+        (4, 3, 1),
+        (2, 6, 1),
+        (3, 3, 0),
+    ] {
         let scene = scene(w, h, r);
         let kept = TileOrder::cached(&mut cache, &scene);
         assert_eq!(*kept, TileOrder::new(&scene), "{w}x{h} rotation {r}");
         assert_eq!(paint_order_with(&scene, kept), paint_order(&scene));
     }
     // The order of another rotation or shape of as many tiles paints wrong.
-    for (old, new) in [(scene(3, 3, 0), scene(3, 3, 1)), (scene(3, 4, 1), scene(4, 3, 1))] {
-        assert_ne!(paint_order_with(&new, &TileOrder::new(&old)), paint_order(&new));
+    for (old, new) in [
+        (scene(3, 3, 0), scene(3, 3, 1)),
+        (scene(3, 4, 1), scene(4, 3, 1)),
+    ] {
+        assert_ne!(
+            paint_order_with(&new, &TileOrder::new(&old)),
+            paint_order(&new)
+        );
     }
 }
 
