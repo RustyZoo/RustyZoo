@@ -774,7 +774,8 @@ impl World {
         }
         match shift {
             Some(Shift::Inserted(at)) if at + 1 == self.zoo.entities.len() => {
-                if let Some(object) = scene_object(&self.zoo.entities[at], &self.shapes[at]) {
+                let shape = self.shapes.get(at).copied().flatten();
+                if let Some(object) = scene_object(&self.zoo.entities[at], &shape) {
                     self.scene.push(object);
                     self.owner.push(at);
                 }
