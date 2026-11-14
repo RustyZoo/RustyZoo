@@ -10,8 +10,9 @@
 #   play     ci/check-playable.sh with ci/playable-full.txt on $ZT_DATA_DIR (the
 #            full game; about eight minutes); skipped when unset
 #   play-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
-#   dung     the first dung on maps/med_kids.zoo of $ZT_DATA_DIR (seed 1) comes between steps 600 and 650,
-#            where the original's two runs put it (612 and 616); skipped when unset
+#   dung     the first dung on maps/med_kids.zoo of $ZT_DATA_DIR, seeds 1 to 12: every seed has one by
+#            step 2000 and their median comes between steps 600 and 650, where the original's two runs
+#            put it (612 and 616); skipped when unset
 #   scen     ci/check-scenarios.sh and ci/check-ends.sh on $ZT_DATA_DIR (every scenario and map plays a
 #            month, a scenario is won and one lost; about eight minutes); skipped when unset
 #   scen-fr  the same on $ZT_DATA_DIR_FR; skipped when unset
@@ -77,10 +78,16 @@ play_step() { # play_step <game folder>
   ci/check-playable.sh "${CARGO_TARGET_DIR:-target}/release/rustyzoo" "$1" ci/playable-full.txt
 }
 
-dung_step() { # the first `animal dung` line of the map, as `step N animal dung ...`
-  first=$("${CARGO_TARGET_DIR:-target}/release/rustyzoo" --data "$ZT_DATA_DIR" sim maps/med_kids.zoo --seed 1 --ticks 700 --log | awk '$3 == "animal" && $4 == "dung" { print $2; exit }')
-  echo "first dung at step ${first:-none}"
-  [ "${first:--1}" -ge 600 ] && [ "${first:--1}" -le 650 ]
+dung_step() { # the step of the first `animal dung` line of each seed, as `seed:step`, played side by side
+  all=$(for seed in $(seq 12); do
+    "${CARGO_TARGET_DIR:-target}/release/rustyzoo" --data "$ZT_DATA_DIR" sim maps/med_kids.zoo --seed "$seed" --ticks 2000 --log |
+      awk -v s="$seed" '$3 == "animal" && $4 == "dung" { print s ":" $2; f = 1; exit } END { if (!f) print s ":none" }' &
+  done; wait)
+  echo "first dung by seed: $(sort -n <<<"$all" | tr '\n' ' ')"
+  ! grep -q none <<<"$all" || return 1
+  median=$(cut -d: -f2 <<<"$all" | sort -n | awk 'NR == 6 { a = $1 } NR == 7 { print int((a + $1) / 2) }')
+  echo "median $median"
+  [ "$median" -ge 600 ] && [ "$median" -le 650 ]
 }
 
 scen_step() { # scen_step <game folder>...
