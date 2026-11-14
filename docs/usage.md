@@ -2,7 +2,7 @@
 
 This is the full reference: every command, option, setting and test tool of RustyZoo.
 
-Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`) with `--data`, or with the `ZT_DATA_DIR` environment variable:
+Point RustyZoo at the install folder of your game (the one that holds `zoo.ini`) with `--data`, or with the `ZT_DATA_DIR` environment variable. Without either, it uses the folder remembered in `[RustyZoo] data` of the settings of the user folder, then looks in the usual places: `Microsoft Games`, Steam and GOG folders under Program Files and the registry on Windows; Wine (`$WINEPREFIX`, `~/.wine`) and Proton prefixes and the Steam and `~/GOG Games` folders on Linux; the same plus CrossOver bottles on macOS. A folder counts only if it holds `zoo.ini` or `zoodemo.ini`. When nothing is found, a windowed `run` (not `--headless`, and no other command) opens a folder picker and remembers the folder picked:
 
 ```
 rustyzoo --data "/path/to/Zoo Tycoon" ls 'animals/lion*'   # list files, sorted; * matches any text
