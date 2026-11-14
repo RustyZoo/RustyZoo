@@ -5,6 +5,7 @@ mod checks;
 mod files;
 mod ground;
 mod maps;
+mod pick;
 mod render;
 mod sprites;
 mod usage;
@@ -16,6 +17,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use rustyzoo::anim;
+use rustyzoo::install;
 use rustyzoo::userdir;
 use rustyzoo::vfs::Vfs;
 
@@ -47,6 +49,12 @@ pub fn run(args: Vec<OsString>) -> Result<(), CliError> {
         }
     }
     let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    if data_dir.is_none() && pick::wanted(&words) {
+        data_dir = game_folder(None)
+            .ok()
+            .or_else(pick::folder)
+            .map(PathBuf::into_os_string);
+    }
 
     match words.as_slice() {
         ["help" | "--help" | "-h"] => {
@@ -174,12 +182,14 @@ const COMMANDS: &[&str] = &[
     "check-render",
 ];
 
-/// The game folder given by `--data`, or else by `ZT_DATA_DIR`.
+/// The game folder given by `--data`, or else by `ZT_DATA_DIR`, or else found on the system
+/// ([`install::find`]).
 pub fn game_folder(data_dir: Option<OsString>) -> Result<PathBuf, CliError> {
     data_dir
         .or_else(|| std::env::var_os("ZT_DATA_DIR").filter(|dir| !dir.is_empty()))
         .map(PathBuf::from)
-        .ok_or_else(|| "no game folder: pass --data <dir> or set ZT_DATA_DIR".into())
+        .or_else(install::find)
+        .ok_or_else(|| "no game folder found: pass --data <dir> or set ZT_DATA_DIR".into())
 }
 
 pub fn open_game(data_dir: Option<OsString>) -> Result<Vfs, CliError> {
