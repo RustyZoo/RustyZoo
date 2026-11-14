@@ -58,7 +58,7 @@ Dev builds (`cargo build`) keep only line tables, so panics still show file and 
 
 ## Playing
 
-Point RustyZoo at the folder of your game (the one with `zoo.ini`), or set `ZT_DATA_DIR` once:
+RustyZoo looks for your game in the usual install places (CD, Complete Collection, Steam, GOG, Wine and Proton prefixes) and else asks for its folder (the one with `zoo.ini`) and remembers it. You can also point it at the folder, or set `ZT_DATA_DIR` once:
 
 ```sh
 rustyzoo --data "/path/to/Zoo Tycoon" run                     # start at the main menu

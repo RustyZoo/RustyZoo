@@ -145,15 +145,15 @@ fn registry_paths(text: &str) -> Vec<PathBuf> {
             let (_, value) = line
                 .split_once("    REG_SZ    ")
                 .or_else(|| line.split_once("    REG_EXPAND_SZ    "))?;
-            let path = PathBuf::from(value.trim().trim_matches('"'));
-            let program = path
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
-            if program {
-                path.parent().map(Path::to_path_buf)
-            } else {
-                Some(path)
-            }
+            let value = value.trim().trim_matches('"');
+            // Split at `\`, not with `Path`: the text is a Windows path on every host.
+            let program = value.to_ascii_lowercase().ends_with(".exe");
+            let folder = match value.rsplit_once('\\') {
+                Some((folder, _)) if program => folder,
+                _ if program => "",
+                _ => value,
+            };
+            Some(PathBuf::from(folder))
         })
         .filter(|path| !path.as_os_str().is_empty())
         .collect()
