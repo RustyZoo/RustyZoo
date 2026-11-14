@@ -812,7 +812,7 @@ fn headless_never_picks_a_system_font() {
         "ZT_EMBEDDED_FONT keeps the embedded font"
     );
     assert!(system::wanted(false, false));
-    use_system_fonts(true);
+    use_system_fonts(false);
     assert!(!SYSTEM.load(Ordering::Relaxed));
     assert!(!face(false).system && !face(true).system);
 }
@@ -871,4 +871,24 @@ fn the_search_folders_follow_the_system() {
         [PathBuf::from(r"C:\Windows").join("Fonts")]
     );
     assert!(!system::dirs("linux", |_| None).is_empty());
+}
+
+#[test]
+fn a_font_whose_glyph_data_draws_nothing_falls_back() {
+    let n = usize::from(u16::from_be_bytes([REGULAR[4], REGULAR[5]]));
+    let record = (0..n)
+        .map(|i| 12 + 16 * i)
+        .find(|&r| &REGULAR[r..r + 4] == b"glyf")
+        .unwrap();
+    let word = |o: usize| {
+        u32::from_be_bytes(REGULAR[record + o..record + o + 4].try_into().unwrap()) as usize
+    };
+    let (off, len) = (word(8), word(12));
+    let mut zeroed = REGULAR.to_vec();
+    zeroed[off..off + len].fill(0);
+    let cut = REGULAR[..off + len / 2].to_vec();
+    for (name, bytes) in [("zeroed", zeroed), ("cut", cut)] {
+        let dir = fonts_dir(name, &[("arial.ttf", &bytes)]);
+        assert!(!load(false, &[dir]).system, "{name} glyph data is not usable");
+    }
 }

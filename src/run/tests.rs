@@ -308,3 +308,18 @@ fn map_is_a_flag_of_both_kinds_of_run_and_takes_no_value() {
     assert!(!flags(&[]).unwrap_or_else(|_| panic!("refused")).map);
     assert!(flags(&["--map", "1"]).is_err());
 }
+
+#[test]
+fn only_a_plain_window_draws_with_the_system_font() {
+    assert!(flags(&[]).unwrap().interactive());
+    assert!(flags(&["--passes", "0"]).is_err());
+    for words in [
+        &["--headless", "--passes", "3", "--clock", "20"][..],
+        &["--log", "l"],
+        &["--shot", "s"],
+        &["--script", "x"],
+        &["--seed", "1"],
+    ] {
+        assert!(!flags(words).unwrap().interactive(), "{words:?}");
+    }
+}

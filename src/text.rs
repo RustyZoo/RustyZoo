@@ -80,11 +80,12 @@ impl Face {
 /// Whether faces made from now on may come from the system.
 static SYSTEM: AtomicBool = AtomicBool::new(false);
 
-/// Lets the faces not yet made be the system's Arial (the interactive run calls it before it
-/// draws). A headless run never does, and `ZT_EMBEDDED_FONT` set to anything keeps the embedded font.
-pub fn use_system_fonts(headless: bool) {
+/// Lets the faces not yet made be the system's Arial when `interactive` (a player's plain window
+/// calls it before it draws). Any other run, and `ZT_EMBEDDED_FONT` set to anything, keeps the
+/// embedded font.
+pub fn use_system_fonts(interactive: bool) {
     let forced = std::env::var_os("ZT_EMBEDDED_FONT").is_some();
-    SYSTEM.store(system::wanted(headless, forced), Ordering::Relaxed);
+    SYSTEM.store(system::wanted(!interactive, forced), Ordering::Relaxed);
 }
 
 fn face(bold: bool) -> &'static Face {
@@ -124,10 +125,17 @@ fn make(font: FontRef<'static>, system: bool) -> Face {
     }
 }
 
-/// Whether a font has the units per em the metrics assume and a letter to draw.
+/// Whether a font has the units per em the metrics assume and an `A` that draws some ink once
+/// hinted (zeroed or cut glyph data draws none).
 fn usable(font: &FontRef<'static>) -> bool {
     let metrics = font.metrics(Size::unscaled(), LocationRef::default());
-    metrics.units_per_em == UNITS as u16 && font.charmap().map('A').is_some()
+    let face = make(font.clone(), true);
+    metrics.units_per_em == UNITS as u16
+        && font.charmap().map('A').is_some_and(|id| {
+            let hinter = raster::hinter(&face.outlines, 16);
+            let glyph = raster::glyph(&face.outlines, hinter.as_ref(), id, (false, 16, false), 11);
+            glyph.coverage.iter().any(|&c| c > 0)
+        })
 }
 
 /// Rounds `a / b` half up, for non-negative `a`.
