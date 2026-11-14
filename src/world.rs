@@ -764,41 +764,6 @@ impl World {
         self.relink(false);
     }
 
-    /// Follows in the index an entity put at the end of the list, or one taken out that holds no
-    /// slot (a guest arriving or leaving), as a build of the index from the entities would; false
-    /// when the index is to be built: another change, or a scene that is no longer what a build
-    /// gives (an entity or a tile changed without it).
-    fn reindex(&mut self, shift: Option<Shift>) -> bool {
-        if self.moved {
-            return false;
-        }
-        match shift {
-            Some(Shift::Inserted(at)) if at + 1 == self.zoo.entities.len() => {
-                let shape = self.shapes.get(at).copied().flatten();
-                if let Some(object) = scene_object(&self.zoo.entities[at], &shape) {
-                    self.scene.push(object);
-                    self.owner.push(at);
-                }
-            }
-            Some(Shift::Removed(at)) => {
-                let o = self.owner.partition_point(|&e| e < at);
-                if self.owner.get(o) == Some(&at) {
-                    if !self.scene.remove_free(o) {
-                        return false;
-                    }
-                    self.owner.remove(o);
-                }
-                self.owner[o..].iter_mut().for_each(|e| *e -= 1);
-            }
-            _ => return false,
-        }
-        self.scene.sort_lists();
-        let objects = (self.zoo.entities.iter().zip(&self.shapes).enumerate())
-            .filter_map(|(at, (e, s))| Some((at, scene_object(e, s)?)));
-        let followed = (self.owner.iter().copied()).zip(self.scene.objects.iter().copied());
-        self.scene.is_built_on(&self.zoo.tiles) && objects.eq(followed)
-    }
-
     /// The objects standing on tile `t` take their height from the ground again (not the ones
     /// that hold no place on the map, such as ambient animals).
     fn reheight(&mut self, t: usize) {
