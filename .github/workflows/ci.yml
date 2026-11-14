@@ -530,11 +530,13 @@ jobs:
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
   # and long) is the same on the three systems, on 32-bit Windows and on ARM Linux and Windows, and no map
-  # fails to run; so are the last frame and state hashes of each played game. A system without trial data is skipped with a warning. Only with the
-  # legs `all` (skipped with the legs it needs).
+  # fails to run; so are the last frame and state hashes of each played game. Only the hashes present are
+  # compared: a leg that was skipped or had no trial data gives none. Only with the legs `all`, and not after
+  # a failed or cancelled job it needs (a skipped one is fine: `build` and `play` can be).
   hashes:
     name: hashes
-    needs: [build, build-full, play, play-full]
+    needs: [scope, build, build-full, play, play-full]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && needs.scope.outputs.legs == 'all' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -554,19 +556,16 @@ jobs:
           failed=0
           same() { # same <what> <system>:<hashes>...
             echo "$1"
-            seen=0 first= differ=0
+            first= differ=0
             for arg in "${@:2}"; do
               hashes=${arg#*:}
               printf '  %-12s %s\n' "${arg%%:*}:" "$hashes"
               [ -n "$hashes" ] || continue
-              seen=$((seen + 1))
               [ "$hashes" = "${first:=$hashes}" ] || differ=1
             done
             if [ "$differ" = 1 ]; then
               echo "the $1 differ between systems"
               failed=1
-            elif [ "$seen" -lt "$(($# - 1))" ]; then
-              echo "::warning title=$1::Only $seen of $(($# - 1)) systems had trial data, so the hashes were not all compared."
             fi
           }
           same "state hashes of the simulation" "linux:$LINUX" "windows:$WINDOWS" "macos:$MACOS" \
