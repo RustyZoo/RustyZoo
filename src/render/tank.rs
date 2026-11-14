@@ -272,10 +272,8 @@ impl MapRenderer<'_> {
         out: &mut Vec<Placed>,
     ) {
         let (obj, ty) = (scene.objects[o], meta.ty);
-        let member = ty.animations().into_iter().find(|a| a.name == "platform");
-        let anim = member
-            .and_then(|a| a.member)
-            .and_then(|m| self.animation(&m));
+        let member = self.animation_member(ty, "platform");
+        let anim = member.and_then(|m| self.animation(&m));
         if let Some(anim) = anim {
             let (x, y) = project(scene.rotation, obj.x, obj.y, obj.z + 16 * height);
             let view = anim.view_of(obj.facing as u8, scene.rotation);
@@ -355,7 +353,7 @@ impl MapRenderer<'_> {
     ) {
         let (obj, meta) = (scene.objects[o], &metas[o]);
         let e = ends(scene, metas, o);
-        let animations = meta.ty.animations();
+        let animations = self.animations_of(meta.ty);
         let linked = meta.connector && meta.ty.subtype.first() != Some(&b'g');
         let has = |key: &str| {
             linked
@@ -430,11 +428,8 @@ impl MapRenderer<'_> {
         };
         let dir = anim.set.files.get(view.file).map_or("", |f| directory(f));
         let name = format!("under{dir}");
-        let member = meta.ty.animations().into_iter().find(|a| a.name == name);
-        let Some(under) = member
-            .and_then(|a| a.member)
-            .and_then(|m| self.animation(&m))
-        else {
+        let member = self.animation_member(meta.ty, &name);
+        let Some(under) = member.and_then(|m| self.animation(&m)) else {
             return;
         };
         if view.file >= under.sprites.len() {
@@ -480,11 +475,8 @@ impl MapRenderer<'_> {
         let (anim, black) = if flag(ty, "cHasShadowImages") {
             let member = self.member(scene, o, meta).unwrap_or_default();
             let name = format!("shadow{}", directory(&member));
-            let found = ty.animations().into_iter().find(|a| a.name == name);
-            let Some(shadow) = found
-                .and_then(|a| a.member)
-                .and_then(|m| self.animation(&m))
-            else {
+            let found = self.animation_member(ty, &name);
+            let Some(shadow) = found.and_then(|m| self.animation(&m)) else {
                 return;
             };
             (shadow, flag(ty, "cForceShadowBlack"))
