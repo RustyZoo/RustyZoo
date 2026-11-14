@@ -11,6 +11,21 @@ Open a game folder with `--data <folder>` (or `ZT_DATA_DIR`), and start the game
 
 The scripts do not go through the menu: they start on the map of the freeform game with `run <map> --cash <cash> --seed <n>`, where their seed draws women for the hires (the staff of the trials are women only; the `#probe` line of a script skips the seeds that do not). `--seed` seeds a game started from the menu too, which may draw a man for a hire. `ci/check-trials.sh` checks the menu start, with a seed, separately.
 
+## Screen size
+
+The game is drawn at its own size (`screenwidth` and `screenheight` of `[user]` in the ini file, or `--size WxH`), enlarged by the largest whole factor that fits, counted in pixels of the display, and centred on black. These sizes fill a display in full screen (a pixel left over is a black border):
+
+| Display (pixels) | Game sizes that fill it |
+|---|---|
+| 1366x768 | 1366x768 |
+| 1920x1080 | 1920x1080, 960x540 (x2) |
+| 2560x1440 | 1280x720 (x2), 853x480 (x3) |
+| 2560x1600 (13-inch MacBook) | 1280x800 (x2), 853x533 (x3) |
+| 3840x2160 | 1920x1080 (x2), 1280x720 (x3), 960x540 (x4) |
+| 3456x2234 (16-inch MacBook Pro) | 1728x1117 (x2), 1152x744 (x3) |
+
+On a MacBook with a camera notch, macOS may place a full-screen window below the notch: the 16-inch display is then 3456x2160, filled by 1728x1080 (x2) or 1152x720 (x3), and the 14-inch 3024x1890, filled by 1512x945 (x2) or 1008x630 (x3).
+
 ## Build an exhibit (base trial)
 
 The four round buttons at the top of the left bar open the panels of the game. In order from the top they are: construction, adopt, objects and hire.
