@@ -1,0 +1,131 @@
+name: Release
+
+# Builds the package of every system as workflow artefacts. Nothing is published: no release, no upload
+# anywhere else. No game or trial data goes into a package.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04: the glibc baseline of the Linux builds.
+          - os: ubuntu-22.04
+            system: linux
+            arch: x86_64
+            bin: target/release/rustyzoo
+          - os: ubuntu-22.04-arm
+            system: linux
+            arch: aarch64
+            bin: target/release/rustyzoo
+          - os: windows-2025
+            system: windows
+            arch: x86_64
+            bin: target/release/rustyzoo.exe
+          - os: windows-11-arm
+            system: windows
+            arch: aarch64
+            bin: target/release/rustyzoo.exe
+          - os: macos-15
+            system: macos
+            arch: universal
+            bin: target/universal/rustyzoo
+    defaults:
+      run:
+        shell: bash
+    # The headless SDL settings of ci.yml for the smoke test.
+    env:
+      SDL_VIDEO_DRIVER: dummy
+      SDL_RENDER_DRIVER: software
+      SDL_AUDIO_DRIVER: dummy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # On a tag, the tag must be v + the crate version.
+      - name: Read the version
+        id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          [ -n "$version" ] || { echo "no version in Cargo.toml"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error title=Tag::the tag $GITHUB_REF_NAME is not v$version (Cargo.toml)"
+            exit 1
+          fi
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
+          echo "RUSTYZOO_USER_DIR=$RUNNER_TEMP/rustyzoo-user" >> "$GITHUB_ENV"
+
+      # The SDL build dependencies of ci.yml (SDL's docs/README-linux.md): SDL builds its real X11,
+      # Wayland, ALSA, PulseAudio and PipeWire backends.
+      - name: Install SDL build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev \
+            libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev \
+            liburing-dev
+
+      # No cache: a release builds from scratch.
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install --profile minimal
+
+      - run: cargo build --release
+      - run: cargo run --release -- window-smoke
+
+      - name: Build the x86_64 slice and merge a universal binary
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/rustyzoo \
+            target/release/rustyzoo target/x86_64-apple-darwin/release/rustyzoo
+          lipo -info target/universal/rustyzoo
+          target/universal/rustyzoo window-smoke
+
+      # The executable, the licences and where its source is. CMake (which builds SDL) writes the
+      # archive and the checksum the same way on every system.
+      - name: Package
+        id: package
+        env:
+          NAME: rustyzoo-${{ steps.version.outputs.version }}-${{ matrix.system }}-${{ matrix.arch }}
+        run: |
+          mkdir -p "dist/$NAME/vendor/nihav" "dist/$NAME/fonts"
+          cp ${{ matrix.bin }} LICENSE "dist/$NAME/"
+          cp vendor/nihav/COPYING "dist/$NAME/vendor/nihav/"
+          cp fonts/OFL.txt "dist/$NAME/fonts/"
+          echo "Source: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" > "dist/$NAME/SOURCE.txt"
+          cd dist
+          if [ "$RUNNER_OS" = Linux ]; then
+            archive=$NAME.tar.gz
+            cmake -E tar czf "$archive" "$NAME"
+          else
+            archive=$NAME.zip
+            cmake -E tar cf "$archive" --format=zip "$NAME"
+          fi
+          cmake -E sha256sum "$archive" | tee "$archive.sha256"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "files=dist/$archive" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            ${{ steps.package.outputs.files }}
+            ${{ steps.package.outputs.files }}.sha256
+          if-no-files-found: error
