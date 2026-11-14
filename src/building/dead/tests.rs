@@ -708,3 +708,32 @@ fn a_scenery_object_on_land_is_dead_and_stays_dead_after_a_sync() {
     w.units.sync(&entities);
     assert!(w.units.buildings[&9].dead, "kept by the sync");
 }
+
+#[test]
+fn a_tank_change_validates_only_the_objects_on_the_tank() {
+    // An entity the map does not hold comes first, so each object stands one place before its
+    // entity; a cave stands in the tank, another on land outside it.
+    let mut cat = Catalogue::default();
+    cat.push(cave());
+    let mut w = world_with((8, 8), |zoo| {
+        zoo.entities.push(entity("none", "", 9, centre((1, 1)), 0));
+        walls(zoo);
+        (zoo.entities).push(entity("building", "cave", 7, centre((3, 3)), 0));
+        (zoo.entities).push(entity("building", "cave", 8, centre((6, 6)), 0));
+    });
+    w.set_tank_config(CONFIG);
+    w.set_paused(true);
+    let tank = w.tank_at(3 * 8 + 3).expect("a tank");
+    w.set_height(tank, 9);
+    assert_eq!(w.fill(tank), None);
+    let dead = |w: &World, id| w.units.buildings.get(&id).is_some_and(|l| l.dead);
+    decide_all(&mut w, &cat);
+    assert!(!dead(&w, 7) && dead(&w, 8));
+    w.units.buildings.get_mut(&8).unwrap().dead = false;
+    w.set_height(tank, 3);
+    tank_changed(&mut w, &cat, tank);
+    assert!(dead(&w, 7), "the cave in the tank");
+    assert!(!dead(&w, 8), "the cave on land is not validated");
+    revalidate(&mut w, &cat);
+    assert!(dead(&w, 8));
+}

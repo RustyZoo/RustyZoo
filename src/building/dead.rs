@@ -133,15 +133,12 @@ pub(crate) fn tank_changed(world: &mut World, cat: &Catalogue, tank: u32) {
 /// Validates the objects of tank `only`, or all of them, again.
 fn validate(world: &mut World, cat: &Catalogue, only: Option<u32>) {
     for at in 0..world.zoo.entities.len() {
-        let Some(kind) = decider(world, cat, at) else {
-            continue;
-        };
+        // The tank test first: it is cheaper than reading the type's keys.
         let on = only.is_none_or(|tank| {
-            (world.footprint(at))
-                .and_then(|(own, _)| own)
-                .is_some_and(|t| world.tank_at(t) == Some(tank))
+            (world.own_tile(at)).is_some_and(|t| world.tank_at(t) == Some(tank))
         });
         if on
+            && let Some(kind) = decider(world, cat, at)
             && decide_at(world, &kind, at)
             && let Some(id) = world.zoo.entities[at].common.as_ref().map(|c| c.id)
         {
