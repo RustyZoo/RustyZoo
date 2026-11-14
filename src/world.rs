@@ -3,7 +3,8 @@
 //!
 //! The zoo stays the live world: an edit changes `zoo.tiles` and `zoo.entities` in place and
 //! nothing is written to disk. After every edit the index is built again from the entities with
-//! the placement rules of the paint order ([`Scene`]), so a query never scans the entity list.
+//! the placement rules of the paint order ([`Scene`]), so a query never scans the entity list; a
+//! unit added at the end of the list or taken out is followed in place, to the same index.
 //! An entity is named by its position in `zoo.entities`, which an edit may change (use the id,
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
@@ -141,6 +142,8 @@ pub struct World {
     scene: Scene,
     /// The entity (position in `zoo.entities`) of every object of `scene`.
     owner: Vec<usize>,
+    /// An object that holds slots was moved: only a build of the index places it again.
+    moved: bool,
     /// Per tile, whether it is inside the zoo wall.
     in_zoo: Vec<bool>,
     /// The regions the exhibit fences make, built again after a fence is placed or removed.
@@ -269,6 +272,7 @@ impl World {
             shapes,
             scene,
             owner,
+            moved: false,
             undo: Vec::new(),
             fresh: false,
             dirty: false,
@@ -565,6 +569,7 @@ impl World {
         }
         (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, rotation);
         if let Some(o) = object {
+            self.moved |= self.scene.objects[o].kind != Kind::Unit;
             self.scene.move_unit(o, point, rotation % 8);
         }
         self.dirty = true;
@@ -747,7 +752,10 @@ impl World {
         }
         let held = self.held_units(shift);
         let paths = self.path_tiles();
-        (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        if !self.reindex(shift) {
+            (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+            self.moved = false;
+        }
         self.follow_paths(&paths);
         self.hold_again(held);
         self.units.sync(&self.zoo.entities);
