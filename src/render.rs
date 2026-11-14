@@ -8,8 +8,8 @@
 //! player can recolour is drawn with the colour variants its record stores. A tank exhibit is
 //! painted in layers (`tank.rs`): the water, its side faces and the glass are blended at one
 //! half over what is behind them, and the contents are drawn above or below the water.
-//! The order comes from [`order::paint_order`]; this module turns each item of it into pictures
-//! placed in view space, then draws them all on a canvas that holds them.
+//! The order comes from [`order::paint_order_with`]; this module turns each item of it into
+//! pictures placed in view space, then draws them all on a canvas that holds them.
 
 mod loaded;
 mod object;
@@ -46,7 +46,9 @@ use crate::vfs::Vfs;
 use crate::world::{Shape, TankKind};
 use crate::zoo::{Tile, Zoo};
 use crate::zoom::{Zoom, origin_offset, piece_anchor};
-use order::{Item, Kind, Object, Scene, TankSpec, map_direction, paint_order, project};
+use order::{
+    Item, Kind, Object, Scene, TankSpec, TileOrder, map_direction, paint_order_with, project,
+};
 use placed::{Boxed, Flat, Pic, Placed};
 pub use staged::Staged;
 
@@ -403,6 +405,8 @@ pub struct MapRenderer<'a> {
     tank_shadows: bool,
     /// The pictures of the tiles of the last staging, for the next one.
     grounds: Option<Rc<Grounds>>,
+    /// The tile order of the last staging, for the next one.
+    tile_order: Option<order::TileOrder>,
 }
 
 /// The pictures of every tile of a staging and what they were made from: the next staging
@@ -527,6 +531,7 @@ impl<'a> MapRenderer<'a> {
             murky: (murky, very_murky),
             tank_shadows,
             grounds: None,
+            tile_order: None,
         }
     }
 

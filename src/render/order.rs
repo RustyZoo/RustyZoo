@@ -2,7 +2,7 @@
 //!
 //! A [`Scene`] is the map reduced to what decides the order: the tiles, and for every object
 //! where it stands (a tile list, a quadrant of a tile, a tile edge, or the path of a tile).
-//! [`paint_order`] returns the sequence of things to paint, back to front. The whole map is
+//! [`paint_order_with`] returns the sequence of things to paint, back to front. The whole map is
 //! taken as visible, so the visibility tests of the original are always true. The tiles of a tank
 //! exhibit are painted in layers (map drawing 9.7) instead of by the walk of the other groups;
 //! the extra items they need are [`Item::Pane`], [`Item::Face`], [`Item::Surface`],
@@ -296,9 +296,9 @@ const LOWER_LEFT: usize = 3;
 struct Painter<'a> {
     scene: &'a Scene,
     /// Map tile of each array position, and the position of each map tile.
-    order: Vec<usize>,
-    at: Vec<usize>,
-    keys: Vec<(i32, i32)>,
+    order: &'a [usize],
+    at: &'a [usize],
+    keys: &'a [(i32, i32)],
     state: Vec<State>,
     counter: Vec<u32>,
     painted: Vec<bool>,
@@ -543,35 +543,79 @@ impl Painter<'_> {
     }
 }
 
-/// The things to paint, back to front, for a whole map.
+/// The tiles of a map sorted by paint key, which depend only on the map size and rotation: a
+/// staging keeps them for the next one.
+#[derive(Debug, PartialEq)]
+pub(crate) struct TileOrder {
+    width: usize,
+    tiles: usize,
+    rotation: u8,
+    keys: Vec<(i32, i32)>,
+    /// Map tile of each array position, and the position of each map tile.
+    order: Vec<usize>,
+    at: Vec<usize>,
+}
+
+impl TileOrder {
+    pub(crate) fn new(scene: &Scene) -> TileOrder {
+        let (width, n, rotation) = (scene.width, scene.tiles.len(), scene.rotation);
+        let key = |t: usize| sort_key(rotation, (t % width) as i32, (t / width) as i32);
+        // By key, then by tile: the order of a stable sort by key, without a key per comparison.
+        let mut sorted: Vec<((i32, i32), usize)> = (0..n).map(|t| (key(t), t)).collect();
+        sorted.sort_unstable();
+        let (keys, order): (Vec<_>, Vec<_>) = sorted.into_iter().unzip();
+        let mut at = vec![0; n];
+        for (i, &t) in order.iter().enumerate() {
+            at[t] = i;
+        }
+        TileOrder {
+            width,
+            tiles: n,
+            rotation,
+            keys,
+            order,
+            at,
+        }
+    }
+
+    /// The order kept in `cache`, made again first when the map size or rotation changed.
+    pub(crate) fn cached<'a>(cache: &'a mut Option<TileOrder>, scene: &Scene) -> &'a TileOrder {
+        let same = |o: &TileOrder| {
+            (o.width, o.tiles, o.rotation) == (scene.width, scene.tiles.len(), scene.rotation)
+        };
+        if !cache.as_ref().is_some_and(same) {
+            *cache = None;
+        }
+        cache.get_or_insert_with(|| TileOrder::new(scene))
+    }
+}
+
+/// [`paint_order_with`] and a tile order made for `scene`.
+#[cfg(test)]
 pub(crate) fn paint_order(scene: &Scene) -> Vec<Item> {
+    paint_order_with(scene, &TileOrder::new(scene))
+}
+
+/// The things to paint, back to front, for a whole map whose tile order is `tiles`.
+pub(crate) fn paint_order_with(scene: &Scene, tiles: &TileOrder) -> Vec<Item> {
     // The recursion follows chains of tiles; give it room on big maps.
     std::thread::scope(|s| {
         std::thread::Builder::new()
             .stack_size(256 << 20)
-            .spawn_scoped(s, || paint_order_here(scene))
+            .spawn_scoped(s, || paint_order_here(scene, tiles))
             .and_then(|handle| handle.join().map_err(|_| std::io::Error::other("panic")))
-            .unwrap_or_else(|_| paint_order_here(scene))
+            .unwrap_or_else(|_| paint_order_here(scene, tiles))
     })
 }
 
-fn paint_order_here(scene: &Scene) -> Vec<Item> {
+fn paint_order_here(scene: &Scene, tiles: &TileOrder) -> Vec<Item> {
     let n = scene.tiles.len();
     let rotation = scene.rotation;
-    let key = |t: usize| sort_key(rotation, (t % scene.width) as i32, (t / scene.width) as i32);
-    // By key, then by tile: the order of a stable sort by key, without a key per comparison.
-    let mut sorted: Vec<((i32, i32), usize)> = (0..n).map(|t| (key(t), t)).collect();
-    sorted.sort_unstable();
-    let (keys, order): (Vec<_>, Vec<_>) = sorted.into_iter().unzip();
-    let mut at = vec![0; n];
-    for (i, &t) in order.iter().enumerate() {
-        at[t] = i;
-    }
     let mut painter = Painter {
         scene,
-        order,
-        at,
-        keys,
+        order: &tiles.order,
+        at: &tiles.at,
+        keys: &tiles.keys,
         state: vec![State::New; n],
         counter: vec![0; scene.objects.len()],
         painted: vec![false; scene.objects.len()],
