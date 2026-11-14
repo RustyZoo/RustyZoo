@@ -176,7 +176,7 @@ pub(crate) fn keys(world: &World, cat: &Catalogue, at: usize) -> Keys {
 fn keys_over(world: &World, cat: &Catalogue, at: usize, over: &crate::research::Overlay) -> Keys {
     let class = &world.units.class;
     match find(cat, &world.zoo.entities[at]) {
-        Some(ty) => Keys::of(ty, class).researched(ty, over),
+        Some(ty) => world.units.keys.of(ty, class).researched(ty, over),
         None => Keys::read(&|_, fallback| fallback, class),
     }
 }

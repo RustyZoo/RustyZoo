@@ -81,7 +81,7 @@ mod tests;
 
 use check::{bored, captivity, habitat, other, shelter, social, zap};
 pub use class::Class;
-pub(crate) use class::Keys;
+pub(crate) use class::{Keys, KeysRead};
 use food::Meal;
 use hook::find;
 #[cfg(test)]

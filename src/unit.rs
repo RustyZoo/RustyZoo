@@ -385,6 +385,8 @@ pub struct Units {
     pub finder: Finder,
     /// The keys of `animals.ai` that every animal reads.
     pub class: Class,
+    /// The keys of the species, read once for each type.
+    pub(crate) keys: crate::animal::KeysRead,
     /// The `[AI]` settings of the ring of a random walk.
     pub(crate) ring: walk::Ring,
     /// `[AI] exhibitServiceInterval`, in AI ticks (staff 7.2): read as the unsigned number the
@@ -493,6 +495,7 @@ impl Default for Units {
             ai_ticks: 0,
             finder: Finder::default(),
             class: Class::default(),
+            keys: Default::default(),
             ring: walk::Ring::default(),
             service_interval: 90,
             attraction_score: false,

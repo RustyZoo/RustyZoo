@@ -1,5 +1,8 @@
 //! The class keys of `animals.ai` and the keys of one species, read from the game files.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use super::*;
 
 /// The class keys of `animals.ai` (animals 3.4), read once for every animal type.
@@ -268,6 +271,36 @@ impl Keys {
         self.time_death = over.int(ty, "cTimeDeath", self.time_death);
         self.number_max = over.int(ty, "cNumberAnimalsMax", self.number_max);
         self
+    }
+}
+
+/// The keys of the species read so far, by definition file and subtype, with the class keys
+/// they were read with: [`Keys::of`] reads some eighty keys, and every needs check asks for them.
+#[derive(Debug, Default)]
+pub(crate) struct KeysRead(std::cell::RefCell<Read>);
+
+type Read = (Option<Class>, HashMap<usize, (Arc<Config>, Vec<(Vec<u8>, Keys)>)>);
+
+impl KeysRead {
+    /// [`Keys::of`], read once for each type. The entry holds the type's file, so that no other
+    /// file takes its address.
+    pub(crate) fn of(&self, ty: &EntityType, class: &Class) -> Keys {
+        let Some(config) = &ty.config else {
+            return Keys::of(ty, class);
+        };
+        let mut read = self.0.borrow_mut();
+        let (with, types) = &mut *read;
+        if with.as_ref() != Some(class) {
+            (*with, *types) = (Some(class.clone()), HashMap::new());
+        }
+        let (_, subtypes) = (types.entry(Arc::as_ptr(config) as usize))
+            .or_insert_with(|| (config.clone(), Vec::new()));
+        if let Some((_, keys)) = subtypes.iter().find(|(s, _)| *s == ty.subtype) {
+            return keys.clone();
+        }
+        let keys = Keys::of(ty, class);
+        subtypes.push((ty.subtype.clone(), keys.clone()));
+        keys
     }
 }
 
