@@ -802,3 +802,73 @@ fn a_visible_character_is_ascii_graphic_or_double_byte_by_code_page() {
         assert!(!visible(language, &[0x80]) && !visible(language, &[0xff]));
     }
 }
+
+#[test]
+fn headless_never_picks_a_system_font() {
+    assert!(!system::wanted(true, false));
+    assert!(!system::wanted(true, true));
+    assert!(
+        !system::wanted(false, true),
+        "ZT_EMBEDDED_FONT keeps the embedded font"
+    );
+    assert!(system::wanted(false, false));
+    use_system_fonts(true);
+    assert!(!SYSTEM.load(Ordering::Relaxed));
+    assert!(!face(false).system && !face(true).system);
+}
+
+/// A folder of the test with the given files.
+fn fonts_dir(name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("rustyzoo-fonts-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (file, bytes) in files {
+        std::fs::write(dir.join(file), bytes).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn a_usable_system_arial_is_read_and_anything_else_falls_back() {
+    let dir = fonts_dir("ok", &[("arial.ttf", REGULAR), ("arialbd.ttf", b"junk")]);
+    let regular = load(false, std::slice::from_ref(&dir));
+    assert!(regular.system, "Arial Regular is read");
+    // The bold file does not parse: the embedded bold face.
+    assert!(!load(true, std::slice::from_ref(&dir)).system);
+    // The weights do not mix: the bold request never reads the regular file.
+    let only_regular = fonts_dir("regular", &[("arial.ttf", REGULAR)]);
+    assert!(!load(true, &[only_regular]).system);
+    // Missing folder, empty file, empty list.
+    let empty = fonts_dir("empty", &[("arial.ttf", b"")]);
+    for dirs in [vec![dir.join("none")], vec![empty], vec![]] {
+        assert!(!load(false, &dirs).system);
+    }
+    // The first folder with a usable file wins, a broken one before it is skipped.
+    let broken = fonts_dir("broken", &[("arial.ttf", b"\0\x01\0\0")]);
+    assert!(load(false, &[broken, dir]).system);
+}
+
+#[test]
+fn the_search_folders_follow_the_system() {
+    let env = |name: &str| match name {
+        "HOME" => Some("/home/u".into()),
+        "WINDIR" => Some(r"D:\Win".into()),
+        _ => None,
+    };
+    assert_eq!(
+        system::dirs("windows", env),
+        [PathBuf::from(r"D:\Win").join("Fonts")]
+    );
+    let mac = system::dirs("macos", env);
+    assert!(mac.contains(&PathBuf::from("/System/Library/Fonts/Supplemental")));
+    assert!(mac.contains(&PathBuf::from("/home/u/Library/Fonts")));
+    let linux = system::dirs("linux", env);
+    assert!(linux.contains(&PathBuf::from("/usr/share/fonts/truetype/msttcorefonts")));
+    assert!(linux.contains(&PathBuf::from("/home/u/.local/share/fonts")));
+    // No home and no Windows folder variable: the fixed folders only.
+    assert_eq!(
+        system::dirs("windows", |_| None),
+        [PathBuf::from(r"C:\Windows").join("Fonts")]
+    );
+    assert!(!system::dirs("linux", |_| None).is_empty());
+}

@@ -104,7 +104,7 @@ pub(super) fn glyph(
     outlines: &OutlineGlyphCollection<'_>,
     hinter: Option<&HintingInstance>,
     id: GlyphId,
-    (bold, ppem): (bool, u32),
+    (bold, ppem, fit): (bool, u32, bool),
     advance: i32,
 ) -> Glyph {
     let Some(outline) = outlines.get(id) else {
@@ -117,7 +117,7 @@ pub(super) fn glyph(
         };
         let mut path = Path::default();
         let mut fit = Fit {
-            rows: if hinter.is_some() {
+            rows: if fit && hinter.is_some() {
                 fit_rows(bold, ppem)
             } else {
                 &[]

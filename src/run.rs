@@ -487,6 +487,7 @@ pub fn run(
         Some(member) => Some(load_game(vfs, member, flags.cash)?),
         None => None,
     };
+    rustyzoo::text::use_system_fonts(flags.headless);
     if !flags.headless {
         return crate::window::run(
             vfs,
