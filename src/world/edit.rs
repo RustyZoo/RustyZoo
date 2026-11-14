@@ -51,7 +51,7 @@ impl World {
         (self.zoo.id_counter, common.id) = (self.zoo.id_counter.max(id), id);
         self.zoo.entities.push(entity);
         self.shapes.push(shape);
-        self.changed(None);
+        self.changed(Some(Shift::Inserted(self.zoo.entities.len() - 1)));
         let mut notes = Vec::new();
         let tiles = self.rated_tiles(self.zoo.entities.len() - 1);
         if shape.is_some_and(|s| s.fence) {

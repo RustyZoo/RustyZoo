@@ -141,6 +141,8 @@ pub struct World {
     scene: Scene,
     /// The entity (position in `zoo.entities`) of every object of `scene`.
     owner: Vec<usize>,
+    /// An object that holds slots was moved: only a build of the index places it again.
+    moved: bool,
     /// Per tile, whether it is inside the zoo wall.
     in_zoo: Vec<bool>,
     /// The regions the exhibit fences make, built again after a fence is placed or removed.
@@ -269,6 +271,7 @@ impl World {
             shapes,
             scene,
             owner,
+            moved: false,
             undo: Vec::new(),
             fresh: false,
             dirty: false,
@@ -565,6 +568,7 @@ impl World {
         }
         (c.x, c.y, c.z, c.rotation) = (point.0, point.1, point.2, rotation);
         if let Some(o) = object {
+            self.moved |= self.scene.objects[o].kind != Kind::Unit;
             self.scene.move_unit(o, point, rotation % 8);
         }
         self.dirty = true;
@@ -747,13 +751,50 @@ impl World {
         }
         let held = self.held_units(shift);
         let paths = self.path_tiles();
-        (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+        if !self.reindex(shift) {
+            (self.scene, self.owner) = index(&self.zoo, &self.shapes);
+            self.moved = false;
+        }
         self.follow_paths(&paths);
         self.hold_again(held);
         self.units.sync(&self.zoo.entities);
         self.dirty = true;
         self.edits += 1;
         self.relink(false);
+    }
+
+    /// Follows in the index an entity put at the end of the list, or one taken out that holds no
+    /// slot (a guest arriving or leaving), as a build of the index from the entities would; false
+    /// when the index is to be built: another change, or a scene that is no longer what a build
+    /// gives (an entity or a tile changed without it).
+    fn reindex(&mut self, shift: Option<Shift>) -> bool {
+        if self.moved {
+            return false;
+        }
+        match shift {
+            Some(Shift::Inserted(at)) if at + 1 == self.zoo.entities.len() => {
+                if let Some(object) = scene_object(&self.zoo.entities[at], &self.shapes[at]) {
+                    self.scene.push(object);
+                    self.owner.push(at);
+                }
+            }
+            Some(Shift::Removed(at)) => {
+                let o = self.owner.partition_point(|&e| e < at);
+                if self.owner.get(o) == Some(&at) {
+                    if !self.scene.remove_free(o) {
+                        return false;
+                    }
+                    self.owner.remove(o);
+                }
+                self.owner[o..].iter_mut().for_each(|e| *e -= 1);
+            }
+            _ => return false,
+        }
+        self.scene.sort_lists();
+        let objects = (self.zoo.entities.iter().zip(&self.shapes).enumerate())
+            .filter_map(|(at, (e, s))| Some((at, scene_object(e, s)?)));
+        self.scene.is_built_on(&self.zoo.tiles)
+            && objects.eq(self.owner.iter().copied().zip(self.scene.objects.iter().copied()))
     }
 
     /// The objects standing on tile `t` take their height from the ground again (not the ones

@@ -57,6 +57,50 @@ impl Scene {
         self.place(self.objects.len() - 1);
     }
 
+    /// Takes out object `o`, one that holds no slot (a unit, an overlay, a flight, a sparkle):
+    /// the scene [`Scene::new`] makes of the list without it, but for the order of the tile lists
+    /// (see [`Scene::sort_lists`]). Returns false, changing nothing, for an object that holds slots.
+    pub(crate) fn remove_free(&mut self, o: usize) -> bool {
+        if matches!(self.objects[o].kind, Kind::Path | Kind::Edge | Kind::Wall | Kind::Fixed) {
+            return false;
+        }
+        let shift = |i: &mut usize| *i -= usize::from(*i > o);
+        let lists = (self.list.iter_mut())
+            .chain(&mut self.overlay)
+            .chain(&mut self.transient)
+            .chain([&mut self.flights]);
+        for list in lists {
+            list.retain(|&i| i != o);
+            list.iter_mut().for_each(shift);
+        }
+        let slots = (self.edge.iter_mut().chain(&mut self.quad).flatten())
+            .chain(&mut self.path)
+            .chain(&mut self.big);
+        slots.flatten().for_each(shift);
+        self.objects.remove(o);
+        self.covers.remove(o);
+        self.placed.remove(o);
+        true
+    }
+
+    /// Puts the units of every tile in the order of the objects, as [`Scene::new`] lists them.
+    pub(crate) fn sort_lists(&mut self) {
+        self.list.iter_mut().for_each(|l| l.sort_unstable());
+    }
+
+    /// Whether the ground is that of these tiles (the elevations cut as [`Scene::new`] does), with
+    /// nothing [`Scene::new`] does not make (pad users, tanks).
+    pub(crate) fn is_built_on(&self, tiles: &[Tile]) -> bool {
+        let cut = |t: &Tile| Tile {
+            elevation: t.elevation.clamp(-MAX_ELEVATION, MAX_ELEVATION),
+            ..*t
+        };
+        self.pad.is_empty()
+            && self.tanks.is_empty()
+            && self.tiles.len() == tiles.len()
+            && self.tiles.iter().zip(tiles).all(|(a, b)| *a == cut(b))
+    }
+
     /// Building `building` draws the unit `user` right after itself (map drawing 9.5.1). The unit
     /// stays on its tile's list and is painted there too.
     pub(crate) fn add_pad_user(&mut self, building: usize, user: usize) {
