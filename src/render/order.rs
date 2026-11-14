@@ -61,7 +61,7 @@ impl Kind {
 }
 
 /// One object of the map.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Object {
     pub kind: Kind,
     /// World position; a tile is 64 units wide.
@@ -79,7 +79,7 @@ pub(crate) struct Object {
 }
 
 /// A tank exhibit as the painter needs it.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TankSpec {
     /// The first tile of the exhibit and its second (gate) tile; (-1, -1) for none.
     pub tile: (i32, i32),
@@ -133,6 +133,7 @@ pub(crate) enum Item {
 }
 
 /// The map as the painter sees it.
+#[cfg_attr(test, derive(PartialEq))]
 pub(crate) struct Scene {
     pub width: usize,
     pub height: usize,

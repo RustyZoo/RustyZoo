@@ -1216,3 +1216,60 @@ fn the_dollar_key_picks_only_exhibit_fence_pieces_inside_the_zoo_clear_of_water_
         .collect();
     assert_eq!(world.dollar_candidates(), wanted);
 }
+
+/// The index a build from the entities gives, with the units held as they are.
+fn built(world: &World) -> (Scene, Vec<usize>) {
+    let (mut scene, owner) = index(&world.zoo, &world.shapes);
+    for (o, held) in world.scene.held() {
+        match held {
+            Held::Unlisted => scene.unlist_unit(o),
+            Held::Hidden => scene.hide_unit(o),
+            Held::Lifted => scene.lift_unit(o),
+        }
+    }
+    (scene, owner)
+}
+
+#[test]
+fn the_index_followed_through_adds_and_removals_is_the_one_a_build_gives() {
+    let unit = |tx: i32, row: i32| entity("unit", tx * 64 + 32, row * 64 + 32, 0);
+    let mut world = walled(&[3]);
+    world.add(entity("path", 32, 32, 0), shape(&entity("path", 0, 0, 0)));
+    let same = |w: &World, step: &str| {
+        let (scene, owner) = built(w);
+        assert!(w.scene == scene && w.owner == owner, "{step}");
+    };
+    let mut ids: Vec<u32> = [(0, 6), (2, 6), (5, 6), (0, 2), (2, 2), (6, 1)]
+        .map(|(tx, row)| world.add(unit(tx, row), shape(&unit(tx, row))).unwrap())
+        .into();
+    world.add(
+        entity("tent", 6 * 64, 6 * 64 + 32, 0),
+        shape(&entity("tent", 0, 0, 0)),
+    );
+    same(&world, "adds");
+    // The units walk onto each other's tiles, which puts them out of the list order, one walks
+    // off the map, and some are held.
+    for (k, &id) in ids.iter().enumerate().rev() {
+        let at = world.find(id).unwrap();
+        let x = if k == 5 { -64 } else { 2 * 64 + 10 * k as i32 };
+        world.place_unit(at, (x, 6 * 64 + 32, 0), 3);
+    }
+    let at = |w: &World, id: u32| w.find(id).unwrap();
+    world.hide_unit(at(&world, ids[1]));
+    world.lift_unit(at(&world, ids[3]));
+    world.unlist_unit(at(&world, ids[4]));
+    for k in [5, 0, 2] {
+        assert!(world.remove(ids.remove(k)));
+        same(&world, "a unit removed");
+        let id = world.add(unit(k as i32, 6), shape(&unit(0, 0))).unwrap();
+        ids.push(id);
+        same(&world, "a unit added");
+    }
+    // A piece that holds slots goes with a build; the units after it follow.
+    assert!(world.remove(world.zoo.entities[0].common.as_ref().unwrap().id));
+    same(&world, "the gate removed");
+    while let Some(id) = ids.pop() {
+        assert!(world.remove(id));
+        same(&world, "the last units removed");
+    }
+}
