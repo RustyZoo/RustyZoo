@@ -512,6 +512,10 @@ fn the_bodies_of_a_catalogue_read_each_type_and_default_an_unknown_one() {
     for _ in 0..2 {
         assert_eq!(body(&entity("rock")), rock);
         assert_eq!(body(&entity("bush")), plain, "no keys: the defaults");
-        assert_eq!(body(&entity("tree")), plain, "an unknown type: the defaults");
+        assert_eq!(
+            body(&entity("tree")),
+            plain,
+            "an unknown type: the defaults"
+        );
     }
 }

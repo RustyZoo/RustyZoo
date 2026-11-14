@@ -572,9 +572,7 @@ impl<'a> MapRenderer<'a> {
     /// [`EntityType::animations`] of `ty`, made once.
     fn animations_of(&mut self, ty: &EntityType) -> Rc<[crate::entity::Animation]> {
         let key = std::ptr::from_ref(ty) as usize;
-        Rc::clone(
-            (self.type_anims.entry(key)).or_insert_with(|| ty.animations().into()),
-        )
+        Rc::clone((self.type_anims.entry(key)).or_insert_with(|| ty.animations().into()))
     }
 
     /// The member of the animation `name` of `ty`, as [`EntityType::animations`] gives it.

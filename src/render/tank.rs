@@ -429,8 +429,7 @@ impl MapRenderer<'_> {
         let dir = anim.set.files.get(view.file).map_or("", |f| directory(f));
         let name = format!("under{dir}");
         let member = self.animation_member(meta.ty, &name);
-        let Some(under) = member.and_then(|m| self.animation(&m))
-        else {
+        let Some(under) = member.and_then(|m| self.animation(&m)) else {
             return;
         };
         if view.file >= under.sprites.len() {
@@ -477,8 +476,7 @@ impl MapRenderer<'_> {
             let member = self.member(scene, o, meta).unwrap_or_default();
             let name = format!("shadow{}", directory(&member));
             let found = self.animation_member(ty, &name);
-            let Some(shadow) = found.and_then(|m| self.animation(&m))
-            else {
+            let Some(shadow) = found.and_then(|m| self.animation(&m)) else {
                 return;
             };
             (shadow, flag(ty, "cForceShadowBlack"))
