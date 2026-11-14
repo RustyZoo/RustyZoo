@@ -20,6 +20,10 @@ const END_THOUGHTS: [i32; 4] = [10287, 10288, 10289, 10290];
 
 /// The guest `unit` reads the show events of its turn (shows 6.4).
 pub(crate) fn react(unit: &mut Unit, world: &mut World, ctx: &mut Ctx, at: usize, data: &dyn Data) {
+    // Most turns hear nothing: the keys are not read for them.
+    if unit.events.is_empty() {
+        return;
+    }
     let Some(max_energy) = (matches!(unit.part, Part::Guest(_)))
         .then(|| super::keys(world, ctx.cat, at))
         .flatten()

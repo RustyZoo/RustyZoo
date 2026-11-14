@@ -845,6 +845,26 @@ fn switching_the_blending_drops_the_staged_grounds() {
 }
 
 #[test]
+fn the_animations_of_a_type_are_made_once_per_renderer() {
+    let install = cache_install("render-type-anims", frame_file());
+    let vfs = Vfs::open(&install.0).unwrap();
+    let mut catalogue = Catalogue::default();
+    let ini = "[Animations]\nidle = idle\nunder2 = walls/u.ani\nempty\n";
+    catalogue
+        .types
+        .push(crate::fixtures::ty("tankwall", "glass", "g", ini));
+    let ty = &catalogue.types[0];
+    let mut renderer = MapRenderer::new(&vfs, &catalogue);
+    let first = renderer.animations_of(ty);
+    assert_eq!(*first, *ty.animations());
+    assert!(Rc::ptr_eq(&first, &renderer.animations_of(ty)), "made once");
+    for name in ["idle", "under2", "empty", "missing"] {
+        let member = ty.animation_named(name).and_then(|a| a.member);
+        assert_eq!(renderer.animation_member(ty, name), member, "{name}");
+    }
+}
+
+#[test]
 fn one_staging_draws_any_window_like_the_whole_map() {
     let install = cache_install("render-staged", frame_file());
     let vfs = Vfs::open(&install.0).unwrap();

@@ -390,6 +390,9 @@ pub struct MapRenderer<'a> {
     ground: Option<ground::Renderer>,
     rendered: HashMap<String, Option<Rc<Picture>>>,
     anims: HashMap<String, Option<Rc<Animation>>>,
+    /// The animations of each type drawn, by the address of the type in the catalogue, which
+    /// outlives the renderer and never changes.
+    type_anims: HashMap<usize, Rc<[crate::entity::Animation]>>,
     /// The palette files read for recolouring, by normalised member.
     palettes: HashMap<String, Option<Palette>>,
     /// `building.ai`, which holds the colour groups the buildings share.
@@ -518,6 +521,7 @@ impl<'a> MapRenderer<'a> {
             ground: ground::Renderer::load(vfs).ok(),
             rendered: HashMap::new(),
             anims: HashMap::new(),
+            type_anims: HashMap::new(),
             palettes: HashMap::new(),
             groups,
             murky: (murky, very_murky),
@@ -563,6 +567,18 @@ impl<'a> MapRenderer<'a> {
             .map(Rc::new);
         self.anims.insert(member.to_string(), found.clone());
         found
+    }
+
+    /// [`EntityType::animations`] of `ty`, made once.
+    fn animations_of(&mut self, ty: &EntityType) -> Rc<[crate::entity::Animation]> {
+        let key = std::ptr::from_ref(ty) as usize;
+        Rc::clone((self.type_anims.entry(key)).or_insert_with(|| ty.animations().into()))
+    }
+
+    /// The member of the animation `name` of `ty`, as [`EntityType::animations`] gives it.
+    fn animation_member(&mut self, ty: &EntityType, name: &str) -> Option<String> {
+        let all = self.animations_of(ty);
+        all.iter().find(|a| a.name == name)?.member.clone()
     }
 
     /// The palette file `member`, read once.
