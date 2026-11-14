@@ -302,15 +302,22 @@ pub fn decayed(catalogue: &Catalogue) -> impl Fn(&Entity) -> Option<i32> + '_ {
     move |e| number(kind(catalogue, e)?, "cDecayedLife").map(|v| v as i32)
 }
 
-/// The bodies of the types of a catalogue; a type that is not found has the defaults.
+/// The bodies of the types of a catalogue; a type that is not found has the defaults. Each
+/// type's body is read once (a ground reads the same few types thousands of times).
 pub fn bodies(catalogue: &Catalogue) -> impl Fn(&Entity) -> Body + '_ {
+    let read = std::cell::RefCell::new(HashMap::new());
     move |e| {
-        let int = |key: &str| kind(catalogue, e).and_then(|ty| number(ty, key));
-        Body {
-            height: int("cHeight").map_or(0, |v| v as i32),
-            blocks: int("cBlocksLOS").is_none_or(|v| v != 0.0),
-            see_through: int("cSeeThrough").is_some_and(|v| v != 0.0),
-        }
+        let ty = kind(catalogue, e);
+        let body = || {
+            let int = |key: &str| ty.and_then(|ty| number(ty, key));
+            Body {
+                height: int("cHeight").map_or(0, |v| v as i32),
+                blocks: int("cBlocksLOS").is_none_or(|v| v != 0.0),
+                see_through: int("cSeeThrough").is_some_and(|v| v != 0.0),
+            }
+        };
+        let key = ty.map(std::ptr::from_ref);
+        *read.borrow_mut().entry(key).or_insert_with(body)
     }
 }
 

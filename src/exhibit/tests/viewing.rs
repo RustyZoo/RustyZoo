@@ -483,3 +483,39 @@ fn a_split_whose_survivor_keeps_the_side_across_the_piece_resizes_both_exhibits_
     assert_eq!(areas(1), [vec![west], vec![east], vec![west], vec![east]]);
     assert_eq!(areas(2), [vec![east], vec![west]]);
 }
+
+#[test]
+fn the_bodies_of_a_catalogue_read_each_type_and_default_an_unknown_one() {
+    let mut cat = crate::entity::Catalogue::default();
+    let keys = "[Characteristics/Integers]\ncHeight = 2\ncBlocksLOS = 0\ncSeeThrough = 1\n";
+    cat.push(crate::fixtures::ty("objects", "rock", "", keys));
+    cat.push(crate::fixtures::ty("objects", "bush", "", ""));
+    let entity = |name: &str| crate::zoo::Entity {
+        class: "objects".into(),
+        type_name: name.into(),
+        subtype: String::new(),
+        body_size: None,
+        common: None,
+    };
+    let body = crate::exhibit::viewing::bodies(&cat);
+    let rock = Body {
+        height: 2,
+        blocks: false,
+        see_through: true,
+    };
+    let plain = Body {
+        height: 0,
+        blocks: true,
+        see_through: false,
+    };
+    // Asked twice, as a ground asks for every piece of a type.
+    for _ in 0..2 {
+        assert_eq!(body(&entity("rock")), rock);
+        assert_eq!(body(&entity("bush")), plain, "no keys: the defaults");
+        assert_eq!(
+            body(&entity("tree")),
+            plain,
+            "an unknown type: the defaults"
+        );
+    }
+}
