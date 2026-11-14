@@ -189,5 +189,10 @@ fn archives_are_not_limited_in_number() {
         assert_eq!(vfs.archive_count(), count);
         assert_eq!(text(&vfs, "n0.txt"), "x", "the last archive of the list");
         assert_eq!(vfs.warnings().len(), usize::from(warned), "{count}");
+        // Under the default limit of open files of macOS (256), whatever the number of archives.
+        let open = (vfs.sources.iter())
+            .filter(|s| matches!(s, Source::Archive { file: Some(_), .. }))
+            .count();
+        assert_eq!(open, KEPT_OPEN, "{count}");
     }
 }
