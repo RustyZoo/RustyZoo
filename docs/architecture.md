@@ -78,7 +78,7 @@ SDL3 is used only there, built from source and linked statically.
 ## Determinism
 
 `rustyzoo sim <map> --ticks N` steps a map with no interface and prints one hash of the state (`sim::hash`);
-CI compares it across Linux, Windows and macOS.
+CI compares it across Linux, Windows and macOS, and on ARM Linux and Windows.
 All of it lives in `sim` and the modules it steps:
 
 - Whole numbers of the original's widths; wrapping arithmetic where the original wraps.

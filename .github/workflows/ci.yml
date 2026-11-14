@@ -86,6 +86,8 @@ jobs:
       windows: ${{ steps.simhash.outputs.windows }}
       macos: ${{ steps.simhash.outputs.macos }}
       windows32: ${{ steps.simhash.outputs.windows32 }}
+      linuxarm: ${{ steps.simhash.outputs.linuxarm }}
+      windowsarm: ${{ steps.simhash.outputs.windowsarm }}
     # No display, GPU or sound card on the runners: the same headless SDL settings on every OS.
     # The dummy video driver and the software renderer need no OpenGL, which the offscreen
     # video driver could not initialize on macOS. The dates use the English names whatever the
@@ -158,8 +160,8 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             target
-          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: cargo-${{ runner.os }}-${{ matrix.target }}-
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-
 
       # No simulation code walks a hash map (the order differs at every run).
       - if: runner.os == 'Linux'
@@ -169,8 +171,11 @@ jobs:
       - if: runner.os == 'Linux'
         run: ci/check-file-size.sh
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      # A leg marked `smoke` only builds and runs the smoke test (no clippy, tests, trials or window).
+      - if: ${{ !matrix.smoke }}
+        run: cargo clippy --all-targets -- -D warnings
+      - if: ${{ !matrix.smoke }}
+        run: cargo test
       - run: cargo build --release
 
       # Self-hosted: the ignored tests on the full English and French installs (as verify-fix runs them).
@@ -220,7 +225,7 @@ jobs:
         run: cargo run --release -- window-smoke
 
       - name: Build the x86_64 slice and merge a universal binary
-        if: runner.os == 'macOS'
+        if: matrix.system == 'macos'
         run: |
           rustup target add x86_64-apple-darwin
           cargo build --release --target x86_64-apple-darwin
@@ -230,7 +235,7 @@ jobs:
           lipo -info target/universal/rustyzoo
 
       - name: Smoke test the universal binary
-        if: runner.os == 'macOS'
+        if: matrix.system == 'macos'
         run: target/universal/rustyzoo window-smoke
 
       # The two free official trials from Microsoft, extracted outside the checkout. Only the
@@ -238,7 +243,7 @@ jobs:
       # window screenshot step further down checks one picture of a map and publishes none.
       # Self-hosted: no cache, the script downloads them.
       - &trials-cache
-        if: runner.environment == 'github-hosted'
+        if: runner.environment == 'github-hosted' && !matrix.smoke
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -249,6 +254,7 @@ jobs:
       # On a cache hit the script finds the folders and does nothing. When Microsoft's download
       # is unavailable (status 3) the step warns and passes; any other failure fails it.
       - name: Run the asset commands on the official trials
+        if: ${{ !matrix.smoke }}
         run: |
           trials="${RUNNER_TEMP//\\//}/trials"
           status=0
@@ -266,6 +272,7 @@ jobs:
       # `hashes`.
       - name: State hash of the simulation
         id: simhash
+        if: ${{ !matrix.smoke }}
         run: |
           trials="${RUNNER_TEMP//\\//}/trials"
           if [ ! -d "$trials/base-trial" ] || [ ! -d "$trials/expansion-trial" ]; then
@@ -285,6 +292,7 @@ jobs:
       # fails only if the mode breaks or the picture is blank. The runners have no GPU, so the software renderer draws.
       # The picture is rendered game data: it is deleted with the runner and never uploaded.
       - name: Check a window on the real video driver
+        if: ${{ !matrix.smoke }}
         env:
           SDL_VIDEO_DRIVER: ${{ runner.os == 'Linux' && 'x11' || runner.os == 'macOS' && 'cocoa' || 'windows' }}
         run: |
@@ -343,6 +351,21 @@ jobs:
             system: macos
             artifact: rustyzoo-macos-universal
             path: target/universal/rustyzoo
+          # The ARM legs: the simulation must give the same hashes there (job `hashes`).
+          - os: ubuntu-24.04-arm
+            system: linuxarm
+            artifact: rustyzoo-linux-aarch64
+            path: target/release/rustyzoo
+          - os: windows-11-arm
+            system: windowsarm
+            artifact: rustyzoo-windows-aarch64
+            path: target/release/rustyzoo.exe
+          # Intel macOS: 2.3 times slower than macos-15, so only the build and the smoke test.
+          - os: macos-15-intel
+            system: macosintel
+            smoke: true
+            artifact: rustyzoo-macos-x86_64
+            path: target/release/rustyzoo
     defaults: *bash
     outputs: *build-outputs
     env: *headless
@@ -373,6 +396,8 @@ jobs:
       linux: ${{ steps.play.outputs.linux }}
       windows: ${{ steps.play.outputs.windows }}
       macos: ${{ steps.play.outputs.macos }}
+      linuxarm: ${{ steps.play.outputs.linuxarm }}
+      windowsarm: ${{ steps.play.outputs.windowsarm }}
     env: *headless
     steps: &play-steps
       - *checkout
@@ -492,14 +517,20 @@ jobs:
           - os: macos-15
             system: macos
             bin: target/release/rustyzoo
+          - os: ubuntu-24.04-arm
+            system: linuxarm
+            bin: target/release/rustyzoo
+          - os: windows-11-arm
+            system: windowsarm
+            bin: target/release/rustyzoo.exe
     defaults: *bash
     outputs: *play-outputs
     env: *headless
     steps: *play-steps
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
-  # and long) is the same on the three systems and on 32-bit Windows, and no map fails to run; so are the last frame and
-  # state hashes of each played game. A system without trial data is skipped with a warning. Only with the
+  # and long) is the same on the three systems, on 32-bit Windows and on ARM Linux and Windows, and no map
+  # fails to run; so are the last frame and state hashes of each played game. A system without trial data is skipped with a warning. Only with the
   # legs `all` (skipped with the legs it needs).
   hashes:
     name: hashes
@@ -511,33 +542,43 @@ jobs:
       WINDOWS: ${{ needs.build-full.outputs.windows }}
       MACOS: ${{ needs.build-full.outputs.macos }}
       WINDOWS32: ${{ needs.build-full.outputs.windows32 }}
+      LINUXARM: ${{ needs.build-full.outputs.linuxarm }}
+      WINDOWSARM: ${{ needs.build-full.outputs.windowsarm }}
       PLAY_LINUX: ${{ needs.play.outputs.linux }}
       PLAY_WINDOWS: ${{ needs.play-full.outputs.windows }}
       PLAY_MACOS: ${{ needs.play-full.outputs.macos }}
+      PLAY_LINUXARM: ${{ needs.play-full.outputs.linuxarm }}
+      PLAY_WINDOWSARM: ${{ needs.play-full.outputs.windowsarm }}
     steps:
       - run: |
           failed=0
-          same() { # same <what> <linux> <windows> <macos> [<windows 32-bit>]
-            printf '%s\n  linux:   %s\n  windows: %s\n  macos:   %s\n' "$1" "$2" "$3" "$4"
-            [ "$#" -lt 5 ] || printf '  win32:   %s\n' "$5"
-            seen=0 first=
-            for hashes in "${@:2}"; do
+          same() { # same <what> <system>:<hashes>...
+            echo "$1"
+            seen=0 first= differ=0
+            for arg in "${@:2}"; do
+              hashes=${arg#*:}
+              printf '  %-12s %s\n' "${arg%%:*}:" "$hashes"
               [ -n "$hashes" ] || continue
               seen=$((seen + 1))
-              [ "$hashes" = "${first:=$hashes}" ] || { echo "the $1 differ between systems"; failed=1; return; }
+              [ "$hashes" = "${first:=$hashes}" ] || differ=1
             done
-            if [ "$seen" -lt "$(($# - 1))" ]; then
+            if [ "$differ" = 1 ]; then
+              echo "the $1 differ between systems"
+              failed=1
+            elif [ "$seen" -lt "$(($# - 1))" ]; then
               echo "::warning title=$1::Only $seen of $(($# - 1)) systems had trial data, so the hashes were not all compared."
             fi
           }
-          same "state hashes of the simulation" "$LINUX" "$WINDOWS" "$MACOS" "$WINDOWS32"
-          case "$LINUX$WINDOWS$MACOS$WINDOWS32" in
+          same "state hashes of the simulation" "linux:$LINUX" "windows:$WINDOWS" "macos:$MACOS" \
+            "win32:$WINDOWS32" "linux-arm:$LINUXARM" "windows-arm:$WINDOWSARM"
+          case "$LINUX$WINDOWS$MACOS$WINDOWS32$LINUXARM$WINDOWSARM" in
             *=failed*)
               echo "a map did not run"
               failed=1
               ;;
           esac
-          same "hashes of the played games" "$PLAY_LINUX" "$PLAY_WINDOWS" "$PLAY_MACOS"
+          same "hashes of the played games" "linux:$PLAY_LINUX" "windows:$PLAY_WINDOWS" "macos:$PLAY_MACOS" \
+            "linux-arm:$PLAY_LINUXARM" "windows-arm:$PLAY_WINDOWSARM"
           exit "$failed"
 
   # The single required status check: fails unless `scope` succeeded and every other job succeeded or was
