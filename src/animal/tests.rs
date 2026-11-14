@@ -452,7 +452,10 @@ fn the_keys_of_a_type_are_read_once_and_follow_the_class_and_the_subtype() {
     };
     assert_eq!(read.of(&f, &other).death_chance, 7);
     assert_eq!(types(&read), 1, "a new class reads the keys again");
-    let none = EntityType { config: None, ..ty(b"f") };
+    let none = EntityType {
+        config: None,
+        ..ty(b"f")
+    };
     assert_eq!(read.of(&none, &class), Keys::of(&none, &class));
 }
 

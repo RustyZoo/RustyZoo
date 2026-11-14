@@ -61,7 +61,10 @@ impl Scene {
     /// the scene [`Scene::new`] makes of the list without it, but for the order of the tile lists
     /// (see [`Scene::sort_lists`]). Returns false, changing nothing, for an object that holds slots.
     pub(crate) fn remove_free(&mut self, o: usize) -> bool {
-        if matches!(self.objects[o].kind, Kind::Path | Kind::Edge | Kind::Wall | Kind::Fixed) {
+        if matches!(
+            self.objects[o].kind,
+            Kind::Path | Kind::Edge | Kind::Wall | Kind::Fixed
+        ) {
             return false;
         }
         let shift = |i: &mut usize| *i -= usize::from(*i > o);

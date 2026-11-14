@@ -3,7 +3,8 @@
 //!
 //! The zoo stays the live world: an edit changes `zoo.tiles` and `zoo.entities` in place and
 //! nothing is written to disk. After every edit the index is built again from the entities with
-//! the placement rules of the paint order ([`Scene`]), so a query never scans the entity list.
+//! the placement rules of the paint order ([`Scene`]), so a query never scans the entity list; a
+//! unit added at the end of the list or taken out is followed in place, to the same index.
 //! An entity is named by its position in `zoo.entities`, which an edit may change (use the id,
 //! `Common::id`, to keep one). The game's rules (what may be placed where, what it costs) are not
 //! here.
@@ -793,8 +794,8 @@ impl World {
         self.scene.sort_lists();
         let objects = (self.zoo.entities.iter().zip(&self.shapes).enumerate())
             .filter_map(|(at, (e, s))| Some((at, scene_object(e, s)?)));
-        self.scene.is_built_on(&self.zoo.tiles)
-            && objects.eq(self.owner.iter().copied().zip(self.scene.objects.iter().copied()))
+        let followed = (self.owner.iter().copied()).zip(self.scene.objects.iter().copied());
+        self.scene.is_built_on(&self.zoo.tiles) && objects.eq(followed)
     }
 
     /// The objects standing on tile `t` take their height from the ground again (not the ones

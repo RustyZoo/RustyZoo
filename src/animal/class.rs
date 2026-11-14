@@ -279,7 +279,10 @@ impl Keys {
 #[derive(Debug, Default)]
 pub(crate) struct KeysRead(pub(super) std::cell::RefCell<Read>);
 
-type Read = (Option<Class>, HashMap<usize, (Arc<Config>, Vec<(Vec<u8>, Keys)>)>);
+type Read = (
+    Option<Class>,
+    HashMap<usize, (Arc<Config>, Vec<(Vec<u8>, Keys)>)>,
+);
 
 impl KeysRead {
     /// [`Keys::of`], read once for each type. The entry holds the type's file, so that no other
