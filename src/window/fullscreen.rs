@@ -6,12 +6,19 @@
 //! cursor is mapped back, and a cursor over the black is taken for the nearest edge pixel, so the
 //! scroll band is reached at the edge of the display.
 
+/// The largest whole factor by which `game` pixels fit in `out` pixels (0 when they do not fit).
+/// It is counted in pixels of the output, not in points, so a high-density or fractional display
+/// gets the factor its pixels allow, and an odd pixel left over is a border.
+pub fn whole(out: (u32, u32), game: (u32, u32)) -> u32 {
+    (out.0 / game.0.max(1)).min(out.1 / game.1.max(1))
+}
+
 /// Where the picture of `game` pixels goes on an output of `out` pixels: `(x, y, width, height)`.
-/// The factor is whole when the output is at least as large as the game; a smaller output scales
-/// the picture down to fit.
+/// The factor is [`whole`] when the output is at least as large as the game; a smaller output
+/// scales the picture down to fit.
 pub fn fit(out: (u32, u32), game: (u32, u32)) -> (f32, f32, f32, f32) {
     let (gw, gh) = (game.0.max(1), game.1.max(1));
-    let k = match (out.0 / gw).min(out.1 / gh) {
+    let k = match whole(out, game) {
         0 => (out.0 as f32 / gw as f32).min(out.1 as f32 / gh as f32),
         k => k as f32,
     };
@@ -64,6 +71,20 @@ mod tests {
         assert_eq!(fit((640, 480), (1280, 960)), (0.0, 0.0, 640.0, 480.0));
         assert_eq!(fit((0, 0), (800, 600)).2, 0.0);
         assert_eq!(fit((100, 100), (0, 0)).2, 100.0, "no division by 0");
+    }
+
+    #[test]
+    fn full_screen_counts_the_factor_in_pixels_of_the_display() {
+        // A 3456x2234 Retina panel is 1728x1117 points: a 1152x744 game fits once in points but
+        // three times in pixels, and fills the display with a row of black above and below.
+        assert_eq!(whole((3456, 2234), (1152, 744)), 3);
+        assert_eq!(fit((3456, 2234), (1152, 744)), (0.0, 1.0, 3456.0, 2232.0));
+        assert_eq!(fit((3456, 2234), (1024, 768)).2, 2048.0);
+        assert_eq!(whole((1920, 1080), (640, 360)), 3);
+        assert_eq!(whole((2560, 1600), (1280, 800)), 2);
+        assert_eq!(whole((0, 0), (800, 600)), 0);
+        assert_eq!(whole((800, 600), (0, 0)), 600);
+        assert_eq!(whole((u32::MAX, u32::MAX), (1, 1)), u32::MAX);
     }
 
     #[test]

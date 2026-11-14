@@ -172,7 +172,8 @@ pub fn open(
             format!("the output is {output:?} but the window has {pixels:?} pixels").into(),
         );
     }
-    if pixels != (size.0 * k, size.1 * k) {
+    // At a fractional scale the window may have an odd pixel more, left as a border.
+    if fullscreen::whole(pixels, size) != k {
         eprintln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
     Ok(Screen {
