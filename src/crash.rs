@@ -459,11 +459,11 @@ mod tests {
             "/u/bob/My Games/Zoo".to_string(),
             "C:\\Users\\Bob".to_string(),
         ];
-        let text = "No such file: /u/bob/My Games/Zoo/Saved Games/a.zoo, \"/tmp/x/y.dat\" at \
+        let text = "No such file: /u/bob/My Games/Zoo/Saved Games/a.zoo, \"/var/x/y.dat\" at \
             C:\\Users\\Bob\\AppData\\z.ini, /rustc/abc123/library/std/src/panic.rs:12:5\n(/u/bob/.cargo/src/app.rs:3) ok";
         let clean = strip_paths(text, &roots);
         for secret in [
-            "bob", "Bob", "My Games", "tmp", "x/y", "a.zoo", "abc123", ".cargo",
+            "bob", "Bob", "My Games", "var", "x/y", "a.zoo", "abc123", ".cargo",
         ] {
             assert!(!clean.contains(secret), "{secret} in {clean}");
         }
