@@ -470,8 +470,11 @@ fn play_intros(
 fn offer_crash_reports(vfs: &Vfs) {
     let dsn = rustyzoo::crash::DSN;
     rustyzoo::crash::install(dsn, userdir::dir(), vfs.root(), crate::ask_crash_report);
-    // Off in every normal build: a build for the end-to-end check of the report.
-    #[cfg(feature = "crash-test")]
+}
+
+/// Off in every normal build: a build for the end-to-end check of the report.
+#[cfg(feature = "crash-test")]
+fn crash_test() {
     if std::env::var_os("RUSTYZOO_CRASH_TEST").is_some() {
         panic!("crash report test");
     }
@@ -515,12 +518,12 @@ pub fn run(
     };
     rustyzoo::text::use_system_fonts(flags.interactive());
     if !flags.headless {
-        return crate::window::run(
-            vfs,
-            loaded,
-            &ini,
-            window_flags(&flags, open, commands.collect()),
-        );
+        let flags = window_flags(&flags, open, commands.collect());
+        return rustyzoo::crash::guard(|| {
+            #[cfg(feature = "crash-test")]
+            crash_test();
+            crate::window::run(vfs, loaded, &ini, flags)
+        });
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));

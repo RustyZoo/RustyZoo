@@ -1,6 +1,7 @@
-//! Opt-in crash reports: when an interactive game panics, offer to send one Sentry envelope to the
-//! project's server. Nothing is asked or sent without a server address in the build, in a
-//! headless run, a test or any other command.
+//! Opt-in crash reports: when a panic ends an interactive game, offer to send one Sentry envelope to
+//! the project's server. Nothing is asked or sent without a server address in the build, with
+//! `RUSTYZOO_NO_CRASH_REPORTS` set, in a headless run, a test or any other command, nor for a panic
+//! that is caught.
 //!
 //! The address (DSN) is [`DSN`], set when the program is built. The answer is asked once, kept in
 //! `[RustyZoo] crashReports` of the settings file (1 send, 0 do not, absent or unreadable: ask) and
@@ -19,7 +20,6 @@ use std::panic::PanicHookInfo;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::mcp::json::Json;
@@ -35,7 +35,6 @@ const SECTION: &str = "RustyZoo";
 const KEY: &str = "crashReports";
 
 static LOG: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
-static REPORTED: AtomicBool = AtomicBool::new(false);
 
 /// Prints a warning on the standard error, like `eprintln!`, and keeps it for the crash report.
 #[macro_export]
@@ -128,12 +127,13 @@ pub fn private_roots(install: &Path) -> Vec<String> {
     roots
 }
 
-/// Marks where a known folder stood: what follows it, up to the end of a path, is cut as well.
+/// Marks where a known folder stood, so that it is cut even in the middle of a word.
 const ROOT: char = '\u{1}';
 
 /// `text` without the `roots` and without any other absolute path: a path that ends in a `.rs`
-/// file keeps that name (`<path>/app.rs:12:5`), any other becomes `<path>`. What follows a known
-/// folder may hold spaces, so it runs to a quote, a bracket, a comma, the end of the line or `: `.
+/// file keeps that name (`<path>/app.rs:12:5`), any other becomes `<path>`. A path (a known folder,
+/// `/x`, `\\x`, `C:\x`) may hold spaces, so it runs to `: `, a quote, a bracket, a comma or the end
+/// of the line.
 pub fn strip_paths(text: &str, roots: &[String]) -> String {
     let mut text = text.replace(ROOT, "");
     for root in roots {
@@ -143,19 +143,17 @@ pub fn strip_paths(text: &str, roots: &[String]) -> String {
     let (mut out, mut i) = (String::new(), 0);
     while i < chars.len() {
         let before = i.checked_sub(1).map(|j| chars[j]);
-        let starts = before.is_none_or(|c| c.is_whitespace() || "\"'`(=[<".contains(c));
-        let drive = chars[i].is_ascii_alphabetic()
-            && chars.get(i + 1) == Some(&':')
-            && matches!(chars.get(i + 2), Some('/' | '\\'));
-        let known = chars[i] == ROOT;
-        if known || (starts && (matches!(chars[i], '/' | '\\') || drive)) {
+        let starts = before.is_none_or(|c| c.is_whitespace() || "\"'`(=[<,".contains(c));
+        let separator = |j: usize| matches!(chars.get(j), Some('/' | '\\'));
+        let drive =
+            chars[i].is_ascii_alphabetic() && chars.get(i + 1) == Some(&':') && separator(i + 2);
+        let rooted = separator(i) && chars.get(i + 1).is_some_and(|c| !c.is_whitespace());
+        if chars[i] == ROOT || (starts && (rooted || drive)) {
             let end = (i + 1..chars.len())
                 .find(|&j| {
                     let c = chars[j];
-                    let spaced =
-                        known && c == ':' && chars.get(j + 1).is_none_or(|n| n.is_whitespace());
-                    let blank = c.is_whitespace() && c != '\n' && !(known && joins(&chars, j));
-                    spaced || c == '\n' || "\"'`),;>]".contains(c) || blank
+                    let colon = c == ':' && chars.get(j + 1).is_none_or(|n| n.is_whitespace());
+                    colon || c == '\n' || "\"'`),;>]}".contains(c)
                 })
                 .unwrap_or(chars.len());
             let path: String = chars[i..end].iter().collect();
@@ -173,15 +171,6 @@ pub fn strip_paths(text: &str, roots: &[String]) -> String {
         }
     }
     out
-}
-
-/// Whether the space at `j` is inside a name of the path: a separator comes before the next blank.
-fn joins(chars: &[char], j: usize) -> bool {
-    let rest = &chars[j + 1..];
-    let word = rest
-        .iter()
-        .take_while(|c| !c.is_whitespace() && !"\"'`),;>]".contains(**c));
-    word.clone().any(|c| matches!(c, '/' | '\\'))
 }
 
 /// The envelope of `report`, with the paths of `roots` left out.
@@ -333,26 +322,54 @@ fn offer(
     }
 }
 
-/// Arms the panic hook of an interactive game: `ask` shows the question once and gives the answer
-/// (`None` if it could not be asked). Without a server address in the build it does nothing and
-/// gives false.
+/// What `install` armed: the server, the settings folder, the folders to leave out and the question.
+struct Armed {
+    dsn: Dsn,
+    dir: Option<PathBuf>,
+    roots: Vec<String>,
+    ask: fn(&str) -> Option<bool>,
+}
+
+static ARMED: Mutex<Option<Armed>> = Mutex::new(None);
+/// The report of the last panic: sent only when that panic ends the game (see [`guard`]).
+static PENDING: Mutex<Option<Report>> = Mutex::new(None);
+
+/// The environment variable that turns every report off, whatever it holds but nothing.
+const OFF: &str = "RUSTYZOO_NO_CRASH_REPORTS";
+
+fn is_off(value: Option<std::ffi::OsString>) -> bool {
+    value.is_some_and(|v| !v.is_empty())
+}
+
+/// Arms the panic hook of an interactive game: the hook only records the report; [`guard`] asks
+/// and sends once the panic ends the game. `ask` shows the question and gives the answer (`None` if
+/// it could not be asked). Without a server address in the build, or with `RUSTYZOO_NO_CRASH_REPORTS`
+/// set, it does nothing and gives false.
 pub fn install(
     dsn: Option<&str>,
     dir: Option<PathBuf>,
     install: &Path,
     ask: fn(&str) -> Option<bool>,
 ) -> bool {
-    let Some(dsn) = dsn.and_then(Dsn::parse) else {
+    let Some(dsn) = dsn
+        .and_then(Dsn::parse)
+        .filter(|_| !is_off(std::env::var_os(OFF)))
+    else {
         return false;
     };
     let roots = private_roots(install);
+    if let Ok(mut armed) = ARMED.lock() {
+        *armed = Some(Armed {
+            dsn,
+            dir,
+            roots,
+            ask,
+        });
+    }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info: &PanicHookInfo| {
         previous(info);
-        // One report and one question per run, and never one from inside a failing report.
-        if REPORTED.swap(true, Ordering::SeqCst) {
-            return;
-        }
+        // A panic that is caught, or that ends another thread, only leaves its report behind.
         let report = Report {
             message: info.to_string(),
             backtrace: std::backtrace::Backtrace::force_capture().to_string(),
@@ -361,17 +378,41 @@ pub fn install(
                 .map(|log| log.iter().cloned().collect())
                 .unwrap_or_default(),
         };
-        let question = "RustyZoo stopped because of an error. Send a crash report? It holds the \
-            error, the version, your system and the last warnings, never your files, saved games \
-            or folder names. Your answer is kept in zoo.ini ([RustyZoo] crashReports).";
-        offer(
-            Some(&dsn),
-            dir.as_deref(),
-            || ask(question),
-            |dsn| post(dsn, &envelope(&report, &roots, &event_id(), now())),
-        );
+        if let Ok(mut pending) = PENDING.try_lock() {
+            *pending = Some(report);
+        }
     }));
     true
+}
+
+/// Runs `play`; when a panic ends it, asks about the report of that panic (the window of `play` is
+/// dropped by then), sends it on Yes, and goes on with the panic.
+pub fn guard<T>(play: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(play)) {
+        Ok(value) => value,
+        Err(panic) => {
+            report_pending();
+            std::panic::resume_unwind(panic)
+        }
+    }
+}
+
+fn report_pending() {
+    let (Ok(armed), Ok(mut pending)) = (ARMED.lock(), PENDING.lock()) else {
+        return;
+    };
+    let (Some(armed), Some(report)) = (armed.as_ref(), pending.take()) else {
+        return;
+    };
+    let question = "RustyZoo stopped because of an error. Send a crash report? It holds the \
+        error, the version, your system and the last warnings, never your files, saved games \
+        or folder names. Your answer is kept in zoo.ini ([RustyZoo] crashReports).";
+    offer(
+        Some(&armed.dsn),
+        armed.dir.as_deref(),
+        || (armed.ask)(question),
+        |dsn| post(dsn, &envelope(&report, &armed.roots, &event_id(), now())),
+    );
 }
 
 fn now() -> f64 {
@@ -418,8 +459,8 @@ mod tests {
             "/home/bob/My Games/Zoo".to_string(),
             "C:\\Users\\Bob".to_string(),
         ];
-        let text = "No such file: /home/bob/My Games/Zoo/Saved Games/a.zoo \"/tmp/x/y.dat\" at \
-            C:\\Users\\Bob\\AppData\\z.ini and /rustc/abc123/library/std/src/panic.rs:12:5 (/home/bob/.cargo/src/app.rs:3) ok";
+        let text = "No such file: /home/bob/My Games/Zoo/Saved Games/a.zoo, \"/tmp/x/y.dat\" at \
+            C:\\Users\\Bob\\AppData\\z.ini, /rustc/abc123/library/std/src/panic.rs:12:5\n(/home/bob/.cargo/src/app.rs:3) ok";
         let clean = strip_paths(text, &roots);
         for secret in [
             "bob", "Bob", "My Games", "tmp", "x/y", "a.zoo", "abc123", ".cargo",
@@ -434,6 +475,51 @@ mod tests {
             "a/b and 1/2 and src/app.rs:3"
         );
         assert_eq!(strip_paths("", &[]), "");
+    }
+
+    #[test]
+    fn a_path_with_spaces_is_left_out_whole() {
+        let roots = vec!["/data/bob".to_string(), "C:\\Users\\Bob Smith".to_string()];
+        for (text, secrets) in [
+            (
+                "/data/bob/Saved Games/Bob Smith Zoo.zoo: bad",
+                &["Smith", "Zoo.zoo"][..],
+            ),
+            (
+                "cannot read C:\\Games\\Ann Lee\\a b.zoo: bad",
+                &["Lee", "b.zoo"],
+            ),
+            (
+                "c:\\users\\bob smith\\Saved Games\\x.zoo: bad",
+                &["smith", "x.zoo"],
+            ),
+            ("open \\\\nas\\Ann Lee\\z.zoo: bad", &["Lee", "z.zoo"]),
+            ("/Users/ann/Library/My Zoo.zoo", &["ann", "Zoo.zoo"]),
+            (
+                "a \"/x/My Zoo.zoo\" b, /y/Ann Lee.zoo, c (/z/A B.zoo) d",
+                &["Zoo", "Lee", "B.zoo"],
+            ),
+        ] {
+            let clean = strip_paths(text, &roots);
+            for secret in secrets {
+                assert!(!clean.contains(secret), "{secret} in {clean}");
+            }
+        }
+        assert_eq!(strip_paths("/data/bob/a b.zoo: bad", &roots), "<path>: bad");
+        assert_eq!(
+            strip_paths("a lone / and \\ stay", &[]),
+            "a lone / and \\ stay"
+        );
+    }
+
+    #[test]
+    fn the_variable_turns_reports_off() {
+        use std::ffi::OsString;
+        assert!(!is_off(None));
+        assert!(!is_off(Some(OsString::new())));
+        for on in ["1", "0", "-1", "99999999999999999999", "x"] {
+            assert!(is_off(Some(on.into())), "{on}");
+        }
     }
 
     #[test]
