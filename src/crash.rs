@@ -128,12 +128,16 @@ pub fn private_roots(install: &Path) -> Vec<String> {
     roots
 }
 
+/// Marks where a known folder stood: what follows it, up to the end of a path, is cut as well.
+const ROOT: char = '\u{1}';
+
 /// `text` without the `roots` and without any other absolute path: a path that ends in a `.rs`
-/// file keeps that name (`<path>/app.rs:12:5`), any other becomes `<path>`.
+/// file keeps that name (`<path>/app.rs:12:5`), any other becomes `<path>`. What follows a known
+/// folder may hold spaces, so it runs to a quote, a bracket, a comma, the end of the line or `: `.
 pub fn strip_paths(text: &str, roots: &[String]) -> String {
-    let mut text = text.to_string();
+    let mut text = text.replace(ROOT, "");
     for root in roots {
-        text = text.replace(root.as_str(), "<path>");
+        text = text.replace(root.as_str(), &ROOT.to_string());
     }
     let chars: Vec<char> = text.chars().collect();
     let (mut out, mut i) = (String::new(), 0);
@@ -143,14 +147,23 @@ pub fn strip_paths(text: &str, roots: &[String]) -> String {
         let drive = chars[i].is_ascii_alphabetic()
             && chars.get(i + 1) == Some(&':')
             && matches!(chars.get(i + 2), Some('/' | '\\'));
-        if starts && (matches!(chars[i], '/' | '\\') || drive) && !is_placeholder(&chars, i) {
-            let end = (i..chars.len())
-                .find(|&j| chars[j].is_whitespace() || "\"'`),;>]".contains(chars[j]))
+        let known = chars[i] == ROOT;
+        if known || (starts && (matches!(chars[i], '/' | '\\') || drive)) {
+            let end = (i + 1..chars.len())
+                .find(|&j| {
+                    let c = chars[j];
+                    let spaced =
+                        known && c == ':' && chars.get(j + 1).is_none_or(|n| n.is_whitespace());
+                    let blank = c.is_whitespace() && c != '\n' && !(known && joins(&chars, j));
+                    spaced || c == '\n' || "\"'`),;>]".contains(c) || blank
+                })
                 .unwrap_or(chars.len());
             let path: String = chars[i..end].iter().collect();
             let name = path.rsplit(['/', '\\']).next().unwrap_or_default();
             match name.find(".rs") {
-                Some(at) if at > 0 => out.push_str(&format!("<path>/{name}")),
+                Some(at) if at > 0 && !name.contains(' ') => {
+                    out.push_str(&format!("<path>/{name}"))
+                }
                 _ => out.push_str("<path>"),
             }
             i = end;
@@ -162,9 +175,13 @@ pub fn strip_paths(text: &str, roots: &[String]) -> String {
     out
 }
 
-/// Whether the `/` at `i` follows a `<path>` already put in place.
-fn is_placeholder(chars: &[char], i: usize) -> bool {
-    i >= 6 && chars[i - 6..i].iter().collect::<String>() == "<path>"
+/// Whether the space at `j` is inside a name of the path: a separator comes before the next blank.
+fn joins(chars: &[char], j: usize) -> bool {
+    let rest = &chars[j + 1..];
+    let word = rest
+        .iter()
+        .take_while(|c| !c.is_whitespace() && !"\"'`),;>]".contains(**c));
+    word.clone().any(|c| matches!(c, '/' | '\\'))
 }
 
 /// The envelope of `report`, with the paths of `roots` left out.
@@ -550,7 +567,7 @@ mod tests {
             ("1", Some(true)),
             ("2", Some(true)),
             ("-1", Some(true)),
-            ("0", Some(false)),
+            ("0", None),
             ("yes", Some(false)),
             ("", Some(false)),
             ("0x", None),
