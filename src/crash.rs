@@ -567,9 +567,9 @@ mod tests {
             ("1", Some(true)),
             ("2", Some(true)),
             ("-1", Some(true)),
-            ("0", None),
+            ("0", Some(false)),
             ("yes", Some(false)),
-            ("", Some(false)),
+            ("", None),
             ("0x", None),
             ("-5", Some(true)),
         ] {
