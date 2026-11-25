@@ -65,6 +65,16 @@ fn show_box(message: &str) {
 /// Asks whether to send a crash report: `Some(true)` for Yes, `Some(false)` for No, `None` when the
 /// box cannot be shown or is closed without an answer.
 fn ask_crash_report(question: &str) -> Option<bool> {
+    ask(MessageBoxFlag::ERROR, question)
+}
+
+/// Asks whether to share anonymous statistics, like [`ask_crash_report`].
+fn ask_statistics(question: &str) -> Option<bool> {
+    ask(MessageBoxFlag::INFORMATION, question)
+}
+
+/// A box with Yes and No and no button chosen beforehand: neither Return nor Escape answers.
+fn ask(icon: MessageBoxFlag, question: &str) -> Option<bool> {
     let buttons = [
         ButtonData {
             flags: MessageBoxButtonFlag::NOTHING,
@@ -78,14 +88,7 @@ fn ask_crash_report(question: &str) -> Option<bool> {
         },
     ];
     let title = "RustyZoo";
-    match show_message_box(
-        MessageBoxFlag::ERROR,
-        &buttons,
-        title,
-        question,
-        None::<&Window>,
-        None,
-    ) {
+    match show_message_box(icon, &buttons, title, question, None::<&Window>, None) {
         Ok(ClickedButton::CustomButton(button)) => Some(button.button_id == 1),
         Ok(ClickedButton::CloseButton) => None,
         Err(e) => {

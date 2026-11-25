@@ -48,6 +48,11 @@ jobs:
       SDL_VIDEO_DRIVER: dummy
       SDL_RENDER_DRIVER: software
       SDL_AUDIO_DRIVER: dummy
+      # Where the opt-in crash reports and start statistics go. Public by design: they ship in the
+      # binary, which asks the player before it sends anything.
+      RUSTYZOO_CRASH_DSN: https://a5eb34b863e146f89e6ff00876987801@errors.rustyzoo.com/1
+      RUSTYZOO_STATS_URL: https://pulse.rustyzoo.com
+      RUSTYZOO_STATS_WEBSITE: 0b0d4d11-b924-4a34-b5ff-7bfe52663dd4
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

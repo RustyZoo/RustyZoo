@@ -351,9 +351,22 @@ The first time, a box asks "Send a crash report?" and says what goes out: the pa
 crashReports=1
 ```
 
-`1` sends the report without asking, `0` sends nothing, and a missing or empty key asks again at the next crash. A box that cannot be shown or is closed sends nothing and keeps nothing. The report is one Sentry envelope posted with the system's `curl` (no HTTP library is linked); a missing `curl` or an unreachable server is a warning. The box shows once the window is closed.
+`1` sends the report without asking, `0` sends nothing, and a missing or empty key asks again at the next crash. A box that cannot be shown or is closed sends nothing and keeps nothing. The report is one Sentry envelope posted with the system's `curl` (no HTTP library is linked); a missing `curl` or an unreachable server is a warning. The box shows once the window is closed, and also names the privacy policy, https://rustyzoo.com/privacy/.
 
 `cargo build --release --features crash-test` adds a way to try the report against a server: `RUSTYZOO_CRASH_TEST=1 rustyzoo run` panics at once. Normal builds have no such feature.
+
+## Start statistics
+
+At the start of a game in a window (not `--headless`, not a script, log, picture or seed run, not any other command), RustyZoo can send one anonymous event to the statistics server of the project. Builds made without its address and site (the environment variables `RUSTYZOO_STATS_URL` and `RUSTYZOO_STATS_WEBSITE` at build time) never ask and never send, and neither does a run with `RUSTYZOO_NO_CRASH_REPORTS` set to any non-empty value (the same switch as the crash reports).
+
+The first time, a box asks "Share anonymous statistics?" with Yes and No, and no answer is chosen beforehand (no button answers to Return or Escape; the system may still highlight the first button). It says what goes out: the version, the build (debug or release), the system and its architecture, and nothing else: no identifier, no file or folder name, no name of the machine. It also names the privacy policy, https://rustyzoo.com/privacy/. The answer is kept in the `zoo.ini` of the user folder and changed by editing it:
+
+```
+[RustyZoo]
+startStats=1
+```
+
+`1` sends one event at each start without asking, `0` sends nothing, and a missing or empty key asks again at the next start. A box that cannot be shown or is closed sends nothing and keeps nothing. The event is one JSON post to `/api/send` of the server, made in the background with the system's `curl` (a time limit of 5 seconds; a missing `curl` or an unreachable server is a warning and never stops the game). The request carries the user agent `RustyZoo/<version> (<system>; <architecture>)`: the server drops the default one of `curl` as a robot.
 
 ## The window
 

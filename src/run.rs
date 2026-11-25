@@ -466,10 +466,12 @@ fn play_intros(
     Ok(false)
 }
 
-/// Arms the crash report of a player's window (see `rustyzoo::crash`).
+/// Arms the crash report of a player's window (see `rustyzoo::crash`) and sends the start
+/// statistics (see `rustyzoo::stats`).
 fn offer_crash_reports(vfs: &Vfs) {
     let dsn = rustyzoo::crash::DSN;
     rustyzoo::crash::install(dsn, userdir::dir(), vfs.root(), crate::ask_crash_report);
+    rustyzoo::stats::start(userdir::dir().as_deref(), crate::ask_statistics);
 }
 
 /// Off in every normal build: a build for the end-to-end check of the report.
