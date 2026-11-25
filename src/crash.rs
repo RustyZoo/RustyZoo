@@ -416,6 +416,15 @@ pub fn guard<T>(play: impl FnOnce() -> T) -> T {
     }
 }
 
+/// The question shown once, at the first crash.
+fn question() -> String {
+    format!(
+        "RustyZoo stopped because of an error. Send a crash report? It holds the error, the \
+        version, your system and the last warnings, never your files, saved games or folder \
+        names. Your answer is kept in zoo.ini ([RustyZoo] {KEY}). Policy: {POLICY}"
+    )
+}
+
 fn report_pending() {
     let (Ok(armed), Ok(mut pending)) = (ARMED.lock(), PENDING.lock()) else {
         return;
@@ -423,11 +432,7 @@ fn report_pending() {
     let (Some(armed), Some(report)) = (armed.as_ref(), pending.take()) else {
         return;
     };
-    let question = format!(
-        "RustyZoo stopped because of an error. Send a crash report? It holds the error, the \
-        version, your system and the last warnings, never your files, saved games or folder \
-        names. Your answer is kept in zoo.ini ([RustyZoo] crashReports). Policy: {POLICY}"
-    );
+    let question = question();
     offer(
         Some(&armed.dsn),
         armed.dir.as_deref(),
@@ -692,6 +697,12 @@ mod tests {
                 "{value:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_question_names_the_setting_and_the_policy() {
+        let q = question();
+        assert!(q.contains("crashReports") && q.contains("https://rustyzoo.com/privacy/"));
     }
 
     #[test]
