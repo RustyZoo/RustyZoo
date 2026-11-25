@@ -456,11 +456,11 @@ mod tests {
     #[test]
     fn paths_of_the_player_are_left_out_of_the_text() {
         let roots = vec![
-            "/home/bob/My Games/Zoo".to_string(),
+            "/u/bob/My Games/Zoo".to_string(),
             "C:\\Users\\Bob".to_string(),
         ];
-        let text = "No such file: /home/bob/My Games/Zoo/Saved Games/a.zoo, \"/tmp/x/y.dat\" at \
-            C:\\Users\\Bob\\AppData\\z.ini, /rustc/abc123/library/std/src/panic.rs:12:5\n(/home/bob/.cargo/src/app.rs:3) ok";
+        let text = "No such file: /u/bob/My Games/Zoo/Saved Games/a.zoo, \"/tmp/x/y.dat\" at \
+            C:\\Users\\Bob\\AppData\\z.ini, /rustc/abc123/library/std/src/panic.rs:12:5\n(/u/bob/.cargo/src/app.rs:3) ok";
         let clean = strip_paths(text, &roots);
         for secret in [
             "bob", "Bob", "My Games", "tmp", "x/y", "a.zoo", "abc123", ".cargo",
@@ -524,11 +524,11 @@ mod tests {
 
     #[test]
     fn the_envelope_has_the_report_and_no_path() {
-        let roots = vec!["/home/bob".to_string()];
+        let roots = vec!["/u/bob".to_string()];
         let report = Report {
-            message: "panicked at /home/bob/RustyZoo/src/app.rs:1:2:\nbad \"zoo\" in /home/bob/Saved Games/z.zoo".into(),
-            backtrace: "   0: rustyzoo::app::x\n             at /home/bob/RustyZoo/src/app.rs:1:2".into(),
-            log: vec!["rustyzoo: warning: /home/bob/Saved Games/z.zoo: bad".into()],
+            message: "panicked at /u/bob/RustyZoo/src/app.rs:1:2:\nbad \"zoo\" in /u/bob/Saved Games/z.zoo".into(),
+            backtrace: "   0: rustyzoo::app::x\n             at /u/bob/RustyZoo/src/app.rs:1:2".into(),
+            log: vec!["rustyzoo: warning: /u/bob/Saved Games/z.zoo: bad".into()],
         };
         let text = envelope(&report, &roots, "0123456789abcdef0123456789abcdef", 1.5e9);
         assert!(!text.contains("bob") && !text.contains("z.zoo"), "{text}");
