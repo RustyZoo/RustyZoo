@@ -342,16 +342,16 @@ The `zoo.ini` of that folder holds only the keys RustyZoo changed. It is read on
 
 ## Crash reports
 
-When a game in a window (not `--headless`, not a script, log, picture or seed run, not any other command) panics, RustyZoo can offer to send one crash report. Builds made without the address of a server (the environment variable `RUSTYZOO_CRASH_DSN` at build time) never ask and never send.
+When a panic ends a game in a window (not `--headless`, not a script, log, picture or seed run, not any other command), RustyZoo can offer to send one crash report; a panic that is caught and handled never asks. Builds made without the address of a server (the environment variable `RUSTYZOO_CRASH_DSN` at build time) never ask and never send, and neither does a run with `RUSTYZOO_NO_CRASH_REPORTS` set to any non-empty value.
 
-The first time, a box asks "Send a crash report?" and says what goes out: the panic message, the backtrace, the version and build (debug or release), the system and processor, and the last 20 warnings the game printed, with every path left out (the folders of the player, then any other absolute path down to the name of its `.rs` file). Never the player's files, saved games or folder names. The answer is kept in the `zoo.ini` of the user folder and changed by editing it:
+The first time, a box asks "Send a crash report?" and says what goes out: the panic message, the backtrace, the version and build (debug or release), the system and processor, and the last 20 warnings the game printed, with every path left out (the folders of the player, then any other absolute path, spaces included, down to the name of its `.rs` file). Never the player's files, saved games or folder names. The answer is kept in the `zoo.ini` of the user folder and changed by editing it:
 
 ```
 [RustyZoo]
 crashReports=1
 ```
 
-`1` sends the report without asking, `0` sends nothing, and a missing or empty key asks again at the next crash. A box that cannot be shown or is closed sends nothing and keeps nothing. The report is one Sentry envelope posted with the system's `curl` (no HTTP library is linked); a missing `curl` or an unreachable server is a warning. Only one report is made per run.
+`1` sends the report without asking, `0` sends nothing, and a missing or empty key asks again at the next crash. A box that cannot be shown or is closed sends nothing and keeps nothing. The report is one Sentry envelope posted with the system's `curl` (no HTTP library is linked); a missing `curl` or an unreachable server is a warning. The box shows once the window is closed.
 
 `cargo build --release --features crash-test` adds a way to try the report against a server: `RUSTYZOO_CRASH_TEST=1 rustyzoo run` panics at once. Normal builds have no such feature.
 
