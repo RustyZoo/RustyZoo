@@ -52,7 +52,7 @@ impl App<'_> {
         let rng = &mut self.sim.rng;
         let tree = Tree::of_scenario(self.renderer.vfs(), &file, &mut || rng.rand());
         let mut tree = tree.or_else(|| {
-            eprintln!(
+            crate::logln!(
                 "rustyzoo: warning: scenario {file} cannot be read: its research is kept as read"
             );
             None

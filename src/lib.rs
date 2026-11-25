@@ -12,6 +12,7 @@ pub mod building;
 pub mod camera;
 pub mod cheat;
 pub mod config;
+pub mod crash;
 pub mod cursor;
 pub mod entity;
 pub mod exhibit;

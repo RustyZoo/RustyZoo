@@ -75,10 +75,12 @@ pub fn boot(
         Some(dir) => {
             if let Err(e) = userdir::save(&dir, "UI", "progresscalls", &screen.steps().to_string())
             {
-                eprintln!("rustyzoo: warning: {e}");
+                rustyzoo::logln!("rustyzoo: warning: {e}");
             }
         }
-        None => eprintln!("rustyzoo: warning: no user folder, the progress count is not kept"),
+        None => {
+            rustyzoo::logln!("rustyzoo: warning: no user folder, the progress count is not kept")
+        }
     }
     let mut menu = Menu::new(
         ini.clone(),

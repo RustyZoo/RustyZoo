@@ -341,7 +341,7 @@ impl App<'_> {
         self.music = music;
         let opened = self.open_read(&Start::load(""), Ok((zoo, money.clone())));
         if let Err(why) = &opened {
-            eprintln!("rustyzoo: warning: {why}; the file opens as a map");
+            crate::logln!("rustyzoo: warning: {why}; the file opens as a map");
             self.sim.set_ticks(ticks);
             self.set_money(money);
             let music = self.music.take();
@@ -383,7 +383,7 @@ impl App<'_> {
         match vfs.read(&name) {
             Ok(economy) => self.sim.scenario_economy(&economy),
             Err(why) => {
-                eprintln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
+                crate::logln!("rustyzoo: warning: {name}: {why}; the economy settings are kept")
             }
         }
     }

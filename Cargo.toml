@@ -36,5 +36,10 @@ zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2
 debug = "line-tables-only"
 split-debuginfo = "unpacked"
 
+# Off in every normal build: `rustyzoo run` panics at once when RUSTYZOO_CRASH_TEST is set, to try
+# the crash report against a server (docs/usage.md).
+[features]
+crash-test = []
+
 [lints.clippy]
 too_many_lines = "warn"

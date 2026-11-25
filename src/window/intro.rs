@@ -93,7 +93,7 @@ pub fn play(
 ) -> Result<bool, CliError> {
     let (intros, skipped) = intro::list(vfs, ini);
     for why in skipped {
-        eprintln!("rustyzoo: warning: {why}");
+        rustyzoo::logln!("rustyzoo: warning: {why}");
     }
     if intros.is_empty() {
         return Ok(false);

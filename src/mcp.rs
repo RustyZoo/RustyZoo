@@ -3,7 +3,7 @@
 //! that a client can reproduce and inspect a game headless. It changes no game behaviour: it
 //! drives a [`Run`] the way the `sim` command does.
 
-mod json;
+pub(crate) mod json;
 
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Write};

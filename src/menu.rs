@@ -363,7 +363,7 @@ impl Menu {
         if let Some(dir) = &self.user
             && let Err(e) = userdir::save(dir, section, key, value)
         {
-            eprintln!("rustyzoo: warning: {e}");
+            crate::logln!("rustyzoo: warning: {e}");
         }
     }
 

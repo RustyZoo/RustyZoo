@@ -44,7 +44,7 @@ pub fn check_layouts(vfs: &Vfs, flags: &[&str]) -> Result<(), CliError> {
     };
     let tree = Tree::load(vfs, "ui/gamescrn.lyt", mask);
     for warning in &tree.warnings {
-        eprintln!("rustyzoo: warning: {warning}");
+        rustyzoo::logln!("rustyzoo: warning: {warning}");
     }
     let mut report = Report::new();
     report.line(format_args!("expansions {mask}"));
@@ -97,7 +97,7 @@ fn resolve_tree(vfs: &Vfs, tables: &StringTables, size: (i32, i32), mask: i32) -
         fonts.get(face, points).line_height()
     });
     for warning in &tree.warnings {
-        eprintln!("rustyzoo: warning: {warning}");
+        rustyzoo::logln!("rustyzoo: warning: {warning}");
     }
     tree
 }
@@ -150,7 +150,7 @@ pub fn load_interface(
         Ok(mut ui) => {
             match Config::parse(vfs.ini()) {
                 Ok(ini) => ui.set_settings(Settings::from_config(&ini)),
-                Err(e) => eprintln!("rustyzoo: warning: ini file: {e}"),
+                Err(e) => rustyzoo::logln!("rustyzoo: warning: ini file: {e}"),
             }
             for &id in show {
                 if !ui.show(id) {
@@ -179,7 +179,7 @@ pub fn load_interface(
             Ok(Some(ui))
         }
         Err(why) if show.is_empty() && *fill == Fill::default() => {
-            eprintln!("rustyzoo: warning: no interface: {why}");
+            rustyzoo::logln!("rustyzoo: warning: no interface: {why}");
             Ok(None)
         }
         Err(why) => Err(format!("no interface: {why}").into()),

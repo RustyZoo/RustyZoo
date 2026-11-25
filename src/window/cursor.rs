@@ -53,15 +53,17 @@ fn make(install: &Path, number: u32) -> Option<Cursor> {
     });
     match made {
         Some(Ok(cursor)) => return Some(cursor),
-        Some(Err(e)) => eprintln!("rustyzoo: warning: cursor {number}: {e}"),
+        Some(Err(e)) => rustyzoo::logln!("rustyzoo: warning: cursor {number}: {e}"),
         None => {
-            eprintln!("rustyzoo: warning: no cursor {number} in the install, the arrow is used")
+            rustyzoo::logln!(
+                "rustyzoo: warning: no cursor {number} in the install, the arrow is used"
+            )
         }
     }
     match Cursor::from_system(SystemCursor::Arrow) {
         Ok(cursor) => Some(cursor),
         Err(e) => {
-            eprintln!("rustyzoo: warning: {e}");
+            rustyzoo::logln!("rustyzoo: warning: {e}");
             None
         }
     }

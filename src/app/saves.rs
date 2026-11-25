@@ -69,7 +69,7 @@ impl App<'_> {
     pub(super) fn save_game(&mut self, file: &str) {
         match self.write_zoo(Path::new(file)) {
             Ok(()) => self.menu_events.push(format!("game saved {file}")),
-            Err(why) => eprintln!("rustyzoo: warning: save {file}: {why}"),
+            Err(why) => crate::logln!("rustyzoo: warning: save {file}: {why}"),
         }
     }
 
@@ -146,7 +146,7 @@ impl App<'_> {
                 if let Some(dir) = &self.user
                     && let Err(why) = userdir::save(dir, "user", "lastfile", path)
                 {
-                    eprintln!("rustyzoo: warning: {why}");
+                    crate::logln!("rustyzoo: warning: {why}");
                 }
             }
         }
@@ -220,7 +220,7 @@ impl App<'_> {
         let Some(ui) = &mut self.ui else { return };
         let title = to_cp1252(&ui.string(SAVE_TITLE));
         if !ui.ask(NAME_DIALOG, &title, Buttons::OK_CANCEL) {
-            return eprintln!("rustyzoo: warning: this interface has no save dialog");
+            return crate::logln!("rustyzoo: warning: this interface has no save dialog");
         }
         ui.set_char_limit(NAME_FIELD, NAME_BUFFER);
         ui.set_wide_text(NAME_FIELD, true);
@@ -264,7 +264,7 @@ impl App<'_> {
         if saving.dir.join(asked).is_file() {
             let Some(ui) = &mut self.ui else { return };
             if !ui.ask(QUESTION, &to_cp1252(REPLACE_TEXT), Buttons::YES_NO) {
-                return eprintln!("rustyzoo: warning: this interface has no replace question");
+                return crate::logln!("rustyzoo: warning: this interface has no replace question");
             }
             self.saving = Some(Saving {
                 replace: Some(typed),
@@ -283,7 +283,7 @@ impl App<'_> {
             .map_err(|e| e.to_string())
             .and_then(|()| self.write_zoo(path));
         if let Err(why) = written {
-            eprintln!("rustyzoo: warning: save {}: {why}", path.display());
+            crate::logln!("rustyzoo: warning: save {}: {why}", path.display());
             let text = self.ui.as_ref().map(|ui| ui.string(SAVE_FAILED));
             return self.say(&text.unwrap_or(why));
         }
@@ -348,7 +348,7 @@ impl App<'_> {
         let title = to_cp1252(&ui.string(LOAD_TITLE));
         let names = files.iter().map(|n| to_cp1252(n)).collect();
         if !menu::show_saved(ui, names, &title) {
-            return eprintln!("rustyzoo: warning: this interface has no list of saved games");
+            return crate::logln!("rustyzoo: warning: this interface has no list of saved games");
         }
         self.menu_events
             .push(format!("game load list {}", files.len()));

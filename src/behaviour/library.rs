@@ -119,7 +119,7 @@ impl Data for Library<'_> {
         match self.vfs.read(name) {
             Ok(bytes) => Some(bytes),
             Err(why) => {
-                eprintln!("rustyzoo: warning: {name}: {why}; no sounds from it");
+                crate::logln!("rustyzoo: warning: {name}: {why}; no sounds from it");
                 None
             }
         }

@@ -632,7 +632,7 @@ impl Tree {
         let before = self.warnings.len();
         let picture = self.pictures.get(vfs, name.as_bytes(), &mut self.warnings);
         for warning in &self.warnings[before..] {
-            eprintln!("rustyzoo: warning: {warning}");
+            crate::logln!("rustyzoo: warning: {warning}");
         }
         picture
     }
