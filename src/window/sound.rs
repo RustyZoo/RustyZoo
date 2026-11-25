@@ -88,7 +88,7 @@ impl Sound {
             .map_err(Into::into)
             .and_then(|a| Audio::open(&a));
         if let Err(e) = &audio {
-            eprintln!("rustyzoo: no sound: {e}");
+            rustyzoo::logln!("rustyzoo: no sound: {e}");
         }
         let mut audio = audio.ok();
         if let Some(audio) = &mut audio {
@@ -132,7 +132,7 @@ impl Sound {
             .chain(self.scape.values().map(|(voice, _)| voice));
         for voice in voices {
             if let Err(e) = voice.mute(paused) {
-                eprintln!("rustyzoo: a sound cannot be muted: {e}");
+                rustyzoo::logln!("rustyzoo: a sound cannot be muted: {e}");
             }
         }
     }
@@ -144,7 +144,7 @@ impl Sound {
             self.music = audio
                 .menu_music(vfs, menu, true, false)
                 .unwrap_or_else(|e| {
-                    eprintln!("rustyzoo: no menu music: {e}");
+                    rustyzoo::logln!("rustyzoo: no menu music: {e}");
                     None
                 });
         }
@@ -166,7 +166,7 @@ impl Sound {
         };
         audio
             .start(sound, attenuation(intro.volume), false, false)
-            .map_err(|e| eprintln!("rustyzoo: {}: {e}", intro.file))
+            .map_err(|e| rustyzoo::logln!("rustyzoo: {}: {e}", intro.file))
             .ok()
     }
 
@@ -176,7 +176,7 @@ impl Sound {
             && let Some(audio) = &self.audio
             && let Err(e) = audio.mute(mute)
         {
-            eprintln!("rustyzoo: the sound cannot be muted: {e}");
+            rustyzoo::logln!("rustyzoo: the sound cannot be muted: {e}");
         }
     }
 
@@ -193,7 +193,7 @@ impl Sound {
                 && voice.queued_bytes().is_ok_and(|bytes| bytes > 0)
             {
                 if let Err(e) = voice.set_sum(sum) {
-                    eprintln!("rustyzoo: sounds/{name}.wav: {e}");
+                    rustyzoo::logln!("rustyzoo: sounds/{name}.wav: {e}");
                 }
                 continue;
             }
@@ -206,7 +206,7 @@ impl Sound {
                     self.clicks.insert(name, voice);
                 }
                 Ok(None) => {}
-                Err(e) => eprintln!("rustyzoo: {e}"),
+                Err(e) => rustyzoo::logln!("rustyzoo: {e}"),
             }
         }
     }
@@ -249,7 +249,7 @@ impl Sound {
                     }
                     Ok(None) => "too far",
                     Err(e) => {
-                        eprintln!("rustyzoo: {e}");
+                        rustyzoo::logln!("rustyzoo: {e}");
                         "failed"
                     }
                 }
@@ -294,7 +294,7 @@ impl Sound {
                             self.loops.extend(voice.map(|v| (s.voice.clone(), v)));
                         }
                         Err(e) => {
-                            eprintln!("rustyzoo: {e}");
+                            rustyzoo::logln!("rustyzoo: {e}");
                             self.failed.insert(s.file.clone());
                         }
                     }
@@ -304,7 +304,7 @@ impl Sound {
                         let moved =
                             (voice.set_sum_x(sum, s.distance)).and_then(|()| voice.set_pan(s.pan));
                         if let Err(e) = moved {
-                            eprintln!("rustyzoo: {}: {e}", s.file);
+                            rustyzoo::logln!("rustyzoo: {}: {e}", s.file);
                         }
                     }
                 }
@@ -338,7 +338,7 @@ impl Sound {
                         .and_then(|wave| audio.play(wave, sum, true, false))
                     {
                         Ok(voice) => self.scape.extend(voice.map(|v| (s.voice, (v, sum)))),
-                        Err(e) => eprintln!("rustyzoo: {e}"),
+                        Err(e) => rustyzoo::logln!("rustyzoo: {e}"),
                     }
                 }
                 // A paused game does not change the sum, and a set volume would end the muting.
@@ -348,7 +348,7 @@ impl Sound {
                     {
                         *last = sum;
                         if let Err(e) = voice.set_sum(sum) {
-                            eprintln!("rustyzoo: {}: {e}", s.file);
+                            rustyzoo::logln!("rustyzoo: {}: {e}", s.file);
                         }
                     }
                 }
@@ -384,7 +384,7 @@ impl Sound {
             self.music = audio
                 .menu_music(vfs, model, true, false)
                 .unwrap_or_else(|e| {
-                    eprintln!("rustyzoo: no menu music: {e}");
+                    rustyzoo::logln!("rustyzoo: no menu music: {e}");
                     None
                 });
         }
@@ -395,7 +395,9 @@ impl Sound {
         match (&self.music, app.music()) {
             (Some(voice), _) => match (voice.gain(), voice.queued_bytes()) {
                 (Ok(gain), Ok(bytes)) => println!("music gain {gain:.3} queued {bytes} bytes"),
-                (Err(e), _) | (_, Err(e)) => eprintln!("rustyzoo: the menu music state: {e}"),
+                (Err(e), _) | (_, Err(e)) => {
+                    rustyzoo::logln!("rustyzoo: the menu music state: {e}")
+                }
             },
             (None, Some((model, _))) if model.stopped() => println!("music stopped"),
             _ => println!("music none"),
@@ -403,7 +405,7 @@ impl Sound {
     }
 
     fn fail(&mut self, e: Box<dyn std::error::Error>) {
-        eprintln!("rustyzoo: the menu music stops: {e}");
+        rustyzoo::logln!("rustyzoo: the menu music stops: {e}");
         self.music = None;
     }
 }

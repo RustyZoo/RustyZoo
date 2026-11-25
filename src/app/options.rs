@@ -146,7 +146,7 @@ impl App<'_> {
             (Some(menu), _) => menu.write_back(section, key, &text),
             (None, Some(dir)) => {
                 if let Err(e) = crate::userdir::save(dir, section, key, &text) {
-                    eprintln!("rustyzoo: warning: {e}");
+                    crate::logln!("rustyzoo: warning: {e}");
                 }
             }
             _ => {}

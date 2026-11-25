@@ -58,7 +58,7 @@ impl Screen {
     pub fn request(&mut self, on: bool) -> bool {
         let done = self.canvas.window_mut().set_fullscreen(on);
         if let Err(e) = &done {
-            eprintln!(
+            rustyzoo::logln!(
                 "rustyzoo: cannot switch to {}: {e}",
                 if on { "full screen" } else { "a window" }
             );
@@ -77,7 +77,7 @@ impl Screen {
         if self.fit.resized(self.fullscreen)
             && let Err(e) = self.fit_window(video, size)
         {
-            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
+            rustyzoo::logln!("rustyzoo: cannot resize to {}x{}: {e}", size.0, size.1);
             return false;
         }
         self.size = size;
@@ -90,7 +90,7 @@ impl Screen {
         if self.fit.due(self.fullscreen)
             && let Err(e) = self.fit_window(video, self.size)
         {
-            eprintln!("rustyzoo: cannot fit the window: {e}");
+            rustyzoo::logln!("rustyzoo: cannot fit the window: {e}");
         }
     }
 
@@ -174,7 +174,7 @@ pub fn open(
     }
     // At a fractional scale the window may have an odd pixel more, left as a border.
     if fullscreen::whole(pixels, size) != k {
-        eprintln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
+        rustyzoo::logln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
     Ok(Screen {
         canvas,

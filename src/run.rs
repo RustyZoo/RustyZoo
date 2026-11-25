@@ -466,6 +466,20 @@ fn play_intros(
     Ok(false)
 }
 
+/// Arms the crash report of a player's window (see `rustyzoo::crash`).
+fn offer_crash_reports(vfs: &Vfs) {
+    let dsn = rustyzoo::crash::DSN;
+    rustyzoo::crash::install(dsn, userdir::dir(), vfs.root(), crate::ask_crash_report);
+}
+
+/// Off in every normal build: a build for the end-to-end check of the report.
+#[cfg(feature = "crash-test")]
+fn crash_test() {
+    if std::env::var_os("RUSTYZOO_CRASH_TEST").is_some() {
+        panic!("crash report test");
+    }
+}
+
 /// Plays `member`, or, without one, starts up to the main menu, where `open` is the saved game of
 /// the command line (main menu 3.5 point 4).
 pub fn run(
@@ -475,6 +489,9 @@ pub fn run(
     words: &[&str],
 ) -> Result<(), CliError> {
     let flags = parse_flags(words, open.is_some())?;
+    if flags.interactive() && !cfg!(test) {
+        offer_crash_reports(vfs);
+    }
     // Only a game that opens with the run has a main panel to leave out.
     if flags.bare && member.is_none() {
         return Err(CliError::Usage);
@@ -501,12 +518,12 @@ pub fn run(
     };
     rustyzoo::text::use_system_fonts(flags.interactive());
     if !flags.headless {
-        return crate::window::run(
-            vfs,
-            loaded,
-            &ini,
-            window_flags(&flags, open, commands.collect()),
-        );
+        let flags = window_flags(&flags, open, commands.collect());
+        return rustyzoo::crash::guard(|| {
+            #[cfg(feature = "crash-test")]
+            crash_test();
+            crate::window::run(vfs, loaded, &ini, flags)
+        });
     }
     let size = size.unwrap_or(DEFAULT_SIZE);
     let out = PathBuf::from(flags.out.as_deref().unwrap_or("."));

@@ -52,7 +52,7 @@ impl Language {
         match StringTables::open(install_dir) {
             Ok(tables) => tables.language(),
             Err(why) => {
-                eprintln!("rustyzoo: warning: install language: {why}");
+                crate::logln!("rustyzoo: warning: install language: {why}");
                 Language::shipped()
             }
         }
@@ -215,7 +215,7 @@ impl StringTables {
                 Err(why) => {
                     let line = format!("{name} is skipped: {why}");
                     if first_time(format!("{}\0{line}", install_dir.display())) {
-                        eprintln!("rustyzoo: warning: {line}");
+                        crate::logln!("rustyzoo: warning: {line}");
                     }
                     warnings.push(line);
                 }

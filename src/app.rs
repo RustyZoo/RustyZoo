@@ -406,7 +406,9 @@ impl<'a> App<'a> {
         let mut sim = Sim::new(renderer.vfs().ini());
         match renderer.vfs().read("economy.cfg") {
             Ok(economy) => sim.set_economy(&economy),
-            Err(why) => eprintln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used"),
+            Err(why) => {
+                crate::logln!("rustyzoo: warning: economy.cfg: {why}; built-in settings used")
+            }
         }
         let options = options::Options::new(renderer.vfs().ini());
         let last_file = Config::parse(renderer.vfs().ini())

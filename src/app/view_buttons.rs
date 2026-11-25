@@ -155,7 +155,7 @@ impl App<'_> {
                 &[Arg::Text(&path.to_string_lossy())],
             ),
             Err(why) => {
-                eprintln!("rustyzoo: warning: snapshot: {why}");
+                crate::logln!("rustyzoo: warning: snapshot: {why}");
                 ui.string(FAILED)
             }
         };

@@ -277,7 +277,7 @@ pub(crate) fn infoimg(vfs: &Vfs) -> HashMap<i32, String> {
     let config = vfs.read("ui/infoimg.cfg").ok();
     let config = config.and_then(|b| Config::parse(&b).ok());
     let Some(section) = config.as_ref().and_then(|c| c.section("Images")) else {
-        eprintln!(
+        crate::logln!(
             "rustyzoo: warning: no [Images] in ui/infoimg.cfg: no location and habitat pictures"
         );
         return HashMap::new();

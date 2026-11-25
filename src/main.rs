@@ -20,7 +20,11 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use sdl3::messagebox::{MessageBoxFlag, show_simple_message_box};
+use sdl3::messagebox::{
+    ButtonData, ClickedButton, MessageBoxButtonFlag, MessageBoxFlag, show_message_box,
+    show_simple_message_box,
+};
+use sdl3::video::Window;
 
 use cli::{CliError, USAGE};
 
@@ -55,6 +59,39 @@ fn in_a_box(args: &[OsString]) -> bool {
 fn show_box(message: &str) {
     if let Err(e) = show_simple_message_box(MessageBoxFlag::ERROR, "RustyZoo", message, None) {
         let _ = writeln!(io::stderr(), "rustyzoo: warning: no message box: {e}");
+    }
+}
+
+/// Asks whether to send a crash report: `Some(true)` for Yes, `Some(false)` for No, `None` when the
+/// box cannot be shown or is closed without an answer.
+fn ask_crash_report(question: &str) -> Option<bool> {
+    let buttons = [
+        ButtonData {
+            flags: MessageBoxButtonFlag::NOTHING,
+            button_id: 1,
+            text: "Yes",
+        },
+        ButtonData {
+            flags: MessageBoxButtonFlag::NOTHING,
+            button_id: 0,
+            text: "No",
+        },
+    ];
+    let title = "RustyZoo";
+    match show_message_box(
+        MessageBoxFlag::ERROR,
+        &buttons,
+        title,
+        question,
+        None::<&Window>,
+        None,
+    ) {
+        Ok(ClickedButton::CustomButton(button)) => Some(button.button_id == 1),
+        Ok(ClickedButton::CloseButton) => None,
+        Err(e) => {
+            let _ = writeln!(io::stderr(), "rustyzoo: warning: no message box: {e}");
+            None
+        }
     }
 }
 

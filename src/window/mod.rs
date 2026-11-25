@@ -107,7 +107,7 @@ fn resize<'t>(
     let mut texture = match textures.create_texture_streaming(PixelFormat::RGBA32, want.0, want.1) {
         Ok(texture) => texture,
         Err(e) => {
-            eprintln!("rustyzoo: cannot resize to {}x{}: {e}", want.0, want.1);
+            rustyzoo::logln!("rustyzoo: cannot resize to {}x{}: {e}", want.0, want.1);
             return None;
         }
     };
@@ -119,11 +119,11 @@ fn resize<'t>(
 /// start reads over the game's ini file. A failure only warns.
 fn remember(on: bool) {
     let Some(dir) = userdir::dir() else {
-        eprintln!("rustyzoo: warning: no user folder, the screen mode is not remembered");
+        rustyzoo::logln!("rustyzoo: warning: no user folder, the screen mode is not remembered");
         return;
     };
     if let Err(e) = userdir::save(&dir, "user", "fullscreen", if on { "1" } else { "0" }) {
-        eprintln!("rustyzoo: warning: {e}");
+        rustyzoo::logln!("rustyzoo: warning: {e}");
     }
 }
 
