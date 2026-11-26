@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """RustyZoo app icon: hand-placed pixel art, native 16, 24 and 32 grids.
 
-    python3 build.py   # writes png/
+    python3 build.py   # writes png/ and rustyzoo.ico
 
 Nearest neighbour only: every larger size is an integer upscale of a native grid.
 """
@@ -132,6 +132,8 @@ def main():
     (OUT / 'png').mkdir(exist_ok=True)
     for n in (16, 32, 48, 64, 128, 256, 512, 1024):
         ex[n].save(OUT / 'png' / f'rustyzoo-{n}.png', optimize=True)
+    ico = [16, 24, 32, 48, 64, 128, 256]
+    ex[256].save(OUT / 'rustyzoo.ico', sizes=[(n, n) for n in ico], append_images=[ex[n] for n in ico])
 
 
 if __name__ == '__main__':
