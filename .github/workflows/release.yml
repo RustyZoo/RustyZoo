@@ -107,7 +107,7 @@ jobs:
           target/universal/rustyzoo window-smoke
 
       # RustyZoo.app: the binary, Info.plist and the icon. Issue 66 adds the codesign and notarytool
-      # steps here, on RustyZoo.app, before Package.
+      # steps here, on RustyZoo.app, before Package (bundle.sh only seals it ad hoc).
       - name: Build RustyZoo.app
         if: runner.os == 'macOS'
         run: |

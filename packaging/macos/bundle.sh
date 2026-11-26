@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds RustyZoo.app from the universal binary. Usage: bundle.sh <binary> <version> <min-macos> <out-dir>
-# Needs iconutil (macOS). The icon files are copied, never resampled.
+# Needs iconutil and codesign (macOS). The icon files are copied, never resampled.
 set -euo pipefail
 bin=$1 version=$2 min=$3 out=$4
 here=$(cd "$(dirname "$0")" && pwd)
@@ -26,3 +26,8 @@ icon_512x512@2x 1024
 LIST
 iconutil -c icns -o "$app/Contents/Resources/rustyzoo.icns" "$out/rustyzoo.iconset"
 plutil -lint "$app/Contents/Info.plist"
+# Ad-hoc seal of the whole bundle (Info.plist and Resources included), so a downloaded copy takes
+# the normal "unverified developer" path. #66 replaces `-` with the Developer ID identity and adds
+# the hardened runtime and notarisation.
+codesign --force --deep -s - "$app"
+codesign --verify --deep --strict "$app"
