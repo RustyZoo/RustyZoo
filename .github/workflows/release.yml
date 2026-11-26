@@ -40,6 +40,8 @@ jobs:
             system: macos
             arch: universal
             bin: target/universal/rustyzoo
+            # Both slices target macOS 11, the first one of Apple silicon; Info.plist says the same.
+            deployment: '11.0'
     defaults:
       run:
         shell: bash
@@ -48,6 +50,7 @@ jobs:
       SDL_VIDEO_DRIVER: dummy
       SDL_RENDER_DRIVER: software
       SDL_AUDIO_DRIVER: dummy
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment }}
       # Where the opt-in crash reports and start statistics go. Public by design: they ship in the
       # binary, which asks the player before it sends anything.
       RUSTYZOO_CRASH_DSN: https://a5eb34b863e146f89e6ff00876987801@errors.rustyzoo.com/1
@@ -103,15 +106,28 @@ jobs:
           lipo -info target/universal/rustyzoo
           target/universal/rustyzoo window-smoke
 
-      # The executable, the licences and where its source is. CMake (which builds SDL) writes the
-      # archive and the checksum the same way on every system.
+      # RustyZoo.app: the binary, Info.plist and the icon. Issue 66 adds the codesign and notarytool
+      # steps here, on RustyZoo.app, before Package.
+      - name: Build RustyZoo.app
+        if: runner.os == 'macOS'
+        run: |
+          packaging/macos/bundle.sh target/universal/rustyzoo "${{ steps.version.outputs.version }}" "$MACOSX_DEPLOYMENT_TARGET" target/app
+          target/app/RustyZoo.app/Contents/MacOS/rustyzoo window-smoke
+
+      # The executable (on macOS RustyZoo.app), the licences and where its source is. CMake (which
+      # builds SDL) writes the archive and the checksum the same way on every system.
       - name: Package
         id: package
         env:
           NAME: rustyzoo-${{ steps.version.outputs.version }}-${{ matrix.system }}-${{ matrix.arch }}
         run: |
           mkdir -p "dist/$NAME/vendor/nihav" "dist/$NAME/fonts"
-          cp ${{ matrix.bin }} LICENSE "dist/$NAME/"
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto target/app/RustyZoo.app "dist/$NAME/RustyZoo.app"
+            cp LICENSE "dist/$NAME/"
+          else
+            cp ${{ matrix.bin }} LICENSE "dist/$NAME/"
+          fi
           cp vendor/nihav/COPYING "dist/$NAME/vendor/nihav/"
           cp fonts/OFL.txt "dist/$NAME/fonts/"
           echo "Source: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" > "dist/$NAME/SOURCE.txt"
@@ -119,6 +135,9 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then
             archive=$NAME.tar.gz
             cmake -E tar czf "$archive" "$NAME"
+          elif [ "$RUNNER_OS" = macOS ]; then
+            archive=$NAME.zip
+            ditto -c -k --keepParent "$NAME" "$archive"
           else
             archive=$NAME.zip
             cmake -E tar cf "$archive" --format=zip "$NAME"
