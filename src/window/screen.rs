@@ -2,8 +2,9 @@
 //! tell how they came out.
 
 use rustyzoo::config::Config;
-use sdl3::pixels::Color;
+use sdl3::pixels::{Color, PixelFormat};
 use sdl3::render::{Canvas, FRect, Texture};
+use sdl3::surface::Surface;
 use sdl3::video::{Window, WindowPos};
 
 use super::fullscreen;
@@ -149,12 +150,13 @@ pub fn open(
         clamp(ini_size(ini), (pixels(usable.0), pixels(usable.1)))
     });
     let (k, want) = plan(size, scale, density, usable);
-    let window = video
+    let mut window = video
         .window("RustyZoo", want.0, want.1)
         .high_pixel_density()
         // The maximise button, which goes to full screen, needs a resizable window.
         .resizable()
         .build()?;
+    set_icon(&mut window);
     // The game keeps its size; the window may come out another size.
     let points = window.size();
     let pixels = window.size_in_pixels();
@@ -184,9 +186,45 @@ pub fn open(
     })
 }
 
+/// The application icon, the native 32 pixel drawing (packaging/icon).
+const ICON: &[u8] = include_bytes!("../../packaging/icon/png/rustyzoo-32.png");
+
+/// The 32 by 32 RGBA pixels of the icon.
+fn icon_pixels() -> Result<(u32, Vec<u8>), png::DecodingError> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info()?;
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap_or(0)];
+    let info = reader.next_frame(&mut pixels)?;
+    pixels.truncate(info.buffer_size());
+    Ok((info.width, pixels))
+}
+
+/// Gives the window the application icon; a failure only prints a warning.
+fn set_icon(window: &mut Window) {
+    let made = icon_pixels()
+        .map_err(|e| e.to_string())
+        .and_then(|(side, mut rgba)| {
+            let surface = Surface::from_data(&mut rgba, side, side, side * 4, PixelFormat::RGBA32)
+                .map_err(|e| e.to_string())?;
+            window.set_icon(surface);
+            Ok(())
+        });
+    if let Err(e) = made {
+        rustyzoo::logln!("rustyzoo: warning: window icon: {e}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The embedded icon is a 32 by 32 picture with a clear corner and a drawn centre.
+    #[test]
+    fn the_icon_decodes_to_32_square_rgba() {
+        let (side, pixels) = icon_pixels().unwrap();
+        assert_eq!((side, pixels.len()), (32, 32 * 32 * 4));
+        assert_eq!(pixels[3], 0, "corner is transparent");
+        assert_eq!(pixels[(16 * 32 + 16) * 4 + 3], 255, "centre is drawn");
+    }
 
     /// A game resized in full screen sizes the window for the way back (16.9 point 2): nothing
     /// at the resize, one fit when the window is back, none after.
