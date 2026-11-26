@@ -49,6 +49,7 @@ mod soundscape;
 pub mod sprite;
 pub mod staff;
 pub mod startup;
+pub mod stats;
 pub mod status;
 pub mod strings;
 pub mod terrain;

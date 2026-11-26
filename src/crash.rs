@@ -11,6 +11,8 @@
 //!
 //! The envelope goes out through the system's `curl`: the program links no HTTP or TLS client, and
 //! `curl` ships with Linux, macOS and Windows 10. A missing `curl` or a failed request is a warning.
+//! The start statistics of [`crate::stats`] share the question, the answer in the settings, `curl`
+//! and the variable that turns everything off.
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -85,6 +87,15 @@ impl Dsn {
     }
 }
 
+/// `debug` or `release`: the build as the reports name it.
+pub fn build() -> &'static str {
+    if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    }
+}
+
 /// What a crash report says, before the paths are left out.
 pub struct Report {
     pub message: String,
@@ -93,8 +104,8 @@ pub struct Report {
 }
 
 /// The answer kept in the settings: `Some` to send or not to send, `None` to ask.
-fn consent(dir: &Path) -> Option<bool> {
-    let value = userdir::setting(dir, SECTION, KEY)?;
+fn consent(dir: &Path, key: &str) -> Option<bool> {
+    let value = userdir::setting(dir, SECTION, key)?;
     crate::config::to_flag(value.as_bytes())
 }
 
@@ -179,11 +190,7 @@ pub fn envelope(report: &Report, roots: &[String], event_id: &str, now: f64) -> 
     let message = clean(&report.message);
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
-    let build = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
+    let build = build();
     let event = Json::obj([
         ("event_id", Json::text(event_id)),
         ("timestamp", Json::Num(now)),
@@ -247,35 +254,29 @@ fn event_id() -> String {
     format!("{:016x}{:016x}", half(0), half(1))
 }
 
-/// Posts `body` to the server of `dsn` with `curl`.
-fn post(dsn: &Dsn, body: &str) -> Result<(), String> {
+/// Posts `body` to `url` with `curl`, with these header lines, waiting at most `seconds`.
+pub fn post(url: &str, headers: &[String], seconds: u32, body: &str) -> Result<(), String> {
     let mut command = Command::new("curl");
     command
         .args([
             "--silent",
             "--show-error",
             "--fail",
-            "--max-time",
-            "10",
             "--proto",
             "=http,https",
         ])
-        .args(["--header", "Content-Type: application/x-sentry-envelope"])
-        .args([
-            "--header",
-            &format!(
-                "X-Sentry-Auth: Sentry sentry_version=7, sentry_key={}, sentry_client=rustyzoo/{}",
-                dsn.key,
-                env!("CARGO_PKG_VERSION")
-            ),
-        ])
+        .args(["--max-time", &seconds.to_string()]);
+    for header in headers {
+        command.args(["--header", header]);
+    }
+    command
         .args([
             "--data-binary",
             "@-",
             "--output",
             if cfg!(windows) { "NUL" } else { "/dev/null" },
         ])
-        .arg(&dsn.url)
+        .arg(url)
         .stdin(Stdio::piped());
     #[cfg(windows)]
     std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000);
@@ -292,21 +293,36 @@ fn post(dsn: &Dsn, body: &str) -> Result<(), String> {
     }
 }
 
-/// What to do with a crash: nothing without a server address, send when the settings say so, else
-/// ask, keep an explicit answer and send on Yes. `ask` gives `None` when it could not ask.
-fn offer(
-    dsn: Option<&Dsn>,
+/// Posts a crash envelope to the server of `dsn`.
+fn post_envelope(dsn: &Dsn, body: &str) -> Result<(), String> {
+    let headers = [
+        "Content-Type: application/x-sentry-envelope".to_string(),
+        format!(
+            "X-Sentry-Auth: Sentry sentry_version=7, sentry_key={}, sentry_client=rustyzoo/{}",
+            dsn.key,
+            env!("CARGO_PKG_VERSION")
+        ),
+    ];
+    post(&dsn.url, &headers, 10, body)
+}
+
+/// What to do with a report: nothing without a server address, send when the setting `key` says so,
+/// else ask, keep an explicit answer and send on Yes. `ask` gives `None` when it could not ask;
+/// `what` names the report in the warning of a failed send.
+pub fn offer<T>(
+    server: Option<&T>,
     dir: Option<&Path>,
+    (key, what): (&str, &str),
     ask: impl FnOnce() -> Option<bool>,
-    send: impl FnOnce(&Dsn) -> Result<(), String>,
+    send: impl FnOnce(&T) -> Result<(), String>,
 ) {
-    let Some(dsn) = dsn else { return };
-    let answer = match dir.and_then(consent) {
+    let Some(server) = server else { return };
+    let answer = match dir.and_then(|dir| consent(dir, key)) {
         Some(answer) => answer,
         None => match ask() {
             Some(answer) => {
                 if let Some(dir) = dir
-                    && let Err(e) = userdir::save(dir, SECTION, KEY, if answer { "1" } else { "0" })
+                    && let Err(e) = userdir::save(dir, SECTION, key, if answer { "1" } else { "0" })
                 {
                     log(format_args!("rustyzoo: warning: {e}"));
                 }
@@ -315,10 +331,8 @@ fn offer(
             None => false,
         },
     };
-    if answer && let Err(e) = send(dsn) {
-        log(format_args!(
-            "rustyzoo: warning: crash report not sent: {e}"
-        ));
+    if answer && let Err(e) = send(server) {
+        log(format_args!("rustyzoo: warning: {what} not sent: {e}"));
     }
 }
 
@@ -334,12 +348,20 @@ static ARMED: Mutex<Option<Armed>> = Mutex::new(None);
 /// The report of the last panic: sent only when that panic ends the game (see [`guard`]).
 static PENDING: Mutex<Option<Report>> = Mutex::new(None);
 
-/// The environment variable that turns every report off, whatever it holds but nothing.
+/// The environment variable that turns every report and statistic off, whatever it holds but nothing.
 const OFF: &str = "RUSTYZOO_NO_CRASH_REPORTS";
 
 fn is_off(value: Option<std::ffi::OsString>) -> bool {
     value.is_some_and(|v| !v.is_empty())
 }
+
+/// Whether the environment turns every report and statistic off.
+pub fn disabled() -> bool {
+    is_off(std::env::var_os(OFF))
+}
+
+/// Where the privacy policy, which the questions point to, is.
+pub const POLICY: &str = "https://rustyzoo.com/privacy/";
 
 /// Arms the panic hook of an interactive game: the hook only records the report; [`guard`] asks
 /// and sends once the panic ends the game. `ask` shows the question and gives the answer (`None` if
@@ -351,10 +373,7 @@ pub fn install(
     install: &Path,
     ask: fn(&str) -> Option<bool>,
 ) -> bool {
-    let Some(dsn) = dsn
-        .and_then(Dsn::parse)
-        .filter(|_| !is_off(std::env::var_os(OFF)))
-    else {
+    let Some(dsn) = dsn.and_then(Dsn::parse).filter(|_| !disabled()) else {
         return false;
     };
     let roots = private_roots(install);
@@ -397,6 +416,15 @@ pub fn guard<T>(play: impl FnOnce() -> T) -> T {
     }
 }
 
+/// The question shown once, at the first crash.
+fn question() -> String {
+    format!(
+        "RustyZoo stopped because of an error. Send a crash report? It holds the error, the \
+        version, your system and the last warnings, never your files, saved games or folder \
+        names. Your answer is kept in zoo.ini ([RustyZoo] {KEY}). Policy: {POLICY}"
+    )
+}
+
 fn report_pending() {
     let (Ok(armed), Ok(mut pending)) = (ARMED.lock(), PENDING.lock()) else {
         return;
@@ -404,14 +432,13 @@ fn report_pending() {
     let (Some(armed), Some(report)) = (armed.as_ref(), pending.take()) else {
         return;
     };
-    let question = "RustyZoo stopped because of an error. Send a crash report? It holds the \
-        error, the version, your system and the last warnings, never your files, saved games \
-        or folder names. Your answer is kept in zoo.ini ([RustyZoo] crashReports).";
+    let question = question();
     offer(
         Some(&armed.dsn),
         armed.dir.as_deref(),
-        || (armed.ask)(question),
-        |dsn| post(dsn, &envelope(&report, &armed.roots, &event_id(), now())),
+        (KEY, "crash report"),
+        || (armed.ask)(&question),
+        |dsn| post_envelope(dsn, &envelope(&report, &armed.roots, &event_id(), now())),
     );
 }
 
@@ -592,6 +619,7 @@ mod tests {
         offer(
             dsn,
             dir,
+            (KEY, "crash report"),
             || {
                 asked.set(true);
                 answer
@@ -624,7 +652,7 @@ mod tests {
             run_offer(Some(&dsn), Some(&yes.0), Some(true)),
             (true, true)
         );
-        assert_eq!(consent(&yes.0), Some(true));
+        assert_eq!(consent(&yes.0, KEY), Some(true));
         assert_eq!(
             run_offer(Some(&dsn), Some(&yes.0), Some(false)),
             (false, true)
@@ -634,7 +662,7 @@ mod tests {
             run_offer(Some(&dsn), Some(&no.0), Some(false)),
             (true, false)
         );
-        assert_eq!(consent(&no.0), Some(false));
+        assert_eq!(consent(&no.0, KEY), Some(false));
         assert_eq!(
             run_offer(Some(&dsn), Some(&no.0), Some(true)),
             (false, false)
@@ -642,7 +670,7 @@ mod tests {
         // A box that could not be shown or was closed keeps nothing and sends nothing.
         let closed = TempDir::new("crash-closed");
         assert_eq!(run_offer(Some(&dsn), Some(&closed.0), None), (true, false));
-        assert_eq!(consent(&closed.0), None);
+        assert_eq!(consent(&closed.0, KEY), None);
         assert_eq!(run_offer(Some(&dsn), None, Some(true)), (true, true));
     }
 
@@ -661,7 +689,7 @@ mod tests {
         ] {
             let dir = TempDir::new("crash-flag");
             userdir::save(&dir.0, SECTION, KEY, value).unwrap();
-            assert_eq!(consent(&dir.0), expect, "{value:?}");
+            assert_eq!(consent(&dir.0, KEY), expect, "{value:?}");
             let (asked, sent) = run_offer(Some(&dsn), Some(&dir.0), Some(true));
             assert_eq!(
                 (asked, sent),
@@ -669,6 +697,12 @@ mod tests {
                 "{value:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_question_names_the_setting_and_the_policy() {
+        let q = question();
+        assert!(q.contains("crashReports") && q.contains("https://rustyzoo.com/privacy/"));
     }
 
     #[test]
