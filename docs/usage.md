@@ -429,4 +429,6 @@ sudo apt-get install libasound2-dev libpulse-dev libaudio-dev libfribidi-dev \
   libwayland-dev libdecor-0-dev liburing-dev
 ```
 
+The release also builds `RustyZoo-<version>-<arch>.AppImage` (`packaging/linux/appimage.sh`), for x86_64 and aarch64. It holds only the binary, the desktop file and the icons: SDL opens the X11, Wayland and audio libraries of the desktop at run time. It reads and writes the same folders as the tarball (below), never its own mount.
+
 Other distributions: see [SDL's Linux build dependencies](https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md).
