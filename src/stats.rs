@@ -22,7 +22,8 @@ pub const URL: Option<&str> = option_env!("RUSTYZOO_STATS_URL");
 /// The site of this build on the server, from `RUSTYZOO_STATS_WEBSITE` when the program is built.
 pub const WEBSITE: Option<&str> = option_env!("RUSTYZOO_STATS_WEBSITE");
 
-const KEY: &str = "startStats";
+/// The settings key of the statistics question.
+pub const KEY: &str = "startStats";
 /// The host name events carry: the one of the game, not of the machine.
 const HOSTNAME: &str = "game.rustyzoo.com";
 const SECONDS: u32 = 5;

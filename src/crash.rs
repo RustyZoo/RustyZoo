@@ -34,7 +34,8 @@ pub const DSN: Option<&str> = option_env!("RUSTYZOO_CRASH_DSN");
 const LOG_LINES: usize = 20;
 
 const SECTION: &str = "RustyZoo";
-const KEY: &str = "crashReports";
+/// The settings key of the crash report question.
+pub const KEY: &str = "crashReports";
 
 static LOG: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
 
@@ -104,9 +105,14 @@ pub struct Report {
 }
 
 /// The answer kept in the settings: `Some` to send or not to send, `None` to ask.
-fn consent(dir: &Path, key: &str) -> Option<bool> {
+pub fn consent(dir: &Path, key: &str) -> Option<bool> {
     let value = userdir::setting(dir, SECTION, key)?;
     crate::config::to_flag(value.as_bytes())
+}
+
+/// Keeps `answer` to the question of `key` in the settings of the folder `dir`.
+pub fn keep(dir: &Path, key: &str, answer: bool) -> Result<(), String> {
+    userdir::save(dir, SECTION, key, if answer { "1" } else { "0" })
 }
 
 /// The folders whose names a report must not carry, the longest first.
@@ -322,7 +328,7 @@ pub fn offer<T>(
         None => match ask() {
             Some(answer) => {
                 if let Some(dir) = dir
-                    && let Err(e) = userdir::save(dir, SECTION, key, if answer { "1" } else { "0" })
+                    && let Err(e) = keep(dir, key, answer)
                 {
                     log(format_args!("rustyzoo: warning: {e}"));
                 }

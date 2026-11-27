@@ -40,9 +40,16 @@ pub fn find() -> Option<PathBuf> {
 
 /// Keeps `dir` as the folder [`find`] tries first.
 pub fn remember(dir: &Path) -> Result<(), String> {
-    let user = userdir::dir().ok_or("the system gives no user folder")?;
+    keep(
+        &userdir::dir().ok_or("the system gives no user folder")?,
+        dir,
+    )
+}
+
+/// Keeps `dir` in the settings of the user folder `user`, as [`remember`] does.
+pub fn keep(user: &Path, dir: &Path) -> Result<(), String> {
     let text = dir.to_str().ok_or("the path is not valid Unicode")?;
-    userdir::save(&user, SECTION, KEY, text)
+    userdir::save(user, SECTION, KEY, text)
 }
 
 /// [`find`] for the operating system `os` and the environment `env`.
