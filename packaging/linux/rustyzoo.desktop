@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RustyZoo
+Comment=Open-source engine for the original Zoo Tycoon game data
+Exec=rustyzoo
+Icon=rustyzoo
+Terminal=false
+Categories=Game;Simulation;
