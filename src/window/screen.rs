@@ -13,6 +13,9 @@ use crate::CliError;
 
 /// An open window.
 pub struct Screen {
+    /// The enlarged picture that is smoothed to the window, kept while its size stays. It is
+    /// declared before the canvas so that it is dropped first.
+    big: Option<Texture>,
     pub canvas: Canvas<Window>,
     /// The game size, not the window's.
     pub size: (u32, u32),
@@ -21,8 +24,8 @@ pub struct Screen {
     pub fullscreen: bool,
     /// The window waits for a fit to the game size.
     fit: Fit,
-    /// The warning that the picture cannot be smoothed was printed.
-    warned: bool,
+    /// The picture cannot be smoothed: it was warned once, and the nearest copy is used from then on.
+    no_smooth: bool,
 }
 
 /// When the window is fitted to the game size: at once in a window, and when a full screen is
@@ -57,32 +60,41 @@ impl Screen {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
         let to = FRect::new(x, y, w, h);
-        if k > 0 && (w, h) != ((self.size.0 * k) as f32, (self.size.1 * k) as f32) {
+        let exact = (w, h) == ((self.size.0 * k) as f32, (self.size.1 * k) as f32);
+        if k > 0 && !exact && !self.no_smooth {
             match self.smooth(texture, k, to) {
                 Ok(()) => return Ok(()),
-                Err(e) if !std::mem::replace(&mut self.warned, true) => {
+                Err(e) => {
+                    self.no_smooth = true;
+                    self.big = None;
                     rustyzoo::logln!("rustyzoo: cannot smooth the picture: {e}");
                 }
-                Err(_) => {}
             }
         }
         Ok(self.canvas.copy(texture, None, to)?)
     }
 
-    /// Enlarges the game picture `k` times with the nearest pixel into a texture, and copies that
-    /// to `to` with a linear filter.
+    /// Enlarges the game picture `k` times with the nearest pixel into the kept texture (made
+    /// again when its size changes), and copies that to `to` with a linear filter.
     fn smooth(&mut self, texture: &Texture, k: u32, to: FRect) -> Result<(), String> {
-        let creator = self.canvas.texture_creator();
-        let mut big = creator
-            .create_texture_target(PixelFormat::RGBA32, self.size.0 * k, self.size.1 * k)
-            .map_err(|e| e.to_string())?;
-        big.set_scale_mode(ScaleMode::Linear);
+        let want = (self.size.0 * k, self.size.1 * k);
+        if self.big.as_ref().map(|b| (b.width(), b.height())) != Some(want) {
+            self.big = None;
+            let mut big = self
+                .canvas
+                .texture_creator()
+                .create_texture_target(PixelFormat::RGBA32, want.0, want.1)
+                .map_err(|e| e.to_string())?;
+            big.set_scale_mode(ScaleMode::Linear);
+            self.big = Some(big);
+        }
+        let big = self.big.as_mut().ok_or("no texture")?;
         let mut copied = Ok(());
         self.canvas
-            .with_texture_canvas(&mut big, |c| copied = c.copy(texture, None, None))
+            .with_texture_canvas(big, |c| copied = c.copy(texture, None, None))
             .map_err(|e| e.to_string())?;
         copied.map_err(|e| e.to_string())?;
-        self.canvas.copy(&big, None, to).map_err(|e| e.to_string())
+        self.canvas.copy(big, None, to).map_err(|e| e.to_string())
     }
 
     /// Asks the window to go to full screen or back; whether it was done. If it cannot, it
@@ -205,16 +217,17 @@ pub fn open(
             format!("the output is {output:?} but the window has {pixels:?} pixels").into(),
         );
     }
-    // At a fractional scale the window may have an odd pixel more, which the picture fills.
+    // At a fractional scale the window may have an odd pixel more, left as a border.
     if fullscreen::whole(pixels, size) != k {
         rustyzoo::logln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
     Ok(Screen {
+        big: None,
         canvas,
         size,
         fullscreen: false,
         fit: Fit::default(),
-        warned: false,
+        no_smooth: false,
     })
 }
 

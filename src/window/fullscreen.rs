@@ -19,11 +19,16 @@ pub fn whole(out: (u32, u32), game: (u32, u32)) -> u32 {
 
 /// Where the picture of `game` pixels goes on an output of `out` pixels: `(x, y, width, height)`.
 /// The largest rectangle of the game's aspect ratio that fits, whole pixels, centred: it fills
-/// the height or the width of the output (a smaller output scales the picture down).
+/// the height or the width of the output (a smaller output scales the picture down). An output
+/// within 2 pixels of a whole factor of the game (a window at a fractional display scale) keeps
+/// the exact factor, centred, with a thin border: nothing is stretched by a pixel.
 pub fn fit(out: (u32, u32), game: (u32, u32)) -> (f32, f32, f32, f32) {
     let (gw, gh) = (u64::from(game.0.max(1)), u64::from(game.1.max(1)));
     let (ow, oh) = (u64::from(out.0), u64::from(out.1));
-    let (w, h) = if ow * gh <= oh * gw {
+    let k = u64::from(whole(out, game));
+    let (w, h) = if k > 0 && ow <= k * gw + 2 && oh <= k * gh + 2 {
+        (k * gw, k * gh)
+    } else if ow * gh <= oh * gw {
         (ow, gh * ow / gw)
     } else {
         (gw * oh / gh, oh)
@@ -79,6 +84,18 @@ mod tests {
         assert_eq!(fit((100, 100), (0, 0)).2, 100.0, "no division by 0");
         let max = fit((u32::MAX, u32::MAX), (1, 1));
         assert_eq!((max.2, max.3), (u32::MAX as f32, u32::MAX as f32));
+    }
+
+    #[test]
+    fn a_window_within_two_pixels_of_a_whole_factor_keeps_the_factor() {
+        // A fractional display scale: the window has an odd pixel or two more than k times.
+        assert_eq!(fit((1601, 1201), (800, 600)), (0.0, 0.0, 1600.0, 1200.0));
+        assert_eq!(fit((1602, 1202), (800, 600)), (1.0, 1.0, 1600.0, 1200.0));
+        assert_eq!(fit((801, 600), (800, 600)), (0.0, 0.0, 800.0, 600.0));
+        // Three pixels more: the picture fills the height, enlarged by smoothing.
+        assert_eq!(fit((1603, 1203), (800, 600)), (0.0, 0.0, 1603.0, 1202.0));
+        // Only one axis close: not a whole factor.
+        assert_eq!(fit((1601, 1300), (800, 600)).2, 1601.0);
     }
 
     #[test]

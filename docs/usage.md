@@ -402,7 +402,7 @@ High-density displays: the window is enlarged by the display scale, rounded to a
 
 SDL scales the game picture by the whole factor `k` with the nearest pixel, so every game pixel is `k` x `k` screen pixels; when the window is not exactly `k` times the game (a resized window, full screen), that picture is then scaled to the largest rectangle of its aspect ratio with a linear filter ("sharp bilinear"), so the pixels stay crisp. If the display cannot draw to a texture, a warning is printed and the picture is scaled with the nearest pixel.
 
-At a fractional scale (150% on Wayland, where the window is in points) the window size is rounded up, so it may have a pixel more than `k` times the game: the picture fills the window, smoothed over that pixel, with no warning. In full screen the factor is counted in pixels of the display, not in points (a 1152x744 game fills a 3456x2234 display at 3); docs/playing.md lists the game sizes that fill common displays.
+At a fractional scale (150% on Wayland, where the window is in points) the window size is rounded up, so it may have a pixel more than `k` times the game: a window within 2 pixels of a whole factor keeps the picture exactly `k` times the game, centred, and the odd pixel is a black border, with no warning. In full screen the factor is counted in pixels of the display, not in points (a 1152x744 game fills a 3456x2234 display at 3); docs/playing.md lists the game sizes that fill common displays.
 
 If the enlarged window does not fit in the usable area of the display, `k` is lowered (not below 1) and the game size is kept.
 
