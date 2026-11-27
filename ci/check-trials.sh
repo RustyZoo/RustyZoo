@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Runs the asset commands on the trials extracted by ci/fetch-trials.sh and compares the output
 # with the expected numbers. Usage: ci/check-trials.sh <rustyzoo binary> <trials dir>
+# SHARD=<i>/<n> runs only every n-th command (see ci/shard.sh): n jobs split the list, each command runs once.
 #
 # To cover a new command, add a line to the list below:
 #   check <trial folder> <expected output> '<shell command, rz runs rustyzoo on the folder>'
 set -u
+. "$(dirname "$0")/shard.sh"
 bin=$1
 dir=$2
-failed=0
+failed=0 checks=0 taken=0
 export SDL_AUDIO_DRIVER=dummy # check-music opens the audio device: never a real one
 
 tmp=$(mktemp -d)
@@ -79,6 +81,9 @@ fullscreen() {
 
 check() {
   trial=$1 expected=$2 command=$3
+  checks=$((checks + 1))
+  shard_has "$checks" || return 0
+  taken=$((taken + 1))
   case "$command" in *"${CHECK_ONLY:-}"*) ;; *) return 0 ;; esac # CHECK_ONLY=<text>: only the commands holding it
   got=$(eval "$command" | tr -d ' \r') # wc pads its numbers on macOS
   if [ "$got" = "$expected" ]; then
@@ -1541,4 +1546,5 @@ check expansion-trial "109491,0,87d9eb6923bf74f5" "save_load maps/sm_aqua.zoo"
 check expansion-trial 227408,0 "save_load maps/scn19.zoo | cut -d, -f1,2"
 
 [ -e "$tmp/unseeded" ] && failed=1
+shard_done checks "$taken" "$checks" || failed=1
 exit $failed
