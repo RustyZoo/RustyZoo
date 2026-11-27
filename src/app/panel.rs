@@ -277,6 +277,14 @@ impl App<'_> {
         }
     }
 
+    /// The pick-up button of the animal panel (unit placing 8.2.1): the selected animal is picked
+    /// up as a second click on it does.
+    pub(super) fn animal_pick_up(&mut self) {
+        if let Some(id) = self.game.as_ref().and_then(|g| g.animal.selected) {
+            self.carry_up(id);
+        }
+    }
+
     /// The exhibit button of the animal panel (4.5): an animal on the grounds does nothing, shown
     /// panel or not (the grounds test comes first); else the exhibit panel closes when shown and
     /// opens on the animal's exhibit when hidden.
