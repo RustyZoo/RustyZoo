@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(place(Hit::Play, 1)[3], place(Hit::Play, 2)[3] - ROW);
         assert_eq!(hit(30, 188, &[1]), Some(Hit::Answer(1, true)));
         assert_eq!(hit(30, 230, &[1]), None);
-        assert_eq!(hit(30, 188, &[]), None);
+        assert_eq!(hit(30, 150, &[]), None);
         assert_eq!(hit(W - 50, 276 - 2 * ROW, &[]), None);
         assert_eq!(hit(50, 310 - 2 * ROW, &[]), Some(Hit::Quit));
     }
