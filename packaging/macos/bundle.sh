@@ -1,8 +1,9 @@
 #!/bin/bash
-# Builds RustyZoo.app from the universal binary. Usage: bundle.sh <binary> <version> <min-macos> <out-dir>
+# Builds RustyZoo.app from the universal binary. Usage: bundle.sh <binary> <version> <min-macos> <out-dir> [identity]
+# identity is a codesign identity (Developer ID Application); the default `-` seals ad hoc.
 # Needs iconutil and codesign (macOS). The icon files are copied, never resampled.
 set -euo pipefail
-bin=$1 version=$2 min=$3 out=$4
+bin=$1 version=$2 min=$3 out=$4 identity=${5:--}
 here=$(cd "$(dirname "$0")" && pwd)
 png=$here/../icon/png
 app=$out/RustyZoo.app
@@ -26,8 +27,15 @@ icon_512x512@2x 1024
 LIST
 iconutil -c icns -o "$app/Contents/Resources/rustyzoo.icns" "$out/rustyzoo.iconset"
 plutil -lint "$app/Contents/Info.plist"
-# Ad-hoc seal of the whole bundle (Info.plist and Resources included), so a downloaded copy takes
-# the normal "unverified developer" path. #66 replaces `-` with the Developer ID identity and adds
-# the hardened runtime and notarisation.
-codesign --force --deep -s - "$app"
+if [ "$identity" = - ]; then
+  # Ad-hoc seal of the whole bundle (Info.plist and Resources included), so a downloaded copy takes
+  # the normal "unverified developer" path.
+  codesign --force --deep -s - "$app"
+else
+  # Developer ID: the binary first, then the bundle, both with the hardened runtime and a secure
+  # timestamp (notarisation needs both). No --deep: the bundle holds one executable and no entitlements
+  # (SDL3 and the engine need no JIT, no unsigned memory and no third-party library).
+  codesign --force --options runtime --timestamp -s "$identity" "$app/Contents/MacOS/rustyzoo"
+  codesign --force --options runtime --timestamp -s "$identity" "$app"
+fi
 codesign --verify --deep --strict "$app"
