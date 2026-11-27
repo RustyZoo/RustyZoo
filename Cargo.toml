@@ -43,3 +43,7 @@ crash-test = []
 
 [lints.clippy]
 too_many_lines = "warn"
+
+# Embeds the application icon in rustyzoo.exe (build.rs).
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3.0.12"

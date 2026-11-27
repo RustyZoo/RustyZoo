@@ -109,4 +109,21 @@ mod tests {
         assert!(!in_a_box(&["--help".into()]));
         assert!(!in_a_box(&["Saved Games/a.zoo".into()]));
     }
+
+    /// Every image of the application icon is stored as is in the resources of the .exe.
+    #[cfg(windows)]
+    #[test]
+    fn the_exe_carries_the_application_icon() {
+        let ico = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/packaging/icon/rustyzoo.ico"
+        ))
+        .unwrap();
+        let word = |at: usize| u32::from_le_bytes(ico[at..at + 4].try_into().unwrap()) as usize;
+        let exe = std::fs::read(std::env::current_exe().unwrap()).unwrap();
+        for entry in (0..usize::from(ico[4])).map(|n| 6 + 16 * n) {
+            let image = &ico[word(entry + 12)..word(entry + 12) + word(entry + 8)];
+            assert!(exe.windows(image.len()).any(|w| w == image));
+        }
+    }
 }
