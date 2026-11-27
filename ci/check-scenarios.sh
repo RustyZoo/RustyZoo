@@ -9,8 +9,10 @@
 # with status 0, the start was not refused (no `menu message`), the scenario began (`sim scenario
 # start`), a month change came and the scenario did not end in that month. A line says `ok` or
 # FAILED; the exit status is 1 if one failed. The games run `jobs` at a time (default 4, or the
-# environment variable SCENARIO_JOBS). The lines name files of the install and print no game text.
+# environment variable SCENARIO_JOBS). SHARD=<i>/<n> plays only every n-th game (see ci/shard.sh).
+# The lines name files of the install and print no game text.
 set -u
+. "$(dirname "$0")/shard.sh"
 bin=$1
 data=$2
 jobs=${3:-${SCENARIO_JOBS:-4}}
@@ -76,10 +78,16 @@ export PASSES=$passes
 {
   sed 's/^/scenario /' "$tmp/scenarios"
   sed 's/^/map /' "$tmp/maps"
-} | awk '{ print $1; print substr($0, index($0, " ") + 1); print NR }' |
+} >"$tmp/all"
+k=0
+while IFS= read -r game; do
+  k=$((k + 1))
+  ! shard_has "$k" || echo "$game"
+done <"$tmp/all" >"$tmp/games"
+awk '{ print $1; print substr($0, index($0, " ") + 1); print NR }' "$tmp/games" |
   tr '\n' '\0' | xargs -0 -n 3 -P "$jobs" "$tmp/one.sh" "$bin" "$data" "$tmp"
 
-total=$(($(wc -l <"$tmp/scenarios") + $(wc -l <"$tmp/maps")))
+total=$(wc -l <"$tmp/games" | tr -d ' ')
 # shellcheck disable=SC2012 # the names are numbers
 count=$(ls "$tmp/result" | wc -l | tr -d ' ')
 cat "$tmp"/result/* | sort
@@ -88,4 +96,8 @@ if [ "$count" != "$total" ] || [ "$total" = 0 ]; then
   exit 1
 fi
 ! cat "$tmp"/result/* | grep -q '^FAILED' || exit 1
-echo "ok: $(wc -l <"$tmp/scenarios" | tr -d ' ') scenarios and $(wc -l <"$tmp/maps" | tr -d ' ') maps played one month in $SECONDS s"
+if [ -n "${SHARD:-}" ]; then
+  shard_done games "$total" "$(wc -l <"$tmp/all" | tr -d ' ')"
+else
+  echo "ok: $(wc -l <"$tmp/scenarios" | tr -d ' ') scenarios and $(wc -l <"$tmp/maps" | tr -d ' ') maps played one month in $SECONDS s"
+fi
