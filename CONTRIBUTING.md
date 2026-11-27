@@ -49,10 +49,11 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 
 - The trials and playable checks also run on Windows (on a pull request only once it has the label `full-ci`, added by the merge queue). Do not use process substitution (`<(...)`) in a check line: the native Windows program cannot open it. Write a temporary file instead (see `scripted` in `ci/check-trials.sh`).
 
-## Self-hosted CI
+## CI runners
 
-- The Linux legs of `build` and `play` run on the self-hosted runners (labels `self-hosted, linux, x64, gamedata, rustyzoo`) for a push and a pull request by the maintainer from this repository; any other pull request (a fork, a Dependabot branch), and any pull request that changes a file under `.github/` (job `scope`, output `workflows`), runs them on a GitHub-hosted runner, so Dependabot pull requests never touch the game data. The runners also run the ignored tests on the full English and French installs, the scenario sweep and the freeform game of `ci/playable-full.txt` on both (jobs `full-tests`, `scenarios`, `games`, skipped elsewhere). The long lists (asset commands, full-game tests, scenario sweep) run in parallel shards: `SHARD=<i>/<n>` makes `ci/check-trials.sh`, `ci/check-scenarios.sh` and `ci/full-tests.sh` keep every n-th item (`ci/shard.sh`), and the job `scope` sets the number of shards in one place. Never use `pull_request_target`. The self-hosted legs upload no artifact.
-- The game data never leaves the runner: no `upload-artifact` or `actions/cache` step may pick up a folder that holds it, and a step prints no game text (the full-game steps print only test names, totals and status lines; their folders are masked in the logs).
+- Every CI job runs on a GitHub-hosted runner, and the full game installs never come to CI: the checks that need them (the ignored tests, the scenario sweep and the freeform game of `ci/playable-full.txt` on the English and French installs) run through `ci/gate.sh` on the maintainer's machine (the merge queue and the nightly run on master). Never use `pull_request_target`.
+- The long lists run in parallel shards: `SHARD=<i>/<n>` makes `ci/check-trials.sh` (CI, job `trials`), `ci/check-scenarios.sh` and `ci/full-tests.sh` (local) keep every n-th item (`ci/shard.sh`), and the job `scope` sets the number of shards in one place. A check never relies on a file or state another check leaves: a shard runs only some of them.
+- No `upload-artifact` or `actions/cache` step may pick up a folder that holds game data (the trials are the only game data CI holds), and a step prints no game text.
 
 ## Dependencies
 

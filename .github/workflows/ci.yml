@@ -24,7 +24,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       legs: ${{ steps.legs.outputs.legs }}
-      workflows: ${{ steps.legs.outputs.workflows }}
       shards: ${{ steps.legs.outputs.shards }}
       shard_list: ${{ steps.legs.outputs.shard_list }}
     steps:
@@ -48,32 +47,19 @@ jobs:
             legs=linux
           fi
           echo "legs=$legs" | tee -a "$GITHUB_OUTPUT"
-          # A pull request that touches .github/ never reaches the self-hosted runners (see `build`).
-          if grep -q '^\.github/' <<<"$files"; then workflows=true; else workflows=false; fi
-          echo "workflows=$workflows" | tee -a "$GITHUB_OUTPUT"
           # The long checks (asset commands, full-game tests, scenario sweeps) run in this many parallel shards
           # (see ci/shard.sh): the one place that sets it, so the matrices always cover every shard.
           shards=3
           echo "shards=$shards" | tee -a "$GITHUB_OUTPUT"
           echo "shard_list=[$(seq -s, 1 "$shards")]" | tee -a "$GITHUB_OUTPUT"
 
-  # The Linux leg, then the other systems (only with the legs `all`): the same job. The Linux legs of
-  # `build` and `play` run on the self-hosted runners (they hold the full game installs, see the steps
-  # marked self-hosted) for a push and a pull request by the maintainer from this repository, on a
-  # GitHub-hosted runner for any other pull request (a fork, a Dependabot branch) and for one that changes
-  # anything under .github/ (its own workflow would run on the game data before any review; the check is
-  # in the job `scope`). Never `pull_request_target`: a fork's code must not meet the game data.
+  # The Linux leg, then the other systems (only with the legs `all`): the same job. Every job runs on a GitHub-hosted
+  # runner: the full game installs never come to CI (ci/gate.sh runs those checks, see CONTRIBUTING.md).
   build:
     name: build (${{ matrix.os }})
     needs: scope
     if: needs.scope.outputs.legs != 'none'
-    runs-on: &gamedata-runner ${{ ((github.event_name == 'push' && !startsWith(github.ref_name, 'dependabot/')) ||
-      (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login == 'SlendyMilky' &&
-      needs.scope.outputs.workflows != 'true' &&
-      !startsWith(github.head_ref, 'dependabot/'))) &&
-      fromJSON('["self-hosted","linux","x64","gamedata","rustyzoo"]') || matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -115,20 +101,12 @@ jobs:
         name: Set the user folder
         run: echo "RUSTYZOO_USER_DIR=$RUNNER_TEMP/rustyzoo-user" >> "$GITHUB_ENV"
 
-      # The game data never leaves the runner: nothing of it is uploaded or cached, and its folders are
-      # masked in the logs (a public repository's logs are public).
-      - &mask-gamedata
-        name: Mask the game data folders in the logs
-        if: runner.environment == 'self-hosted'
-        run: |
-          for path in /opt/gamedata "$ZT_DATA_DIR" "$ZT_DATA_DIR_FR"; do echo "::add-mask::$path"; done
-
       # The SDL3 build dependencies from SDL's docs/README-linux.md (Ubuntu 22.04+ list),
       # without the build tools the runner already has. They make SDL build its real
       # X11, Wayland, ALSA, PulseAudio and PipeWire backends.
       - &sdl-dependencies
         name: Install SDL build dependencies
-        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -139,16 +117,9 @@ jobs:
             libthai-dev libusb-1.0-0-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev \
             liburing-dev xvfb
 
-      # Self-hosted: the image has the SDL dependencies, and /cache keeps cargo, rustup and sccache.
       - &toolchain
         name: Install the Rust toolchain from rust-toolchain.toml
-        # Self-hosted: jobs share /cache/rustup, so concurrent installs are serialised.
-        run: |
-          lock=()
-          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && command -v flock >/dev/null; then
-            lock=(flock /cache/rustup.lock)
-          fi
-          "${lock[@]}" rustup toolchain install --profile minimal
+        run: rustup toolchain install --profile minimal
 
       # Every cargo command of the leg then builds, tests and runs for the target (SDL builds
       # the same way as on the 64-bit leg).
@@ -160,7 +131,6 @@ jobs:
           echo "CARGO_BUILD_TARGET=${{ matrix.target }}" >> "$GITHUB_ENV"
 
       - &cargo-cache
-        if: runner.environment == 'github-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -227,9 +197,8 @@ jobs:
       # The two free official trials from Microsoft, extracted outside the checkout. Only the
       # extracted folders are cached; neither they nor the downloads are uploaded below. The
       # window screenshot step further down checks one picture of a map and publishes none.
-      # Self-hosted: no cache, the script downloads them.
       - &trials-cache
-        if: runner.environment == 'github-hosted' && !matrix.smoke
+        if: ${{ !matrix.smoke }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -305,9 +274,7 @@ jobs:
             grep -q "hash $last\$" "$tmp/window.out" || { echo "the picture read back is not the last frame painted ($last)"; exit 1; }
           fi
 
-      # Self-hosted: no upload (the egress proxy blocks the artifact storage, and nothing downloads it).
-      - if: runner.environment == 'github-hosted'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.path }}
@@ -367,7 +334,7 @@ jobs:
     name: play (${{ matrix.os }})
     needs: scope
     if: needs.scope.outputs.legs != 'none'
-    runs-on: *gamedata-runner
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -387,7 +354,6 @@ jobs:
     steps: &play-steps
       - *checkout
       - *user-folder
-      - *mask-gamedata
       - *sdl-dependencies
       - *toolchain
       - *cargo-cache
@@ -417,7 +383,7 @@ jobs:
           exit "$status"
 
       # Every scenario and map of the trials plays a month, and a made-up scenario is won and another lost
-      # (about one minute on the self-hosted runner). Linux only: the checks read the same log on every system.
+      # (about one minute). Linux only: the checks read the same log on every system.
       - name: Play the scenarios of the trials and win and lose one
         if: runner.os == 'Linux'
         run: |
@@ -467,7 +433,7 @@ jobs:
     name: trials (${{ matrix.system }} ${{ matrix.shard }})
     needs: scope
     if: needs.scope.outputs.legs != 'none'
-    runs-on: *gamedata-runner
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -482,7 +448,6 @@ jobs:
     steps: &trials-steps
       - *checkout
       - *user-folder
-      - *mask-gamedata
       - *sdl-dependencies
       - *toolchain
       - *rust-target
@@ -533,127 +498,6 @@ jobs:
     defaults: *bash
     env: *headless
     steps: *trials-steps
-
-  # Whether the runner rule of `build` picked a self-hosted runner: the next jobs need the full installs, which only
-  # those hold (on a fork or a pull request that changes .github/ they are skipped, as the steps they replace were).
-  gamedata:
-    needs: scope
-    if: needs.scope.outputs.legs != 'none'
-    runs-on: *gamedata-runner
-    timeout-minutes: 5
-    strategy:
-      matrix:
-        os: [ubuntu-22.04]
-    outputs:
-      self: ${{ steps.where.outputs.self }}
-    steps:
-      - id: where
-        run: echo "self=$([ "$RUNNER_ENVIRONMENT" = self-hosted ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-  # The ignored tests on the full English and French installs (as verify-fix runs them; the English run also
-  # holds every other test), ci/full-tests.sh, in `shards` parts each.
-  full-tests:
-    name: full tests (${{ matrix.install }} ${{ matrix.shard }})
-    needs: [scope, gamedata]
-    if: needs.scope.outputs.legs != 'none' && needs.gamedata.outputs.self == 'true'
-    runs-on: &self-hosted [self-hosted, linux, x64, gamedata, rustyzoo]
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.scope.outputs.shard_list) }}
-        install: [en, fr]
-        include:
-          - install: en
-            data: ZT_DATA_DIR
-            mode: --include-ignored
-          - install: fr
-            data: ZT_DATA_DIR_FR
-            mode: --ignored
-    defaults: *bash
-    env: *headless
-    steps:
-      - *checkout
-      - *user-folder
-      - *mask-gamedata
-      - *toolchain
-      - env:
-          SHARD: ${{ matrix.shard }}/${{ needs.scope.outputs.shards }}
-        run: |
-          : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
-          dir=${{ matrix.data }}
-          ci/full-tests.sh "${!dir}" ${{ matrix.mode }}
-
-  # Every scenario and map of the full English and French installs plays a month (six at a time), in `shards`
-  # parts each. Only the status lines are printed.
-  scenarios:
-    name: scenarios (${{ matrix.install }} ${{ matrix.shard }})
-    needs: [scope, gamedata]
-    if: needs.scope.outputs.legs != 'none' && needs.gamedata.outputs.self == 'true'
-    runs-on: *self-hosted
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.scope.outputs.shard_list) }}
-        install: [en, fr]
-        include:
-          - install: en
-            data: ZT_DATA_DIR
-          - install: fr
-            data: ZT_DATA_DIR_FR
-    defaults: *bash
-    env: *headless
-    steps:
-      - *checkout
-      - *user-folder
-      - *mask-gamedata
-      - *toolchain
-      - run: cargo build --release
-      - env:
-          SHARD: ${{ matrix.shard }}/${{ needs.scope.outputs.shards }}
-          SCENARIO_JOBS: 6
-        run: |
-          : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
-          dir=${{ matrix.data }}
-          status=0
-          ci/check-scenarios.sh target/release/rustyzoo "${!dir}" >"$RUNNER_TEMP/out" 2>&1 || status=1
-          grep -E '^(ok|FAILED|shard )' "$RUNNER_TEMP/out" | cut -c1-300 || true
-          exit "$status"
-
-  # The freeform game of ci/playable-full.txt on the full English and French installs (as verify-fix plays it),
-  # and the made-up win and loss and the third scenario's loss (ci/check-ends.sh). Only the status lines are printed.
-  games:
-    name: games (${{ matrix.install }})
-    needs: [scope, gamedata]
-    if: needs.scope.outputs.legs != 'none' && needs.gamedata.outputs.self == 'true'
-    runs-on: *self-hosted
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        install: [en, fr]
-        include:
-          - install: en
-            data: ZT_DATA_DIR
-          - install: fr
-            data: ZT_DATA_DIR_FR
-    defaults: *bash
-    env: *headless
-    steps:
-      - *checkout
-      - *user-folder
-      - *mask-gamedata
-      - *toolchain
-      - run: cargo build --release
-      - run: |
-          : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
-          dir=${{ matrix.data }}
-          status=0
-          ci/check-playable.sh target/release/rustyzoo "${!dir}" ci/playable-full.txt >"$RUNNER_TEMP/out" 2>&1 || status=1
-          ci/check-ends.sh target/release/rustyzoo "${!dir}" >>"$RUNNER_TEMP/out" 2>&1 || status=1
-          grep -E '^(ok|skipped|pending|FAILED):' "$RUNNER_TEMP/out" | cut -c1-300 || true
-          exit "$status"
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
   # and long) is the same on the three systems, on 32-bit Windows and on ARM Linux and Windows, and no map
@@ -712,7 +556,7 @@ jobs:
   # that one fails this check). A pull request is merged only after a run with the legs `all` (merge-queue).
   ci:
     name: ci
-    needs: [scope, build, build-full, play, play-full, trials, trials-full, gamedata, full-tests, scenarios, games, hashes]
+    needs: [scope, build, build-full, play, play-full, trials, trials-full, hashes]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
