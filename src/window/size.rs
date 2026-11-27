@@ -36,7 +36,7 @@ pub fn clamp(size: (u32, u32), usable: (u32, u32)) -> (u32, u32) {
 /// window is in points). So `k` is the same everywhere: the scale rounded, at least 1, and
 /// reduced until the window fits in `usable` (points, 0 meaning unknown), never below 1. The
 /// points are rounded up, so that at a fractional density the window has at least `k` times the
-/// game in pixels however the system rounds them, and an odd pixel left over is a border.
+/// game in pixels however the system rounds them, and the picture is smoothed over an odd pixel left over.
 pub fn plan(game: (u32, u32), scale: f32, density: f32, usable: (u32, u32)) -> (u32, (u32, u32)) {
     let density = if density > 0.0 { density } else { 1.0 };
     let fit = |n: u32, max: u32| match max {
@@ -111,7 +111,7 @@ mod tests {
     }
 
     /// The window's pixels at every display scale, however the system rounds points times the
-    /// density: the picture is exactly `k` times the game, with any odd pixel left as a border.
+    /// density: the picture is at least `k` times the game.
     #[test]
     fn the_window_holds_the_game_times_k_at_fractional_scales() {
         use super::super::fullscreen::{fit, whole};
@@ -139,7 +139,8 @@ mod tests {
                 let out = (pixels(points.0), pixels(points.1));
                 assert_eq!(whole(out, game), k, "{game:?} at {scale}: {out:?}");
                 let (x, y, w, h) = fit(out, game);
-                assert_eq!((w, h), ((game.0 * k) as f32, (game.1 * k) as f32));
+                // The picture is at least `k` times the game; an odd pixel stretches it.
+                assert!(w >= (game.0 * k) as f32 && h >= (game.1 * k) as f32);
                 assert!(x + w <= out.0 as f32 && y + h <= out.1 as f32);
             }
         }

@@ -3,7 +3,7 @@
 
 use rustyzoo::config::Config;
 use sdl3::pixels::{Color, PixelFormat};
-use sdl3::render::{Canvas, FRect, Texture};
+use sdl3::render::{Canvas, FRect, ScaleMode, Texture};
 use sdl3::surface::Surface;
 use sdl3::video::{Window, WindowPos};
 
@@ -21,6 +21,8 @@ pub struct Screen {
     pub fullscreen: bool,
     /// The window waits for a fit to the game size.
     fit: Fit,
+    /// The warning that the picture cannot be smoothed was printed.
+    warned: bool,
 }
 
 /// When the window is fitted to the game size: at once in a window, and when a full screen is
@@ -44,14 +46,43 @@ impl Fit {
 }
 
 impl Screen {
-    /// Copies the game picture to the window, scaled by a whole factor and centred on black
-    /// (see [`fullscreen::fit`]); at the size the window opens with, it fills the window.
+    /// Copies the game picture to the window, centred on black, as large as it can be at its
+    /// aspect ratio (see [`fullscreen::fit`]). It is enlarged by the whole factor with the nearest
+    /// pixel, then smoothed to the rectangle if that is not a whole factor ("sharp bilinear");
+    /// at the size the window opens with, it fills the window.
     pub fn copy(&mut self, texture: &Texture) -> Result<(), CliError> {
         let out = self.canvas.output_size()?;
         let (x, y, w, h) = fullscreen::fit(out, self.size);
+        let k = fullscreen::whole(out, self.size);
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
-        Ok(self.canvas.copy(texture, None, FRect::new(x, y, w, h))?)
+        let to = FRect::new(x, y, w, h);
+        if k > 0 && (w, h) != ((self.size.0 * k) as f32, (self.size.1 * k) as f32) {
+            match self.smooth(texture, k, to) {
+                Ok(()) => return Ok(()),
+                Err(e) if !std::mem::replace(&mut self.warned, true) => {
+                    rustyzoo::logln!("rustyzoo: cannot smooth the picture: {e}");
+                }
+                Err(_) => {}
+            }
+        }
+        Ok(self.canvas.copy(texture, None, to)?)
+    }
+
+    /// Enlarges the game picture `k` times with the nearest pixel into a texture, and copies that
+    /// to `to` with a linear filter.
+    fn smooth(&mut self, texture: &Texture, k: u32, to: FRect) -> Result<(), String> {
+        let creator = self.canvas.texture_creator();
+        let mut big = creator
+            .create_texture_target(PixelFormat::RGBA32, self.size.0 * k, self.size.1 * k)
+            .map_err(|e| e.to_string())?;
+        big.set_scale_mode(ScaleMode::Linear);
+        let mut copied = Ok(());
+        self.canvas
+            .with_texture_canvas(&mut big, |c| copied = c.copy(texture, None, None))
+            .map_err(|e| e.to_string())?;
+        copied.map_err(|e| e.to_string())?;
+        self.canvas.copy(&big, None, to).map_err(|e| e.to_string())
     }
 
     /// Asks the window to go to full screen or back; whether it was done. If it cannot, it
@@ -174,7 +205,7 @@ pub fn open(
             format!("the output is {output:?} but the window has {pixels:?} pixels").into(),
         );
     }
-    // At a fractional scale the window may have an odd pixel more, left as a border.
+    // At a fractional scale the window may have an odd pixel more, which the picture fills.
     if fullscreen::whole(pixels, size) != k {
         rustyzoo::logln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
@@ -183,6 +214,7 @@ pub fn open(
         size,
         fullscreen: false,
         fit: Fit::default(),
+        warned: false,
     })
 }
 
@@ -239,5 +271,50 @@ mod tests {
             fit.resized(false) && !fit.due(false),
             "in a window: at once"
         );
+    }
+
+    /// A picture that is not a whole factor of the window is enlarged sharp, then smoothed to the
+    /// rectangle, with black on the two bars (needs a window, so the dummy video driver).
+    #[test]
+    fn a_picture_that_is_not_a_whole_factor_fills_the_height() {
+        sdl3::hint::set("SDL_VIDEO_DRIVER", "dummy");
+        let sdl = sdl3::init().unwrap();
+        let window = sdl.video().unwrap().window("t", 1000, 350).build().unwrap();
+        let canvas = sdl3::render::create_renderer(window, Some(c"software")).unwrap();
+        let size = (100, 100);
+        let mut screen = Screen {
+            canvas,
+            size,
+            fullscreen: false,
+            fit: Fit::default(),
+            warned: false,
+        };
+        let creator = screen.canvas.texture_creator();
+        let mut texture = creator
+            .create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)
+            .unwrap();
+        texture.set_scale_mode(ScaleMode::Nearest);
+        texture
+            .with_lock(None, |p: &mut [u8], pitch| {
+                for row in p.chunks_mut(pitch) {
+                    row.fill(255);
+                    row[..size.0 as usize * 2].fill(0);
+                }
+            })
+            .unwrap();
+        let out = screen.canvas.output_size().unwrap();
+        assert_eq!(fullscreen::fit(out, size), (325.0, 0.0, 350.0, 350.0));
+        assert!(screen.copy(&texture).is_ok());
+        assert!(!screen.warned, "the smooth path worked");
+        let at = |x, y| {
+            let r = sdl3::rect::Rect::new(x, y, 1, 1);
+            screen.canvas.read_pixels(r).unwrap().with_lock(|p| p[0])
+        };
+        assert_eq!(at(10, 200), 0, "left bar");
+        assert_eq!(at(990, 200), 0, "right bar");
+        assert_eq!(at(330, 100), 0, "the picture, black half");
+        assert_eq!(at(670, 100), 255, "the picture, white half");
+        // The edge inside the picture is smoothed, not a step.
+        assert!((494..506).any(|x| !matches!(at(x, 100), 0 | 255)));
     }
 }
