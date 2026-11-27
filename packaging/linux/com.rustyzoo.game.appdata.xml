@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.rustyzoo.game</id>
+  <name>RustyZoo</name>
+  <summary>Open-source engine for the original Zoo Tycoon game data</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later AND AGPL-3.0-or-later</project_license>
+  <url type="homepage">https://github.com/RustyZoo/RustyZoo</url>
+  <description>
+    <p>RustyZoo is an engine that plays the original Zoo Tycoon with the data of your own copy of the game. It ships no game data.</p>
+  </description>
+  <launchable type="desktop-id">com.rustyzoo.game.desktop</launchable>
+  <provides><binary>rustyzoo</binary></provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>
