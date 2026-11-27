@@ -13,7 +13,7 @@ The scripts do not go through the menu: they start on the map of the freeform ga
 
 ## Screen size
 
-The game is drawn at its own size (`screenwidth` and `screenheight` of `[user]` in the ini file, or `--size WxH`), enlarged by the largest whole factor that fits, counted in pixels of the display, and centred on black. These sizes fill a display in full screen (a pixel left over is a black border):
+The game is drawn at its own size (`screenwidth` and `screenheight` of `[user]` in the ini file, or `--size WxH`), enlarged to the largest size of its aspect ratio that fits the display, centred on black (bars at the sides or above and below). It is first enlarged by the largest whole factor that fits, counted in pixels of the display, so the pixels stay sharp, and the rest is smoothed. These sizes fill a display in full screen with whole pixels (the others are smoothed, and have bars):
 
 | Display (pixels) | Game sizes that fill it |
 |---|---|
