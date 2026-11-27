@@ -15,7 +15,7 @@ use crate::CliError;
 pub struct Screen {
     /// The enlarged picture that is smoothed to the window, kept while its size stays. It is
     /// declared before the canvas so that it is dropped first.
-    big: Option<Texture>,
+    big: Option<Texture<'static>>,
     pub canvas: Canvas<Window>,
     /// The game size, not the window's.
     pub size: (u32, u32),
@@ -80,13 +80,15 @@ impl Screen {
         let want = (self.size.0 * k, self.size.1 * k);
         if self.big.as_ref().map(|b| (b.width(), b.height())) != Some(want) {
             self.big = None;
-            let mut big = self
-                .canvas
-                .texture_creator()
+            let creator = self.canvas.texture_creator();
+            let mut big = creator
                 .create_texture_target(PixelFormat::RGBA32, want.0, want.1)
                 .map_err(|e| e.to_string())?;
             big.set_scale_mode(ScaleMode::Linear);
-            self.big = Some(big);
+            // SAFETY: the lifetime only ties a texture to its creator, which is a handle to this
+            // canvas's renderer; the texture is a field of `Screen` declared before the canvas, so
+            // it is destroyed while the renderer lives, and it is never handed out.
+            self.big = Some(unsafe { std::mem::transmute::<Texture<'_>, Texture<'static>>(big) });
         }
         let big = self.big.as_mut().ok_or("no texture")?;
         let mut copied = Ok(());
