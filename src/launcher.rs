@@ -1,8 +1,9 @@
 //! The launcher: a small RustyZoo window shown by a start without arguments when no game folder
 //! is found or a start question (statistics, crash reports) has no answer yet. It shows the game
-//! folder with a Browse button and the two questions; Play keeps the folder and the answers in
-//! the user settings and starts the game, Quit or closing the window ends the run. It draws with
-//! the embedded fonts and loads nothing from the game.
+//! folder with a Browse button and the questions this build would ask (none without a server or
+//! with reports turned off); Play keeps the folder and the answers in the user settings and starts
+//! the game, Quit or closing the window ends the run. It draws with the embedded fonts and loads
+//! nothing from the game.
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -17,10 +18,12 @@ use sdl3::mouse::MouseButton;
 use sdl3::pixels::PixelFormat;
 use sdl3::render::ScaleMode;
 
-/// The size of the drawing, shown twice as large.
+/// The size of the drawing, shown twice as large; the height is for two questions.
 const W: i32 = 480;
 const H: i32 = 340;
 const SCALE: u32 = 2;
+/// The height of one question.
+const ROW: i32 = 64;
 
 type Rgb = [u8; 3];
 const WOOD: [Rgb; 3] = [[122, 84, 46], [168, 124, 74], [70, 46, 24]];
@@ -53,7 +56,7 @@ const QUESTIONS: [(&str, &str); 2] = [
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Hit {
     Browse,
-    /// The answer to question 0 or 1.
+    /// The answer to the question in a slot (in `PLACES`), or to the question 0 or 1 (in a hit).
     Answer(usize, bool),
     Privacy,
     Quit,
@@ -72,18 +75,39 @@ const PLACES: [(Hit, [i32; 4]); 8] = [
     (Hit::Play, [W - 145, 300, W - 25, 330]),
 ];
 
-fn hit(x: i32, y: i32) -> Option<Hit> {
-    PLACES
-        .iter()
-        .find(|(_, [l, t, r, b])| (*l..=*r).contains(&x) && (*t..=*b).contains(&y))
-        .map(|&(hit, _)| hit)
+/// The height of the drawing with `n` questions.
+fn height(n: usize) -> i32 {
+    H - ROW * (2 - n.min(2) as i32)
 }
 
-fn place(hit: Hit) -> [i32; 4] {
-    PLACES
+/// Where `hit` is with `n` questions: the things under them move up when fewer are asked.
+fn place(hit: Hit, n: usize) -> [i32; 4] {
+    let [l, t, r, b] = PLACES
         .iter()
         .find(|(h, _)| *h == hit)
-        .map_or([0; 4], |p| p.1)
+        .map_or([0; 4], |p| p.1);
+    let up = if matches!(hit, Hit::Privacy | Hit::Quit | Hit::Play) {
+        H - height(n)
+    } else {
+        0
+    };
+    [l, t - up, r, b - up]
+}
+
+/// What a click at (`x`, `y`) lands on when the questions `asked` (their numbers, in order) are shown.
+fn hit(x: i32, y: i32, asked: &[usize]) -> Option<Hit> {
+    PLACES.iter().find_map(|&(h, _)| {
+        let [l, t, r, b] = place(h, asked.len());
+        let inside = (l..=r).contains(&x) && (t..=b).contains(&y);
+        match h {
+            Hit::Answer(slot, yes) => asked
+                .get(slot)
+                .filter(|_| inside)
+                .map(|&q| Hit::Answer(q, yes)),
+            Hit::Privacy if asked.is_empty() => None,
+            _ => inside.then_some(h),
+        }
+    })
 }
 
 /// What the launcher shows and the player chose.
@@ -93,14 +117,17 @@ struct State {
     /// The language number of the install in `folder`, when the engine can open it.
     language: Option<u32>,
     answers: [Option<bool>; 2],
+    /// The questions this build asks.
+    asks: [bool; 2],
 }
 
 impl State {
-    fn new(folder: Option<PathBuf>, answers: [Option<bool>; 2]) -> State {
+    fn new(folder: Option<PathBuf>, answers: [Option<bool>; 2], asks: [bool; 2]) -> State {
         let mut state = State {
             folder: None,
             language: None,
             answers,
+            asks,
         };
         state.set_folder(folder);
         state
@@ -114,9 +141,14 @@ impl State {
         self.folder = folder;
     }
 
-    /// Play needs a folder the engine opens and both answers.
+    /// The numbers of the questions shown, in order.
+    fn asked(&self) -> Vec<usize> {
+        (0..2).filter(|&q| self.asks[q]).collect()
+    }
+
+    /// Play needs a folder the engine opens and an answer to each question asked.
     fn playable(&self) -> bool {
-        self.language.is_some() && !self.answers.contains(&None)
+        self.language.is_some() && !unanswered(self.answers, self.asks)
     }
 
     /// Keeps the folder and the answers in the settings folder `user`.
@@ -124,8 +156,8 @@ impl State {
         if let Some(dir) = &self.folder {
             install::keep(user, dir)?;
         }
-        for (key, answer) in KEYS.iter().zip(self.answers) {
-            if let Some(answer) = answer {
+        for ((key, answer), asked) in KEYS.iter().zip(self.answers).zip(self.asks) {
+            if let (true, Some(answer)) = (asked, answer) {
                 crash::keep(user, key, answer)?;
             }
         }
@@ -133,9 +165,17 @@ impl State {
     }
 }
 
-/// Whether a start shows the launcher: no folder found or a question without an answer.
-fn needed(folder: Option<&Path>, answers: [Option<bool>; 2]) -> bool {
-    folder.is_none() || answers.contains(&None)
+/// Whether a question asked has no answer.
+fn unanswered(answers: [Option<bool>; 2], asks: [bool; 2]) -> bool {
+    answers
+        .iter()
+        .zip(asks)
+        .any(|(a, asked)| asked && a.is_none())
+}
+
+/// Whether a start shows the launcher: no folder found or a question asked without an answer.
+fn needed(folder: Option<&Path>, answers: [Option<bool>; 2], asks: [bool; 2]) -> bool {
+    folder.is_none() || unanswered(answers, asks)
 }
 
 /// The answers kept in the settings folder `user`.
@@ -150,8 +190,9 @@ pub fn start() -> Option<Vec<OsString>> {
         return Some(Vec::new());
     }
     let user = userdir::dir();
-    let mut state = State::new(install::find(), answers(user.as_deref()));
-    if !needed(state.folder.as_deref(), state.answers) {
+    let asks = [stats::asks(), crash::asks()];
+    let mut state = State::new(install::find(), answers(user.as_deref()), asks);
+    if !needed(state.folder.as_deref(), state.answers, asks) {
         return Some(Vec::new());
     }
     match show(&mut state) {
@@ -175,19 +216,21 @@ pub fn start() -> Option<Vec<OsString>> {
 
 /// Shows the window until Play (`true`) or Quit (`false`).
 fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
+    let asked = state.asked();
+    let h = height(asked.len());
     let sdl = sdl3::init()?;
     let video = sdl.video()?;
     let mut window = video
-        .window("RustyZoo", W as u32 * SCALE, H as u32 * SCALE)
+        .window("RustyZoo", W as u32 * SCALE, h as u32 * SCALE)
         .build()?;
     crate::window::set_icon(&mut window);
     let mut canvas = sdl3::render::create_renderer(window, None)?;
     let textures = canvas.texture_creator();
-    let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, W as u32, H as u32)?;
+    let mut texture = textures.create_texture_streaming(PixelFormat::RGBA32, W as u32, h as u32)?;
     texture.set_scale_mode(ScaleMode::Nearest);
     let mut pump = sdl.event_pump()?;
     let mut fonts = Fonts::new();
-    let mut picture = Framebuffer::new(W as u32, H as u32);
+    let mut picture = Framebuffer::new(W as u32, h as u32);
     let picked: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
     let mut browsing = false;
     loop {
@@ -218,9 +261,9 @@ fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
             } => (x, y),
             _ => continue,
         };
-        let (w, h) = canvas.window().size();
+        let (w, wh) = canvas.window().size();
         let at = |v: f32, size: u32, logical: i32| (v * logical as f32 / size.max(1) as f32) as i32;
-        match hit(at(x, w, W), at(y, h, H)) {
+        match hit(at(x, w, W), at(y, wh, h), &asked) {
             Some(Hit::Browse) if !browsing => {
                 browsing = true;
                 let slot = Arc::clone(&picked);
@@ -321,8 +364,11 @@ fn fit(font: &Font, text: &str, width: i32) -> Vec<u8> {
 }
 
 fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
-    bevel(fb, [0, 0, W - 1, H - 1], WOOD, 3);
-    for y in (6..H - 6).step_by(7) {
+    let asked = state.asked();
+    let n = asked.len();
+    let h = height(n);
+    bevel(fb, [0, 0, W - 1, h - 1], WOOD, 3);
+    for y in (6..h - 6).step_by(7) {
         line(fb, (4, y), (W - 5, y + 2), GRAIN);
     }
     bevel(fb, [10, 8, W - 11, 50], LEAF, 2);
@@ -330,7 +376,7 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
     let title = (&mut fonts.title, 58, W, 29);
     write(fb, title, b"RustyZoo", CREAM, Justify::Left);
 
-    bevel(fb, [10, 58, W - 11, 290], SAND, 2);
+    bevel(fb, [10, 58, W - 11, h - 50], SAND, 2);
     write(
         fb,
         (&mut fonts.bold, 24, W, 74),
@@ -351,7 +397,7 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
     button(
         fb,
         &mut fonts.bold,
-        place(Hit::Browse),
+        place(Hit::Browse, n),
         b"Browse...",
         SAND,
         INK,
@@ -384,11 +430,14 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
         ink,
         Justify::Left,
     );
-    line(fb, (24, 138), (W - 25, 138), SAND[2]);
-    line(fb, (24, 139), (W - 25, 139), SAND[1]);
+    if n > 0 {
+        line(fb, (24, 138), (W - 25, 138), SAND[2]);
+        line(fb, (24, 139), (W - 25, 139), SAND[1]);
+    }
 
-    for (n, (question, note)) in QUESTIONS.iter().enumerate() {
-        let y = 154 + 64 * n as i32;
+    for (slot, &q) in asked.iter().enumerate() {
+        let (question, note) = QUESTIONS[q];
+        let y = 154 + ROW * slot as i32;
         write(
             fb,
             (&mut fonts.bold, 24, W, y),
@@ -404,8 +453,8 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
             Justify::Left,
         );
         for yes in [true, false] {
-            let [x, top, ..] = place(Hit::Answer(n, yes));
-            radio(fb, x, top, state.answers[n] == Some(yes));
+            let [x, top, ..] = place(Hit::Answer(slot, yes), n);
+            radio(fb, x, top, state.answers[q] == Some(yes));
             let label: &[u8] = if yes { b"Yes" } else { b"No" };
             write(
                 fb,
@@ -416,29 +465,39 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
             );
         }
     }
-    let privacy = b"Privacy policy";
-    write(
-        fb,
-        (&mut fonts.note, 0, W - 25, 276),
-        privacy,
-        LINK,
-        Justify::Right,
-    );
-    let left = W - 25 - fonts.note.width(privacy);
-    line(fb, (left, 283), (W - 25, 283), LINK);
+    if n > 0 {
+        let privacy = b"Privacy policy";
+        let top = place(Hit::Privacy, n)[1];
+        write(
+            fb,
+            (&mut fonts.note, 0, W - 25, top + 8),
+            privacy,
+            LINK,
+            Justify::Right,
+        );
+        let left = W - 25 - fonts.note.width(privacy);
+        line(fb, (left, top + 15), (W - 25, top + 15), LINK);
+    }
 
-    button(fb, &mut fonts.bold, place(Hit::Quit), b"Quit", SAND, INK);
+    button(fb, &mut fonts.bold, place(Hit::Quit, n), b"Quit", SAND, INK);
     let (colours, ink) = if state.playable() {
         (LEAF, CREAM)
     } else {
         (GREY, [210, 210, 195])
     };
-    button(fb, &mut fonts.play, place(Hit::Play), b"Play", colours, ink);
+    button(
+        fb,
+        &mut fonts.play,
+        place(Hit::Play, n),
+        b"Play",
+        colours,
+        ink,
+    );
 }
 
 fn set(fb: &mut Framebuffer, x: i32, y: i32, [r, g, b]: Rgb) {
-    if (0..W).contains(&x) && (0..H).contains(&y) {
-        let at = (y * W + x) as usize * 4;
+    let at = (y * W + x) as usize * 4;
+    if (0..W).contains(&x) && y >= 0 && at + 4 <= fb.pixels.len() {
         fb.pixels[at..at + 4].copy_from_slice(&[r, g, b, 255]);
     }
 }
@@ -594,19 +653,50 @@ mod tests {
     #[test]
     fn the_launcher_shows_without_a_folder_or_an_answer() {
         let dir = Path::new("game");
-        assert!(!needed(Some(dir), [Some(true), Some(false)]));
-        assert!(!needed(Some(dir), [Some(false), Some(false)]));
-        assert!(needed(None, [Some(true), Some(true)]));
-        assert!(needed(Some(dir), [None, Some(true)]));
-        assert!(needed(Some(dir), [Some(true), None]));
-        assert!(needed(None, [None, None]));
+        let both = [true, true];
+        assert!(!needed(Some(dir), [Some(true), Some(false)], both));
+        assert!(!needed(Some(dir), [Some(false), Some(false)], both));
+        assert!(needed(None, [Some(true), Some(true)], both));
+        assert!(needed(Some(dir), [None, Some(true)], both));
+        assert!(needed(Some(dir), [Some(true), None], both));
+        assert!(needed(None, [None, None], both));
+    }
+
+    #[test]
+    fn a_question_not_asked_neither_shows_nor_waits() {
+        let dir = Path::new("game");
+        let none = [None, None];
+        assert!(!needed(Some(dir), none, [false, false]));
+        assert!(needed(None, none, [false, false]));
+        assert!(!needed(Some(dir), [Some(true), None], [true, false]));
+        assert!(needed(Some(dir), [None, Some(true)], [true, false]));
+        assert!(needed(Some(dir), [Some(true), None], [false, true]));
+        let tree = Temp::new("launcher-asks");
+        let game = install(&tree);
+        let mut state = State::new(Some(game), none, [false, true]);
+        assert_eq!(state.asked(), [1]);
+        assert!(!state.playable());
+        state.answers[1] = Some(false);
+        assert!(state.playable());
+        let state = State::new(state.folder, none, [false, false]);
+        assert!(state.asked().is_empty() && state.playable());
+        // No empty gap: the rest moves up, the first slot holds the one question.
+        assert_eq!(height(2), H);
+        assert_eq!(height(1), H - ROW);
+        assert_eq!(height(0), H - 2 * ROW);
+        assert_eq!(place(Hit::Play, 1)[3], place(Hit::Play, 2)[3] - ROW);
+        assert_eq!(hit(30, 188, &[1]), Some(Hit::Answer(1, true)));
+        assert_eq!(hit(30, 230, &[1]), None);
+        assert_eq!(hit(30, 188, &[]), None);
+        assert_eq!(hit(W - 50, 276 - 2 * ROW, &[]), None);
+        assert_eq!(hit(50, 310 - 2 * ROW, &[]), Some(Hit::Quit));
     }
 
     #[test]
     fn play_needs_a_folder_that_opens_and_both_answers() {
         let tree = Temp::new("launcher-play");
         let game = install(&tree);
-        let mut state = State::new(None, [None, None]);
+        let mut state = State::new(None, [None, None], [true, true]);
         assert!(!state.playable());
         state.answers = [Some(true), Some(false)];
         assert!(!state.playable());
@@ -618,7 +708,7 @@ mod tests {
         assert_eq!(status(&state), "Zoo Tycoon found (English)");
         state.answers[1] = None;
         assert!(!state.playable());
-        let state = State::new(Some(game), [Some(false), Some(false)]);
+        let state = State::new(Some(game), [Some(false), Some(false)], [true, true]);
         assert!(state.playable());
     }
 
@@ -629,7 +719,7 @@ mod tests {
         let user = tree.0.join("user");
         assert_eq!(answers(Some(&user)), [None, None]);
         assert_eq!(answers(None), [None, None]);
-        State::new(Some(game.clone()), [Some(true), Some(false)])
+        State::new(Some(game.clone()), [Some(true), Some(false)], [true, true])
             .save(&user)
             .unwrap();
         assert_eq!(answers(Some(&user)), [Some(true), Some(false)]);
@@ -640,21 +730,29 @@ mod tests {
         );
         assert!(ini.contains(&format!("data={}", game.display())), "{ini}");
         // An unanswered question keeps the answer already there.
-        State::new(None, [None, Some(true)]).save(&user).unwrap();
+        State::new(None, [None, Some(true)], [true, true])
+            .save(&user)
+            .unwrap();
         assert_eq!(answers(Some(&user)), [Some(true), Some(true)]);
+        // A question not asked is never written.
+        let other = tree.0.join("other");
+        State::new(None, [Some(true), Some(true)], [false, true])
+            .save(&other)
+            .unwrap();
+        assert_eq!(answers(Some(&other)), [None, Some(true)]);
     }
 
     #[test]
     fn clicks_land_on_their_places() {
-        assert_eq!(hit(400, 97), Some(Hit::Browse));
-        assert_eq!(hit(30, 188), Some(Hit::Answer(0, true)));
-        assert_eq!(hit(100, 252), Some(Hit::Answer(1, false)));
-        assert_eq!(hit(50, 310), Some(Hit::Quit));
-        assert_eq!(hit(W - 30, 329), Some(Hit::Play));
-        assert_eq!(hit(W - 50, 276), Some(Hit::Privacy));
-        assert_eq!(hit(200, 200), None);
-        assert_eq!(hit(-1, -1), None);
-        assert_eq!(hit(i32::MAX, i32::MIN), None);
+        assert_eq!(hit(400, 97, &[0, 1]), Some(Hit::Browse));
+        assert_eq!(hit(30, 188, &[0, 1]), Some(Hit::Answer(0, true)));
+        assert_eq!(hit(100, 252, &[0, 1]), Some(Hit::Answer(1, false)));
+        assert_eq!(hit(50, 310, &[0, 1]), Some(Hit::Quit));
+        assert_eq!(hit(W - 30, 329, &[0, 1]), Some(Hit::Play));
+        assert_eq!(hit(W - 50, 276, &[0, 1]), Some(Hit::Privacy));
+        assert_eq!(hit(200, 200, &[0, 1]), None);
+        assert_eq!(hit(-1, -1, &[0, 1]), None);
+        assert_eq!(hit(i32::MAX, i32::MIN, &[0, 1]), None);
     }
 
     #[test]

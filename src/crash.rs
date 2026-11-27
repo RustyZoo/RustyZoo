@@ -366,6 +366,12 @@ pub fn disabled() -> bool {
     is_off(std::env::var_os(OFF))
 }
 
+/// Whether the game of this build asks the crash report question: it has a server address and
+/// the environment does not turn reports off.
+pub fn asks() -> bool {
+    !disabled() && DSN.and_then(Dsn::parse).is_some()
+}
+
 /// Where the privacy policy, which the questions point to, is.
 pub const POLICY: &str = "https://rustyzoo.com/privacy/";
 
