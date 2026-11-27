@@ -177,10 +177,13 @@ jobs:
           app=target/app/RustyZoo.app
           ditto -c -k --keepParent "$app" target/notarize.zip
           auth=(--key "$key" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID")
-          xcrun notarytool submit target/notarize.zip "${auth[@]}" --wait --output-format json > target/notarize.json
+          # A failed submission still prints its JSON: keep it, print it, decide on the status only.
+          xcrun notarytool submit target/notarize.zip "${auth[@]}" --wait --output-format json > target/notarize.json || true
           cat target/notarize.json
-          if [ "$(jq -r .status target/notarize.json)" != Accepted ]; then
-            xcrun notarytool log "$(jq -r .id target/notarize.json)" "${auth[@]}" || true
+          status=$(jq -r '.status // empty' target/notarize.json || true)
+          id=$(jq -r '.id // empty' target/notarize.json || true)
+          if [ "$status" != Accepted ]; then
+            if [ -n "$id" ]; then xcrun notarytool log "$id" "${auth[@]}" || true; fi
             echo "::error title=Notarisation::Apple did not accept RustyZoo.app"
             exit 1
           fi
