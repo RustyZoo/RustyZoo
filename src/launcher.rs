@@ -531,7 +531,7 @@ fn icon(fb: &mut Framebuffer, x: i32, y: i32) {
     let Ok((side, rgba)) = crate::window::icon_pixels() else {
         return;
     };
-    for (n, p) in rgba.chunks_exact(4).enumerate() {
+    for (n, p) in rgba.as_chunks::<4>().0.iter().enumerate() {
         let (px, py) = ((n as u32 % side) as i32, (n as u32 / side) as i32);
         if p[3] >= 128 {
             set(fb, x + px, y + py, [p[0], p[1], p[2]]);
