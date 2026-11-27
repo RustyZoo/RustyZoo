@@ -539,35 +539,44 @@ jobs:
       - name: Install the Rust toolchain from rust-toolchain.toml
         run: flock /cache/rustup.lock rustup toolchain install --profile minimal
       - run: cargo build --release
+      # The English and French installs run side by side, each with its own home, temp and user folders (the
+      # checks keep their files under mktemp, so nothing else is shared but the checkout and the build). Each
+      # check's status lines go to the job log as they end, prefixed `en:` or `fr:`, so a timeout shows how far
+      # it got. Only status lines, never game text.
       - name: Check the full English and French installs
         run: |
           : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
+          export CARGO_HOME=${CARGO_HOME:-$HOME/.cargo} RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.rustup}
           bin=target/release/rustyzoo
           export SCENARIO_JOBS=6
           keep='^(ok|skipped|pending|FAILED|shard)|^test result:|\.\.\. FAILED$|^error|^exit'
-          install() { # install <name> <folder> <test mode>: the status lines on stdout, status 1 if a check failed
-            name=$1 dir=$2 mode=$3 status=0 raw="$RUNNER_TEMP/$1.raw"
-            run() { echo "== $1"; "$@" >"$raw" 2>&1 || status=1; grep -E "$keep" "$raw" | cut -c1-300 || true; }
+          install() { # install <name> <folder> <test mode>: status 1 if a check failed
+            set +e
+            name=$1 dir=$2 mode=$3 status=0 home=$RUNNER_TEMP/$1
+            rm -rf "$home"
+            mkdir -p "$home/tmp" "$home/config" "$home/cache" "$home/data"
+            export HOME=$home TMPDIR=$home/tmp XDG_CONFIG_HOME=$home/config XDG_CACHE_HOME=$home/cache \
+              XDG_DATA_HOME=$home/data RUSTYZOO_USER_DIR=$home/user
+            run() {
+              echo "$name: == $1 $(date +%T)"
+              "$@" 2>&1 | K=$keep awk -v p="$name: " '$0 ~ ENVIRON["K"] { print p substr($0, 1, 300); fflush() }'
+              [ "${PIPESTATUS[0]}" = 0 ] || status=1
+            }
             run ci/full-tests.sh "$dir" "$mode"
             run ci/check-scenarios.sh "$bin" "$dir"
             run ci/check-ends.sh "$bin" "$dir"
             run ci/check-playable.sh "$bin" "$dir" ci/playable-full.txt
-            rm -f "$raw"
+            rm -rf "$home"
+            echo "$name: done, status $status $(date +%T)"
             return "$status"
           }
-          install en "$ZT_DATA_DIR" --include-ignored >"$RUNNER_TEMP/en.log" 2>&1 &
+          install en "$ZT_DATA_DIR" --include-ignored &
           en=$!
-          install fr "$ZT_DATA_DIR_FR" --ignored >"$RUNNER_TEMP/fr.log" 2>&1 &
+          install fr "$ZT_DATA_DIR_FR" --ignored &
           fr=$!
           status=0
           wait "$en" || status=1
           wait "$fr" || status=1
-          for name in en fr; do
-            echo "::group::$name"
-            cat "$RUNNER_TEMP/$name.log"
-            echo "::endgroup::"
-          done
-          rm -f "$RUNNER_TEMP"/en.log "$RUNNER_TEMP"/fr.log
           exit "$status"
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
