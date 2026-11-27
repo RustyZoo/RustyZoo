@@ -35,7 +35,11 @@ pub fn usable(dir: &Path) -> bool {
 
 /// The game folder found on this system, if any.
 pub fn find() -> Option<PathBuf> {
-    search(std::env::consts::OS, |name| std::env::var_os(name))
+    search(
+        std::env::consts::OS,
+        |name| std::env::var_os(name),
+        registry,
+    )
 }
 
 /// Keeps `dir` as the folder [`find`] tries first.
@@ -46,12 +50,18 @@ pub fn remember(dir: &Path) -> Result<(), String> {
 }
 
 /// [`find`] for the operating system `os` and the environment `env`.
-fn search(os: &str, env: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+fn search(
+    os: &str,
+    env: impl Fn(&str) -> Option<OsString>,
+    registry: impl FnOnce() -> Vec<PathBuf>,
+) -> Option<PathBuf> {
     let var = |name: &str| env(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     let remembered = userdir::dir_of(os, &env)
         .and_then(|user| userdir::setting(&user, SECTION, KEY))
         .map(PathBuf::from);
-    let registry = (os == "windows").then(registry).into_iter().flatten();
+    let registry = std::iter::once(registry)
+        .filter(|_| os == "windows")
+        .flat_map(|read| read());
     remembered
         .into_iter()
         .chain(places(os, var))
@@ -128,10 +138,12 @@ fn registry() -> Vec<PathBuf> {
     REGISTRY_KEYS
         .iter()
         .filter_map(|key| {
-            std::process::Command::new("reg")
-                .args(["query", key, "/s"])
-                .output()
-                .ok()
+            let mut command = std::process::Command::new("reg");
+            command.args(["query", key, "/s"]);
+            // No console window flashing up from the GUI program.
+            #[cfg(windows)]
+            std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000);
+            command.output().ok()
         })
         .flat_map(|out| registry_paths(&String::from_utf8_lossy(&out.stdout)))
         .collect()
@@ -170,16 +182,49 @@ mod tests {
     }
 
     fn found(os: &str, tree: &TempDir, extra: &[(&str, &Path)]) -> Option<PathBuf> {
+        found_with(os, tree, extra, Vec::new)
+    }
+
+    fn found_with(
+        os: &str,
+        tree: &TempDir,
+        extra: &[(&str, &Path)],
+        registry: impl FnOnce() -> Vec<PathBuf>,
+    ) -> Option<PathBuf> {
         let home = tree.0.join("home");
         let user = tree.0.join("user");
-        search(os, |name| match name {
-            "HOME" => Some(home.clone().into()),
-            "RUSTYZOO_USER_DIR" => Some(user.clone().into()),
-            _ => extra
-                .iter()
-                .find(|(n, _)| *n == name)
-                .map(|(_, p)| p.as_os_str().to_owned()),
-        })
+        search(
+            os,
+            |name| match name {
+                "HOME" => Some(home.clone().into()),
+                "RUSTYZOO_USER_DIR" => Some(user.clone().into()),
+                _ => extra
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map(|(_, p)| p.as_os_str().to_owned()),
+            },
+            registry,
+        )
+    }
+
+    #[test]
+    fn the_registry_is_read_only_when_no_earlier_place_is_usable() {
+        let tree = TempDir::new("install-lazy-registry");
+        let reads = std::cell::Cell::new(0);
+        let read = || {
+            reads.set(reads.get() + 1);
+            vec![install(&tree, "registry/Zoo Tycoon")]
+        };
+        let pf = install(&tree, "pf/Microsoft Games/Zoo Tycoon");
+        let env = [("ProgramFiles", tree.0.join("pf"))];
+        let env: Vec<(&str, &Path)> = env.iter().map(|(n, p)| (*n, p.as_path())).collect();
+        assert_eq!(found_with("windows", &tree, &env, read), Some(pf));
+        assert_eq!(reads.get(), 0);
+        let registry = tree.0.join("registry/Zoo Tycoon");
+        assert_eq!(found_with("windows", &tree, &[], read), Some(registry));
+        assert_eq!(reads.get(), 1);
+        assert_eq!(found_with("linux", &tree, &[], read), None);
+        assert_eq!(reads.get(), 1);
     }
 
     #[test]
