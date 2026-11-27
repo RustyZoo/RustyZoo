@@ -211,6 +211,7 @@ jobs:
           else
             cp ${{ matrix.bin }} LICENSE "dist/$NAME/"
           fi
+          # The same files as packaging/linux/appimage.sh (its licence block): keep both lists equal.
           cp vendor/nihav/COPYING "dist/$NAME/vendor/nihav/"
           cp fonts/OFL.txt "dist/$NAME/fonts/"
           echo "Source: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" > "dist/$NAME/SOURCE.txt"

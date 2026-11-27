@@ -2,7 +2,7 @@
 # Builds RustyZoo-<version>-<arch>.AppImage. Usage: appimage.sh <binary> <version> <out-dir>
 # The arch is that of the machine. Needs curl and sha256sum; runs appimagetool without FUSE.
 # The binary links only glibc and libgcc_s (SDL is built in; it opens X11, Wayland and the audio
-# libraries of the desktop at run time), so nothing is bundled but the binary. The icon files are
+# libraries of the desktop at run time), so nothing is bundled but the binary and the licence texts. The icon files are
 # copied, never resampled. appimagetool and the runtime it prepends are pinned releases, checked by sha256.
 set -euo pipefail
 bin=$1 version=$2 out=$3
@@ -40,6 +40,14 @@ for size in 16 32 48 64 128 256 512; do
   mkdir -p "$app/usr/share/icons/hicolor/${size}x$size/apps"
   cp "$png/rustyzoo-$size.png" "$app/usr/share/icons/hicolor/${size}x$size/apps/rustyzoo.png"
 done
+# The licences and the source line: the same files and line as the tarball's Package step in
+# .github/workflows/release.yml, which must list the same ones.
+doc=$app/usr/share/doc/rustyzoo
+mkdir -p "$doc/vendor/nihav" "$doc/fonts"
+cp "$here/../../LICENSE" "$doc/"
+cp "$here/../../vendor/nihav/COPYING" "$doc/vendor/nihav/"
+cp "$here/../../fonts/OFL.txt" "$doc/fonts/"
+echo "Source: ${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/tree/${GITHUB_SHA:-}" > "$doc/SOURCE.txt"
 # appimagetool wants these at the root: the desktop file, the icon and AppRun.
 cp "$app/usr/share/applications/com.rustyzoo.game.desktop" "$app/"
 cp "$png/rustyzoo-256.png" "$app/rustyzoo.png"
