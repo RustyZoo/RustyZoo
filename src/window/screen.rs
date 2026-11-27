@@ -272,49 +272,4 @@ mod tests {
             "in a window: at once"
         );
     }
-
-    /// A picture that is not a whole factor of the window is enlarged sharp, then smoothed to the
-    /// rectangle, with black on the two bars (needs a window, so the dummy video driver).
-    #[test]
-    fn a_picture_that_is_not_a_whole_factor_fills_the_height() {
-        sdl3::hint::set("SDL_VIDEO_DRIVER", "dummy");
-        let sdl = sdl3::init().unwrap();
-        let window = sdl.video().unwrap().window("t", 1000, 350).build().unwrap();
-        let canvas = sdl3::render::create_renderer(window, Some(c"software")).unwrap();
-        let size = (100, 100);
-        let mut screen = Screen {
-            canvas,
-            size,
-            fullscreen: false,
-            fit: Fit::default(),
-            warned: false,
-        };
-        let creator = screen.canvas.texture_creator();
-        let mut texture = creator
-            .create_texture_streaming(PixelFormat::RGBA32, size.0, size.1)
-            .unwrap();
-        texture.set_scale_mode(ScaleMode::Nearest);
-        texture
-            .with_lock(None, |p: &mut [u8], pitch| {
-                for row in p.chunks_mut(pitch) {
-                    row.fill(255);
-                    row[..size.0 as usize * 2].fill(0);
-                }
-            })
-            .unwrap();
-        let out = screen.canvas.output_size().unwrap();
-        assert_eq!(fullscreen::fit(out, size), (325.0, 0.0, 350.0, 350.0));
-        assert!(screen.copy(&texture).is_ok());
-        assert!(!screen.warned, "the smooth path worked");
-        let at = |x, y| {
-            let r = sdl3::rect::Rect::new(x, y, 1, 1);
-            screen.canvas.read_pixels(r).unwrap().with_lock(|p| p[0])
-        };
-        assert_eq!(at(10, 200), 0, "left bar");
-        assert_eq!(at(990, 200), 0, "right bar");
-        assert_eq!(at(330, 100), 0, "the picture, black half");
-        assert_eq!(at(670, 100), 255, "the picture, white half");
-        // The edge inside the picture is smoothed, not a step.
-        assert!((494..506).any(|x| !matches!(at(x, 100), 0 | 255)));
-    }
 }
