@@ -33,6 +33,11 @@ rz() {
   "$bin" --data "$dir/$trial" "$@" 2> >(grep -v -x -F "$missing_update_picture" >&2)
 }
 
+# A check never relies on a file or a state another one leaves (a shard runs some of the checks only; see
+# ci/shard.sh): each makes its own script file and user settings.
+# The script of the fence drag below, written for each check that plays it.
+fence_script() { printf '3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n' >"$tmp/fence"; }
+
 # Plays a map headless (--bare: the map view alone, without the main panel that a game shows) with
 # scrolls, a rotation and the zoom in and out (-2, 0 and 2), the game paused so that the units
 # stand still, and compares every painted frame with the window `render-map --view` draws for the
@@ -64,6 +69,9 @@ windowed() {
   if rz run "$1" --headless --replay "$d/log" | cmp -s - "$d/log"; then echo same; else echo different; fi
   rm -rf "${d:?}"
 }
+
+# The user settings of a window run: the window, not full screen.
+window_mode() { rm -rf "$tmp/user"; mkdir -p "$tmp/user"; printf '[user]\nfullscreen=0\n' >"$tmp/user/zoo.ini"; }
 
 # Switches the dummy window to full screen and back by script, with a zoom in during each. The map
 # is 800 pixels wide, so full screen refuses the zoom in at zoom 0 (camera 8.3) and the window
@@ -291,9 +299,9 @@ check base-trial 'dislikes16005@150;frown' 'd=$(mktemp -d); head -n "$(grep -n "
 # changes (without the pair it would be 2cf67ce9093b3d71). Sentinel: the state hash of the first month of
 # a played game, one per trial. A drag the cash cannot pay for (100 for pieces of 150) is refused and runs
 # no pair: the hash is that of the same game with no drag at all (a property: it moves with the stream).
-check base-trial 9e9a1acf9306081e 'printf "3 mouse 25 34\n4 down\n5 up\n7 mouse 183 74\n8 down\n9 up\n11 mouse 310 267\n12 down\n13 mouse 470 187\n14 up\n16 key escape\n" >"$tmp/fence"; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
+check base-trial 9e9a1acf9306081e 'fence_script; rz run maps/default.zoo --headless --cash 75000 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
 check expansion-trial 3423faffb2fcedcc 'rz run maps/scn19.zoo --headless --seed 5 --passes 1800 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"'
-check base-trial same 'a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
+check base-trial same 'fence_script; a=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 --script "$tmp/fence" 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); b=$(rz run maps/default.zoo --headless --cash 100 --seed 5 --passes 1472 --clock 200 2>/dev/null | awk "/ sim hash /{print \$NF; exit}"); [ -n "$a" ] && [ "$a" = "$b" ] && echo same || echo different'
 # A play call queues behind the playing sequence, the base loop included: within 40 passes the lion
 # 27646 shows an animation other than the idle one, and the lion 27645 too with no set of its own started
 # (the loaded lions go on with the sets and goals they were saved in, behaviours 4.7); a sound named
@@ -641,8 +649,8 @@ check base-trial on,off,zoom=2,same "fullscreen maps/default.zoo"
 check expansion-trial on,off,zoom=2,same "fullscreen maps/scn19.zoo"
 # The read-back of the presented pixels runs on the dummy video driver; the values are information,
 # so only the size of the picture read back is checked.
-check base-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --seed 1 --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
-check expansion-trial 800x600 "SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --seed 1 --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
+check base-trial 800x600 "window_mode; SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --seed 1 --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
+check expansion-trial 800x600 "window_mode; SDL_VIDEO_DRIVER=dummy rz run maps/scn19.zoo --seed 1 --passes 20 --shot $tmp/s.png | awk '/^shot /{print \$2}'"
 # No sound system is silence with a warning, not a failed run; no pass at all is refused.
 check base-trial 0 'SDL_VIDEO_DRIVER=dummy SDL_AUDIO_DRIVER=none-such rz run maps/default.zoo --seed 1 --passes 3 >/dev/null 2>&1; echo $?'
 check base-trial 1 'SDL_VIDEO_DRIVER=dummy rz run maps/default.zoo --seed 1 --passes 0 >/dev/null 2>&1; echo $?'
