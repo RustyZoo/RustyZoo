@@ -34,7 +34,7 @@ pub(crate) const RECOMMENDATIONS: i32 = 3122;
 const KIND_TIPS: [i32; 3] = [3107, 3109, EXHIBIT];
 pub(crate) const TABS: [i32; 3] = [3162, 3164, 3165];
 pub(crate) const SELL: i32 = 3111;
-const PICK_UP: i32 = 3115;
+pub(crate) const PICK_UP: i32 = 3115;
 const THOUGHTS: i32 = 3125;
 /// The bars: happiness, hunger, health and suitability.
 const BARS: [i32; 4] = [3104, 3108, 3106, 3110];

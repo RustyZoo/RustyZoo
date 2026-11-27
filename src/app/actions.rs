@@ -92,6 +92,7 @@ impl App<'_> {
                 t if show::BUTTONS.contains(&t) && self.game.is_some() => self.show_pressed(t),
                 animal::EXHIBIT if self.game.is_some() => self.animal_exhibit(),
                 animal::SELL if self.game.is_some() => self.animal_sell(),
+                animal::PICK_UP if self.game.is_some() => self.animal_pick_up(),
                 _ if self.game.is_some() && self.tank_button(id) => {}
                 exhibit::TANK_TAB | exhibit::ANIMALS_TAB if self.game.is_some() => {
                     if let Some(game) = &mut self.game {

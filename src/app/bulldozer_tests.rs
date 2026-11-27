@@ -76,7 +76,8 @@ pub(super) const ROOT: &str = "[LayoutInfo]\nid=1\nx=0\ny=0\ndx=whole\ndy=whole\
     [j]\ntype=UILayout\nlayout=ui/filter.lyt\nstate=1\n";
 const ANIMAL: &str = "[LayoutInfo]\nid=6\nlayer=7\nx=0\ny=0\ndx=20\ndy=10\n\
     [a]\ntype=UIButton\nid=3100\ndx=8\ndy=8\ntarget=6\naction=2\ntransparent=0\n\
-    [s]\ntype=UIButton\nid=3111\nx=10\ndx=8\ndy=8\ntransparent=0\n";
+    [s]\ntype=UIButton\nid=3111\nx=10\ndx=8\ndy=8\ntransparent=0\n\
+    [p]\ntype=UIButton\nid=3115\nx=0\ny=10\ndx=8\ndy=8\ntransparent=0\n";
 const EXHIBIT: &str = "[LayoutInfo]\nid=30\nlayer=7\nx=0\ny=0\ndx=40\ndy=40\n\
     [a]\ntype=UIListBox\nid=4326\nx=0\ny=0\ndx=40\ndy=36\n\
     [b]\ntype=UIText\nid=4868\ndx=8\ndy=8\n[c]\ntype=UIText\nid=4881\ndx=8\ndy=8\n\

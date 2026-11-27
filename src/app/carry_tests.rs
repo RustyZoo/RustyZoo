@@ -752,3 +752,29 @@ fn a_building_held_is_saved_at_its_place_in_the_list() {
         assert_eq!(saved_row(s, cart).map(|r| r.0), Some(at - 1));
     });
 }
+
+#[test]
+fn the_pick_up_button_of_the_animal_panel_lifts_the_selected_crated_animal_at_once() {
+    with_game("animal-pick-up", "", |s| {
+        let id = s.add(13, 21 * 64 + 32, 20 * 64 + 32, 0);
+        s.pass(&[]);
+        s.click(s.at(21, 20, 32, 32));
+        let game = s.app.game.as_mut().unwrap();
+        let animal = game.world.units.get_mut(id).unwrap();
+        animal.started = true;
+        if let crate::unit::Part::Animal(a) = &mut animal.part {
+            a.crated = true;
+        }
+        s.pass(&[]);
+        assert!(
+            s.app
+                .interface()
+                .unwrap()
+                .press_button(crate::panel::animal::PICK_UP)
+        );
+        s.pass(&[]);
+        let game = s.app.game.as_ref().unwrap();
+        assert_eq!(game.carry.as_ref().map(|c| c.id), Some(id));
+        assert!(matches!(&unit(s, id).part, crate::unit::Part::Animal(a) if a.crated));
+    });
+}
