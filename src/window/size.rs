@@ -139,7 +139,8 @@ mod tests {
                 let out = (pixels(points.0), pixels(points.1));
                 assert_eq!(whole(out, game), k, "{game:?} at {scale}: {out:?}");
                 let (x, y, w, h) = fit(out, game);
-                assert_eq!((w, h), ((game.0 * k) as f32, (game.1 * k) as f32));
+                assert!(w >= (game.0 * k) as f32 && h >= (game.1 * k) as f32);
+                assert!(w <= (game.0 * k + 2) as f32 && h <= (game.1 * k + 2) as f32);
                 assert!(x + w <= out.0 as f32 && y + h <= out.1 as f32);
             }
         }

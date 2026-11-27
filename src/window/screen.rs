@@ -3,7 +3,7 @@
 
 use rustyzoo::config::Config;
 use sdl3::pixels::{Color, PixelFormat};
-use sdl3::render::{Canvas, FRect, Texture};
+use sdl3::render::{Canvas, FRect, ScaleMode, Texture};
 use sdl3::surface::Surface;
 use sdl3::video::{Window, WindowPos};
 
@@ -13,6 +13,9 @@ use crate::CliError;
 
 /// An open window.
 pub struct Screen {
+    /// The enlarged picture that is smoothed to the window, kept while its size stays. It is
+    /// declared before the canvas so that it is dropped first.
+    big: Option<Texture<'static>>,
     pub canvas: Canvas<Window>,
     /// The game size, not the window's.
     pub size: (u32, u32),
@@ -21,6 +24,8 @@ pub struct Screen {
     pub fullscreen: bool,
     /// The window waits for a fit to the game size.
     fit: Fit,
+    /// The picture cannot be smoothed: it was warned once, and the nearest copy is used from then on.
+    no_smooth: bool,
 }
 
 /// When the window is fitted to the game size: at once in a window, and when a full screen is
@@ -44,14 +49,54 @@ impl Fit {
 }
 
 impl Screen {
-    /// Copies the game picture to the window, scaled by a whole factor and centred on black
-    /// (see [`fullscreen::fit`]); at the size the window opens with, it fills the window.
+    /// Copies the game picture to the window, centred on black, as large as it can be at its
+    /// aspect ratio (see [`fullscreen::fit`]). It is enlarged by the whole factor with the nearest
+    /// pixel, then smoothed to the rectangle if that is not a whole factor ("sharp bilinear");
+    /// at the size the window opens with, it fills the window.
     pub fn copy(&mut self, texture: &Texture) -> Result<(), CliError> {
         let out = self.canvas.output_size()?;
         let (x, y, w, h) = fullscreen::fit(out, self.size);
+        let k = fullscreen::whole(out, self.size);
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
-        Ok(self.canvas.copy(texture, None, FRect::new(x, y, w, h))?)
+        let to = FRect::new(x, y, w, h);
+        let exact = (w, h) == ((self.size.0 * k) as f32, (self.size.1 * k) as f32);
+        if k > 0 && !exact && !self.no_smooth {
+            match self.smooth(texture, k, to) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    self.no_smooth = true;
+                    self.big = None;
+                    rustyzoo::logln!("rustyzoo: cannot smooth the picture: {e}");
+                }
+            }
+        }
+        Ok(self.canvas.copy(texture, None, to)?)
+    }
+
+    /// Enlarges the game picture `k` times with the nearest pixel into the kept texture (made
+    /// again when its size changes), and copies that to `to` with a linear filter.
+    fn smooth(&mut self, texture: &Texture, k: u32, to: FRect) -> Result<(), String> {
+        let want = (self.size.0 * k, self.size.1 * k);
+        if self.big.as_ref().map(|b| (b.width(), b.height())) != Some(want) {
+            self.big = None;
+            let creator = self.canvas.texture_creator();
+            let mut big = creator
+                .create_texture_target(PixelFormat::RGBA32, want.0, want.1)
+                .map_err(|e| e.to_string())?;
+            big.set_scale_mode(ScaleMode::Linear);
+            // SAFETY: the lifetime only ties a texture to its creator, which is a handle to this
+            // canvas's renderer; the texture is a field of `Screen` declared before the canvas, so
+            // it is destroyed while the renderer lives, and it is never handed out.
+            self.big = Some(unsafe { std::mem::transmute::<Texture<'_>, Texture<'static>>(big) });
+        }
+        let big = self.big.as_mut().ok_or("no texture")?;
+        let mut copied = Ok(());
+        self.canvas
+            .with_texture_canvas(big, |c| copied = c.copy(texture, None, None))
+            .map_err(|e| e.to_string())?;
+        copied.map_err(|e| e.to_string())?;
+        self.canvas.copy(big, None, to).map_err(|e| e.to_string())
     }
 
     /// Asks the window to go to full screen or back; whether it was done. If it cannot, it
@@ -179,10 +224,12 @@ pub fn open(
         rustyzoo::logln!("rustyzoo: the window has {pixels:?} pixels, not the game size times {k}");
     }
     Ok(Screen {
+        big: None,
         canvas,
         size,
         fullscreen: false,
         fit: Fit::default(),
+        no_smooth: false,
     })
 }
 

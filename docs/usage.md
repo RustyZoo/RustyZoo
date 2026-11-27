@@ -382,10 +382,10 @@ Save Game and Ctrl+S open the same dialog, and Load Game and Ctrl+L ask the thir
 - `[user] fullscreen` of the ini file (a number other than 0; the shipped files have 1) starts the run in full screen, with the zoom limit of a full screen applied to the map's stored zoom; a window that cannot switch stays a window, with a warning.
   Every switch that succeeds (Alt+Enter, a script, the window manager) writes `fullscreen=1` or `fullscreen=0` into the `zoo.ini` of the user folder (see above), which the next start reads over the game's file.
   `--headless` does not read the ini mode: a headless run is full screen only through its script.
-- The window can be resized, and its maximise button goes to full screen (the window is restored first, so leaving full screen gives a normal window). The game keeps its size at every window size: the picture is scaled by the largest whole factor that fits and centred on black, as in full screen, and the mouse is mapped back. A resize does not change the game size, so the zoom limit of a full screen is applied by the switch to full screen, not by the resize.
+- The window can be resized, and its maximise button goes to full screen (the window is restored first, so leaving full screen gives a normal window). The game keeps its size at every window size: the picture is scaled to the largest size of its aspect ratio that fits and centred on black, as in full screen, and the mouse is mapped back. A resize does not change the game size, so the zoom limit of a full screen is applied by the switch to full screen, not by the resize.
 - Alt+Enter (on the release of Enter) switches between the window and full screen.
   A full-screen window without the focus blocks the loop like a minimised one.
-  The game keeps its size: in full screen the picture is scaled by the largest whole factor that fits the display and centred on black, and the cursor over the black counts as the nearest edge of the picture, so the edge scroll works at the edge of the display.
+  The game keeps its size: in full screen the picture is scaled to the largest size of its aspect ratio that fits the display and centred on black (a 1280x1024 game on a 3440x1440 display fills the height, with bars at the sides), and the cursor over the black counts as the nearest edge of the picture, so the edge scroll works at the edge of the display.
   Full screen has an edge band of 2 pixels instead of 7, and a game 800 pixels wide cannot zoom in there (and is zoomed out to the normal zoom when it switches).
   In a script, `fullscreen on` and `fullscreen off` ask the window to switch; the log has the line when the game has switched.
   A window system that does not report full screen (the dummy video driver on some systems) is followed by the switch it accepted.
@@ -400,9 +400,9 @@ Save Game and Ctrl+S open the same dialog, and Load Game and Ctrl+L ask the thir
 
 High-density displays: the window is enlarged by the display scale, rounded to a whole number `k` (at least 1), so it has the size of the original's window and the picture stays sharp on every system: an 800x600 game is 1600x1200 pixels at 200%, on Windows and X11 (where the window size is in pixels) as well as on macOS and Wayland (where it is in points, 800x600, with twice the pixels).
 
-SDL scales the game picture to the window with the nearest pixel, so every game pixel is `k` x `k` screen pixels.
+SDL scales the game picture by the whole factor `k` with the nearest pixel, so every game pixel is `k` x `k` screen pixels; when the window is not exactly `k` times the game (a resized window, full screen), that picture is then scaled to the largest rectangle of its aspect ratio with a linear filter ("sharp bilinear"), so the pixels stay crisp. If the display cannot draw to a texture, a warning is printed and the picture is scaled with the nearest pixel.
 
-At a fractional scale (150% on Wayland, where the window is in points) the window size is rounded up, so it may have a pixel more than `k` times the game: the picture stays exactly `k` times the game and the odd pixel is a black border, with no warning. In full screen the factor is counted in pixels of the display, not in points (a 1152x744 game fills a 3456x2234 display at 3); docs/playing.md lists the game sizes that fill common displays.
+At a fractional scale (150% on Wayland, where the window is in points) the window size is rounded up, so it may have a pixel more than `k` times the game: a window within 2 pixels of a whole factor keeps the picture exactly `k` times the game, centred, and the odd pixel is a black border, with no warning. In full screen the factor is counted in pixels of the display, not in points (a 1152x744 game fills a 3456x2234 display at 3); docs/playing.md lists the game sizes that fill common displays.
 
 If the enlarged window does not fit in the usable area of the display, `k` is lowered (not below 1) and the game size is kept.
 
