@@ -26,6 +26,7 @@ jobs:
       legs: ${{ steps.legs.outputs.legs }}
       shards: ${{ steps.legs.outputs.shards }}
       shard_list: ${{ steps.legs.outputs.shard_list }}
+      fullgame: ${{ steps.legs.outputs.fullgame }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,6 +37,10 @@ jobs:
       - id: legs
         env:
           FULL: ${{ github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
         run: |
           files=$(git diff --name-only HEAD^ HEAD)
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && ! grep -qvxE '.*\.md|LICENSE' <<<"$files" &&
@@ -47,14 +52,27 @@ jobs:
             legs=linux
           fi
           echo "legs=$legs" | tee -a "$GITHUB_OUTPUT"
-          # The long checks (asset commands, full-game tests, scenario sweeps) run in this many parallel shards
-          # (see ci/shard.sh): the one place that sets it, so the matrices always cover every shard.
+          # The asset commands on the trials run in this many parallel shards (see ci/shard.sh): the one place
+          # that sets it, so the matrices always cover every shard.
           shards=3
           echo "shards=$shards" | tee -a "$GITHUB_OUTPUT"
           echo "shard_list=[$(seq -s, 1 "$shards")]" | tee -a "$GITHUB_OUTPUT"
+          # The job `full-game` runs on the one self-hosted runner, which holds the full game installs: on a push
+          # (not a Dependabot branch), and on a pull request by the owner from this repository that touches src/,
+          # Cargo.* or ci/ and nothing under .github/ (its own workflow would run on the game data before any review).
+          # Never a fork, never `pull_request_target`.
+          fullgame=false
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            [[ $REF_NAME == dependabot/* ]] || fullgame=true
+          elif [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] && [ "$PR_USER" = SlendyMilky ] &&
+            [[ $HEAD_REF != dependabot/* ]] && ! grep -q '^\.github/' <<<"$files" &&
+            grep -qE '^(src/|Cargo\.|ci/)' <<<"$files"; then
+            fullgame=true
+          fi
+          echo "fullgame=$fullgame" | tee -a "$GITHUB_OUTPUT"
 
-  # The Linux leg, then the other systems (only with the legs `all`): the same job. Every job runs on a GitHub-hosted
-  # runner: the full game installs never come to CI (ci/gate.sh runs those checks, see CONTRIBUTING.md).
+  # The Linux leg, then the other systems (only with the legs `all`): the same job. Every job but `full-game`
+  # runs on a GitHub-hosted runner: the full game installs never go to one.
   build:
     name: build (${{ matrix.os }})
     needs: scope
@@ -499,6 +517,59 @@ jobs:
     env: *headless
     steps: *trials-steps
 
+  # The checks that need the full English and French installs, on the one self-hosted runner that holds them
+  # (see `fullgame` in `scope`): the two installs run side by side, each one the ignored tests, the scenario sweep
+  # with the made-up win and loss, and the freeform game of ci/playable-full.txt. Only status lines are printed
+  # (a panic message or a game text can quote a game file), the game folders are masked in the logs, nothing is
+  # uploaded or cached.
+  full-game:
+    needs: scope
+    if: needs.scope.outputs.fullgame == 'true'
+    runs-on: [self-hosted, linux, x64, gamedata, rustyzoo]
+    timeout-minutes: 60
+    defaults: *bash
+    env: *headless
+    steps:
+      - *checkout
+      - *user-folder
+      - name: Mask the game data folders in the logs
+        run: |
+          for path in /opt/gamedata "$ZT_DATA_DIR" "$ZT_DATA_DIR_FR"; do echo "::add-mask::$path"; done
+      # Jobs share /cache/rustup, so concurrent installs are serialised.
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: flock /cache/rustup.lock rustup toolchain install --profile minimal
+      - run: cargo build --release
+      - name: Check the full English and French installs
+        run: |
+          : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
+          bin=target/release/rustyzoo
+          export SCENARIO_JOBS=6
+          keep='^(ok|skipped|pending|FAILED|shard)|^test result:|\.\.\. FAILED$|^error|^exit'
+          install() { # install <name> <folder> <test mode>: the status lines on stdout, status 1 if a check failed
+            name=$1 dir=$2 mode=$3 status=0 raw="$RUNNER_TEMP/$1.raw"
+            run() { echo "== $1"; "$@" >"$raw" 2>&1 || status=1; grep -E "$keep" "$raw" | cut -c1-300 || true; }
+            run ci/full-tests.sh "$dir" "$mode"
+            run ci/check-scenarios.sh "$bin" "$dir"
+            run ci/check-ends.sh "$bin" "$dir"
+            run ci/check-playable.sh "$bin" "$dir" ci/playable-full.txt
+            rm -f "$raw"
+            return "$status"
+          }
+          install en "$ZT_DATA_DIR" --include-ignored >"$RUNNER_TEMP/en.log" 2>&1 &
+          en=$!
+          install fr "$ZT_DATA_DIR_FR" --ignored >"$RUNNER_TEMP/fr.log" 2>&1 &
+          fr=$!
+          status=0
+          wait "$en" || status=1
+          wait "$fr" || status=1
+          for name in en fr; do
+            echo "::group::$name"
+            cat "$RUNNER_TEMP/$name.log"
+            echo "::endgroup::"
+          done
+          rm -f "$RUNNER_TEMP"/en.log "$RUNNER_TEMP"/fr.log
+          exit "$status"
+
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
   # and long) is the same on the three systems, on 32-bit Windows and on ARM Linux and Windows, and no map
   # fails to run; so are the last frame and state hashes of each played game. Only the hashes present are
@@ -556,7 +627,7 @@ jobs:
   # that one fails this check). A pull request is merged only after a run with the legs `all` (merge-queue).
   ci:
     name: ci
-    needs: [scope, build, build-full, play, play-full, trials, trials-full, hashes]
+    needs: [scope, build, build-full, play, play-full, trials, trials-full, full-game, hashes]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
