@@ -59,6 +59,8 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long the start waits for the feed.
 const CHECK_SECONDS: u32 = 3;
 const DOWNLOAD_SECONDS: u32 = 3600;
+/// A download that gets no byte for this long fails.
+const STALL: Duration = Duration::from_secs(30);
 const REDIRECTS: u32 = 5;
 /// The most a feed, a signature or an archive may be.
 const FEED_MAX: u64 = 1 << 16;
@@ -91,7 +93,59 @@ fn http(seconds: u32, https_only: bool) -> impl Fn(&str) -> Result<Box<dyn Read>
         .into();
     move |url| {
         let response = agent.get(url).call().map_err(|e| e.to_string())?;
-        Ok(Box::new(response.into_body().into_reader()))
+        let body = response.into_body().into_reader();
+        Ok(if seconds == DOWNLOAD_SECONDS {
+            Box::new(Stalling::new(body, STALL))
+        } else {
+            Box::new(body)
+        })
+    }
+}
+
+/// A reader that fails when no byte comes for `stall` (the body is read by a thread that ends with
+/// the transfer or the reader).
+struct Stalling {
+    chunks: mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    stall: Duration,
+    rest: Vec<u8>,
+}
+
+impl Stalling {
+    fn new(mut from: impl Read + Send + 'static, stall: Duration) -> Self {
+        let (tx, chunks) = mpsc::sync_channel(4);
+        std::thread::spawn(move || {
+            loop {
+                let mut buf = vec![0u8; 1 << 16];
+                let chunk = from.read(&mut buf).map(|n| buf.drain(..n).collect());
+                let end = chunk.as_ref().map_or(true, |c: &Vec<u8>| c.is_empty());
+                if tx.send(chunk).is_err() || end {
+                    return;
+                }
+            }
+        });
+        Stalling {
+            chunks,
+            stall,
+            rest: Vec::new(),
+        }
+    }
+}
+
+impl Read for Stalling {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.rest.is_empty() {
+            self.rest = match self.chunks.recv_timeout(self.stall) {
+                Ok(chunk) => chunk?,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    return Err(std::io::Error::other("the download stalled"));
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(0),
+            };
+        }
+        let n = out.len().min(self.rest.len());
+        out[..n].copy_from_slice(&self.rest[..n]);
+        self.rest.drain(..n);
+        Ok(n)
     }
 }
 
@@ -157,7 +211,7 @@ fn read_up_to(mut from: impl Read, max: u64) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// The offer when the feed at `base` is signed by `key` (64 hex digits; `None`: no check at all),
+/// The offer when the feed at `base` is signed by `key` (64 hex digits; `None` or any other key: no check at all),
 /// has a version newer than `current` and not `skipped`, and a file for `platform`.
 fn find(
     key: Option<&str>,
@@ -166,7 +220,7 @@ fn find(
     platform: &str,
     (current, skipped): (&str, Option<&str>),
 ) -> Option<Offer> {
-    let key = hex(key?)?;
+    let key = hex(key?).filter(|k| k.len() == 32)?;
     let base = base.trim_end_matches('/');
     let feed = read_up_to(get(&format!("{base}/feed.json")).ok()?, FEED_MAX).ok()?;
     let sig = read_up_to(get(&format!("{base}/feed.sig")).ok()?, FEED_MAX).ok()?;
@@ -208,10 +262,15 @@ fn platform() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
+/// The build key when it is 32 bytes written as 64 hex digits; an empty or other key is none.
+fn key() -> Option<&'static str> {
+    PUBLIC_KEY.filter(|k| hex(k).is_some_and(|b| b.len() == 32))
+}
+
 /// Whether this build checks for updates and can replace itself: it has a key and a place to put
 /// the new version. The launcher then shows the "Check for updates" box.
 pub fn asked() -> bool {
-    PUBLIC_KEY.is_some() && target().is_some()
+    key().is_some() && target().is_some()
 }
 
 /// Whether the player keeps the check on (the default) in the settings folder `dir`.
@@ -231,7 +290,7 @@ pub fn skip(dir: &Path, version: &str) -> Result<(), String> {
 /// The newer version this start offers, if any: only an official build that can replace itself,
 /// with the check on. Silent on any failure, and never longer than a few seconds.
 pub fn pending(dir: Option<&Path>) -> Option<Offer> {
-    PUBLIC_KEY?;
+    key()?;
     target()?;
     if !enabled(dir) {
         return None;
@@ -243,7 +302,7 @@ pub fn pending(dir: Option<&Path>) -> Option<Offer> {
         .spawn(move || {
             let get = http(CHECK_SECONDS, true);
             let found = find(
-                PUBLIC_KEY,
+                key(),
                 &get,
                 BASE,
                 &platform(),
@@ -334,7 +393,7 @@ fn swap(target: &Path, new: &Path, keep_old: bool) -> Result<(), String> {
 fn unpack(zip: &Path, dir: &Path) -> Result<PathBuf, String> {
     remove(dir);
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let status = Command::new("ditto")
+    let status = Command::new("/usr/bin/ditto")
         .args(["-x", "-k"])
         .arg(zip)
         .arg(dir)
@@ -344,17 +403,36 @@ fn unpack(zip: &Path, dir: &Path) -> Result<PathBuf, String> {
         return Err("the archive does not unzip".into());
     }
     let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
-    entries
+    let app = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .find(|p| p.extension() == Some(OsStr::new("app")))
-        .ok_or_else(|| "the archive holds no application".into())
+        .ok_or("the archive holds no application")?;
+    let signed = Command::new("/usr/bin/codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(&app)
+        .status()
+        .map_err(|e| format!("codesign: {e}"))?;
+    if !signed.success() {
+        return Err("the new application is not correctly signed".into());
+    }
+    Ok(app)
 }
 
-/// Downloads, checks and puts in place the version of `offer`, then starts it. On any failure the
-/// current install is untouched and the error says what failed.
-pub fn install(offer: &Offer) -> Result<(), String> {
-    let target = target().ok_or("this install does not update itself")?;
+/// Why [`install`] failed.
+#[derive(Debug)]
+pub enum Failed {
+    /// The current install is untouched.
+    Untouched(String),
+    /// The new version is in place but did not start.
+    NotStarted(String),
+}
+
+/// Downloads, checks and puts in place the version of `offer`, then starts it. On a failure
+/// before the swap the current install is untouched.
+pub fn install(offer: &Offer) -> Result<(), Failed> {
+    let target =
+        target().ok_or_else(|| Failed::Untouched("this install does not update itself".into()))?;
     let os = std::env::consts::OS;
     let (part, unpacked) = (beside(&target, ".new"), beside(&target, ".unpacked"));
     let get = http(DOWNLOAD_SECONDS, true);
@@ -369,9 +447,9 @@ pub fn install(offer: &Offer) -> Result<(), String> {
         .and_then(|new| swap(&target, &new, os == "windows"));
     remove(&part);
     remove(&unpacked);
-    swapped?;
+    swapped.map_err(Failed::Untouched)?;
     let mut start = if os == "macos" {
-        let mut open = Command::new("open");
+        let mut open = Command::new("/usr/bin/open");
         open.arg("-n").arg(&target);
         open
     } else {
@@ -380,7 +458,7 @@ pub fn install(offer: &Offer) -> Result<(), String> {
     start
         .spawn()
         .map(drop)
-        .map_err(|e| format!("the new version is in place but does not start: {e}"))
+        .map_err(|e| Failed::NotStarted(e.to_string()))
 }
 
 #[cfg(unix)]
@@ -538,6 +616,14 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_or_short_key_never_asks_the_server() {
+        let get = |_: &str| -> Result<Box<dyn Read>, String> { panic!("bad key, no request") };
+        for key in ["", "00", &"0".repeat(62), &"0".repeat(66)] {
+            assert!(look(Some(key), &get, None).is_none());
+        }
+    }
+
+    #[test]
     fn versions_compare_by_their_numbers() {
         for (a, b) in [
             ("1.10.0", "1.9.9"),
@@ -586,6 +672,32 @@ mod tests {
         assert!(!dest.exists());
         download(&get, "https://x/a", &sha(b"archive"), &dest).unwrap();
         assert_eq!(fs::read(&dest).unwrap(), b"archive");
+    }
+
+    #[test]
+    fn a_stalled_download_fails() {
+        struct Stuck(bool);
+        impl Read for Stuck {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                if std::mem::replace(&mut self.0, true) {
+                    std::thread::sleep(Duration::from_secs(2));
+                    return Ok(0);
+                }
+                out[..2].copy_from_slice(b"hi");
+                Ok(2)
+            }
+        }
+        let mut from = Stalling::new(Stuck(false), Duration::from_millis(200));
+        let mut two = [0u8; 2];
+        from.read_exact(&mut two).unwrap();
+        assert_eq!(&two, b"hi");
+        let e = from.read(&mut two).unwrap_err();
+        assert_eq!(e.to_string(), "the download stalled");
+        let mut all = String::new();
+        Stalling::new(Cursor::new(b"abc".to_vec()), STALL)
+            .read_to_string(&mut all)
+            .unwrap();
+        assert_eq!(all, "abc");
     }
 
     #[test]

@@ -280,13 +280,20 @@ fn show(state: &mut State, user: Option<&Path>) -> Result<bool, Box<dyn Error>> 
     let mut picture = Framebuffer::new(W as u32, h as u32);
     let picked: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
     let mut browsing = false;
-    let installed: Arc<Mutex<Option<Result<(), String>>>> = Arc::new(Mutex::new(None));
+    let installed: Arc<Mutex<Option<Result<(), update::Failed>>>> = Arc::new(Mutex::new(None));
     loop {
         if let Some(done) = installed.lock().ok().and_then(|mut slot| slot.take()) {
             state.busy = false;
             match done {
                 Ok(()) => return Ok(false),
-                Err(e) => state.note = Some(format!("Not updated: {e}. Nothing was changed.")),
+                Err(update::Failed::Untouched(e)) => {
+                    state.note = Some(format!("Not updated: {e}. Nothing was changed."));
+                }
+                Err(update::Failed::NotStarted(e)) => {
+                    state.note = Some(format!(
+                        "Updated, but it did not start: {e}. Start it again."
+                    ));
+                }
             }
         }
         if let Some(folder) = picked.lock().ok().and_then(|mut slot| slot.take()) {
