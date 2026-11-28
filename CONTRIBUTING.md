@@ -55,6 +55,11 @@ Tests that need real game data are marked `#[ignore]` and read the install path 
 - The game data never leaves the runner: no `upload-artifact` or `actions/cache` step may pick up a folder that holds it, and a step prints no game text (`full-game` prints only test names, totals and status lines, and masks the folders in the logs). The trials are the only game data on the hosted runners.
 - The asset commands of `ci/check-trials.sh` run in parallel shards on the hosted runners (job `trials`): `SHARD=<i>/<n>` keeps every n-th check (`ci/shard.sh`, also read by `ci/check-scenarios.sh`), and the job `scope` sets the number of shards in one place. A check never relies on a file or state another check leaves: a shard runs only some of them.
 
+## Update feed
+
+- `release.yml` builds with the repository variable `RUSTYZOO_UPDATE_KEY` (the public key, 64 hex digits; not a secret). Unset, the build never updates. On a tag, the job `feed` signs `feed.json` with the secret `RUSTYZOO_FEED_KEY` (the PEM private key), checks the signature against the variable and uploads `feed.json`, `feed.sig` and the update files to the release of the tag (a draft when none exists). Either missing: a warning, nothing signed, the packages are unaffected. Never print the key.
+- The owner makes the pair on their own machine: `openssl genpkey -algorithm ed25519 -out feed-key.pem`, then `openssl pkey -in feed-key.pem -pubout -outform DER | tail -c 32 | od -An -vtx1 | tr -d ' \n'` prints the public key. Store the file as the secret (`gh secret set RUSTYZOO_FEED_KEY < feed-key.pem`) and the digits as the variable (`gh variable set RUSTYZOO_UPDATE_KEY --body <digits>`), then keep the file off the repository.
+
 ## Dependencies
 
 Add a dependency only when the code uses it, and justify it in the pull request. `cargo deny check` (config in `deny.toml`) checks licences, sources and duplicate versions; CI runs it on every pull request, and the RustSec advisories weekly.

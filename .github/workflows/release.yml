@@ -1,7 +1,9 @@
 name: Release
 
 # Builds the package of every system as workflow artefacts (on Linux a tarball and an AppImage).
-# Nothing is published: no release, no upload anywhere else. No game or trial data goes into a package.
+# A package job publishes nothing. On a tag the last job (feed) signs the update feed and uploads it
+# with the update files to the release of the tag (see CONTRIBUTING.md). No game or trial data goes
+# into a package.
 on:
   push:
     tags: ['v*']
@@ -56,6 +58,8 @@ jobs:
       RUSTYZOO_CRASH_DSN: https://a5eb34b863e146f89e6ff00876987801@errors.rustyzoo.com/1
       RUSTYZOO_STATS_URL: https://pulse.rustyzoo.com
       RUSTYZOO_STATS_WEBSITE: 0b0d4d11-b924-4a34-b5ff-7bfe52663dd4
+      # The public key of the update feed (a repository variable, not a secret). Unset: the build never updates.
+      RUSTYZOO_UPDATE_KEY: ${{ vars.RUSTYZOO_UPDATE_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,6 +246,18 @@ jobs:
           cd dist
           cmake -E sha256sum "$(basename "$image")" | tee "$(basename "$image").sha256"
 
+      # What an update replaces the install with: the bare executable on Windows, a zip of the app on
+      # macOS (the AppImage above on Linux).
+      - name: Update file
+        if: runner.os != 'Linux'
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -c -k --keepParent target/app/RustyZoo.app "dist/RustyZoo-$v-macos.app.zip"
+          else
+            cp ${{ matrix.bin }} "dist/rustyzoo-$v-windows-${{ matrix.arch }}.exe"
+          fi
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.package.outputs.name }}
@@ -250,4 +266,72 @@ jobs:
             ${{ steps.package.outputs.files }}.sha256
             dist/*.AppImage
             dist/*.AppImage.sha256
+            dist/*.exe
+            dist/*.app.zip
           if-no-files-found: error
+
+  # Only on a tag. Without the repository variable RUSTYZOO_UPDATE_KEY or the secret RUSTYZOO_FEED_KEY
+  # (the PEM private key) it signs nothing and ends green. The release is made as a draft when the
+  # tag has none; the owner publishes it.
+  feed:
+    name: update feed
+    needs: package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPDATE_KEY: ${{ vars.RUSTYZOO_UPDATE_KEY }}
+      FEED_KEY: ${{ secrets.RUSTYZOO_FEED_KEY }}
+    steps:
+      - name: Sign and upload the feed
+        run: |
+          set -euo pipefail
+          umask 077
+          if [ -z "$UPDATE_KEY" ] || [ -z "$FEED_KEY" ]; then
+            echo "::warning title=Update feed::RUSTYZOO_UPDATE_KEY or RUSTYZOO_FEED_KEY is not set, nothing is signed"
+            exit 0
+          fi
+          tag=$GITHUB_REF_NAME
+          v=${tag#v}
+          work=$RUNNER_TEMP/feed
+          trap 'rm -rf "$work"' EXIT
+          mkdir -p "$work"
+          cd "$work"
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --dir art
+          url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$tag
+          # <os>-<arch> of Rust -> update file; macOS is one universal app for both.
+          files=()
+          jq_files='{}'
+          while read -r key name; do
+            f=$(ls art/*/"$name")
+            files+=("$f")
+            sum=$(sha256sum "$f" | cut -d' ' -f1)
+            jq_files=$(jq -c --arg k "$key" --arg u "$url/$name" --arg s "$sum" '.[$k] = {url: $u, sha256: $s}' <<< "$jq_files")
+          done <<EOF
+          linux-x86_64 RustyZoo-$v-x86_64.AppImage
+          linux-aarch64 RustyZoo-$v-aarch64.AppImage
+          windows-x86_64 rustyzoo-$v-windows-x86_64.exe
+          windows-aarch64 rustyzoo-$v-windows-aarch64.exe
+          macos-aarch64 RustyZoo-$v-macos.app.zip
+          macos-x86_64 RustyZoo-$v-macos.app.zip
+          EOF
+          jq -cj -n --arg v "$v" --argjson f "$jq_files" '{version: $v, files: $f}' > feed.json
+          printf '%s' "$FEED_KEY" > key.pem
+          openssl pkeyutl -sign -inkey key.pem -rawin -in feed.json -out feed.sig
+          rm -f key.pem
+          # Verify against the public key the binaries carry (raw 32 bytes in a SubjectPublicKeyInfo).
+          { printf '%s' 302a300506032b6570032100 "$UPDATE_KEY"; } | xxd -r -p > pub.der
+          [ "$(stat -c %s feed.sig)" = 64 ] || { echo "::error title=Update feed::bad signature size"; exit 1; }
+          openssl pkeyutl -verify -pubin -inkey pub.der -keyform DER -rawin -in feed.json -sigfile feed.sig \
+            || { echo "::error title=Update feed::the signature does not match RUSTYZOO_UPDATE_KEY"; exit 1; }
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "$tag" --notes ""
+          mapfile -t files < <(printf '%s\n' "${files[@]}" | sort -u)
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}" feed.json feed.sig
