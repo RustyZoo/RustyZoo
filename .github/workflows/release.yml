@@ -293,6 +293,7 @@ jobs:
     if: github.ref_type == 'tag'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
+    environment: release
     permissions:
       contents: write
       actions: read
