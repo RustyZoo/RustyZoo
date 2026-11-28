@@ -4,6 +4,9 @@
 //! with reports turned off); Play keeps the folder and the answers in the user settings and starts
 //! the game, Quit or closing the window ends the run. It draws with the embedded fonts and loads
 //! nothing from the game.
+//!
+//! An official build (see [`update`]) also shows a "Check for updates" box, and opens first on a
+//! page that offers a newer version: Install, Later, or Skip this version.
 
 use std::error::Error;
 use std::ffi::OsString;
@@ -11,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use rustyzoo::text::{Font, Justify, Rect, Style, draw, to_cp1252};
-use rustyzoo::{Framebuffer, crash, install, stats, strings, userdir};
+use rustyzoo::{Framebuffer, crash, install, stats, strings, update, userdir};
 use sdl3::dialog::{DialogError, show_open_folder_dialog};
 use sdl3::event::{Event, WindowEvent};
 use sdl3::mouse::MouseButton;
@@ -61,10 +64,15 @@ enum Hit {
     Privacy,
     Quit,
     Play,
+    /// The "Check for updates" box.
+    Updates,
+    Install,
+    Later,
+    Skip,
 }
 
 /// Where each clickable thing is: left, top, right, bottom, inclusive.
-const PLACES: [(Hit, [i32; 4]); 8] = [
+const PLACES: [(Hit, [i32; 4]); 9] = [
     (Hit::Browse, [380, 86, 456, 108]),
     (Hit::Answer(0, true), [24, 182, 74, 194]),
     (Hit::Answer(0, false), [84, 182, 134, 194]),
@@ -72,6 +80,7 @@ const PLACES: [(Hit, [i32; 4]); 8] = [
     (Hit::Answer(1, false), [84, 246, 134, 258]),
     (Hit::Privacy, [W - 100, 268, W - 25, 285]),
     (Hit::Quit, [24, 302, 124, 328]),
+    (Hit::Updates, [150, 302, 300, 328]),
     (Hit::Play, [W - 145, 300, W - 25, 330]),
 ];
 
@@ -86,7 +95,7 @@ fn place(hit: Hit, n: usize) -> [i32; 4] {
         .iter()
         .find(|(h, _)| *h == hit)
         .map_or([0; 4], |p| p.1);
-    let up = if matches!(hit, Hit::Privacy | Hit::Quit | Hit::Play) {
+    let up = if matches!(hit, Hit::Privacy | Hit::Quit | Hit::Play | Hit::Updates) {
         H - height(n)
     } else {
         0
@@ -110,6 +119,24 @@ fn hit(x: i32, y: i32, asked: &[usize]) -> Option<Hit> {
     })
 }
 
+/// Where the three choices of the update page are, and the box on it, with `n` questions.
+fn update_places(n: usize) -> [(Hit, [i32; 4]); 4] {
+    let [_, top, _, bottom] = place(Hit::Quit, n);
+    [
+        (Hit::Skip, [24, top, 164, bottom]),
+        (Hit::Later, [W - 270, top, W - 155, bottom]),
+        (Hit::Install, place(Hit::Play, n)),
+        (Hit::Updates, [24, 138, 214, 158]),
+    ]
+}
+
+/// What a click at (`x`, `y`) lands on in the update page.
+fn update_hit(x: i32, y: i32, n: usize) -> Option<Hit> {
+    update_places(n)
+        .into_iter()
+        .find_map(|(h, [l, t, r, b])| ((l..=r).contains(&x) && (t..=b).contains(&y)).then_some(h))
+}
+
 /// What the launcher shows and the player chose.
 #[derive(Debug)]
 struct State {
@@ -119,6 +146,14 @@ struct State {
     answers: [Option<bool>; 2],
     /// The questions this build asks.
     asks: [bool; 2],
+    /// The "Check for updates" box: `None` when this build does not update.
+    updates: Option<bool>,
+    /// The newer version offered, while its page is shown.
+    offer: Option<update::Offer>,
+    /// A line on the update page: why the last install failed.
+    note: Option<String>,
+    /// An install is running: the window cannot be closed.
+    busy: bool,
 }
 
 impl State {
@@ -128,6 +163,10 @@ impl State {
             language: None,
             answers,
             asks,
+            updates: None,
+            offer: None,
+            note: None,
+            busy: false,
         };
         state.set_folder(folder);
         state
@@ -184,18 +223,23 @@ fn answers(user: Option<&Path>) -> [Option<bool>; 2] {
 }
 
 /// The arguments a start without arguments goes on with: none when the launcher is not needed
-/// or cannot be shown (a warning), `--data <folder>` after Play; `None` after Quit.
+/// or cannot be shown (a warning), `--data <folder>` after Play; `None` after Quit or an update.
 pub fn start() -> Option<Vec<OsString>> {
     if std::env::var_os("ZT_DATA_DIR").is_some_and(|dir| !dir.is_empty()) {
         return Some(Vec::new());
     }
+    update::tidy();
     let user = userdir::dir();
     let asks = [stats::asks(), crash::asks()];
     let mut state = State::new(install::find(), answers(user.as_deref()), asks);
-    if !needed(state.folder.as_deref(), state.answers, asks) {
+    state.updates = update::asked().then(|| update::enabled(user.as_deref()));
+    state.offer = update::pending(user.as_deref());
+    let main = needed(state.folder.as_deref(), state.answers, asks);
+    if !main && state.offer.is_none() {
         return Some(Vec::new());
     }
-    match show(&mut state) {
+    match show(&mut state, user.as_deref()) {
+        Ok(true) if !main => return Some(Vec::new()),
         Ok(true) => {}
         Ok(false) => return None,
         Err(e) => {
@@ -214,8 +258,11 @@ pub fn start() -> Option<Vec<OsString>> {
     Some(vec!["--data".into(), folder])
 }
 
-/// Shows the window until Play (`true`) or Quit (`false`).
-fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
+/// Shows the window until Play (`true`) or Quit (`false`). The update page comes first when there
+/// is an offer: Later and Skip go on to the launcher, or to Play when it is not needed;
+/// Install ends with Quit once the new version has started. The update choices are kept in the
+/// settings folder `user` at once.
+fn show(state: &mut State, user: Option<&Path>) -> Result<bool, Box<dyn Error>> {
     let asked = state.asked();
     let h = height(asked.len());
     let sdl = sdl3::init()?;
@@ -233,7 +280,15 @@ fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
     let mut picture = Framebuffer::new(W as u32, h as u32);
     let picked: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
     let mut browsing = false;
+    let installed: Arc<Mutex<Option<Result<(), String>>>> = Arc::new(Mutex::new(None));
     loop {
+        if let Some(done) = installed.lock().ok().and_then(|mut slot| slot.take()) {
+            state.busy = false;
+            match done {
+                Ok(()) => return Ok(false),
+                Err(e) => state.note = Some(format!("Not updated: {e}. Nothing was changed.")),
+            }
+        }
         if let Some(folder) = picked.lock().ok().and_then(|mut slot| slot.take()) {
             browsing = false;
             if folder.is_some() {
@@ -252,6 +307,11 @@ fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
             | Event::Window {
                 win_event: WindowEvent::CloseRequested,
                 ..
+            } if state.busy => continue,
+            Event::Quit { .. }
+            | Event::Window {
+                win_event: WindowEvent::CloseRequested,
+                ..
             } => return Ok(false),
             Event::MouseButtonDown {
                 mouse_btn: MouseButton::Left,
@@ -263,7 +323,41 @@ fn show(state: &mut State) -> Result<bool, Box<dyn Error>> {
         };
         let (w, wh) = canvas.window().size();
         let at = |v: f32, size: u32, logical: i32| (v * logical as f32 / size.max(1) as f32) as i32;
-        match hit(at(x, w, W), at(y, wh, h), &asked) {
+        let (x, y) = (at(x, w, W), at(y, wh, h));
+        let clicked = match state.offer {
+            Some(_) => update_hit(x, y, asked.len()),
+            None => hit(x, y, &asked),
+        };
+        match clicked {
+            Some(Hit::Updates) if state.updates.is_some() => {
+                let on = !state.updates.unwrap_or(true);
+                state.updates = Some(on);
+                if let Some(Err(e)) = user.map(|dir| update::set_enabled(dir, on)) {
+                    eprintln!("rustyzoo: warning: the update choice is not kept: {e}");
+                }
+            }
+            Some(Hit::Install) if !state.busy => {
+                let (offer, slot) = (state.offer.clone(), Arc::clone(&installed));
+                let Some(offer) = offer else { continue };
+                state.busy = true;
+                state.note = None;
+                std::thread::spawn(move || {
+                    if let Ok(mut slot) = slot.lock() {
+                        *slot = Some(update::install(&offer));
+                    }
+                });
+            }
+            Some(Hit::Skip | Hit::Later) if !state.busy => {
+                if let (Some(Hit::Skip), Some(offer), Some(dir)) = (clicked, &state.offer, user)
+                    && let Err(e) = update::skip(dir, &offer.version)
+                {
+                    eprintln!("rustyzoo: warning: the skipped version is not kept: {e}");
+                }
+                state.offer = None;
+                if !needed(state.folder.as_deref(), state.answers, state.asks) {
+                    return Ok(true);
+                }
+            }
             Some(Hit::Browse) if !browsing => {
                 browsing = true;
                 let slot = Arc::clone(&picked);
@@ -377,6 +471,10 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
     write(fb, title, b"RustyZoo", CREAM, Justify::Left);
 
     bevel(fb, [10, 58, W - 11, h - 50], SAND, 2);
+    if let Some(offer) = &state.offer {
+        paint_update(fb, fonts, state, offer);
+        return;
+    }
     write(
         fb,
         (&mut fonts.bold, 24, W, 74),
@@ -480,6 +578,9 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
     }
 
     button(fb, &mut fonts.bold, place(Hit::Quit, n), b"Quit", SAND, INK);
+    if let Some(on) = state.updates {
+        checkbox(fb, fonts, place(Hit::Updates, n), on, CREAM);
+    }
     let (colours, ink) = if state.playable() {
         (LEAF, CREAM)
     } else {
@@ -493,6 +594,92 @@ fn paint(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State) {
         colours,
         ink,
     );
+}
+
+/// The page that offers a newer version, over the panel already drawn.
+fn paint_update(fb: &mut Framebuffer, fonts: &mut Fonts, state: &State, offer: &update::Offer) {
+    let n = state.asked().len();
+    let lines = [
+        (
+            &mut fonts.bold,
+            format!("RustyZoo {} is available", offer.version),
+            INK,
+            74,
+        ),
+        (
+            &mut fonts.body,
+            format!("You have {}.", env!("CARGO_PKG_VERSION")),
+            INK,
+            93,
+        ),
+        (
+            &mut fonts.note,
+            "Nothing is downloaded until you choose Install.".into(),
+            NOTE,
+            110,
+        ),
+    ];
+    for (font, text, colour, y) in lines {
+        write(
+            fb,
+            (font, 24, W, y),
+            &to_cp1252(&text),
+            colour,
+            Justify::Left,
+        );
+    }
+    let (text, colour) = match (&state.note, state.busy) {
+        (_, true) => ("Downloading and installing, please wait...", LEAF[2]),
+        (Some(note), _) => (note.as_str(), RED),
+        _ => ("", INK),
+    };
+    let shown = fit(&fonts.note, text, W - 48);
+    write(
+        fb,
+        (&mut fonts.note, 24, W, 126),
+        &shown,
+        colour,
+        Justify::Left,
+    );
+    if let Some(on) = state.updates {
+        checkbox(fb, fonts, update_places(n)[3].1, on, INK);
+    }
+    let (plain, main) = if state.busy {
+        ((GREY, [210, 210, 195]), (GREY, [210, 210, 195]))
+    } else {
+        ((SAND, INK), (LEAF, CREAM))
+    };
+    let buttons: [(Hit, &[u8], _); 3] = [
+        (Hit::Skip, b"Skip this version", plain),
+        (Hit::Later, b"Later", plain),
+        (Hit::Install, b"Install", main),
+    ];
+    for (hit, text, (colours, ink)) in buttons {
+        let at = update_places(n)
+            .into_iter()
+            .find(|p| p.0 == hit)
+            .map_or([0; 4], |p| p.1);
+        let font = if hit == Hit::Install {
+            &mut fonts.play
+        } else {
+            &mut fonts.bold
+        };
+        button(fb, font, at, text, colours, ink);
+    }
+}
+
+/// The "Check for updates" box with its label, in the rectangle `[l, t, r, b]`.
+fn checkbox(fb: &mut Framebuffer, fonts: &mut Fonts, [l, t, _, b]: [i32; 4], on: bool, ink: Rgb) {
+    let top = (t + b) / 2 - 6;
+    bevel(fb, [l, top, l + 12, top + 12], [FIELD, SAND[2], SAND[1]], 1);
+    if on {
+        line(fb, (l + 3, top + 6), (l + 5, top + 9), INK);
+        line(fb, (l + 5, top + 9), (l + 9, top + 3), INK);
+        line(fb, (l + 4, top + 6), (l + 6, top + 9), INK);
+        line(fb, (l + 6, top + 9), (l + 10, top + 3), INK);
+    }
+    let label = (&mut fonts.body, l + 20, W, top + 6);
+    write(fb, label, b"Check for updates", ink, Justify::Left);
 }
 
 fn set(fb: &mut Framebuffer, x: i32, y: i32, [r, g, b]: Rgb) {
@@ -753,6 +940,63 @@ mod tests {
         assert_eq!(hit(200, 200, &[0, 1]), None);
         assert_eq!(hit(-1, -1, &[0, 1]), None);
         assert_eq!(hit(i32::MAX, i32::MIN, &[0, 1]), None);
+    }
+
+    #[test]
+    fn the_update_page_has_three_choices_and_the_box() {
+        for n in 0..=2 {
+            let at = |hit| {
+                let [l, t, r, b] = update_places(n).into_iter().find(|p| p.0 == hit).unwrap().1;
+                ((l + r) / 2, (t + b) / 2)
+            };
+            for hit in [Hit::Skip, Hit::Later, Hit::Install, Hit::Updates] {
+                let (x, y) = at(hit);
+                assert_eq!(update_hit(x, y, n), Some(hit), "{hit:?} with {n}");
+            }
+            assert_eq!(update_hit(i32::MAX, i32::MIN, n), None);
+            assert_eq!(update_hit(-1, -1, n), None);
+            // The buttons keep the place of Quit and Play, and do not overlap.
+            assert_eq!(update_places(n)[2].1, place(Hit::Play, n));
+            assert!(update_places(n)[0].1[2] < update_places(n)[1].1[0]);
+            assert!(update_places(n)[1].1[2] < update_places(n)[2].1[0]);
+            assert!(update_places(n)[3].1[3] < place(Hit::Quit, n)[1]);
+        }
+        // On the launcher the box sits between Quit and Play, and moves up with them.
+        assert_eq!(hit(200, 315, &[0, 1]), Some(Hit::Updates));
+        assert_eq!(hit(200, 315 - ROW, &[1]), Some(Hit::Updates));
+        assert_eq!(hit(200, 315 - 2 * ROW, &[]), Some(Hit::Updates));
+    }
+
+    #[test]
+    fn the_update_page_and_the_box_are_drawn() {
+        let tree = Temp::new("launcher-update");
+        let mut state = State::new(
+            Some(install(&tree)),
+            [Some(true), Some(true)],
+            [false, false],
+        );
+        let mut fonts = Fonts::new();
+        let mut draw = |state: &State| {
+            let mut fb = Framebuffer::new(W as u32, height(0) as u32);
+            paint(&mut fb, &mut fonts, state);
+            fb.pixels
+        };
+        let plain = draw(&state);
+        state.updates = Some(true);
+        let boxed = draw(&state);
+        assert_ne!(plain, boxed);
+        state.updates = Some(false);
+        assert_ne!(boxed, draw(&state));
+        state.offer = Some(update::Offer {
+            version: "9.9.9".into(),
+            url: "https://example.org/a".into(),
+            sha256: [0; 32],
+        });
+        let page = draw(&state);
+        state.note = Some("Not updated: x. Nothing was changed.".into());
+        assert_ne!(page, draw(&state));
+        state.busy = true;
+        assert_ne!(page, draw(&state));
     }
 
     #[test]

@@ -65,11 +65,11 @@ const FEED_MAX: u64 = 1 << 16;
 const FILE_MAX: u64 = 1 << 30;
 
 /// What a newer version asks to download: its number, the file for this system and its SHA-256.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Offer {
     pub version: String,
-    url: String,
-    sha256: [u8; 32],
+    pub url: String,
+    pub sha256: [u8; 32],
 }
 
 /// Opens a URL for reading; a failure says why.
