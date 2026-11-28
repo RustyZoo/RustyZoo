@@ -9,20 +9,18 @@
 //! build, the system and the last [`LOG_LINES`] warnings, with every path left out: the known
 //! folders of the player, then any other absolute path down to the name of its `.rs` file.
 //!
-//! The envelope goes out through the system's `curl`: the program links no HTTP or TLS client, and
-//! `curl` ships with Linux, macOS and Windows 10. A missing `curl` or a failed request is a warning.
-//! The start statistics of [`crate::stats`] share the question, the answer in the settings, `curl`
-//! and the variable that turns everything off.
+//! The envelope goes out through the small HTTPS client of the program (`ureq` with `rustls`, the
+//! `ring` crypto and the root certificates of `webpki-roots`), so no other program is needed. A failed
+//! request is a warning. The start statistics of [`crate::stats`] share the question, the answer in
+//! the settings, the client and the variable that turns everything off.
 
 use std::collections::VecDeque;
 use std::fmt;
 use std::hash::{BuildHasher, RandomState};
-use std::io::Write;
 use std::panic::PanicHookInfo;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::mcp::json::Json;
 use crate::userdir;
@@ -260,42 +258,24 @@ fn event_id() -> String {
     format!("{:016x}{:016x}", half(0), half(1))
 }
 
-/// Posts `body` to `url` with `curl`, with these header lines, waiting at most `seconds`.
+/// Posts `body` to `url` over http or https, with these `Name: value` header lines, waiting at most
+/// `seconds` in all (0: no limit). Any status but 2xx is an error; a redirect is not followed.
 pub fn post(url: &str, headers: &[String], seconds: u32, body: &str) -> Result<(), String> {
-    let mut command = Command::new("curl");
-    command
-        .args([
-            "--silent",
-            "--show-error",
-            "--fail",
-            "--proto",
-            "=http,https",
-        ])
-        .args(["--max-time", &seconds.to_string()]);
-    for header in headers {
-        command.args(["--header", header]);
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global((seconds > 0).then(|| Duration::from_secs(seconds.into())))
+        .max_redirects(0)
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut request = agent.post(url);
+    for line in headers {
+        let (name, value) = line.split_once(':').ok_or("bad header line")?;
+        request = request.header(name.trim(), value.trim());
     }
-    command
-        .args([
-            "--data-binary",
-            "@-",
-            "--output",
-            if cfg!(windows) { "NUL" } else { "/dev/null" },
-        ])
-        .arg(url)
-        .stdin(Stdio::piped());
-    #[cfg(windows)]
-    std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000);
-    let mut child = command.spawn().map_err(|e| format!("curl: {e}"))?;
-    let mut stdin = child.stdin.take().ok_or("curl: no input")?;
-    stdin
-        .write_all(body.as_bytes())
-        .map_err(|e| format!("curl: {e}"))?;
-    drop(stdin);
-    match child.wait() {
-        Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(format!("curl: {status}")),
-        Err(e) => Err(format!("curl: {e}")),
+    let response = request.send(body).map_err(|e| e.to_string())?;
+    match response.status() {
+        status if status.is_success() => Ok(()),
+        status => Err(format!("server answered {status}")),
     }
 }
 
@@ -725,5 +705,66 @@ mod tests {
         let log = LOG.lock().unwrap();
         assert!(log.len() <= LOG_LINES);
         assert!(log.iter().all(|l| !l.is_empty()));
+    }
+
+    /// A one-shot plain-HTTP server: reads one request, answers `reply` (nothing: stays silent),
+    /// and gives the request text.
+    fn serve(reply: Option<&'static str>) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/api/7/envelope/", listener.local_addr().unwrap());
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut got = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !got.windows(4).any(|w| w == b"\r\n\r\n") || !got.ends_with(b"body!") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => got.extend_from_slice(&buf[..n]),
+                }
+            }
+            match reply {
+                Some(reply) => {
+                    let _ = stream.write_all(reply.as_bytes());
+                }
+                None => std::thread::sleep(Duration::from_secs(3)),
+            }
+            String::from_utf8_lossy(&got).into_owned()
+        });
+        (url, thread)
+    }
+
+    #[test]
+    fn a_post_sends_the_request_and_a_2xx_is_ok() {
+        let (url, server) = serve(Some("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"));
+        let headers = ["X-Test: one".to_string(), "User-Agent: probe/1".to_string()];
+        assert_eq!(post(&url, &headers, 5, "body!"), Ok(()));
+        let request = server.join().unwrap().to_lowercase();
+        assert!(
+            request.starts_with("post /api/7/envelope/ http/1.1\r\n"),
+            "{request}"
+        );
+        assert!(request.contains("\r\nx-test: one\r\n"), "{request}");
+        assert!(request.contains("\r\nuser-agent: probe/1\r\n"), "{request}");
+        assert!(request.contains("\r\ncontent-length: 5\r\n"), "{request}");
+        assert!(request.ends_with("\r\n\r\nbody!"), "{request}");
+    }
+
+    #[test]
+    fn a_post_fails_on_a_500_and_on_a_bad_header_or_url() {
+        let (url, server) = serve(Some("HTTP/1.1 500 Oops\r\nContent-Length: 0\r\n\r\n"));
+        assert!(post(&url, &[], 5, "body!").unwrap_err().contains("500"));
+        server.join().unwrap();
+        assert!(post("http://127.0.0.1:1/", &["no colon".to_string()], 5, "").is_err());
+        assert!(post("ftp://127.0.0.1/", &[], 5, "").is_err());
+    }
+
+    #[test]
+    fn a_post_gives_up_after_the_time_limit() {
+        let (url, server) = serve(None);
+        let start = std::time::Instant::now();
+        assert!(post(&url, &[], 1, "body!").is_err());
+        assert!(start.elapsed() < Duration::from_millis(2500));
+        server.join().unwrap();
     }
 }

@@ -9,7 +9,7 @@
 //! system and the processor: no identifier, no path, no name of the machine. The server tells a
 //! visit from another by a daily hash of the address and the user agent, which it does not keep.
 //!
-//! The event goes out in a background thread through the system's `curl` (see [`crate::crash`]),
+//! The event goes out in a background thread through the HTTPS client of the program (see [`crate::crash`]),
 //! with a short time limit; a failed request is a warning and never ends the game.
 
 use std::path::Path;
@@ -76,7 +76,7 @@ pub fn payload(website: &str, version: &str, build: &str, os: &str, arch: &str) 
     Json::obj([("type", Json::text("event")), ("payload", payload)]).to_string()
 }
 
-/// The user agent: the server drops the default one of `curl` as a robot.
+/// The user agent: the server drops the default one of an HTTP library as a robot.
 pub fn user_agent(version: &str, os: &str, arch: &str) -> String {
     format!("RustyZoo/{version} ({os}; {arch})")
 }

@@ -21,6 +21,7 @@ skrifa = { version = "0.49.0", default-features = false, features = ["std"] }
 # The code pages of the double-byte `TEXT` entries (Japanese, Chinese, Korean).
 encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
 jpeg-encoder = { version = "0.7", default-features = false }
+ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
 
 # The month and weekday names of the user's time locale (text::format::date).
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
