@@ -273,10 +273,11 @@ fn remove(path: &Path) {
 
 /// Deletes the old `.exe` that the last update renamed aside (Windows cannot delete a running one).
 pub fn tidy() {
-    if asked() && std::env::consts::OS == "windows" {
-        if let Ok(exe) = std::env::current_exe() {
-            remove(&aside(&exe));
-        }
+    if asked()
+        && std::env::consts::OS == "windows"
+        && let Ok(exe) = std::env::current_exe()
+    {
+        remove(&aside(&exe));
     }
 }
 
