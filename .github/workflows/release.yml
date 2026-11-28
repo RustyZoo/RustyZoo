@@ -96,6 +96,19 @@ jobs:
       - name: Install the Rust toolchain from rust-toolchain.toml
         run: rustup toolchain install --profile minimal
 
+      # The notices of the crates compiled into the program (about.toml accepts the licences of
+      # deny.toml). It fails on a licence outside that list; the packages below copy the file, so
+      # none ships without it.
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-about@0.9.3
+      - name: Generate the third-party notices
+        run: |
+          cargo fetch --locked
+          mkdir -p target
+          cargo about generate --offline --locked -o target/THIRD-PARTY-NOTICES.txt packaging/notices/about.hbs
+          [ -s target/THIRD-PARTY-NOTICES.txt ]
+
       - run: cargo build --release
       - run: cargo run --release -- window-smoke
 
@@ -201,7 +214,7 @@ jobs:
           security delete-keychain "$KEYCHAIN" || true
           rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
 
-      # The executable (on macOS RustyZoo.app), the licences and where its source is. CMake (which
+      # The executable (on macOS RustyZoo.app), the licences (with the third-party notices) and where its source is. CMake (which
       # builds SDL) writes the archive and the checksum the same way on every system.
       - name: Package
         id: package
@@ -215,6 +228,7 @@ jobs:
           else
             cp ${{ matrix.bin }} LICENSE "dist/$NAME/"
           fi
+          cp target/THIRD-PARTY-NOTICES.txt "dist/$NAME/"
           # The same files as packaging/linux/appimage.sh (its licence block): keep both lists equal.
           cp vendor/nihav/COPYING "dist/$NAME/vendor/nihav/"
           cp fonts/OFL.txt "dist/$NAME/fonts/"

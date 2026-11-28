@@ -1,0 +1,18 @@
+RustyZoo third-party notices
+
+RustyZoo is under the GNU General Public License (see LICENSE). It is built with the
+crates below. Each block names a licence text, the crates that carry it and the text
+itself, with its copyright notice.
+
+{{#each licenses}}
+================================================================================
+{{{name}}} ({{id}})
+
+Used by:
+{{#each used_by}}
+  {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}
