@@ -559,8 +559,12 @@ jobs:
               XDG_DATA_HOME=$home/data RUSTYZOO_USER_DIR=$home/user
             run() {
               echo "$name: == $1 $(date +%T)"
-              "$@" 2>&1 | K=$keep awk -v p="$name: " '$0 ~ ENVIRON["K"] { print p substr($0, 1, 300); fflush() }'
-              [ "${PIPESTATUS[0]}" = 0 ] || status=1
+              # The job log is lost on these runners, annotations are kept: failure lines are repeated as ::error::.
+              "$@" 2>&1 | K=$keep awk -v p="$name: " '$0 ~ ENVIRON["K"] {
+                l = p substr($0, 1, 300); print l
+                if ($0 ~ /FAILED|^error|panicked|^exit [1-9]/) { gsub(/%/, "%25", l); gsub(/\r/, "%0D", l); print "::error::" l }
+                fflush() }'
+              [ "${PIPESTATUS[0]}" = 0 ] || { status=1; echo "::error::$name: $1 failed"; }
             }
             run ci/full-tests.sh "$dir" "$mode"
             run ci/check-scenarios.sh "$bin" "$dir"
