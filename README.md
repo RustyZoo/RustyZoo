@@ -58,7 +58,7 @@ Dev builds (`cargo build`) keep only line tables, so panics still show file and 
 
 ## Playing
 
-Open RustyZoo (a double-click, or `rustyzoo` with no arguments) to start at the main menu. It looks for your game in the usual install places (CD, Complete Collection, Steam, GOG, Wine and Proton prefixes). At the first start, or when the game is not found, a small launcher window shows the game folder (Browse picks another, the one with `zoo.ini`, and it is remembered) and asks whether to send anonymous start statistics and crash reports (only the questions this build asks: none without a server in the build or with `RUSTYZOO_NO_CRASH_REPORTS` set, and then the launcher shows only when the game is not found); Play starts the game. You can also point it at the folder, or set `ZT_DATA_DIR` once:
+Open RustyZoo (a double-click, or `rustyzoo` with no arguments) to start at the main menu. It looks for your game in the usual install places (CD, Complete Collection, Steam, GOG, Wine and Proton prefixes). At the first start, or when the game is not found, a small launcher window shows the game folder (Browse picks another, the one with `zoo.ini`, and it is remembered) and asks whether to send anonymous start statistics and crash reports (only the questions this build asks: none without a server in the build or with `RUSTYZOO_NO_CRASH_REPORTS` set, and then the launcher shows only when the game is not found); Play starts the game. An official build also checks for a newer version at the start (the "Check for updates" box in the launcher turns it off) and offers Install, Later or Skip this version. You can also point it at the folder, or set `ZT_DATA_DIR` once:
 
 ```sh
 rustyzoo --data "/path/to/Zoo Tycoon" run                     # start at the main menu
