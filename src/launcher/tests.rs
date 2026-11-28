@@ -200,3 +200,82 @@ fn languages_are_named_and_long_folders_cut_at_the_start() {
     assert!(font.width(&short) <= 330);
     assert!(fit(&font, "abc", 0).is_empty());
 }
+
+/// The pixel at the middle of the dot of a radio button.
+fn dot(fb: &Framebuffer, question: usize, yes: bool, n: usize) -> [u8; 3] {
+    let [x, top, ..] = place(Hit::Answer(question, yes), n);
+    let at = ((top + 6) * W + x + 6) as usize * 4;
+    fb.pixels[at..at + 3].try_into().unwrap()
+}
+
+#[test]
+fn a_reopened_launcher_shows_every_answer_already_set() {
+    let tree = Temp::new("launcher-reopen-layout");
+    let game = install(&tree);
+    let user = tree.0.join("user");
+    State::new(Some(game.clone()), [Some(true), Some(false)], [true, true])
+        .save(&user)
+        .unwrap();
+    // What a start reads back from the kept settings.
+    let mut state = State::new(Some(game), answers(Some(&user)), [true, true]);
+    state.updates = Some(false);
+    assert!(state.playable());
+    assert_eq!(status(&state), "Zoo Tycoon found (English)");
+    let mut fb = Framebuffer::new(W as u32, height(2) as u32);
+    paint(&mut fb, &mut Fonts::new(), &state);
+    let (on, off) = (LEAF[2], FIELD);
+    assert_eq!(dot(&fb, 0, true, 2), on);
+    assert_eq!(dot(&fb, 0, false, 2), off);
+    assert_eq!(dot(&fb, 1, true, 2), off);
+    assert_eq!(dot(&fb, 1, false, 2), on);
+    let mut other = Framebuffer::new(W as u32, height(2) as u32);
+    state.updates = Some(true);
+    paint(&mut other, &mut Fonts::new(), &state);
+    assert_ne!(fb.pixels, other.pixels);
+}
+
+#[test]
+fn play_in_a_reopened_launcher_keeps_the_changes() {
+    let tree = Temp::new("launcher-reopen-save");
+    let game = install(&tree);
+    let user = tree.0.join("user");
+    let both = [true, true];
+    State::new(Some(game.clone()), [Some(true), Some(true)], both)
+        .save(&user)
+        .unwrap();
+    let mut state = State::new(Some(game.clone()), answers(Some(&user)), both);
+    state.answers = [Some(false), Some(true)];
+    state.updates = Some(false);
+    let args = finish(Ok(true), true, state, Some(&user));
+    assert_eq!(
+        args,
+        Some(vec!["--data".into(), game.clone().into_os_string()])
+    );
+    assert_eq!(answers(Some(&user)), [Some(false), Some(true)]);
+    assert!(!update::enabled(Some(&user)));
+    // The box back on is kept too.
+    let mut state = State::new(Some(game), answers(Some(&user)), both);
+    state.updates = Some(true);
+    finish(Ok(true), true, state, Some(&user)).unwrap();
+    assert!(update::enabled(Some(&user)));
+}
+
+#[test]
+fn closing_a_reopened_launcher_without_play_changes_nothing() {
+    let tree = Temp::new("launcher-reopen-quit");
+    let game = install(&tree);
+    let user = tree.0.join("user");
+    let both = [true, true];
+    State::new(Some(game.clone()), [Some(true), Some(true)], both)
+        .save(&user)
+        .unwrap();
+    let before = std::fs::read_to_string(user.join("zoo.ini")).unwrap();
+    let mut state = State::new(Some(tree.0.clone()), [Some(false), Some(false)], both);
+    state.updates = Some(false);
+    assert_eq!(finish(Ok(false), true, state, Some(&user)), None);
+    assert_eq!(
+        std::fs::read_to_string(user.join("zoo.ini")).unwrap(),
+        before
+    );
+    assert_eq!(answers(Some(&user)), [Some(true), Some(true)]);
+}

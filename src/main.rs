@@ -33,9 +33,11 @@ fn main() -> ExitCode {
     #[cfg(windows)]
     console::attach();
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let boxed = in_a_box(&args);
+    // `--setup` alone, or a start without arguments with Shift held, reopens the launcher.
+    let setup = args == ["--setup"] || (args.is_empty() && launcher::shift_held());
+    let boxed = setup || in_a_box(&args);
     let args = if boxed {
-        match launcher::start() {
+        match launcher::start(setup) {
             Some(args) => args,
             None => return ExitCode::SUCCESS,
         }

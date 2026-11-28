@@ -5,6 +5,9 @@
 //! the game, Quit or closing the window ends the run. It draws with the embedded fonts and loads
 //! nothing from the game.
 //!
+//! `rustyzoo --setup`, or Shift held at the start, shows it again whatever the answers, with the
+//! kept answers, the box and the folder in place; Play keeps the changes, closing it keeps nothing.
+//!
 //! An official build (see [`update`]) also shows a "Check for updates" box, and opens first on a
 //! page that offers a newer version: Install, Later, or Skip this version.
 
@@ -200,6 +203,10 @@ impl State {
                 crash::keep(user, key, answer)?;
             }
         }
+        // Only a change: a start that never touched the box leaves the default unwritten.
+        if let Some(on) = self.updates.filter(|&on| on != update::enabled(Some(user))) {
+            update::set_enabled(user, on)?;
+        }
         Ok(())
     }
 }
@@ -222,10 +229,38 @@ fn answers(user: Option<&Path>) -> [Option<bool>; 2] {
     KEYS.map(|key| user.and_then(|dir| crash::consent(dir, key)))
 }
 
+/// Whether Shift is held at this moment, asked of the system before any window exists: Windows
+/// and macOS tell it; Linux has no way that works on both X11 and Wayland, so `--setup` is the
+/// way there.
+pub fn shift_held() -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetAsyncKeyState(key: i32) -> i16;
+        }
+        // The high bit: down now (VK_SHIFT is 0x10).
+        unsafe { GetAsyncKeyState(0x10) < 0 }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        #[link(name = "CoreGraphics", kind = "framework")]
+        unsafe extern "C" {
+            fn CGEventSourceFlagsState(state: i32) -> u64;
+        }
+        // The combined session state, and the Shift flag of a key event.
+        unsafe { CGEventSourceFlagsState(0) & 0x2_0000 != 0 }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    false
+}
+
 /// The arguments a start without arguments goes on with: none when the launcher is not needed
 /// or cannot be shown (a warning), `--data <folder>` after Play; `None` after Quit or an update.
-pub fn start() -> Option<Vec<OsString>> {
-    if std::env::var_os("ZT_DATA_DIR").is_some_and(|dir| !dir.is_empty()) {
+/// With `setup` (`--setup`, or Shift at the start) the launcher always shows, with the answers
+/// and the folder already kept, even with `ZT_DATA_DIR` set.
+pub fn start(setup: bool) -> Option<Vec<OsString>> {
+    if !setup && std::env::var_os("ZT_DATA_DIR").is_some_and(|dir| !dir.is_empty()) {
         return Some(Vec::new());
     }
     update::tidy();
@@ -234,11 +269,23 @@ pub fn start() -> Option<Vec<OsString>> {
     let mut state = State::new(install::find(), answers(user.as_deref()), asks);
     state.updates = update::asked().then(|| update::enabled(user.as_deref()));
     state.offer = update::pending(user.as_deref());
-    let main = needed(state.folder.as_deref(), state.answers, asks);
+    let main = setup || needed(state.folder.as_deref(), state.answers, asks);
     if !main && state.offer.is_none() {
         return Some(Vec::new());
     }
-    match show(&mut state, user.as_deref()) {
+    let shown = show(&mut state, user.as_deref(), setup);
+    finish(shown, main, state, user.as_deref())
+}
+
+/// What `start` returns once the window is gone: `None` on Quit or an update, nothing saved; after
+/// Play the choices are kept in `user`.
+fn finish(
+    shown: Result<bool, Box<dyn Error>>,
+    main: bool,
+    state: State,
+    user: Option<&Path>,
+) -> Option<Vec<OsString>> {
+    match shown {
         Ok(true) if !main => return Some(Vec::new()),
         Ok(true) => {}
         Ok(false) => return None,
@@ -248,7 +295,7 @@ pub fn start() -> Option<Vec<OsString>> {
         }
     }
     let saved = user.ok_or_else(|| "the system gives no user folder".to_string());
-    if let Err(e) = saved.and_then(|user| state.save(&user)) {
+    if let Err(e) = saved.and_then(|user| state.save(user)) {
         eprintln!("rustyzoo: warning: the launcher choices are not kept: {e}");
     }
     let folder = state
@@ -261,8 +308,9 @@ pub fn start() -> Option<Vec<OsString>> {
 /// Shows the window until Play (`true`) or Quit (`false`). The update page comes first when there
 /// is an offer: Later and Skip go on to the launcher, or to Play when it is not needed;
 /// Install ends with Quit once the new version has started. The update choices are kept in the
-/// settings folder `user` at once.
-fn show(state: &mut State, user: Option<&Path>) -> Result<bool, Box<dyn Error>> {
+/// settings folder `user` at once, except the box of a reopened launcher (`setup`) outside the
+/// update page: Play keeps it, Quit leaves it as it was.
+fn show(state: &mut State, user: Option<&Path>, setup: bool) -> Result<bool, Box<dyn Error>> {
     let asked = state.asked();
     let h = height(asked.len());
     let sdl = sdl3::init()?;
@@ -339,7 +387,8 @@ fn show(state: &mut State, user: Option<&Path>) -> Result<bool, Box<dyn Error>> 
             Some(Hit::Updates) if state.updates.is_some() => {
                 let on = !state.updates.unwrap_or(true);
                 state.updates = Some(on);
-                if let Some(Err(e)) = user.map(|dir| update::set_enabled(dir, on)) {
+                let now = !setup || state.offer.is_some();
+                if let Some(Err(e)) = user.filter(|_| now).map(|dir| update::set_enabled(dir, on)) {
                     eprintln!("rustyzoo: warning: the update choice is not kept: {e}");
                 }
             }
@@ -361,7 +410,7 @@ fn show(state: &mut State, user: Option<&Path>) -> Result<bool, Box<dyn Error>> 
                     eprintln!("rustyzoo: warning: the skipped version is not kept: {e}");
                 }
                 state.offer = None;
-                if !needed(state.folder.as_deref(), state.answers, state.asks) {
+                if !setup && !needed(state.folder.as_deref(), state.answers, state.asks) {
                     return Ok(true);
                 }
             }
