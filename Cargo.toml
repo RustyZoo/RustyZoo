@@ -22,6 +22,8 @@ skrifa = { version = "0.49.0", default-features = false, features = ["std"] }
 encoding_rs = { version = "=0.8.35", default-features = false, features = ["alloc"] }
 jpeg-encoder = { version = "0.7", default-features = false }
 ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
+# The ed25519 signature and the SHA-256 of the self-update (rustls already builds it).
+ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
 
 # The month and weekday names of the user's time locale (text::format::date).
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]

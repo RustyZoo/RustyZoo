@@ -66,6 +66,7 @@ SDL3 is used only there, built from source and linked statically.
 
 - `window` (SDL3 window and loop), `run` (headless scripted run), `boot` (start-up into the main menu).
 - `launcher`: the small window of a start without arguments: game folder and the start questions.
+- `update`: the signed-feed check and the self-update of an official build; the launcher offers it.
 - `cli`, `findcmd`, `simcmd`, `layout`, `textcmd`: the commands (see docs/usage.md); they print text or PNG files.
 - `mcp`: a Model Context Protocol server over stdio that drives a `sim::drive::Run`; a development aid.
 - `fixtures`: helpers shared by the unit tests.

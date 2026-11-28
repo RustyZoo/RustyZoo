@@ -460,6 +460,7 @@ dependencies = [
  "nihav_core",
  "nihav_indeo",
  "png",
+ "ring",
  "sdl3",
  "skrifa",
  "ureq",
