@@ -736,7 +736,7 @@ mod tests {
                 "/Applications/RustyZoo.app/Contents/MacOS/rustyzoo",
             ))
         };
-        let image = || Some(OsString::from("/home/a/RustyZoo.AppImage"));
+        let image = || Some(OsString::from("/opt/RustyZoo.AppImage"));
         assert_eq!(
             target_of("windows", Some("C:/z/rustyzoo.exe".into()), None, false),
             Some("C:/z/rustyzoo.exe".into())
@@ -751,7 +751,7 @@ mod tests {
         );
         assert_eq!(
             target_of("linux", None, image(), false),
-            Some("/home/a/RustyZoo.AppImage".into())
+            Some("/opt/RustyZoo.AppImage".into())
         );
         assert_eq!(target_of("linux", None, image(), true), None);
         assert_eq!(target_of("linux", None, None, false), None);
