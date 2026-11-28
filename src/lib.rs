@@ -58,6 +58,7 @@ pub mod tga;
 pub mod timing;
 pub mod ui;
 pub mod unit;
+pub mod update;
 pub mod userdir;
 pub mod usertext;
 pub mod vfs;
