@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds RustyZoo.app from the universal binary. Usage: bundle.sh <binary> <version> <min-macos> <out-dir> [identity]
 # identity is a codesign identity (Developer ID Application); the default `-` seals ad hoc.
-# Needs iconutil and codesign (macOS). The icon files are copied, never resampled.
+# Needs iconutil and codesign (macOS) and target/THIRD-PARTY-NOTICES.txt (release.yml makes it with cargo-about). The icon files are copied, never resampled.
 set -euo pipefail
 bin=$1 version=$2 min=$3 out=$4 identity=${5:--}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -25,6 +25,7 @@ icon_256x256@2x 512
 icon_512x512 512
 icon_512x512@2x 1024
 LIST
+cp "$here/../../target/THIRD-PARTY-NOTICES.txt" "$app/Contents/Resources/"
 iconutil -c icns -o "$app/Contents/Resources/rustyzoo.icns" "$out/rustyzoo.iconset"
 plutil -lint "$app/Contents/Info.plist"
 if [ "$identity" = - ]; then
