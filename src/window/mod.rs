@@ -79,6 +79,8 @@ pub struct Flags<'a> {
     pub map: bool,
     /// `--seed`: a test run, the generator seeded from this number.
     pub seed: Option<u32>,
+    /// Send the start statistics once the game has loaded (a player's window only).
+    pub stats: bool,
 }
 
 /// Makes the game full screen or windowed, after asking the window to do it if `ask`; the game is
@@ -167,9 +169,24 @@ fn start_up(
     Ok(Some((made, menu)))
 }
 
+/// [`build_app`], then the start of the game is counted (if `flags.stats`): its first screen has
+/// loaded.
+fn make_app<'c>(
+    catalogue: &'c mut Option<Catalogue>,
+    vfs: &'c Vfs,
+    ini: &Config,
+    start: (Option<(Catalogue, Zoo, Money)>, Option<Booted>),
+    shown: ((u32, u32), Option<Music>),
+    flags: &Flags,
+) -> Result<App<'c>, CliError> {
+    let made = build_app(catalogue, vfs, ini, start, shown, flags);
+    let dir = userdir::dir();
+    rustyzoo::stats::after_start(made, flags.stats, dir.as_deref(), crate::ask_statistics)
+}
+
 /// The game: the map `loaded` (its types are kept in `catalogue`) with the menu music `menu`
 /// playing, or the main menu that the start-up `booted` made.
-fn make_app<'c>(
+fn build_app<'c>(
     catalogue: &'c mut Option<Catalogue>,
     vfs: &'c Vfs,
     ini: &Config,

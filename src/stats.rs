@@ -135,6 +135,38 @@ pub fn start(dir: Option<&Path>, ask: impl FnOnce(&str) -> Option<bool>) {
     start_with(crash::disabled(), this_target().as_ref(), dir, ask, send);
 }
 
+/// [`start_with`] for this build, when `on` and `started` is Ok (the game data and the first
+/// screen have loaded): a start that failed counts for nothing. Passes `started` on.
+pub fn after_start<T, E>(
+    started: Result<T, E>,
+    on: bool,
+    dir: Option<&Path>,
+    ask: impl FnOnce(&str) -> Option<bool>,
+) -> Result<T, E> {
+    after_with(
+        started,
+        on,
+        (crash::disabled(), this_target().as_ref()),
+        dir,
+        ask,
+        send,
+    )
+}
+
+fn after_with<T, E>(
+    started: Result<T, E>,
+    on: bool,
+    (off, target): (bool, Option<&Target>),
+    dir: Option<&Path>,
+    ask: impl FnOnce(&str) -> Option<bool>,
+    send: impl FnOnce(&Target) -> Result<(), String>,
+) -> Result<T, E> {
+    if on && started.is_ok() {
+        start_with(off, target, dir, ask, send);
+    }
+    started
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -282,5 +314,44 @@ mod tests {
             (false, false)
         );
         assert!(!fresh.0.join("zoo.ini").exists());
+    }
+
+    #[test]
+    fn a_start_that_failed_sends_and_asks_nothing() {
+        let t = target();
+        let dir = TempDir::new("stats-failed");
+        crate::userdir::save(&dir.0, "RustyZoo", KEY, "1").unwrap();
+        let fresh = TempDir::new("stats-failed-fresh");
+        let after = |started: Result<u8, &'static str>, on, dir: &Path| {
+            let (asked, sent) = (Cell::new(false), Cell::new(false));
+            let got = after_with(
+                started,
+                on,
+                (false, Some(&t)),
+                Some(dir),
+                |_| {
+                    asked.set(true);
+                    Some(true)
+                },
+                |_| {
+                    sent.set(true);
+                    Ok(())
+                },
+            );
+            (got, asked.get(), sent.get())
+        };
+        assert_eq!(
+            after(Err("no data"), true, &dir.0),
+            (Err("no data"), false, false)
+        );
+        assert_eq!(
+            after(Err("bad map"), true, &fresh.0),
+            (Err("bad map"), false, false)
+        );
+        assert_eq!(crate::userdir::setting(&fresh.0, "RustyZoo", KEY), None);
+        // Not a player's window: nothing either.
+        assert_eq!(after(Ok(1), false, &dir.0), (Ok(1), false, false));
+        assert_eq!(after(Ok(1), true, &dir.0), (Ok(1), false, true));
+        assert_eq!(after(Ok(2), true, &fresh.0), (Ok(2), true, true));
     }
 }
