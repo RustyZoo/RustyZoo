@@ -2,7 +2,7 @@
 # The tests that need a full install, on one install: the ignored tests (and with --include-ignored all the others).
 # Usage: ci/full-tests.sh <game folder> <--ignored|--include-ignored>
 # SHARD=<i>/<n> runs only every n-th test of the sorted list (see ci/shard.sh). Only the failed test names and the
-# totals are printed: a panic message can quote a game file. Exit status: 1 if a test failed.
+# totals are printed (and, for a killed test binary, cargo's crash reason, which holds a path and a signal): a panic message can quote a game file. Exit status: 1 if a test failed.
 set -u
 . "$(dirname "$0")/shard.sh"
 export ZT_DATA_DIR=$1
@@ -23,6 +23,6 @@ filter=()
 [ -z "${SHARD:-}" ] || filter=(--exact "${names[@]}")
 code=0
 cargo test -- "$mode" "${filter[@]}" >"$out" 2>&1 || code=$?
-grep -E '\.\.\. FAILED$|^test result:|^error(\[|:)' "$out" || true
+grep -E '\.\.\. FAILED$|^test result:|^error(\[|:)|^Caused by:|^ +process didn.t exit' "$out" | cut -c1-300 || true
 echo "exit $code"
 exit "$code"
