@@ -237,7 +237,7 @@ pub fn open(
 const ICON: &[u8] = include_bytes!("../../packaging/icon/png/rustyzoo-32.png");
 
 /// The 32 by 32 RGBA pixels of the icon.
-fn icon_pixels() -> Result<(u32, Vec<u8>), png::DecodingError> {
+pub(crate) fn icon_pixels() -> Result<(u32, Vec<u8>), png::DecodingError> {
     let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info()?;
     let mut pixels = vec![0; reader.output_buffer_size().unwrap_or(0)];
     let info = reader.next_frame(&mut pixels)?;
@@ -246,7 +246,7 @@ fn icon_pixels() -> Result<(u32, Vec<u8>), png::DecodingError> {
 }
 
 /// Gives the window the application icon; a failure only prints a warning.
-fn set_icon(window: &mut Window) {
+pub(crate) fn set_icon(window: &mut Window) {
     let made = icon_pixels()
         .map_err(|e| e.to_string())
         .and_then(|(side, mut rgba)| {

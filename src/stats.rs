@@ -22,7 +22,8 @@ pub const URL: Option<&str> = option_env!("RUSTYZOO_STATS_URL");
 /// The site of this build on the server, from `RUSTYZOO_STATS_WEBSITE` when the program is built.
 pub const WEBSITE: Option<&str> = option_env!("RUSTYZOO_STATS_WEBSITE");
 
-const KEY: &str = "startStats";
+/// The settings key of the statistics question.
+pub const KEY: &str = "startStats";
 /// The host name events carry: the one of the game, not of the machine.
 const HOSTNAME: &str = "game.rustyzoo.com";
 const SECONDS: u32 = 5;
@@ -119,10 +120,19 @@ fn start_with(
     }
 }
 
+fn this_target() -> Option<Target> {
+    URL.zip(WEBSITE).and_then(|(u, w)| Target::parse(u, w))
+}
+
+/// Whether a start of this build asks the statistics question: it has a server and the
+/// environment does not turn reports off.
+pub fn asks() -> bool {
+    !crash::disabled() && this_target().is_some()
+}
+
 /// [`start_with`] for this build: its server, the environment, the settings folder `dir`.
 pub fn start(dir: Option<&Path>, ask: impl FnOnce(&str) -> Option<bool>) {
-    let target = URL.zip(WEBSITE).and_then(|(u, w)| Target::parse(u, w));
-    start_with(crash::disabled(), target.as_ref(), dir, ask, send);
+    start_with(crash::disabled(), this_target().as_ref(), dir, ask, send);
 }
 
 #[cfg(test)]

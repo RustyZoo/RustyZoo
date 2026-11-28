@@ -50,6 +50,7 @@ use crate::probe;
 use cursor::Cursors;
 use events::{State, asleep, focused, maximised};
 use screen::Screen;
+pub(crate) use screen::{icon_pixels, set_icon};
 use size::ini_fullscreen;
 use sound::Sound;
 use wait::Wait;

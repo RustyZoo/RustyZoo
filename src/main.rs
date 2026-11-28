@@ -9,6 +9,7 @@ mod cli;
 mod console;
 mod findcmd;
 mod input;
+mod launcher;
 mod layout;
 mod probe;
 mod run;
@@ -33,6 +34,14 @@ fn main() -> ExitCode {
     console::attach();
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     let boxed = in_a_box(&args);
+    let args = if boxed {
+        match launcher::start() {
+            Some(args) => args,
+            None => return ExitCode::SUCCESS,
+        }
+    } else {
+        args
+    };
     match cli::run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(CliError::Usage) => {
