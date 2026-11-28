@@ -1,6 +1,6 @@
 [package]
 name = "rustyzoo"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 description = "Open-source engine that loads the original Zoo Tycoon game data"
 license = "GPL-3.0-or-later AND AGPL-3.0-or-later"
