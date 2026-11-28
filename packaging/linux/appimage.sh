@@ -45,6 +45,7 @@ done
 doc=$app/usr/share/doc/rustyzoo
 mkdir -p "$doc/vendor/nihav" "$doc/fonts"
 cp "$here/../../LICENSE" "$doc/"
+cp "$here/../../target/THIRD-PARTY-NOTICES.txt" "$doc/"
 cp "$here/../../vendor/nihav/COPYING" "$doc/vendor/nihav/"
 cp "$here/../../fonts/OFL.txt" "$doc/fonts/"
 echo "Source: ${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/tree/${GITHUB_SHA:-}" > "$doc/SOURCE.txt"

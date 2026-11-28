@@ -1,0 +1,6 @@
+# cargo-about: the third-party notices that release.yml ships (packaging/notices/about.hbs).
+# Accepted: the same licences as deny.toml, which checks them on every pull request.
+accepted = ["GPL-3.0-or-later", "AGPL-3.0-or-later", "MIT", "Apache-2.0", "BSD-3-Clause", "Zlib", "IJG", "Unicode-3.0", "ISC", "CDLA-Permissive-2.0"]
+# Only what is compiled into the program.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
