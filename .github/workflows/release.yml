@@ -105,6 +105,7 @@ jobs:
       - name: Generate the third-party notices
         run: |
           cargo fetch --locked
+          mkdir -p target
           cargo about generate --offline --locked -o target/THIRD-PARTY-NOTICES.txt packaging/notices/about.hbs
           [ -s target/THIRD-PARTY-NOTICES.txt ]
 
