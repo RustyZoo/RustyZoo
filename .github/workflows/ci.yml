@@ -518,8 +518,9 @@ jobs:
     steps: *trials-steps
 
   # The checks that need the full English and French installs, on the one self-hosted runner that holds them
-  # (see `fullgame` in `scope`): the two installs run side by side, each one the ignored tests, the scenario sweep
-  # with the made-up win and loss, and the freeform game of ci/playable-full.txt. Only status lines are printed
+  # (see `fullgame` in `scope`): the two installs run one after the other (side by side the French test binary was
+  # killed), each one the ignored tests, the scenario sweep with the made-up win and loss, and the freeform game
+  # of ci/playable-full.txt. Only status lines are printed
   # (a panic message or a game text can quote a game file), the game folders are masked in the logs, nothing is
   # uploaded or cached.
   full-game:
@@ -539,18 +540,17 @@ jobs:
       - name: Install the Rust toolchain from rust-toolchain.toml
         run: flock /cache/rustup.lock rustup toolchain install --profile minimal
       - run: cargo build --release
-      # The English and French installs run side by side, each with its own home, temp and user folders (the
-      # checks keep their files under mktemp, so nothing else is shared but the checkout and the build). Each
-      # check's status lines go to the job log as they end, prefixed `en:` or `fr:`, so a timeout shows how far
-      # it got. Only status lines, never game text.
+      # The English install, then the French one (French runs even after an English failure), each with its own
+      # home, temp and user folders. Each check's status lines go to the job log as they end, prefixed `en:` or
+      # `fr:`, so a timeout shows how far it got. Only status lines and cargo's crash reason, never game text.
       - name: Check the full English and French installs
         run: |
           : "${ZT_DATA_DIR:?}" "${ZT_DATA_DIR_FR:?}"
           export CARGO_HOME=${CARGO_HOME:-$HOME/.cargo} RUSTUP_HOME=${RUSTUP_HOME:-$HOME/.rustup}
           bin=target/release/rustyzoo
           export SCENARIO_JOBS=6
-          keep='^(ok|skipped|pending|FAILED|shard)|^test result:|\.\.\. FAILED$|^error|^exit'
-          install() { # install <name> <folder> <test mode>: status 1 if a check failed
+          keep='^(ok|skipped|pending|FAILED|shard)|^test result:|\.\.\. FAILED$|^error|^exit|^Caused by:|^ +process didn.t exit'
+          install() ( # install <name> <folder> <test mode>: status 1 if a check failed (a subshell: its variables stay its own)
             set +e
             name=$1 dir=$2 mode=$3 status=0 home=$RUNNER_TEMP/$1
             rm -rf "$home"
@@ -562,7 +562,7 @@ jobs:
               # The job log is lost on these runners, annotations are kept: failure lines are repeated as ::error::.
               "$@" 2>&1 | K=$keep awk -v p="$name: " '$0 ~ ENVIRON["K"] {
                 l = p substr($0, 1, 300); print l
-                if ($0 ~ /FAILED|^error|panicked|^exit [1-9]/) { gsub(/%/, "%25", l); gsub(/\r/, "%0D", l); print "::error::" l }
+                if ($0 ~ /FAILED|^error|panicked|^exit [1-9]|^Caused by:|^ +process didn.t exit/) { gsub(/%/, "%25", l); gsub(/\r/, "%0D", l); print "::error::" l }
                 fflush() }'
               [ "${PIPESTATUS[0]}" = 0 ] || { status=1; echo "::error::$name: $1 failed"; }
             }
@@ -573,14 +573,10 @@ jobs:
             rm -rf "$home"
             echo "$name: done, status $status $(date +%T)"
             return "$status"
-          }
-          install en "$ZT_DATA_DIR" --include-ignored &
-          en=$!
-          install fr "$ZT_DATA_DIR_FR" --ignored &
-          fr=$!
+          )
           status=0
-          wait "$en" || status=1
-          wait "$fr" || status=1
+          install en "$ZT_DATA_DIR" --include-ignored || status=1
+          install fr "$ZT_DATA_DIR_FR" --ignored || status=1
           exit "$status"
 
   # The simulation is deterministic: the state hash of every map of the trials after 1000 steps (short
